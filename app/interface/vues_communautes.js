@@ -317,6 +317,12 @@ function rendreDispersion(conteneur, ctx, p, loc) {
 
 // ------------------------------------------------------------ Mantel tests and the correlogram
 
+// What the X distance is: the Euclidean one of the X variables (scaled), or the geographic one
+// between the project's coordinates (termes_x then holds their two names, and no scaling)
+const noteMantel = (m) => (m.distance_x === 'geographique'
+  ? t('com_mantel_note_geo', { x: liste(m.termes_x)[0] ?? '', y: liste(m.termes_x)[1] ?? '' })
+  : t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') }));
+
 function rendreMantel(conteneur, ctx, p) {
   const m = ctx.modele(p.modele);
   const s = m.test;
@@ -326,7 +332,7 @@ function rendreMantel(conteneur, ctx, p) {
     el('div', { class: 'fiche-chiffres' }, chiffre('r', s.r, 4), chiffre('p', pValeur(s.p)), chiffre(t('nb_permutations'), s.permutations, 0), m.strates ? chiffre(t('ord_dans'), m.strates) : null),
     s.r_partiel !== undefined && s.r_partiel !== null ? el('div', { class: 'fiche-chiffres' }, chiffre(t('com_r_partiel'), s.r_partiel, 4), chiffre('p', pValeur(s.p_partiel)),
       chiffre(t('com_z'), liste(m.termes_z).join(', '))) : null);
-  const notes = [t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') })];
+  const notes = [noteMantel(m)];
   if (pa.total > liste(pa.y).length) notes.push(t('com_paires_extrait', { n: liste(pa.y).length, total: pa.total }));
   conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, el('p', { class: 'note' }, notes.join(' ')), graphe));
   tracer(ctx, graphe, [{ type: 'scattergl', mode: 'markers', name: t('com_paires'), x: liste(pa.x), y: liste(pa.y),
@@ -544,7 +550,7 @@ const blocsDispersion = (m) => liste(m.dispersions).flatMap((d) => [{ texte: `${
   { entetes: [t('groupe'), 'n', t('moyenne')], lignes: lignesDe(d.groupes, ['groupe', 'n', 'moyenne']).map((l) => [l[0], String(l[1]), fmt(l[2], 4)]) },
   { entetes: [t('com_paire'), t('com_difference'), t('com_ic_bas'), t('com_ic_haut'), t('com_p_ajustee')],
     lignes: lignesDe(d.tukey, ['paire', 'difference', 'bas', 'haut', 'p']).map((l) => [l[0], fmt(l[1], 4), fmt(l[2], 4), fmt(l[3], 4), pValeur(l[4])]) }]);
-const blocsMantel = (m) => [{ texte: t('com_mantel_note', { termes: liste(m.termes_x).join(', '), echelles: liste(m.echelles_x).map((e) => t('echelle_' + e)).join(', ') }) },
+const blocsMantel = (m) => [{ texte: noteMantel(m) },
   { texte: `r = ${fmt(m.test.r, 4)}, p = ${pValeur(m.test.p)} · ${textePermutations(m)}` }]
   .concat(m.test.r_partiel !== undefined && m.test.r_partiel !== null
     ? [{ texte: `${t('com_r_partiel')} (${liste(m.termes_z).join(', ')})${deuxPoints()}r = ${fmt(m.test.r_partiel, 4)}, p = ${pValeur(m.test.p_partiel)}` }] : []);
@@ -661,6 +667,7 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion de « {v} » : F = {f}, p = {p} (permutations).',
   com_r_partiel: 'r partiel', com_z: 'Covariables Z',
   com_mantel_note: 'La distance X : euclidienne sur {termes} ({echelles}). Chaque point : une paire d’observations. Le test permute les observations de la distance Y (vegan::mantel) ; unilatéral.',
+  com_mantel_note_geo: 'La distance X : la distance géographique (en km) entre les coordonnées {x} et {y}. Chaque point : une paire d’observations. Le test permute les observations de la distance Y (vegan::mantel) ; unilatéral.',
   com_paires_extrait: 'Le graphique montre {n} des {total} paires, tirées au hasard.', com_distance_x_axe: 'Distance X (euclidienne)', com_distance_x_km: 'Distance géographique (km)', com_distance_y: 'Distance Y ({d})',
   com_correlogramme_note: 'La distance X découpée en {n} classes d’égale largeur ; dans chacune, la corrélation de Mantel entre les paires de la classe et la distance Y, de signe changé (positive : des observations proches plus semblables). Carré plein : p ≤ 0,05 après la correction progressive de Holm ; au-delà de la moitié, une classe n’est testée que si chaque observation y a une paire (vegan::mantel.correlog).',
   com_sturges: '(règle de Sturges)', com_sans_correlogramme: 'Pas de corrélogramme : les distances X ne varient pas.', com_r_mantel: 'r de Mantel',
@@ -732,6 +739,7 @@ ajouterTextes({
   com_dispersion_resume: 'Dispersion of “{v}”: F = {f}, p = {p} (permutations).',
   com_r_partiel: 'partial r', com_z: 'Covariates Z',
   com_mantel_note: 'The X distance: Euclidean on {termes} ({echelles}). Each point: a pair of observations. The test permutes the observations of the Y distance (vegan::mantel); one-sided.',
+  com_mantel_note_geo: 'The X distance: the geographic distance (in km) between the coordinates {x} and {y}. Each point: a pair of observations. The test permutes the observations of the Y distance (vegan::mantel); one-sided.',
   com_paires_extrait: 'The plot shows {n} of the {total} pairs, drawn at random.', com_distance_x_axe: 'X distance (Euclidean)', com_distance_x_km: 'Geographic distance (km)', com_distance_y: 'Y distance ({d})',
   com_correlogramme_note: 'The X distance cut into {n} classes of equal width; in each, the Mantel correlation between the pairs of the class and the Y distance, its sign changed (positive: close observations more alike). Filled square: p ≤ 0.05 after Holm’s progressive correction; beyond half, a class is tested only if every observation has a pair in it (vegan::mantel.correlog).',
   com_sturges: '(Sturges’ rule)', com_sans_correlogramme: 'No correlogram: the X distances don’t vary.', com_r_mantel: 'Mantel r',
