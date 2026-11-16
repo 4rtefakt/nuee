@@ -485,11 +485,12 @@ lire_formule_variable <- function(projet, texte) {
       }
       arguments <- as.list(x)[-1]
       if (as.character(f) %in% FONCTIONS_DIVERSITE) {
-        # (une plage de colonnes a:b, lue sans être évaluée ; tout autre argument, une colonne ou un
-        # calcul sur elles, évalué : lu comme le reste de la formule)
+        # (une plage de colonnes a:b n'est pas évaluée : ses noms sont cherchés parmi les colonnes,
+        # indice_diversite dit lequel manque ; tout autre argument, une colonne ou un calcul sur elles,
+        # évalué : lu comme le reste de la formule)
         for (a in arguments) {
-          if (is.call(a) && identical(a[[1]], as.name(":")) && length(a) == 3 && is.name(a[[2]]) && is.name(a[[3]])) { nom_permis(a[[2]]); nom_permis(a[[3]]) }
-          else if (!identical(a, quote(expr = ))) voir(a)
+          if (is.call(a) && identical(a[[1]], as.name(":")) && length(a) == 3 && is.name(a[[2]]) && is.name(a[[3]])) next
+          if (!identical(a, quote(expr = ))) voir(a)
         }
         return(invisible())
       }

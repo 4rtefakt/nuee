@@ -254,7 +254,7 @@ function htmlReference(tok, r, libelles) {
   const legende = (lib) => `<b>${echapper(lib)} ${r.numero}.</b>${r.legende ? ` ${echapper(r.legende)}` : ''}`;
   switch (r.genre) {
     case 'figure':
-      return `<figure class="ref-figure"${id} title="${brut}"><img src="${/^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(String(r.image)) ? r.image : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
+      return `<figure class="ref-figure"${id} title="${brut}"><img src="${/^(data:image\/|blob:)/i.test(String(r.image)) ? echapper(r.image) : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
     case 'tableau':
       return `<div class="ref-tableau"${id} title="${brut}"><p class="legende">${legende(libelles.tableau)}</p>${r.blocs.map(htmlBloc).join('')}</div>`;
     case 'texte':

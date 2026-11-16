@@ -59,7 +59,7 @@ module.exports = {
     await n.dialogue('nouvelle_variable');
     await n.ecrire("__n.boite().querySelector('.grille-champs input')", 'lot');
     await n.cliquer("__n.boite().querySelector('textarea.formule')");
-    await n.taper('rep(c(3, 1, 2), 40)');
+    await n.taper('c(3, 1, 2)[(seq_along(weight) - 1) %% 3 + 1]');  // (rep() isn't allowed in a formula)
     await n.bouton('ajouter');
     await n.attendre('!__n.dialogue()');
     await n.attendre(`!!${entete('lot')}`);
