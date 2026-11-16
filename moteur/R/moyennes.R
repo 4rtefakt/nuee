@@ -789,7 +789,9 @@ effets_reponse <- function(projet, m, d) {
     }
     c(list(terme = nom, courbe = courbe), ligne(t, tous), list(fixes = fixes(t)))
   })
-  list(effets = effets, lien = lien,
+  # (`famille` : l'effort à 1 ne donne pas des densités au Poisson à excès de zéros, dont la valeur
+  # attendue d'un comptage n'est pas proportionnelle à l'effort)
+  list(effets = effets, lien = lien, famille = m$famille,
        commun = list(aleatoires = I(as.character(m$niveaux)), decalage = m$decalage,
                      spatial = if (!is.null(m$spatial)) list(nom = m$spatial$nom, x = mean(dn$sx), y = mean(dn$sy))))
 }

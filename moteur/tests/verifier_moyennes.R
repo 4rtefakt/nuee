@@ -458,9 +458,9 @@ for (k in 1:2) ndZx[[mZ$termes[match(sprintf("habitat(H%d)", k), mZ$noms_termes)
 LZx <- stats::predict(aZ, ndZx, type = "lpmatrix")
 etaZx <- drop(LZx %*% stats::coef(aZ))
 seZx <- sqrt(rowSums((LZx %*% stats::vcov(aZ)) * LZx))
-verifier("ziP : les comptages attendus à un effort de 1 (h(η) de mgcv), l'intervalle h(η ± 1,96 se), « H3 » de référence ; l'effort dit",
+verifier("ziP : les comptages attendus à un effort de 1 (h(η) de mgcv), l'intervalle h(η ± 1,96 se), « H3 » de référence ; l'effort dit, et la loi (la note n'y dit pas « des densités »)",
          proche(eZ$effet, stats::predict(aZ, ndZx, type = "response"), 1e-8) && proche(eZ$bas, hZ(etaZx - 1.96 * seZx), 1e-8) && proche(eZ$haut, hZ(etaZx + 1.96 * seZx), 1e-8) &&
-           identical(eZ$fixes$qualitatives$categorie, "H3") && identical(pZ$commun$decalage, "effort"))
+           identical(eZ$fixes$qualitatives$categorie, "H3") && identical(pZ$commun$decalage, "effort") && identical(pZ$famille, "poisson_zi"))
 # le GLMM binomial négatif du tutoriel de suivi : les alouettes par année dans chaque habitat, le site à 0
 ta <- utils::read.csv("docs/site/donnees/skylark_counts.csv", stringsAsFactors = FALSE)
 pa <- projet_depuis_tableau(ta, "alouettes")

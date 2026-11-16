@@ -2929,8 +2929,9 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
 
 // What the predicted values of a term hold fixed (moteur/R/moyennes.R: effets_reponse), in words:
 // its other quantitative variables at their mean, its other qualitative variables in their
-// reference category, then the random effects at 0, the effort at 1, the spatial smooth.
-export function fixesReponse(e, commun) {
+// reference category, then the random effects at 0, the effort at 1 (densities, but not with the
+// zero-inflated Poisson's expected counts: `famille`), the spatial smooth.
+export function fixesReponse(e, commun, famille = '') {
   const f = e.fixes || {};
   const col = (x, k) => [].concat((x || {})[k] ?? []);
   const nb = (v) => decimal(String(+Number(v).toPrecision(6)));
@@ -2938,7 +2939,7 @@ export function fixesReponse(e, commun) {
     ...col(f.quantitatives, 'nom').map((nom, i) => t('fixe_moyenne', { nom, valeur: nb(col(f.quantitatives, 'valeur')[i]) })),
     ...col(f.qualitatives, 'nom').map((nom, i) => t('fixe_reference', { nom, categorie: col(f.qualitatives, 'categorie')[i] })),
     [].concat(commun.aleatoires || []).length ? t('fixe_aleatoires', { noms: [].concat(commun.aleatoires).join(', ') }) : '',
-    commun.decalage ? t('fixe_effort', { nom: commun.decalage }) : '',
+    commun.decalage ? t(famille === 'poisson_zi' ? 'fixe_effort_zip' : 'fixe_effort', { nom: commun.decalage }) : '',
     commun.spatial ? t('fixe_spatial', { nom: commun.spatial.nom }) : ''].filter(Boolean);
   return morceaux.length ? morceaux.join(langueActuelle() === 'fr' ? ' ; ' : '; ') : t('fixe_rien');
 }
@@ -2987,7 +2988,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   const s = avecSeuils ? seuils[cleSeuils] : null;
   const valeursLien = { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) };
   // (the predicted values: what is held fixed, said; one curve per category of a crossed variable)
-  const note = reponse ? t(lien === 'identity' ? 'effets_note_reponse_identite' : 'effets_note_reponse', { y, lien, fixes: fixesReponse(e, res.commun || {}),
+  const note = reponse ? t(lien === 'identity' ? 'effets_note_reponse_identite' : 'effets_note_reponse', { y, lien, fixes: fixesReponse(e, res.commun || {}, res.famille),
     par: niveaux ? t('effets_reponse_par', { par: e.par }) : '' })
     : !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
       : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
