@@ -372,7 +372,7 @@ export function tableau(conteneur, ctx, loc, { colonnes, n, valeur, uid, idModel
     class: (c.num ? 'num' : '') + (loc.tri && loc.tri.cle === c.cle ? ' trie' : ''), title: c.info || null,
     onclick: () => { loc.tri = { cle: c.cle, sens: loc.tri && loc.tri.cle === c.cle ? -loc.tri.sens : 1 }; ctx.rafraichir(); },
     oncontextmenu: menuColonne ? (e) => { e.preventDefault(); e.stopPropagation(); menuColonne(c, e); } : null },
-  c.titre, loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
+  c.titre || (c.lecteur ? el('span', { class: 'lecteur-seul' }, c.lecteur) : ''), loc.tri && loc.tri.cle === c.cle ? (loc.tri.sens > 0 ? ' ▲' : ' ▼') : '',
   c.sousTitre ? el('span', { class: 'sous-titre' }, c.sousTitre) : null)));
   const ligne = (i) => el('tr', {
     class: (uid && sel.has(uid(i))) || (choisie && choisie(i)) ? 'choisie' : '',
@@ -1287,7 +1287,7 @@ function rendreListeVars(conteneur, ctx, p, loc) {
     return k in y ? y[k][i - nx] : null;
   };
   const choisies = new Set(ctx.variablesChoisies(m.id));
-  tableau(conteneur, ctx, loc, { n: nx + ny, nom: 'Table', colonnes: [{ cle: 'terme', titre: t('variables') }, { cle: 'bloc', titre: '' }]
+  tableau(conteneur, ctx, loc, { n: nx + ny, nom: 'Table', colonnes: [{ cle: 'terme', titre: t('variables') }, { cle: 'bloc', titre: '', lecteur: t('bloc') }]
     .concat(cles.map((k) => ({ cle: k, titre: k.replace(/_IC$/, ' IC').replace('_cum', '(cum)') }))), valeur: val,
     choisie: (i) => choisies.has(val(i, 'terme')),
     cliquer: (i) => {  // a row highlights its variable on the model's graphs
@@ -1360,7 +1360,7 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
   }
   tableau(conteneur, ctx, loc, {
     n: d.observations.length, nom: 'Table', avant, menuColonne, aideCellule: t('atelier_aide_cellule'),
-    colonnes: [{ cle: -1, titre: '' }].concat(k.map(colonne)),
+    colonnes: [{ cle: -1, titre: '', lecteur: t('nom_obs') }].concat(k.map(colonne)),
     valeur: (i, j) => (j === -1 ? d.observations[i] : d.valeurs[j][i]),
     modifier: (i, j, texte) => ctx.modifierValeur(p.projet, d.uid_observations[i], d.uid_variables[j], texte),
   });

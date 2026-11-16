@@ -14,14 +14,17 @@
 </head>
 <body>
   <div id="appli">
-    <nav id="menus" role="menubar"></nav>
-    <div id="barre-outils" role="toolbar"></div>
+    <header id="entete">
+      <nav id="menus" role="menubar"></nav>
+      <div id="barre-outils" role="toolbar"></div>
+    </header>
     <main id="dock"></main>
     <footer id="statut"></footer>
   </div>
   <div id="seul"><div id="tete-seul"></div></div>
   <!-- what a screen reader says of the status bar's messages (outside #appli, which a dialog makes inert) -->
   <div id="annonce" class="lecteur-seul" role="status" aria-live="polite"></div>
+  <div id="alerte" class="lecteur-seul" role="alert" aria-live="assertive"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

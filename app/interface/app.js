@@ -930,8 +930,12 @@ function statut(message, erreur = false) {
   etat.message = message || '';
   etat.erreur = erreur;
   majEtat();
-  const a = document.getElementById('annonce');  // what a screen reader says
-  if (a) a.textContent = etat.message;
+  // what a screen reader says: an error at once (role alert), the rest when it can; emptied first,
+  // so that the same message said twice is said again
+  const a = document.getElementById(erreur ? 'alerte' : 'annonce');
+  if (!a) return;
+  a.textContent = '';
+  setTimeout(() => { a.textContent = etat.message; }, 30);
 }
 
 async function occupe(f) {
@@ -1834,12 +1838,13 @@ function majEtat() {
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
         icone('download'), t(etat.nouvelleVersion.installateur ? 'nouvelle_version_maj' : 'nouvelle_version', { v: etat.nouvelleVersion.version })),
-      el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
+      el('button', { class: 'icone-seule', title: t('ignorer_version'), 'aria-label': t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
-    el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
-    el('select', { class: 'langue', title: t('langue'), onchange: (e) => app.changerLangue(e.target.value) },
+    el('button', { class: 'icone-seule', title: t('theme_sombre'), 'aria-label': t('theme_sombre'), 'aria-pressed': String(app.themeSombre()),
+      onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),
+    el('select', { class: 'langue', title: t('langue'), 'aria-label': t('langue'), onchange: (e) => app.changerLangue(e.target.value) },
       [['fr', 'FR'], ['en', 'EN']].map(([v, x]) => el('option', { value: v, selected: v === langueActuelle() }, x)))].filter(Boolean));
 }
 

@@ -249,7 +249,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
   const premiers = noms.slice(0, 2);
   tableau(bas, ctx, loc.table, {
     n: nom.length, nom: 'Contributions', idModele: loc.cote === 'lignes' ? m.id : undefined, uid: loc.cote === 'lignes' ? (i) => uids[i] : undefined,
-    colonnes: [{ cle: 'nom', titre: '' }, { cle: 'masse', titre: t('ord_masse'), num: true, decimales: 4 }, { cle: 'inertie', titre: t('ord_inertie_pct'), num: true, decimales: 2 }]
+    colonnes: [{ cle: 'nom', titre: '', lecteur: t('nom') }, { cle: 'masse', titre: t('ord_masse'), num: true, decimales: 4 }, { cle: 'inertie', titre: t('ord_inertie_pct'), num: true, decimales: 2 }]
       .concat(noms.flatMap((n) => [{ cle: `ctr_${n}`, titre: `${t('ord_ctr')} ${n}`, num: true, decimales: 2 }, { cle: `cos2_${n}`, titre: `cos² ${n}`, num: true, decimales: 3 }]))
       .concat(premiers.length === 2 ? [{ cle: 'plan', titre: `cos² ${premiers.join('+')}`, num: true, decimales: 3 }] : []),
     valeur: (i, k) => (k === 'plan' ? liste(d[`cos2_${premiers[0]}`])[i] + liste(d[`cos2_${premiers[1]}`])[i] : liste(d[k])[i]),

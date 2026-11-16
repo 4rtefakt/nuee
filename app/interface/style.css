@@ -47,7 +47,8 @@ button.principal:focus-visible { outline-offset: 2px; }
 .espace { flex: 1; }
 
 /* ---------------------------------------------------------------- frame */
-#appli { height: 100%; display: grid; grid-template-rows: auto auto 1fr auto; }
+#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+#entete { min-width: 0; }  /* (the menu bar and the toolbar: the window's banner landmark) */
 #menus { display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
 .menu-haut { border: 0; background: transparent; padding: 3px 9px; border-radius: 4px; }

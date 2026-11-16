@@ -441,7 +441,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         el('button', { title: t('transfos_suggerees_aide'), onclick: () => suggerer(vars) }, icone('wand-sparkles'), t('transfos_suggerees')),
         st.suggerees !== undefined ? el('span', { class: 'infos' }, t('transfos_appliquees', { n: st.suggerees })) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')),
+        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('categories'))), el('th', {}, t('role')), el('th', {}, t('echelle')),
           el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
           regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')),
           st.type === 'GAM' ? el('th', { title: t('courbe_aide') }, t('courbe')) : null)),
@@ -563,9 +563,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; st.croisesReglages = {}; rendre(); } }, t('tout_retirer'))),
       el('p', { class: 'note' }, t(regression() ? 'termes_note_regression' : 'termes_note')),
       el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('termes')), el('th', {}, ''), el('th', {}, t('echelle')),
+        el('thead', {}, el('tr', {}, el('th', {}, t('termes')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('remarque'))), el('th', {}, t('echelle')),
           el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
-          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, ''))),
+          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('retirer'))))),
         el('tbody', {}, st.croises.map((fs, i) => {
           // (in a regression, a factor without a role: no main effect; with another role than X: refused)
           const seuls = regression() ? [...new Set(fs)].filter((u) => !st.roles[u]) : [];
@@ -587,7 +587,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
             regression() ? null : el('td', {}, el('input', { type: 'number', step: 'any', min: 0, placeholder: '1', title: t('modificateur_aide'),
               value: r2.modificateur !== undefined ? +Number(r2.modificateur).toPrecision(5) : '', style: 'width:5em',
               oninput: (e) => { const x2 = parseFloat(e.target.value); reglage('modificateur', Number.isFinite(x2) && x2 !== 1 ? x2 : null); } })),
-            el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); delete st.croisesReglages[k]; rendre(); } }, icone('x-circle'))));
+            el('td', { class: 'num' }, el('button', { class: 'icone-seule', title: t('retirer'), 'aria-label': `${t('retirer')} ${fs.map(nom).join(' × ')}`, onclick: () => { st.croises.splice(i, 1); delete st.croisesReglages[k]; rendre(); } }, icone('x-circle'))));
         }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
   };
 
