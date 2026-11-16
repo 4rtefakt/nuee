@@ -15,6 +15,9 @@
 #     changée depuis sa lecture, une étape qui ne se refait pas ici (son fichier n'est que chez l'autre), une
 #     variable supprimée d'un côté et changée de l'autre ; une variable nouvelle de leur côté, qui ne prend
 #     pas le numéro d'une que j'ai supprimée ;
+#   - une variable renommée autrement des deux côtés (un conflit de son nom, une seule variable, une fois
+#     dans le modèle, sa condition qui suit), ou d'un côté quand l'autre change une de ses valeurs ou une
+#     autre variable ;
 #   - les données cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux
 #     côtés par deux mises à jour, une cellule changée autrement des deux côtés, les catégories nouvelles
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
@@ -494,6 +497,54 @@ r_c <- fusionner_projets(lire_projet(sans_etapes2(base2)), lire_projet(sans_etap
 verifier("leur variable nouvelle ne prend pas le numéro d'une variable que j'ai supprimée, par les étapes comme cellule par cellule ; le plus grand numéro gardé",
          identical(c(r_e$donnees$mode, r_c$donnees$mode), c("etapes", "cellules")) && !uid_p(r_e$projet, "v") %in% w_uid && !uid_p(r_c$projet, "v") %in% w_uid &&
            !neuve(r_e$projet) %in% c(w_uid, uid_p(r_e$projet, "v")) && !neuve(r_c$projet) %in% c(w_uid, uid_p(r_c$projet, "v")))
+
+cat("Une variable renommée : d'un côté, ou autrement des deux côtés\n")
+# (V3, que M1 utilise et nomme dans sa condition : renommée hauteur de mon côté, height du leur, c'est la
+# même variable, et un conflit de son nom ; autrement, ses deux noms gardés, M1 la prendrait deux fois)
+etude3 <- file.path(dossier, "etude3")
+dir.create(file.path(etude3, "donnees"), recursive = TRUE)
+csv3 <- file.path(etude3, "donnees", "releves.csv")
+set.seed(4)
+utils::write.csv(data.frame(nom = paste0("O", 1:15), V3 = round(rnorm(15, 10), 2), x2 = round(rnorm(15), 2), y = round(rnorm(15), 2)), csv3, row.names = FALSE)
+id3 <- demande("ouvrir", list(chemin = csv3))$id
+demande("ajuster", list(projet = id3, type = "LM", x = list(uid(id3, "V3"), uid(id3, "x2")), y = uid(id3, "y"), nom = "M1", condition = "V3 > 9"))
+base3 <- file.path(etude3, "base.nuee")
+demande("enregistrer", list(projet = id3, chemin = base3))
+demande("fermer_projet", list(projet = id3))
+cote3 <- function(nom, f) {
+  id <- demande("ouvrir", list(chemin = base3))$id
+  f(id)
+  chemin <- file.path(etude3, nom)
+  demande("enregistrer", list(projet = id, chemin = chemin))
+  demande("fermer_projet", list(projet = id))
+  chemin
+}
+renommer <- function(id, ancien, nouveau) demande("renommer_variable", list(projet = id, variable = uid(id, ancien), nom = nouveau))
+fusion3 <- function(m, l, choix = list()) fusionner_projets(lire_projet(base3), lire_projet(m), lire_projet(l), choix, dossier = etude3, qui = "Bob")
+termes_m1 <- function(p) vapply(definition(p, "M1")$x, function(t) t$name, "")
+condition_m1 <- function(p) texte_condition(definition(p, "M1")$condition)
+mien_h <- cote3("mien_h.nuee", function(id) renommer(id, "V3", "hauteur"))
+leur_h <- cote3("leur_h.nuee", function(id) renommer(id, "V3", "height"))
+r <- fusion3(mien_h, leur_h)
+cn <- conflit(r, "champ:variable:V3:ids")
+verifier("renommée autrement des deux côtés : un conflit de son nom ; une seule variable, une fois dans le modèle, sa condition suit",
+         identical(ids_conflits(r), "champ:variable:V3:ids") && identical(c(cn$mien, cn$leur), c("hauteur", "height")) &&
+           identical(unname(r$projet$noms_var), c("hauteur", "x2", "y")) && identical(termes_m1(r$projet), c("hauteur", "x2")) &&
+           identical(condition_m1(r$projet), "hauteur > 9"))
+rl <- fusion3(mien_h, leur_h, list(`champ:variable:V3:ids` = "leur"))
+verifier("le leur : height, dans les données, les termes et la condition du modèle, qui se réajuste",
+         identical(unname(rl$projet$noms_var), c("height", "x2", "y")) && identical(termes_m1(rl$projet), c("height", "x2")) &&
+           identical(condition_m1(rl$projet), "height > 9") && reajuste(rl$projet, "renommee"))
+leur_v <- cote3("leur_v.nuee", function(id) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "O1"), variable = uid(id, "V3"), valeur = "99")))
+r2 <- fusion3(mien_h, leur_v)
+verifier("renommée de mon côté, une de ses valeurs changée du leur : sans conflit, la variable renommée avec leur valeur",
+         !length(r2$conflits) && identical(unname(r2$projet$noms_var), c("hauteur", "x2", "y")) && unname(valeurs(r2$projet, "hauteur")["O1"]) == 99 &&
+           identical(termes_m1(r2$projet), c("hauteur", "x2")) && any(grepl("V3 → hauteur", r2$apports$mien, fixed = TRUE)))
+leur_x <- cote3("leur_x.nuee", function(id) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "O2"), variable = uid(id, "x2"), valeur = "5")))
+r3 <- fusion3(mien_h, leur_x)
+verifier("renommée de mon côté, une autre variable changée du leur : par les étapes, sans conflit, le modèle sur la variable renommée",
+         identical(r3$donnees$mode, "etapes") && !length(r3$conflits) && identical(termes_m1(r3$projet), c("hauteur", "x2")) &&
+           identical(condition_m1(r3$projet), "hauteur > 9") && unname(valeurs(r3$projet, "x2")["O2"]) == 5)
 
 # ---------------------------------------------------------------- cellule par cellule
 
