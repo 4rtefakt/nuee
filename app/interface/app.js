@@ -1628,7 +1628,7 @@ app.regionVoisine = (sens) => {
   let i = regions.findIndex((r) => r.contains(document.activeElement));
   if (i < 0) i = sens > 0 ? -1 : regions.length;  // (from outside them: the first area, or the last)
   const r = regions[(i + sens + regions.length) % regions.length];
-  const cible = r.matches('.dv-groupview') ? r.querySelector('.dv-tab[aria-selected="true"]')
+  const cible = r.matches('.dv-groupview') ? r.querySelector('[role="tree"] [tabindex="0"]') || r.querySelector('.dv-tab[aria-selected="true"]')
     : r.querySelector('[tabindex="0"]:not(:disabled)') || r.querySelector('button:not(:disabled), select, a[href]');
   if (cible) cible.focus();
 };

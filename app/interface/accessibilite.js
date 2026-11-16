@@ -95,6 +95,9 @@ function nommerDans(racine) {
   const grilles = new Set(racine.querySelectorAll('.grille-champs'));
   if (racine.closest('.grille-champs')) grilles.add(racine.closest('.grille-champs'));
   grilles.forEach(grouper);
+  const barres = new Set(racine.querySelectorAll('.onglets'));
+  if (racine.matches('.onglets')) barres.add(racine);
+  barres.forEach(onglets);
   // (a dialog's title is a level 2 heading: its sections' h4, with no h3 between, are of level 3)
   for (const h of [racine, ...racine.querySelectorAll('h4')]) {
     const corps = h.matches('h4') && h.closest('.corps-dialogue');
@@ -106,7 +109,46 @@ function nommerDans(racine) {
 new MutationObserver((changements) => {
   for (const c of changements) for (const n of c.addedNodes) nommerDans(n);
 }).observe(document.body, { childList: true, subtree: true });
-nommerDans(document.body);
+
+// ------------------------------------------------------------ a dialog's tabs
+
+// The tab bars of New model and New variable (.onglets, buttons): a tab list for screen readers and
+// the keyboard, one Tab stop, left and right (Home, End) choosing the next tab. A tab chosen draws
+// the dialog again, its bar too: the keyboard goes back to the tab now chosen.
+let ongletChoisi = false;
+let nOnglets = 0;
+function onglets(barre) {
+  if (barre.getAttribute('role') === 'tablist') return;
+  barre.setAttribute('role', 'tablist');
+  const boutons = [...barre.querySelectorAll(':scope > button')];
+  const actif = boutons.find((b) => b.classList.contains('actif')) || boutons[0];
+  for (const b of boutons) {
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(b === actif));
+    b.tabIndex = b === actif ? 0 : -1;
+    b.id ||= `onglet-${(nOnglets += 1)}`;
+  }
+  const panneau = barre.nextElementSibling;
+  if (panneau && actif) { panneau.setAttribute('role', 'tabpanel'); panneau.setAttribute('aria-labelledby', actif.id); }
+  if (ongletChoisi && actif && (document.activeElement === document.body || !document.activeElement)) actif.focus();
+  ongletChoisi = false;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.onglets > [role="tab"]');
+  if (b && document.activeElement === b) ongletChoisi = true;
+}, true);
+document.addEventListener('keydown', (e) => {
+  const b = e.target.closest && e.target.closest('.onglets > [role="tab"]');
+  if (!b || e.ctrlKey || e.altKey || e.metaKey) return;
+  const boutons = [...b.parentElement.querySelectorAll(':scope > [role="tab"]')];
+  const i = boutons.indexOf(b);
+  const k = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: boutons.length - 1 }[e.key];
+  if (k === undefined) return;
+  e.preventDefault();
+  const x = boutons[(k + boutons.length) % boutons.length];
+  x.focus();
+  x.click();
+});
 
 // ------------------------------------------------------------ tables
 
@@ -266,3 +308,6 @@ export function ongletDock() {
     dispose() { for (const a of abonnements) a.dispose(); },
   };
 }
+
+// (what the page holds already, once this module's declarations are all made)
+nommerDans(document.body);
