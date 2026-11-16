@@ -61,7 +61,7 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   } else sprintf(if (fr) "R² = %s (ajusté : %s)" else "R² = %s (adjusted: %s)", nb(r2$r2, 2), nb(r2$r2_ajuste, 2))
   p1 <- sprintf(if (fr) "Le modèle de %s porte sur %d observations : %s ; en validation croisée, Q² = %s (RMSEcv = %s). AIC = %s."
                 else "The model of %s uses %d observations: %s; in cross-validation, Q² = %s (RMSEcv = %s). AIC = %s.",
-                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, nb(m$vc$Q2, 2), nb(m$vc$RMSEcv), nb(r$AIC, 4))
+                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, if (is.finite(m$vc$Q2 %||% NA)) nb(m$vc$Q2, 2) else nb(NA), nb(m$vc$RMSEcv), nb(r$AIC, 4))
   co <- r$coefficients
   co <- co[co$terme != "(Intercept)", , drop = FALSE]
   lien <- m$lien %||% "identity"

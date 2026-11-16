@@ -2217,7 +2217,8 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
 
   # --- qualité
   aic <- cite("burnham", sprintf("AIC = %s (Burnham %s Anderson, 2002)", nombre(r$AIC, 1), if (fr) "et" else "&"))
-  vc <- if (sans_q2) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
+  # (-Inf : une seule prédiction, ou des réponses toutes égales parmi elles ; ce Q² n'a pas de sens)
+  vc <- if (!is.finite(m$vc$Q2 %||% NA)) (if (fr) "la validation croisée n'a pas donné de Q²" else "cross-validation gave no Q²")
         else sprintf(if (fr) "en validation croisée, Q² = %s et RMSEcv = %s" else "in cross-validation, Q² = %s and RMSEcv = %s", nombre(m$vc$Q2), nombre(m$vc$RMSEcv, 3))
   loi <- r$parametre_loi
   # (les paramètres de la loi : θ, p, θ₁ et θ₂, φ ; le Poisson à excès de zéros n'a pas de R² ajusté)
