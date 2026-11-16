@@ -241,7 +241,10 @@ answers them, already set up.
     time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
   - The variables: the explanatory variables (X), or the groups.
 Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
-response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+response of whole numbers from 0 is a count, unless its unit (Edit › Units and descriptions: g,
+cm, ha, %, °C...) or its name (a mean, a ratio, a biomass...) says a measurement rounded to its
+unit; counts that nothing confirms (no count unit, no name such as abundance) get the linear
+model among the alternatives too; of 0 and 1 a presence-absence, between 0 and 1 a
 proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
 Poisson distribution of the same mean would give (the sentence under the response gives both);
 the site is a qualitative variable named like one (site, station, plot, transect...) whose
@@ -268,9 +271,10 @@ The main choices:
   - a count: the negative binomial when it varies more than a Poisson distribution allows (a
     variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
     inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
-    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
-    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
-    model; with the same sites measured several times, a random effect by site and
+    presence-absence: logistic regression; a proportion: beta regression; a measurement with
+    zeros: Tweedie; otherwise the linear model, a positive, skewed measurement too (the skew
+    may come from its X: its residuals tell after the fit, and gamma or the log are offered);
+    with the same sites measured several times, a random effect by site and
     cross-validation by site;
   - groups compared: the test between two variables (the one their types call for), paired by
     site when each site comes once in each group (no more observations than sites × groups),

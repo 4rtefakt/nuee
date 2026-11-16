@@ -262,8 +262,11 @@ simples, puis l'analyse qui y répond, déjà réglée.
     ou des points (échantillonnage par distance).
   - Les variables : les variables explicatives (X), ou les groupes.
 Nuée propose les réponses d'après les variables du projet (comme les lit Statistiques des
-variables) : une réponse d'entiers à partir de 0 est un comptage, de 0 et de 1 une
-présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
+variables) : une réponse d'entiers à partir de 0 est un comptage, sauf quand son unité (Édition ›
+Unités et descriptions : g, cm, ha, %, °C...) ou son nom (une moyenne, un rapport, une
+biomasse...) dit une mesure arrondie à son unité ; des comptages que rien ne confirme (pas
+d'unité de comptage, pas de nom comme abondance) ont aussi le modèle linéaire parmi les autres
+possibilités ; de 0 et de 1 une présence-absence, entre 0 et 1 une proportion ; « beaucoup de zéros » quand un quart au moins
 des valeurs sont nulles, et 15 points de plus que n'en donnerait une loi de Poisson de même
 moyenne (la phrase sous la réponse donne les deux) ; le site est une variable qualitative nommée
 comme un site (site, station, placette, transect...) dont les catégories se répètent ; le temps
@@ -292,8 +295,9 @@ Les choix principaux :
     (une variance au-delà de 1,5 fois la moyenne) ou a beaucoup de zéros (beaucoup de zéros ne
     veut pas toujours dire excès de zéros, Warton 2005 : comparez avec la Poisson à excès de
     zéros par l'AIC), sinon Poisson ; une présence-absence : la régression logistique ; une
-    proportion : la régression bêta ; une mesure positive et asymétrique : gamma (ou son
-    logarithme) ; une mesure avec des zéros : Tweedie ; sinon le modèle linéaire ; avec les
+    proportion : la régression bêta ; une mesure avec des zéros : Tweedie ; sinon le modèle
+    linéaire, une mesure positive et asymétrique aussi (ses X peuvent la rendre asymétrique :
+    ses résidus le disent après l'ajustement, et gamma ou le logarithme sont proposés) ; avec les
     mêmes sites mesurés plusieurs fois, un effet aléatoire par site et la validation croisée par
     site ;
   - des groupes comparés : le test entre deux variables (celui que leurs types demandent),
