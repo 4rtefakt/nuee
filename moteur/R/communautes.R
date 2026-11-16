@@ -1272,7 +1272,8 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
                             "The configuration in %d dimension%s is that of the isoMDS function of the MASS package (Venables & Ripley, 2002), which minimizes Kruskal's stress between the ordination distances and the monotone regression of the dissimilarities, from the PCoA configuration then %d random configurations (seed %d), as vegan::metaMDS; the lowest-stress solution was kept (stress = %s)"),
                          o$k, if (o$k > 1) "s" else "", o$departs, o$graine, nombre(k$stress, 3)),
                  if (o$departs > 0) {
-                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %d fois (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %d times (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "), k$retrouvee)
+                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %s (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %s (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "),
+                                                if (k$retrouvee == 1) tx("une fois", "once") else sprintf(tx("%d fois", "%d times"), k$retrouvee))
                    else tx(" ; aucun autre départ ne l'a retrouvée : ce peut être un minimum local. ", "; no other start found it again: it may be a local minimum. ")
                  } else ". ",
                  if (k$nuls) sprintf(tx("%d dissimilarités nulles entre observations distinctes ont été remplacées par la moitié de la plus petite non nulle. ", "%d zero dissimilarities between distinct observations were replaced by half the smallest non-zero one. "), k$nuls) else "",
