@@ -85,6 +85,19 @@ const SUBSTITUTS = `(() => {
   // gives way to the one under that pointer before the run's click on its item
   for (const w of BrowserWindow.getAllWindows()) w.setIgnoreMouseEvents(true);
   if (!E.sourdes) { E.sourdes = true; app.on('browser-window-created', (_, w) => w.setIgnoreMouseEvents(true)); }
+  // NUEE_HORS_ECRAN=1 (a run on a computer someone is using): the windows off the screen, shown
+  // without taking the focus, still drawing (their screenshots too)
+  const horsEcran = (w) => {
+    w.setPosition(-32000, -32000);
+    w.setSkipTaskbar(true);
+    w.show = () => w.showInactive();
+    w.focus = () => {};
+    w.webContents.setBackgroundThrottling(false);
+  };
+  if (process.env.NUEE_HORS_ECRAN === '1') {
+    for (const w of BrowserWindow.getAllWindows()) horsEcran(w);
+    if (!E.horsEcran) { E.horsEcran = true; app.on('browser-window-created', (_, w) => horsEcran(w)); }
+  }
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
     const o = sans(a, b) || {};
@@ -266,9 +279,17 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   env.NUEE_SOURCE_MAJ = 'http://127.0.0.1:9/';
   const portPage = await portLibre();
   const portNode = await portLibre();
+  // (NUEE_HORS_ECRAN=1: windows off the screen, see SUBSTITUTS; Chromium draws them all the same, and
+  // the engine takes a port of its own, not the installed Nuée's usual one)
+  const horsEcran = process.env.NUEE_HORS_ECRAN === '1';
+  if (horsEcran && !fs.existsSync(path.join(profil, 'reglages.json'))) {
+    fs.mkdirSync(profil, { recursive: true });
+    fs.writeFileSync(path.join(profil, 'reglages.json'), JSON.stringify({ port: await portLibre() }));
+  }
   const debut = Date.now();
-  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...options],
-    { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
+  const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...options,
+    ...(horsEcran ? ['--disable-features=CalculateNativeWinOcclusion', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] : [])],
+  { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
   let sortie = '';
   proc.stdout.on('data', (d) => { sortie += d; });
   proc.stderr.on('data', (d) => { sortie += d; });
