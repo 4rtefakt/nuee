@@ -66,6 +66,8 @@ verifier('le GitLab de l’adresse, celui d’un institut', !gl.github && gl.git
   JSON.stringify(gl));
 const gh = liensConnexion('https://github.com/moi/vergers');
 verifier('GitHub seul pour une adresse de GitHub', gh.github && !gh.gitlab && gh.github.jeton === 'https://github.com/settings/personal-access-tokens/new', JSON.stringify(gh));
+const autre = liensConnexion('https://git.example.org/equipe/suivi.git');
+verifier('un autre serveur : les pages des deux', autre.github && autre.gitlab && autre.gitlab.depot === 'https://gitlab.com/projects/new', JSON.stringify(autre));
 
 console.log('L’indicateur de la barre d’état');
 egal('rien sans versions', [indicateurVersions(null), indicateurVersions({ suivi: false, depot: true })], [null, null]);

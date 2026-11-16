@@ -375,10 +375,11 @@ const app = {
   },
   // An old version of a project (versions.js), written to a temporary file by the main process:
   // opened read-only under its name (the engine keeps `lecture_seule`: its source, oid and date),
-  // with its views as its session saved them.
+  // with its views as its session saved them; without one, its data, so that it shows.
   async ouvrirLectureSeule(fichier, nom, lecture) {
     const res = await occupe(() => demander('ouvrir', { chemin: fichier, nom, lecture_seule: lecture }));
     await apresOuverture(res);
+    if (!res.session) app.ouvrirVue('donnees', null, null, res.id);
     return res.id;
   },
   // A project open already, chosen in the explorer.

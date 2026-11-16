@@ -70,13 +70,14 @@ export function hoteAdresse(texte) {
 }
 
 // Where to create the repository and the token: GitHub's pages, or those of the GitLab of the
-// address (gitlab.com, or a GitLab of one's own institution), the token's name and scope filled in.
+// address (gitlab.com, or a GitLab of one's own institution), the token's name and scope filled in;
+// both, until the address says which.
 export function liensConnexion(texte) {
   const hote = hoteAdresse(texte);
   const github = { depot: 'https://github.com/new', jeton: 'https://github.com/settings/personal-access-tokens/new' };
   const gitlab = (h) => ({ depot: `https://${h}/projects/new`, jeton: `https://${h}/-/user_settings/personal_access_tokens?name=Nu%C3%A9e&scopes=write_repository` });
   if (nomHote(hote) === 'GitHub') return { github };
-  if (hote) return { gitlab: gitlab(hote) };
+  if (nomHote(hote) === 'GitLab') return { gitlab: gitlab(hote) };
   return { github, gitlab: gitlab('gitlab.com') };
 }
 
