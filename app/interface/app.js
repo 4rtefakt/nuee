@@ -295,18 +295,29 @@ const app = {
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
-    const q = { projet: pid, chemin, session, version: VERSION };
-    let r = await occupe(() => demander('enregistrer', q).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
-    if (r.conflit) {  // changed on disk since it was read: overwrite, save elsewhere, or leave it
-      const choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
-        contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
-        boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
-          { libelle: t('ecraser'), action: () => resolve('ecraser') },
-          { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
-        surFermeture: () => resolve(null) }));
+    // (who saves it, written in the file: a colleague who has it open sees who changed it)
+    const auteur = app.auteurVersions ? await app.auteurVersions() : null;
+    const q = { projet: pid, chemin, session, version: VERSION, ...(auteur ? { auteur } : {}) };
+    const sauver = (x) => occupe(() => demander('enregistrer', x).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
+    let r = await sauver(q);
+    let sansFusion = false;
+    while (r.conflit) {  // changed on disk since it was read: their changes merged in, overwrite, save elsewhere, or leave it
+      // (merged: the engine's merge by meaning when it kept the file as it was read, versions.js;
+      // otherwise, as after a restart, the question alone)
+      let choix = r.fusion && !sansFusion && app.fusionnerFichier ? await app.fusionnerFichier(pid) : 'repli';
+      if (choix === 'repli') {
+        sansFusion = true;
+        choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
+          contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
+          boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
+            { libelle: t('ecraser'), action: () => resolve('ecraser') },
+            { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
+          surFermeture: () => resolve(null) }));
+      }
       if (choix === 'sous') return app.enregistrer(pid, true);
-      if (choix !== 'ecraser') return false;
-      r = await occupe(() => demander('enregistrer', { ...q, ecraser: true }));
+      if (choix !== 'ecraser' && choix !== 'fusion') return false;
+      // (merged: saved as it is now, asked again if the file changed once more meanwhile)
+      r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
     }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
@@ -315,6 +326,11 @@ const app = {
     if (bureau) recents = await bureau.ajouterRecent(r.chemin);
     await rafraichirProjet(pid);
     if (p.lecture_seule) retitrer(pid);  // (an old version saved elsewhere: a project like any other, its tabs unmarked)
+    // (its versions: one when the last is an hour old; after Save as, the former file's history
+    // copied first, versions.js. Not that of an old version's temporary file.)
+    if (app.apresEnregistrementVersions) {
+      app.apresEnregistrementVersions(pid, !p.lecture_seule && p.chemin_enregistrement && p.chemin_enregistrement !== r.chemin ? p.chemin_enregistrement : null);
+    }
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
     return true;
@@ -357,6 +373,7 @@ const app = {
     await demander('fermer_projet', { projet: pid });
     oublierProjet(pid);
     diffuser('modeles');
+    if (app.fermetureVersions) app.fermetureVersions(p);  // (its last version, if its file changed since: versions.js)
   },
 
   // A project read again from its file, which changed under it (versions.js: a version restored,
@@ -367,19 +384,22 @@ const app = {
   async rechargerProjet(pid) {
     const p = etat.projets[pid];
     if (!p || !p.chemin_enregistrement) return null;
-    let session = dock ? collecterSession(pid) : null;
-    if (session && !session.modeles.length) session = null;
+    const session = dock ? collecterSession(pid) : null;
+    // (without fitted models, a session brings nothing back, restaurerSession: the file's own, then
+    // the project's views open again one by one)
+    const avecModeles = session && session.modeles.length ? session : null;
     await demander('fermer_projet', { projet: pid });
     oublierProjet(pid);
     const res = await occupe(() => demander('ouvrir', { chemin: p.chemin_enregistrement }));
-    if (session && res.session) {
+    if (avecModeles && res.session) {
       try {
         const fichier = JSON.parse((await demander('session', { projet: res.id })).session);
         const A = new Map([].concat(fichier.modeles || []).map((m) => [m.numero, m.A]));
-        session.modeles = session.modeles.map((m) => (A.has(m.numero) ? { ...m, A: A.get(m.numero) } : m));
+        avecModeles.modeles = avecModeles.modeles.map((m) => (A.has(m.numero) ? { ...m, A: A.get(m.numero) } : m));
       } catch { /* the session's own */ }
     }
-    await apresOuverture(res, session);
+    await apresOuverture(res, avecModeles);
+    if (session && !avecModeles) for (const v of session.vues) if (!v.modele && VUES[v.vue]) app.ouvrirVue(v.vue, null, v.loc, res.id);
     diffuser('modeles');
     return res.id;
   },
@@ -1024,7 +1044,7 @@ const app = {
 
 installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
 installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
-installerVersions(app);  // (File › Versions and What changed: their views, app.versions, the status bar's indicator...)
+installerVersions(app);  // (File › History and What changed: their views, sharing, the status bar's clock...)
 const C = creerCommandes(app);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 
@@ -1433,6 +1453,8 @@ function projetRecu(res) {
   const avant = etat.projets[res.id];
   etat.projets[res.id] = res;
   if (avant && avant.revision !== res.revision) oublierCalculs(res.id);
+  // (its versions told it is open, and each time its unsaved state flips: versions.js)
+  if (app.suivreProjet) app.suivreProjet(res);
 }
 
 // After the project changed (its data, or its models): its summary, the explorer, the colour

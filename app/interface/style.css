@@ -618,52 +618,120 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .changements-document button { margin-left: auto; }
 .changements-document[hidden] { display: none; }
 
-/* File › Versions (versions.js): the list of versions, newest first, each with its actions; Send and
-   receive below; an old version opened read-only, in the explorer and on its tabs */
+/* File › History (versions.js): the versions grouped by day, each with its actions; sharing with
+   GitHub or GitLab above them; the status bar's clock and notice; the conflict, sharing and Open
+   from GitHub dialogs; an old version opened read-only, in the explorer and on its tabs */
 .versions { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
 .versions > p { margin: 2px 0; max-width: 60em; }
 .versions .note { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .versions a { color: var(--accent); }
+.versions .outils .interrupteur-versions { margin-left: auto; color: var(--texte); }
+.tete-versions .icone { width: 13px; height: 13px; }
 .attention-versions { color: var(--attention); }
 .attention-versions .icone { width: 14px; height: 14px; }
 .liste-versions { flex: 1; min-height: 80px; overflow: auto; border: 1px solid var(--grille); border-radius: 6px; }
+.jour-versions h4 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 4px 10px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--texte-doux); background: var(--fond-barre); border-bottom: 1px solid var(--grille); }
 .version { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--grille); }
-.version:last-child { border-bottom: 0; }
+.jour-versions:last-child .version:last-child { border-bottom: 0; }
 .version:hover { background: var(--survol); }
 .version.actuelle { box-shadow: inset 3px 0 var(--ok); }
+.version.auto .version-tete b { font-weight: 500; }
+.heure-version { flex: none; width: 3.4em; color: var(--texte-doux); font-variant-numeric: tabular-nums; font-size: 12px; }
 .version-texte { flex: 1; min-width: 0; }
 .version-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.version-tete b { overflow-wrap: anywhere; }
-.version-texte .doux { font-size: 11.5px; }
+.version-tete b, .version-tete .doux { overflow-wrap: anywhere; }
+.version-texte > .doux { font-size: 11.5px; }
+.marque-version { display: inline-flex; align-items: center; gap: 2px; }
+.marque-version .icone { width: 12px; height: 12px; }
+.marque-version.envoyee { color: var(--ok); }
 .version-actions { display: flex; gap: 4px; flex: none; }
 .version-actions button { padding: 2px 8px; font-size: 12px; }
 .badge.nom-version { display: inline-flex; align-items: center; gap: 2px; background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
 .badge.nom-version button { padding: 0; }
 .badge.nom-version .icone { width: 11px; height: 11px; }
-.envoi-versions { flex: none; border-top: 1px solid var(--grille); padding-top: 4px; }
-.envoi-versions h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 4px 0; }
-.envoi-versions p { margin: 4px 0; }
-.envoi-versions .ligne { flex-wrap: wrap; gap: 6px; }
+.partage-versions { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border: 1px solid var(--grille); border-radius: 6px; background: var(--fond-barre); }
+.partage-versions > .note { margin: 0; }
+.partage-versions > button { align-self: flex-start; }
+.partage-versions .ligne { flex-wrap: wrap; gap: 6px; }
+.partage-versions .ligne .icone { width: 14px; height: 14px; vertical-align: -2px; color: var(--accent); }
 .adresse-versions { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: var(--texte-doux); overflow-wrap: anywhere; user-select: text; }
-.banniere-versions { display: flex; align-items: center; gap: 10px; padding: 5px 10px; margin: 4px 0; border: 1px solid var(--attention); border-radius: 6px; background: var(--fond-barre); }
+.badge.etat-partage.a_jour { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.badge.etat-partage.a_recevoir, .badge.etat-partage.attente { background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+.badge.etat-partage.conflit, .badge.etat-partage.erreur { background: color-mix(in srgb, var(--erreur) 14%, transparent); color: var(--erreur); }
+.banniere-versions { display: flex; align-items: center; gap: 10px; padding: 5px 10px; margin: 2px 0; border: 1px solid var(--attention); border-radius: 6px; background: var(--fond-panneau); }
+.banniere-versions > span { flex: 1; }
+.banniere-versions.erreur-versions { border-color: var(--erreur); color: var(--erreur); }
+.banniere-versions.erreur-versions button { color: var(--texte); }
+.compte-partage { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compte-partage:empty { display: none; }
+.compte-partage .carte-compte { padding: 4px 10px 4px 4px; gap: 8px; background: var(--fond-panneau); }
+.compte-partage .avatar-compte { width: 30px; height: 30px; }
+.compte-partage .avatar-compte.vide .icone { width: 22px; height: 22px; }
+.compte-partage > .note { flex-basis: 100%; margin: 0; }
+#statut .statut-versions { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 #statut .indicateur-versions { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--texte-doux); }
 #statut .indicateur-versions .icone { width: 14px; height: 14px; color: var(--accent); }
+#statut .indicateur-versions.a_recevoir, #statut .indicateur-versions.attente { color: var(--attention); }
+#statut .indicateur-versions.conflit, #statut .indicateur-versions.erreur, #statut .indicateur-versions.conflit .icone, #statut .indicateur-versions.erreur .icone { color: var(--erreur); }
+#statut .reessayer-versions .icone { width: 13px; height: 13px; }
+#statut .avis-versions { display: inline-flex; align-items: center; gap: 6px; max-width: 46vw; padding: 1px 4px 1px 8px; border-radius: 4px; background: var(--accent-doux); }
+#statut .avis-versions > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#statut .avis-versions a { color: var(--accent); font-weight: 600; white-space: nowrap; }
+#statut .avis-versions .icone { width: 12px; height: 12px; }
 .dialogue-version { display: flex; flex-direction: column; gap: 4px; min-width: min(30em, 80vw); }
 .dialogue-version p { margin: 2px 0; }
+.dialogue-version h4 { margin: 10px 0 2px; }
+.dialogue-version .champ { color: var(--texte); }
 .noms-version { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .dialogue-connexion { display: flex; flex-direction: column; gap: 4px; }
-.dialogue-connexion > p { margin: 2px 0; }
+.dialogue-connexion > p, .dialogue-connexion h4 { margin: 2px 0; }
 .dialogue-connexion .grille-champs { grid-template-columns: max-content minmax(0, 1fr); }
+.dialogue-connexion .ligne input { flex: 1; min-width: 0; }
+.connexion-compte { flex-wrap: wrap; gap: 8px; margin: 4px 0; }
 .liens-connexion ol { margin: 4px 0; padding-left: 1.4em; }
 .liens-connexion li { margin: 3px 0; }
 .liens-connexion a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); margin-right: 8px; white-space: nowrap; }
 .liens-connexion a .icone { width: 12px; height: 12px; }
 .message-connexion { min-height: 1.4em; margin: 4px 0; overflow-wrap: anywhere; }
-.message-connexion.ok-connexion { color: var(--ok); }
-.cotes-divergence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 6px; }
-.cote-divergence h4 { margin: 0 0 4px; font-size: 13px; }
-.cote-divergence ul { margin: 0; padding-left: 1.2em; max-height: 14em; overflow: auto; }
-.cote-divergence li { margin: 2px 0; }
+.message-connexion.ok-connexion, p.ok-connexion { color: var(--ok); }
+.dialogue-connexion [hidden] { display: none; }
+.connexion-distant { flex-wrap: wrap; gap: 8px; }
+.connexion-distant > span { flex: 1 1 16em; }
+.dialogue-partage .etape-connexion > h4 { margin: 6px 0 0; }
+.depot-existant { border-top: 1px solid var(--grille); padding-top: 6px; margin-top: 4px; }
+.depot-existant > summary { cursor: pointer; color: var(--accent); }
+.depot-existant[open] { display: flex; flex-direction: column; gap: 6px; }
+.depot-existant[open] > summary { margin-bottom: 2px; }
+.projets-distants { display: flex; flex-direction: column; gap: 2px; max-height: 12em; overflow: auto; }
+.projets-distants:empty { display: none; }
+.projet-distant { color: var(--texte); }
+.projet-distant .icone { width: 14px; height: 14px; color: var(--accent); }
+.dialogue.dialogue-moyen { width: min(780px, 96vw); }
+.dialogue-conflit { display: flex; flex-direction: column; gap: 6px; }
+.dialogue-conflit > p { margin: 2px 0; }
+.cotes-conflit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cote-conflit, .apports-conflit { border: 1px solid var(--grille); border-radius: 6px; padding: 6px 10px; background: var(--fond-barre); }
+.cote-conflit h4, .apports-conflit h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); }
+.cote-conflit p { margin: 2px 0; }
+.apports-conflit ul { margin: 0; padding-left: 1.2em; }
+.apports-conflit li { margin: 2px 0; }
+.fusion-conflit { display: flex; flex-direction: column; gap: 6px; }
+.fusion-conflit > p { margin: 2px 0; font-weight: 600; }
+.liste-conflits { display: flex; flex-direction: column; gap: 6px; max-height: 22em; overflow: auto; }
+.conflit-fusion { border: 1px solid var(--attention); border-radius: 6px; padding: 6px 10px; }
+.conflit-fusion .champ { display: flex; color: var(--texte); margin: 2px 0 0 4px; }
+.fusion-conflit > p.note { font-weight: 400; }
+.details-conflit { margin: 4px 0 0 4px; }
+.details-conflit > summary { cursor: pointer; color: var(--texte-doux); font-size: 12px; }
+.passage-conflit { margin: 4px 0; }
+.cotes-passage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.passage-conflit h5 { margin: 2px 0; font-size: 11px; font-weight: 600; color: var(--texte-doux); }
+.passage-conflit pre { margin: 0; padding: 4px 6px; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; border-radius: 4px; background: var(--fond-barre); border: 1px solid var(--grille); }
+.base-passage pre { color: var(--texte-doux); }
+.tableau-conflit { border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+.tableau-conflit th, .tableau-conflit td { border: 1px solid var(--grille); padding: 2px 8px; text-align: left; }
+.tableau-conflit th { font-weight: 600; color: var(--texte-doux); background: var(--fond-barre); }
 .noeud.lecture-seule > .icone { color: var(--attention); }
 .badge.lecture-seule { margin-left: 6px; background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
 
@@ -726,6 +794,4 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .message-compte.ok-compte { display: block; }
 .invites-compte { margin: 0; padding: 0; list-style: none; }
 .invites-compte li { display: flex; align-items: center; gap: 6px; color: var(--ok); }
-.comptes-essai { display: flex; flex-direction: column; gap: 8px; }
-.ligne-compte { display: flex; flex-direction: column; gap: 6px; }
 .actions-compte { display: flex; flex-wrap: wrap; gap: 6px; }

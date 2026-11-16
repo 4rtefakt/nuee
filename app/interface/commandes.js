@@ -2,7 +2,6 @@
 // keyboard shortcuts. `app` is the main window object built in app.js.
 import { t, langueActuelle } from './i18n.js';
 import { vuesDe } from './explorateur.js';
-import { dialogueComptesEssai } from './connexion.js';
 
 export function creerCommandes(app) {
   const m = () => app.modeleActif();
@@ -31,8 +30,11 @@ export function creerCommandes(app) {
     kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
-    // (versions.js: the project's saved states, kept in its folder, sent to GitHub or GitLab)
+    // (versions.js: the project's history, kept by itself beside it; shared with GitHub or GitLab;
+    // a colleague's project opened from there)
     versions: { icone: 'history', actif: () => !!app.projetActif(), action: () => app.versions(app.projetActif()) },
+    versions_partager: { icone: 'cloud-upload', actif: () => !!app.bureau && !!app.projetActif(), action: () => app.partagerProjet(app.projetActif()) },
+    versions_ouvrir_distant: { icone: 'cloud-download', actif: () => !!app.bureau, action: () => app.ouvrirDepuisDistant() },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     // (from Compare models showing the coefficients side by side: that table)
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
@@ -134,8 +136,6 @@ export function creerCommandes(app) {
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
     diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
-    // (temporary, to try signing in until the History and sharing screens offer it: connexion.js)
-    comptes_essai: { icone: 'log-in', actif: () => !!(app.bureau && app.bureau.comptes), action: () => dialogueComptesEssai(app) },
     projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
@@ -174,7 +174,7 @@ export function menus(app, C) {
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), it('versions'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
@@ -193,7 +193,7 @@ export function menus(app, C) {
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
     { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
-      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), it('comptes_essai'), '-', it('apropos')]) },
+      .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
   ];
 }
 
