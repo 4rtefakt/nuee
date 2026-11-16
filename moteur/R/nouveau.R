@@ -661,6 +661,7 @@ enregistrer_projet <- function(projet, chemin, version = "") {
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
+  p$lecture_seule <- p$cache <- NULL  # (une ancienne version ouverte, un projet caché : serveur.R, ouvrir)
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
   # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
