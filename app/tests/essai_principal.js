@@ -203,11 +203,14 @@ async function paquetsDUnGreffon(dossier) {
   const demander = demandeur(m);
   m.electron.app.isPackaged = true;  // (an installed copy: Nuée's own R with its packages)
   m.evaluer("rUtilise = { type: 'nuee', rscript: rscriptMac, chemin: null }");
+  process.env.NUEE_ESSAI_ENVIRONNEMENT = 'celui de l’ordinateur';  // (one of the computer's variables)
   await demander('r-installer-greffon', ['unmarked', 'pas un paquet']);
   const a = appels.shift();
   verifier(!!a && a.chemin === path.join(dossier, 'R', 'bin', 'Rscript') && egal(a.paquets, ['unmarked']) && a.env.RHOME === path.join(dossier, 'R')
-    && a.env.R_LIBS === (windows || process.platform === 'darwin' ? path.join(dossier, 'R', 'library') : process.env.R_LIBS) && a.env.PATH === process.env.PATH,
+    && a.env.R_LIBS === (windows || process.platform === 'darwin' ? path.join(dossier, 'R', 'library') : process.env.R_LIBS)
+    && a.env.NUEE_ESSAI_ENVIRONNEMENT === process.env.NUEE_ESSAI_ENVIRONNEMENT,
   'le R de Nuée (celui de Nuée.app sur macOS) : RHOME et R_LIBS, comme le moteur, avec l’environnement de l’ordinateur', a && { ...a, env: { RHOME: a.env.RHOME, R_LIBS: a.env.R_LIBS } });
+  delete process.env.NUEE_ESSAI_ENVIRONNEMENT;
   const autre = path.join(dossier, 'R-4.5.2', 'bin', 'Rscript');
   m.evaluer("rUtilise = { type: 'autre', rscript: __valeur, chemin: __valeur }", autre);
   await demander('r-installer-greffon', ['unmarked']);
