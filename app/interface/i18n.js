@@ -1404,10 +1404,11 @@ const RESULTATS = {
     classe_predite: 'classe prédite', classe_predite_vc: 'classe prédite (VC)', DModX_pondere: 'DModX (pond.)', DModX_absolu: 'DModX (abs.)' },
   en: { residu: 'residual', quantile_normal: 'normal quantile', levier: 'leverage', cook: 'Cook’s distance', groupe_vc: 'CV group',
     classe: 'class', classe_predite: 'predicted class', classe_predite_vc: 'predicted class (CV)', 'classe ajustée': 'fitted class',
+    'classe prédite': 'predicted class', 'classe observée': 'observed class',
     'classe prédite (VC)': 'predicted class (CV)', 'classe prédite (OOB)': 'predicted class (OOB)', voisin: 'neighbouring cluster',
     feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)' },
 };
-const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'],
+const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (lien)', 'predicted (link)'],
   ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
   const dico = RESULTATS[langue] || RESULTATS.fr;

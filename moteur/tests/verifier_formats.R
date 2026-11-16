@@ -396,6 +396,11 @@ verifier("export en anglais : les noms des tableaux", identical(names(en), c("su
 verifier("export en anglais : les colonnes du moteur traduites, celles des variables gardées",
          identical(names(en$summary), c("method", "seed")) && identical(names(en$coefficients), c("term", "estimate", "std_error", "lower", "upper")) &&
          identical(names(en$observations), c("Observation", "densite observed", "residual", "cv_group", "classe")))
+predictions <- data.frame(Observation = "o1", `classe prédite` = "A", `classe observée` = "B", `probabilité A` = 0.9,
+                          `densite prédit (lien)` = 0.1, hors_domaine = FALSE, dans_modele = FALSE, categorie_inconnue = FALSE, check.names = FALSE)
+verifier("prédictions exportées en anglais : les classes, l'échelle du lien, le domaine",
+         identical(names(noms_tables_langue(list(predictions = predictions), proj_noms, "en")[[1]]),
+                   c("Observation", "predicted class", "observed class", "probability A", "densite predicted (link)", "outside_domain", "in_model", "unknown_category")))
 verifier("export en français : rien ne change", identical(noms_tables_langue(tabs, proj_noms, "fr"), tabs))
 
 unlink(dossier, recursive = TRUE)
