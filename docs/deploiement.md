@@ -360,8 +360,9 @@ Settings…*:
   that R.
 - **Then:** the engine runs on that R with its own libraries only (Nuée's packages are built for
   R 4.6 and stay out), still without the user's `.Rprofile`; the `.Renviron` files apply. If that
-  R is no longer there or stops before the engine is ready, Nuée starts its own R instead and
-  tells the user once.
+  R is no longer there, stops before the engine is ready, or isn't ready within 90 seconds (a
+  network share that doesn't answer, an `Rprofile.site` that waits), Nuée stops it, starts its own
+  R instead and tells the user once.
 
 To point every user to your institution's R, set the policy value `RHome` (`REG_SZ`: the R's
 folder, or its `bin\x64\Rscript.exe`) in the same key as `DisableUpdateCheck`:

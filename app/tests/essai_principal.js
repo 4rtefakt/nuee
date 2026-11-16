@@ -8,7 +8,9 @@
 // - a plugin's packages installed into the engine's R as the engine runs it (RHOME, R_LIBS), another
 //   R with its own environment only;
 // - the settings written beside, then put in their place: a write cut short (a full disk) leaves them
-//   as they were; a window's size and place written once it stops moving, and when it closes.
+//   as they were; a window's size and place written once it stops moving, and when it closes;
+// - another R that is never ready stopped after its time (shortened here), Nuée's own taking over and
+//   saying why; Nuée's own R, as slow, never stopped.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -110,8 +112,9 @@ const versionsFactices = {
 const comptesFactices = { creerComptes: () => ({ preparer() {}, annulerConnexion: async () => {} }) };
 
 // main.js run in a context of its own: `dossier/app` as its folder, so that the engine it starts is
-// `dossier/moteur/serveur.R`, the stand-in below. `modules`: others in place of the app's
-function chargerMain(dossier, modules = {}) {
+// `dossier/moteur/serveur.R`, the stand-in below. `modules`: others in place of the app's; `remplacer`:
+// [text, replacement] of main.js (a time limit shortened), each found once or the check stops there
+function chargerMain(dossier, modules = {}, remplacer = []) {
   const { electron, E } = electronFactice(dossier);
   const requireApp = createRequire(path.join(APP, 'main.js'));
   const tous = { electron, './zotero': { demanderZotero: async () => null }, './versions': versionsFactices, './comptes': comptesFactices, ...modules };
@@ -119,7 +122,12 @@ function chargerMain(dossier, modules = {}) {
     require: (n) => (n in tous ? tous[n] : requireApp(n)), process, console, Buffer, URL, setTimeout, clearTimeout, setInterval, clearInterval,
     setImmediate, clearImmediate, queueMicrotask, structuredClone, __dirname: path.join(dossier, 'app'), __filename: MAIN, module: { exports: {} }, exports: {},
   });
-  vm.runInContext(fs.readFileSync(MAIN, 'utf8'), ctx, { filename: MAIN });
+  let source = fs.readFileSync(MAIN, 'utf8');
+  for (const [avant, apres] of remplacer) {
+    if (source.split(avant).length !== 2) throw new Error(`main.js doesn't have this once: ${avant}`);
+    source = source.replace(avant, () => apres);
+  }
+  vm.runInContext(source, ctx, { filename: MAIN });
   // main.js's variables (let, const) are read and set by code run in its context; a value goes in through __valeur
   const evaluer = (code, valeur) => { ctx.__valeur = valeur; return vm.runInContext(code, ctx); };
   return { ctx, E, electron, evaluer };
@@ -132,14 +140,18 @@ function demandeur(m) {
   return (canal, ...args) => m.E.gestionnaires.get(canal)({ senderFrame: { url: ADRESSE }, sender: page }, ...args);
 }
 
-// The R engine's stand-in: moteur/serveur.R, run by Node started under an Rscript's name; ready at once
-const SERVEUR_FACTICE = "console.log('PRET');\nsetInterval(() => {}, 1000);\n";
+// The R engine's stand-in: moteur/serveur.R, run by Node started under an Rscript's name; ready at
+// once, or never: an Rscript of a folder named "lent" (Windows), or given FAUX_R=lent (its script)
+const SERVEUR_FACTICE = String.raw`if (process.env.FAUX_R !== 'lent' && !/[\\/]lent[\\/]/i.test(process.execPath)) console.log('PRET');
+setInterval(() => {}, 1000);
+`;
 // an "Rscript" in `dossier` that is Node (Windows: a hard link to it, or a copy; elsewhere a script)
 function rscriptFactice(dossier) {
   fs.mkdirSync(dossier, { recursive: true });
   if (!windows) {
     const f = path.join(dossier, 'Rscript');
-    fs.writeFileSync(f, `#!/bin/sh\nexec '${process.execPath}' "$@"\n`, { mode: 0o755 });
+    const lent = path.basename(dossier) === 'lent' ? 'FAUX_R=lent ' : '';
+    fs.writeFileSync(f, `#!/bin/sh\n${lent}exec '${process.execPath}' "$@"\n`, { mode: 0o755 });
     return f;
   }
   const f = path.join(dossier, 'Rscript.exe');
@@ -242,6 +254,45 @@ async function reglagesEcrits(dossier) {
   verifier(ecritures === 2, 'et rien de plus ensuite', ecritures);
 }
 
+// The processes main.js starts, recorded
+function espionProcessus() {
+  const enfants = [];
+  return { enfants, module: { ...childProcess, spawn: (...a) => { const c = childProcess.spawn(...a); enfants.push(c); return c; } } };
+}
+const fini = (p) => p.exitCode !== null || p.signalCode !== null;
+const DELAI_COURT = [['const DELAI_AUTRE_R = 90000;', 'const DELAI_AUTRE_R = 1500;']];
+
+// Another R never ready: stopped after its time, Nuée's own R takes over; Nuée's own, never stopped
+async function autreRJamaisPret(dossier) {
+  console.log('Un autre R jamais prêt');
+  const p1 = espionProcessus();
+  const m = chargerMain(dossier, { child_process: p1.module }, DELAI_COURT);
+  m.ctx.trouverRscript = () => rscriptFactice(path.join(dossier, 'R-nuee'));
+  m.evaluer('reglages.rscript = __valeur', rscriptFactice(path.join(dossier, 'R-4.5.2', 'lent')));
+  const debut = Date.now();
+  try {
+    await auPlus(m.evaluer('demarrerMoteur()'), 30000, 'the start');
+    const u = m.evaluer('rUtilise');
+    const dit = m.evaluer('rRepliASignaler');
+    verifier(u.type === 'nuee' && u.repli && u.repli.motif === 'delai' && m.evaluer('rEnMarche()'),
+      `pas prêt au bout de 1,5 s : le R de Nuée prend le relais (${((Date.now() - debut) / 1000).toFixed(1)} s)`, u);
+    verifier(!!dit && dit.motif === 'delai' && dit.secondes === 1.5 && dit.type === 'autre', 'la fenêtre le dira : pas prêt au bout de 1,5 s', dit);
+    verifier(p1.enfants.length === 2 && fini(p1.enfants[0]) && !fini(p1.enfants[1]), 'cet autre R arrêté, celui de Nuée en marche', p1.enfants.map(fini));
+  } catch (e) {
+    verifier(false, 'pas prêt au bout de 1,5 s : le R de Nuée prend le relais', e.message);
+  } finally {
+    m.evaluer('arreterR()');
+  }
+  // Nuée's own R, as slow: it has the time it needs
+  const p2 = espionProcessus();
+  const m2 = chargerMain(dossier, { child_process: p2.module }, DELAI_COURT);
+  m2.ctx.trouverRscript = () => rscriptFactice(path.join(dossier, 'R-nuee', 'lent'));
+  m2.evaluer('demarrerMoteur()').catch(() => {});
+  await pause(4000);
+  verifier(p2.enfants.length === 1 && !fini(p2.enfants[0]) && m2.evaluer('rUtilise') === null, 'le R de Nuée, aussi lent : pas arrêté au bout de 4 s', p2.enfants.map(fini));
+  m2.evaluer('arreterR()');
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -251,6 +302,7 @@ async function principal() {
     await redemarrageApresUnSignal(dossier);
     await paquetsDUnGreffon(dossier);
     await reglagesEcrits(dossier);
+    await autreRJamaisPret(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

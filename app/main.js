@@ -251,8 +251,9 @@ function environnementR(r) {
 }
 
 // `r`: rVoulu's. repli: Nuée's own R takes over if this one stops before it is ready
-// (demarrerMoteur), so that stop isn't reported to the windows.
-function demarrerR(port, r, repli = false) {
+// (demarrerMoteur), so that stop isn't reported to the windows. delai (ms, 0: none): an R not ready by
+// then is stopped (`depasse` in the error).
+function demarrerR(port, r, repli = false, delai = 0) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
     fichierArret = path.join(temporaireR, 'arreter');
@@ -270,22 +271,30 @@ function demarrerR(port, r, repli = false) {
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
     Object.assign(env, environnementR(r));
     let pret = false;
+    let depasse = false;
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
-    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; resolve(); } });
+    const ceR = serveur;  // (the one the time limit stops: never one started after it)
+    const minuterie = delai ? setTimeout(() => { if (!pret && serveur === ceR) { depasse = true; arreterR(); } }, delai) : null;
+    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; clearTimeout(minuterie); resolve(); } });
     serveur.stderr.on('data', (d) => { journal += d; });
     serveur.on('exit', (code) => {
-      reject(Object.assign(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`), { fin: journal.slice(-1500) }));
+      clearTimeout(minuterie);
+      reject(Object.assign(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`), { fin: journal.slice(-1500), depasse }));
       // once running, an unexpected stop is reported to the windows, which offer a restart
       if (!quitter && !arretVoulu && (pret || !repli)) BrowserWindow.getAllWindows().forEach((f) => f.webContents.send('moteur-arrete', journal.slice(-1500)));
     });
-    serveur.on('error', reject);
+    serveur.on('error', (e) => { clearTimeout(minuterie); reject(e); });
   });
 }
 
 // The engine started on the R wanted (rVoulu). When that is another R than Nuée's own and it is
-// missing, or stops before it is ready, Nuée's own starts instead, and the user is told once: by
-// the first window that asks ('r-repli'), and not at the next starts while the same R fails
-// (reglages.rSignale; forgotten once it starts, or when the settings change).
+// missing, stops before it is ready, or isn't ready in time, Nuée's own starts instead, and the user
+// is told once: by the first window that asks ('r-repli'), and not at the next starts while the same
+// R fails (reglages.rSignale; forgotten once it starts, or when the settings change).
+// In time: another R's first start reads every file of the engine, a minute and more on a slow
+// computer or from a network share; one that is never ready (a share that doesn't answer, an
+// Rprofile.site that waits) is stopped then. Nuée's own R has no such limit.
+const DELAI_AUTRE_R = 90000;
 async function demarrerMoteur() {
   const voulu = rVoulu();
   if (voulu.type !== 'autre' && voulu.type !== 'organisation') {
@@ -294,14 +303,17 @@ async function demarrerMoteur() {
     return;
   }
   let motif = 'absent';
+  let sortie = null;
   if (voulu.rscript) {
     try {
-      await demarrerR(port, voulu, true);
+      await demarrerR(port, voulu, true, DELAI_AUTRE_R);
       rUtilise = voulu;
       if (reglages.rSignale) { delete reglages.rSignale; ecrireReglages(); }
       return;
     } catch (e) {
-      motif = e.fin || e.message;
+      // (not ready in time: said so, with what it said meanwhile)
+      motif = e.depasse ? 'delai' : (e.fin || e.message);
+      if (e.depasse) sortie = e.fin || null;
     }
   }
   journal = '';
@@ -309,7 +321,7 @@ async function demarrerMoteur() {
   await demarrerR(port, propre);
   rUtilise = { ...propre, repli: { ...voulu, motif } };
   if (reglages.rSignale !== voulu.chemin) {
-    rRepliASignaler = { ...decrireR(voulu), motif, plateforme: process.platform };
+    rRepliASignaler = { ...decrireR(voulu), motif, sortie, secondes: DELAI_AUTRE_R / 1000, plateforme: process.platform };
     reglages.rSignale = voulu.chemin;
     ecrireReglages();
   }
