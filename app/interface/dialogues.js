@@ -1036,7 +1036,9 @@ export function dialogueFormat(app, entree, div) {
       ...champ(t('taille_points'), nombre('points', 0.3, 4, 0.1)),
       ...champ(t('palette'), liste('palette', [['defaut', t('palette_defaut')], ['daltonien', t('palette_daltonien')], ['gris', t('palette_gris')]])),
       ...champ(t('grille'), coche('grille')),
-      ...champ(t('legende'), coche('legende'))),
+      ...champ(t('legende'), coche('legende')),
+      // (labels that don't overlap: etiquettes.js)
+      el('label', { title: t('repousser_etiquettes_aide') }, t('repousser_etiquettes')), coche('repousser')),
     el('h3', {}, t('export_image')),
     el('div', { class: 'grille-champs' },
       ...champ(t('taille_image'), el('div', { class: 'ligne' }, nombre('largeur', 200, 10000, 10), ' × ', nombre('hauteur', 200, 10000, 10), ' px')),

@@ -7,6 +7,7 @@ import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, not
   notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
 import { demander } from './api.js';
 import { zip } from './zip.js';
+import { etiquettesRepoussees, replacerEtiquettes } from './etiquettes.js';
 
 export const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
 export const HAUTEUR = 580;
@@ -158,7 +159,10 @@ export async function imageVue(app, vue, m, variante = {}) {
   try {
     await VUES[vue].rendre(hote, app.contexteHorsEcran(loc, (div) => { graphe = div; }), { modele: m.id, projet: m.projet }, loc);
     if (!graphe) return null;
-    return await window.Plotly.toImage(graphe, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
+    // (its labels spread, Plots › Format plot: once placed, placed again at the picture's size, etiquettes.js)
+    if (graphe._etiquettes) await graphe._etiquettes;
+    const source = etiquettesRepoussees(graphe.layout) ? await replacerEtiquettes({ data: graphe.data, layout: { ...graphe.layout, width: LARGEUR, height: HAUTEUR } }) : graphe;
+    return await window.Plotly.toImage(source, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
   } catch (e) {
     console.warn(`rapport : ${vue}`, e);  // the part is left out of the report
     return null;

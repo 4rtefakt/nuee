@@ -16,6 +16,7 @@ import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
 import { partiesModele } from './rapport.js';
+import { replacerEtiquettes } from './etiquettes.js';
 import { vuesDe } from './explorateur.js';
 import { PX_PAR_PT, LARGEURS, STYLES_LETTRES, COINS, GRILLE_MAX, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure,
   composerSVG, pagePDF, pixelsImage, carteEnPlan, cadrer, tuilesPour, adresseTuile, placeTuile } from './composition.js';
@@ -227,6 +228,7 @@ async function dessinerHorsEcran(app, vue, params, loc) {
       return { erreur: (raison && raison.textContent.trim()) || t('figure_pas_de_graphique') };
     }
     await dessines.get(graphe);
+    if (graphe._etiquettes) await graphe._etiquettes;  // (its labels spread, drawn again: panneaux.js, tracer)
     const copie = (x) => { try { return structuredClone(x); } catch { return JSON.parse(JSON.stringify(x)); } };
     const zone = graphe._fullLayout && graphe._fullLayout._size;
     return { data: copie(graphe.data), layout: copie(graphe.layout), taille: FORMAT.taille, source: zone ? { largeur: zone.w, hauteur: zone.h } : null };
@@ -363,10 +365,12 @@ async function composer(app, pid, spec, caches, pour = 'svg', dpi = 300) {
     } else {
       // (a map on tiles: a plane plot over them; its view's area, not a zoom of its axes)
       const plan = carteEnPlan(base.data, base.layout, base.source);
-      const fig = adapterFigure(plan ? plan.data : base.data, plan ? plan.layout : base.layout, { largeur: r.largeur, hauteur: r.hauteur,
+      let fig = adapterFigure(plan ? plan.data : base.data, plan ? plan.layout : base.layout, { largeur: r.largeur, hauteur: r.hauteur,
         police: spec.police * PX_PAR_PT, base: base.taille, ligne: spec.ligne * PX_PAR_PT, titres: spec.titres, legende: spec.legendes, lettre: pl,
         zoom: plan ? null : pn.zoom, source: base.source });
       try {
+        // (labels spread in its view: placed again in its cell, at the figure's text size: etiquettes.js)
+        if (!plan) fig = await replacerEtiquettes(fig);
         if (plan) notes.push(...(await surSesTuiles(fig, plan, densiteFond(pour, dpi), nomLettre, pour === 'apercu' ? 0 : image ? dpi : 300)));
         // (a plot drawn with WebGL waits for frames the browser doesn't draw in a hidden window:
         // a panel that takes too long is left out, rather than the figure never coming)

@@ -18,6 +18,34 @@ module.exports = {
       return ['weight', 'diameter', 'firmness'].map((nom) => __n.norm(l.cells[k(nom)].textContent)); })()`);
     verifier('donneesDecimales', JSON.stringify(cellules) === JSON.stringify(['133', '62.1', '6.63']), cellules);
 
+    // ---- Format plot › Spread the labels: the PCA's loadings, weight and diameter apart, no label on another
+    const vueLoadings = `M1 · ${await n.t('loadings')}`;
+    const repousser = async (oui) => {
+      await n.cliquer(`__n.graphe(${JSON.stringify(vueLoadings)})`);
+      await n.menu('m_edition', 'mise_en_forme');
+      await n.dialogue('mise_en_forme');
+      await n.coche("__n.tous('label', __n.boite()).find((l) => __n.norm(l.textContent) === __n.t('repousser_etiquettes')).nextElementSibling", oui);
+      await n.bouton('appliquer');
+      await n.attendre('!__n.dialogue()');
+    };
+    await n.cliquer("__n.onglet('M1 · PCA')");
+    await n.plotlyPret(vueLoadings, 14);
+    await repousser(true);
+    const etiquettes = await n.attendre(`(() => { const g = __n.graphe(${JSON.stringify(vueLoadings)}); if (!g || !g.layout.annotations) return null;
+      const noms = g.layout.annotations.filter((a) => String(a.name || '').startsWith('etiquette_repoussee')).map((a) => a.text);
+      const boites = [...g.querySelectorAll('.annotation-text')].map((t) => ({ texte: t.textContent, r: t.getBoundingClientRect() })).filter((b) => noms.includes(b.texte));
+      if (noms.length < 14 || boites.length !== noms.length) return null;
+      const chevauchent = [];
+      for (let i = 0; i < boites.length; i += 1) for (let j = i + 1; j < boites.length; j += 1) {
+        const a = boites[i].r, b = boites[j].r;
+        if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5) chevauchent.push(boites[i].texte + '/' + boites[j].texte);
+      }
+      return { n: noms.length, chevauchent, textes: g.data.some((tr) => String(tr.mode).includes('text')) }; })()`);
+    verifier('etiquettesEcartees', etiquettes.n >= 14 && etiquettes.chevauchent.length === 0 && !etiquettes.textes, etiquettes);
+    await repousser(false);
+    await n.attendre(`(() => { const g = __n.graphe(${JSON.stringify(vueLoadings)}); return g && !(g.layout.annotations || []).some((a) => String(a.name || '').startsWith('etiquette_repoussee'))
+      && g.data.some((tr) => String(tr.mode).includes('text')); })()`);
+
     // ---- New model's Type list: its families in their order, each type once, R code under Other
     await n.menu('m_modele', 'nouveau_modele');
     await n.dialogue('nouveau_modele');
