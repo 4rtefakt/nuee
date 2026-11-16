@@ -317,7 +317,11 @@ celles du projet, ou celles que proposent les noms de ses variables ; les distan
 variable nommée comme elles, et les autres colonnes de l'échantillonnage par distance par les
 noms d'où Nouveau modèle les propose (Sample.Label, Effort, Region.Label, Area, size du paquet
 Distance, ou transect, longueur, région, aire, taille) ; des points plutôt que des lignes quand
-la colonne du transect est nommée comme un point ou une station. Chaque réponse se change.
+la colonne du transect est nommée comme un point ou une station. Chaque réponse se change. La
+liste des réponses laisse de côté le temps, le site et l'unité dès que leur case du dispositif
+est cochée (ils sont le dispositif, non la réponse) ; quand une seule variable reste, elle est
+proposée : sur les comptages d'alouettes, une tendance propose les alouettes, l'année étant son
+temps.
 À droite : l'analyse conseillée, pourquoi, ses conditions principales et des notes selon les
 réponses (l'effet aléatoire par site, l'autocorrélation des résidus d'années qui se suivent, les
 moyennes ajustées après la comparaison de groupes, une proportion qui touche 0 ou 1...), ce qui

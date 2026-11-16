@@ -290,7 +290,10 @@ the coordinates the project's, or those its variables' names propose; the distan
 named like them, and the other columns of distance sampling by the names New model proposes
 them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur,
 région, aire, taille); points rather than lines when the transect's column is named like a point
-or a station. Every answer can be changed.
+or a station. Every answer can be changed. The response list leaves out the time, the site and
+the unit once their design box is ticked (they are the design, not the response); when a single
+variable is left, it is proposed: on the skylark counts, a trend proposes the skylarks, the year
+being its time.
 On the right: the recommended analysis, why, its main conditions and notes for the answers given
 (the random effect by site, the residual autocorrelation of successive years, the adjusted means
 after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is

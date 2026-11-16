@@ -3,7 +3,7 @@
 // set of answers gives, and the settings New model or a view opens with.
 //   node tests/essai_choix.mjs
 import { QUESTIONS, BUTS, REPONSES, FORMULAIRE, formulaire, CATALOGUE, REGLES, NOTES, TEXTES_CHOIX, faitsVariables, genre, beaucoupDeZeros,
-  proposer, choisirReponse, contexte, recommander, construire, notesPour } from '../interface/choix_analyse.js';
+  proposer, choisirReponse, reponsesPossibles, proposerReponse, contexte, recommander, construire, notesPour } from '../interface/choix_analyse.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -272,6 +272,40 @@ console.log('Des mesures sur des sites');
   const Bord = faitsVariables(p, { ...stats, min: stats.min.map((v, i) => (stats.nom[i] === 'couverture' ? 0 : v)) });
   verifier('une proportion qui touche 0 : la note des bornes', notesPour('glm_beta', contexte(repondre(p, Bord, { question: 'effet', y: 'couverture' }), Bord, p)).includes('qa_note_bornes01'));
   egal('un BACI coché sous « tendance » → BACI', conseil(p, F, repondre(p, F, { question: 'tendance', y: 'longueur', baci: true })).choix, 'baci');
+}
+
+// The skylark counts of the monitoring tutorial (docs/site/donnees/skylark_counts.csv): 40 sites,
+// their habitat, 17 years, the skylarks counted
+const alouettes = projet(680, [
+  ['site', Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, '0')}`)], ['habitat', ['cropland', 'grassland']],
+  ['year', null, { min: 2008, max: 2024, moyenne: 2016, ecart: 4.9, entiers: true, zeros: 0 }],
+  ['skylarks', null, { min: 0, max: 31, moyenne: 7.2, ecart: 5.6, entiers: true, zeros: 6 }]]);
+console.log('La réponse proposée quand une seule convient');
+{
+  const { p, stats } = alouettes;
+  const F = faitsVariables(p, stats);
+  const R = proposer(p, F);
+  egal('à l’ouverture, ni question ni réponse', [R.question, R.y], [null, null]);
+  R.question = 'tendance';
+  egal('une tendance : ni l’année (son temps) ni le site dans la liste des réponses', reponsesPossibles(R, F, p), [uid(p, 'skylarks')]);
+  proposerReponse(R, F, p);
+  egal('la seule qui reste, proposée : les alouettes, des comptages', [R.y, R.reponse], [uid(p, 'skylarks'), 'comptage']);
+  egal('puis TRIM (une ligne par site et par année), ou le GLM binomial négatif', [conseil(p, F, R).choix, conseil(p, F, R).autres.includes('glm_nb')], ['trim', true]);
+  const choisie = { ...proposer(p, F), question: 'tendance', y: uid(p, 'year') };
+  egal('l’année, réponse d’avant, ne l’est plus une fois qu’elle est le temps : les alouettes à sa place', proposerReponse(choisie, F, p).y, uid(p, 'skylarks'));
+  const G = { ...proposer(p, F), question: 'groupes' };
+  egal('comparer des groupes : l’année, les alouettes et l’habitat (le site, répété, est le plan), aucune proposée', [reponsesPossibles(G, F, p), proposerReponse(G, F, p).y],
+    [[uid(p, 'year'), uid(p, 'skylarks'), uid(p, 'habitat')], null]);
+  egal('le site redevient une réponse possible quand il n’est plus le plan', reponsesPossibles({ ...G, repetes: false }, F, p).includes(uid(p, 'site')), true);
+  const E = { ...proposer(p, F), question: 'effet', annees: false };
+  egal('un effet sans la case des années : l’année reste une réponse possible, aucune proposée', [reponsesPossibles(E, F, p).includes(uid(p, 'year')), proposerReponse(E, F, p).y],
+    [true, null]);
+  const ou = { ...proposer(p, F), question: 'espace' };
+  egal('une réponse facultative (où ?) n’est pas proposée', proposerReponse(ou, F, p).y, null);
+  const deja = { ...proposer(p, F), question: 'tendance' };
+  choisirReponse(deja, F, uid(p, 'skylarks'), p);
+  deja.reponse = 'mesure';
+  egal('une réponse déjà choisie et son genre restent', [proposerReponse(deja, F, p).y, deja.reponse], [uid(p, 'skylarks'), 'mesure']);
 }
 
 console.log('Des spectres et des coordonnées');

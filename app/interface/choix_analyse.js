@@ -264,6 +264,32 @@ export function choisirReponse(R, F, uid, p = null) {
   return R;
 }
 
+// The variables the response list offers (their numbers, in the dialog's order): the quantitative
+// ones for a question with numbers as its response, then the qualitative ones for a class; not
+// the time, the site or the unit of a design box ticked (or required): they are the design.
+export function reponsesPossibles(R, F, p) {
+  const f = formulaire(R.question, R.but);
+  if (!f) return [];
+  const coche = (k) => f.champs.includes(`${k}!`) || (f.champs.includes(k) && !!R[k]);
+  const plan = new Set([coche('annees') && uidDe(R.temps), coche('repetes') && uidDe(R.site), coche('baci') && uidDe(R.unite)].filter((u) => typeof u === 'number'));
+  const numeriques = f.reponses.some((k) => ['mesure', 'comptage', 'presence', 'proportion', 'distances'].includes(k));
+  const vars = liste(p.variables).filter((v) => !plan.has(v.uid));
+  return [...(numeriques ? vars.filter((v) => !v.qualitative) : []), ...(f.reponses.includes('classe') ? vars.filter((v) => v.qualitative) : [])].map((v) => v.uid);
+}
+
+// The response once the question or the design is chosen: none when the list no longer offers it
+// (the time, once it is the trend's time), and the only variable left when one alone fits (the
+// counts of a trend, the year being its time). Not for a response that may stay unchosen, several
+// variables or the species.
+export function proposerReponse(R, F, p) {
+  const f = formulaire(R.question, R.but);
+  if (!f || f.facultative || f.plusieurs || R.reponse === 'especes' || f.reponses.every((k) => k === 'especes')) return R;
+  const possibles = reponsesPossibles(R, F, p);
+  if (R.y !== null && R.y !== undefined && !possibles.includes(R.y)) R.y = null;
+  if ((R.y === null || R.y === undefined) && possibles.length === 1) choisirReponse(R, F, possibles[0], p);
+  return R;
+}
+
 // ------------------------------------------------------------ the rules
 
 // What the rules read: the answers, and what the data say of the response, the X and the species.
