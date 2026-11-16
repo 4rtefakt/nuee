@@ -1,5 +1,6 @@
-// Save and reopen: the example project with its PLS M2 fitted too, a document that cites
-// {{M2.Q2}} and shows the VIP, a figure made of the PLS's scores (Plots › Compose a figure);
+// Save and reopen: the example project (Help › Example projects › Apples) with its PLS M2 fitted
+// too, a document that cites {{M2.Q2}} and shows the VIP, a figure made of the PLS's scores (Plots ›
+// Compose a figure);
 // File › Save project, File › Close project, Nuée quit and started again, File › Open: the models
 // are fitted again with the same numbers, the document and the figure are back as they were.
 const fs = require('fs');
@@ -7,7 +8,7 @@ const path = require('path');
 
 module.exports = {
   async executer(n, verifier, { dossier, redemarrer }) {
-    await n.menu('m_aide', 'projet_exemple');
+    await n.sousMenu('m_aide', 'projet_exemple', 'exemple_pommes');
     await n.attendre(n.ligneModele('M1', true), 120000);
     // M2, the taste score's PLS, fitted from its line under the project's models
     await n.double(`(${n.ligneModele('M2', false)}).querySelector('.libelle')`);

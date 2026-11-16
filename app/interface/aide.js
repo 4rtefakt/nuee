@@ -8,7 +8,7 @@ import { el, icone, dialogue } from './ui.js';
 import { demander } from './api.js';
 import { VUES } from './panneaux.js';
 import { NOUVEAUTES } from './nouveautes.js';
-import { SITE, DEPOT, PROBLEMES, DOI, adresseGuide, adresseTutoriels, citation, sectionsGuide, largeurGuide, blocsSection, alias, morceaux,
+import { SITE, DEPOT, PROBLEMES, DOI, adresseGuide, adresseTutoriels, adresseTutoriel, citation, sectionsGuide, largeurGuide, blocsSection, alias, morceaux,
   motsRecherche, chercher, sectionPour, blocCible } from './aide_texte.js';
 
 // A web page in the computer's browser (main.js sends http(s) links there; in a browser, a tab).
@@ -19,6 +19,8 @@ export function installerAide(app) {
   app.tutoriels = () => ouvrirLien(adresseTutoriels(langueActuelle()));
   app.guideEnLigne = () => ouvrirLien(adresseGuide(langueActuelle()));
   app.apropos = () => dialogueApropos(app);
+  app.noterTutoriel = (pid, cle) => { tutoriels.set(pid, cle); };
+  app.lienTutoriel = (pid) => lienTutoriel(app, pid);
   VUES.aide = { rendre: (c, ctx, params, loc) => rendreAide(c, app, loc), titre: () => t('guide'), global: true };
 }
 
@@ -158,6 +160,21 @@ function rendreAide(conteneur, app, loc) {
   });
 }
 
+// ------------------------------------------------------------ an example's tutorial
+
+// The tutorial an example project follows (app.js: ouvrirExemple), on the documentation site: a link
+// in the status bar while the project is in front; its × leaves it out for that project.
+const tutoriels = new Map();
+function lienTutoriel(app, pid) {
+  const cle = tutoriels.get(pid);
+  if (!cle || !app.projet(pid)) return null;
+  const url = adresseTutoriel(cle, langueActuelle());
+  return el('span', { class: 'lien-tutoriel' },
+    el('a', { href: url, title: url, onclick: (e) => { e.preventDefault(); ouvrirLien(url); } }, icone('book-open'), t('exemple_tutoriel', { titre: t(`tutoriel_${cle}`) })),
+    el('button', { class: 'icone-seule', title: t('exemple_tutoriel_cacher'), 'aria-label': t('exemple_tutoriel_cacher'),
+      onclick: () => { tutoriels.delete(pid); app.majStatut(); } }, icone('x')));
+}
+
 // ------------------------------------------------------------ About
 
 // The versions, the websites, and the sentence to cite Nuée, with Copy.
@@ -185,6 +202,9 @@ async function dialogueApropos(app) {
 
 ajouterTextes({
   tutoriels: 'Tutoriels', guide_en_ligne: 'Guide en ligne',
+  exemple_pommes: 'Pommes (ACP, PLS)', exemple_alouettes: 'Suivi d’alouettes (TRIM, GLMM, distances)', exemple_baci: 'Un seuil arasé (BACI)',
+  exemple_tutoriel: 'Tutoriel : {titre}', exemple_tutoriel_cacher: 'Ne plus montrer le tutoriel de ce projet',
+  tutoriel_suivi: 'Suivre une population', tutoriel_baci: 'Avant/après avec témoins (BACI)',
   aide_chercher: 'Chercher dans le guide', aide_sommaire: 'Sommaire', aide_precedente: 'Section précédente', aide_suivante: 'Section suivante',
   aide_precedente_court: '‹ Précédente', aide_suivante_court: 'Suivante ›', aide_fichier: 'Le guide en fichier texte', aide_chargement: 'Lecture du guide…',
   aide_illisible: 'Le guide n’a pas pu être lu ({erreur}).', aide_vide_guide: 'le guide est vide', aide_retour: '‹ Retour aux résultats',
@@ -194,6 +214,9 @@ ajouterTextes({
   apropos_citer_note: 'Le DOI de Zenodo désigne toutes les versions de Nuée. Modèle › Texte pour la section Méthodes écrit cette référence avec celles des méthodes du modèle.',
 }, {
   tutoriels: 'Tutorials', guide_en_ligne: 'User guide online',
+  exemple_pommes: 'Apples (PCA, PLS)', exemple_alouettes: 'Skylark monitoring (TRIM, GLMM, distance sampling)', exemple_baci: 'A weir removed (BACI)',
+  exemple_tutoriel: 'Tutorial: {titre}', exemple_tutoriel_cacher: 'Don’t show this project’s tutorial',
+  tutoriel_suivi: 'Monitoring a population', tutoriel_baci: 'Before-after with controls (BACI)',
   aide_chercher: 'Search the guide', aide_sommaire: 'Contents', aide_precedente: 'Previous section', aide_suivante: 'Next section',
   aide_precedente_court: '‹ Previous', aide_suivante_court: 'Next ›', aide_fichier: 'The guide as a text file', aide_chargement: 'Reading the guide…',
   aide_illisible: 'The guide couldn’t be read ({erreur}).', aide_vide_guide: 'the guide is empty', aide_retour: '‹ Back to the results',

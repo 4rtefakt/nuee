@@ -899,3 +899,7 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
 /* File › Settings… › At start-up (reglages.js): the last session's projects reopened or not */
 .dialogue-r h3.reglages-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grille); }
 .dialogue-r .champ.seance-champ { color: var(--texte); }
+/* an example project in front: its tutorial, in the status bar (aide.js) */
+#statut .lien-tutoriel { display: inline-flex; align-items: center; gap: 2px; }
+#statut .lien-tutoriel a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; text-decoration: none; }
+#statut .lien-tutoriel a:hover { text-decoration: underline; }

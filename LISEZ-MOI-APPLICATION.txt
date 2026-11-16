@@ -81,11 +81,20 @@ des spectres JCAMP-DX ou SPC ensemble font un seul projet, comme Importer des sp
 autres fichiers s'ouvrent chacun comme avec Fichier › Ouvrir. Un double-clic sur un projet
 .nuee dans l'Explorateur Windows l'ouvre dans Nuée (dans la fenêtre déjà ouverte s'il y en a une).
 Les derniers fichiers ouverts sont dans Fichier › Ouvrir un fichier récent.
-Pour essayer : Aide › Projet d'exemple ouvre 120 pommes inventées (quatre variétés, culture
-bio ou conventionnelle, une douzaine de mesures et une note de dégustation) avec quatre
-modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA de la
-culture. Le tableau d'origine, vergers.csv, est à côté (resources\exemple) pour essayer
-l'ouverture d'un tableau.
+Pour essayer, Aide › Projets d'exemple :
+- Pommes : 120 pommes inventées (quatre variétés, culture bio ou conventionnelle, une douzaine
+  de mesures et une note de dégustation) avec quatre modèles prêts : une ACP, une PLS de la
+  note, une PLS-DA des variétés et une OPLS-DA de la culture. Le tableau d'origine,
+  vergers.csv, est à côté (resources\exemple) pour essayer l'ouverture d'un tableau.
+- Suivi d'alouettes : les deux projets du tutoriel de suivi, une alouette comptée sur 40 sites
+  pendant 17 ans (TRIM et un modèle mixte binomial négatif, ajustés) et ses transects linéaires
+  (échantillonnage par distances : densité et effectif).
+- Un seuil arasé : les jeunes truites du tutoriel BACI, avant et après l'arasement d'un seuil,
+  avec la vue avant/après des Tests statistiques et son modèle mixte.
+Leurs données sont inventées ou simulées (les tableaux des tutoriels se téléchargent sur le site
+de documentation). Chacun s'ouvre en projet nouveau, ses modèles ajustés et ses vues ouvertes ;
+Enregistrer demande où le ranger. Quand un projet des alouettes ou des truites est devant, la
+barre d'état donne le lien de son tutoriel.
 
 Données de terrain de KoboToolbox ou d'ODK
 ------------------------------------------

@@ -257,7 +257,7 @@ async function brancher(cible) {
     // (each command by its name in the interface's language: English on a new profile)
     const libelle = (cle) => p.evaluer(`import('/i18n.js').then((m) => m.t(${JSON.stringify(cle)}))`);
     res.langue = await p.evaluer("import('/i18n.js').then((m) => m.langueActuelle())");
-    res.exemple = await commande(await libelle('projet_exemple'));
+    res.exemple = await commande(await libelle('exemple_pommes'));  // (Help › Example projects › Apples)
     await p.attendre("document.querySelectorAll('.js-plotly-plot').length >= 2", 60000);
     for (const m of ['M2', 'M3', 'M4']) { await doubleClic(m); await pause(3000); }
     await doubleClic('M2');

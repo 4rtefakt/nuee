@@ -101,10 +101,11 @@ page.
 
 ## First steps
 
-- **Try the example:** *Help › Example project* opens 120 made-up
+- **Try the examples:** *Help › Example projects › Apples* opens 120 made-up
   apples (four varieties, organic or conventional, a dozen measurements and a tasting score)
   with four models ready: a PCA, a PLS predicting the score, a PLS-DA of the varieties and an
-  OPLS-DA of the growing method.
+  OPLS-DA of the growing method. *Skylark monitoring* (TRIM, a mixed model, distance sampling)
+  and *A weir removed* (BACI) open the tutorials' simulated data with their models fitted.
 - **Open your data:** *File › Open* (Ctrl+O) reads a table with one row per observation
   and the observation names in the first column (see [Files](#files) for the formats), or
   *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on

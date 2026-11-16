@@ -103,5 +103,5 @@ Puis l'un des deux :
 
 ## Ensuite
 
-Ouvrez un tableau (*Fichier › Ouvrir*, Ctrl+O), ou essayez *Aide › Projet d'exemple*, puis suivez
+Ouvrez un tableau (*Fichier › Ouvrir*, Ctrl+O), ou essayez *Aide › Projets d'exemple*, puis suivez
 [un tutoriel](page:tutoriels) ou [le guide](page:guide.demarrer).

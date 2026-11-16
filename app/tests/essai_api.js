@@ -527,6 +527,39 @@ async function principal() {
       verifier(en.modeles.length === 4 && en.observations.uid.length === 120 && noms(en).includes('sugar') && noms(en).includes('variety')
         && !noms(en).includes('sucre') && noms(e).includes('sucre'), `exemple en anglais : ${noms(en).join(', ')}`);
     });
+    // the ecology examples (exemple/creer_exemples_ecologie.js, from the tutorials' simulated data): by
+    // name, in each language, with their session; the models it fits give the tutorials' numbers
+    await etape('projets d’exemple d’écologie : alouettes (TRIM, GLMM, distances) et truites (BACI)', async () => {
+      const seance = async (p) => JSON.parse((await api('session', { projet: p.id })).session);
+      const ajuster = async (p, s) => Promise.all(s.modeles.map((m) => api('ajuster', { projet: p.id, numero: m.numero, A: m.A }, 'en')));
+      const noms = (p) => p.variables.map((x) => x.nom);
+      const c = await api('exemple', { nom: 'alouettes_comptages' }, 'en');
+      const sc = await seance(c);
+      const [trim, glmm] = await ajuster(c, sc);
+      verifier(c.session && !c.chemin_enregistrement && c.observations.uid.length === 680 && noms(c).includes('skylarks') && trim.type === 'TRIM' && /^slope 0\.970 · moderate decline/.test(trim.chiffres)
+        && glmm.type === 'GLM' && glmm.N === 586 && sc.vues.some((v) => v.vue === 'trim_indices' && v.modele === `@${sc.modeles[0].numero}`), `comptages : ${trim.chiffres}, ${glmm.type} N = ${glmm.N}`);
+      const tr = await api('exemple', { nom: 'alouettes_transects' }, 'en');
+      const [d] = await ajuster(tr, await seance(tr));
+      verifier(d.type === 'DISTANCE' && /D 23\.17 \/km² \(CV 12\.9%\)/.test(d.chiffres), `transects : ${d.chiffres}`);
+      const b = await api('exemple', { nom: 'baci' }, 'en');
+      const sb = await seance(b);
+      const [lmm] = await ajuster(b, sb);
+      const vue = sb.vues.find((v) => v.vue === 'tests');
+      const r = await api('baci', { projet: b.id, ...vue.loc.baci }, 'en');
+      const effet = [].concat(r.modeles || []).find((x) => x.car1);
+      verifier(lmm.type === 'LMM' && lmm.N === 82 && vue.loc.mode === 'baci' && !!effet && /^6\.9/.test(String(effet.phrase).match(/(-?\d+\.\d+) \[95% CI/)?.[1] || ''),
+        `BACI : ${lmm.nom} N = ${lmm.N}, ${effet && effet.phrase}`);
+      const fr = await Promise.all(['alouettes_comptages', 'alouettes_transects', 'baci'].map((nom) => api('exemple', { nom })));
+      verifier(noms(fr[0]).includes('alouettes') && noms(fr[1]).includes('longueur') && noms(fr[2]).includes('densite') && fr.every((p) => p.session), `en français : ${fr.map((p) => p.nom).join(', ')}`);
+      let refus = '';
+      try { await api('exemple', { nom: '../orchards' }); } catch (err) { refus = err.message; }
+      verifier(/Projet d'exemple inconnu/.test(refus), `un nom inconnu, refusé : « ${refus} »`);
+      // (the files keep their data, not where they were read from: no folder of the computer that made them)
+      const fichiers = ['skylark_counts', 'comptages_alouette', 'skylark_transects', 'transects_alouette', 'baci_trout', 'baci_truite']
+        .map((f) => fs.readFileSync(path.join(depot, 'exemple', `${f}.json`), 'utf8'));
+      verifier(fichiers.every((x) => !/source_donnees|[A-Za-z]:[\\/]|\/home\/|\/Users\//.test(x)), 'des chemins dans les projets d’exemple');
+      for (const p of [c, tr, b, ...fr]) await api('fermer_projet', { projet: p.id });
+    });
     // the full guide, for the help panel (F1: interface/aide.js), in the language asked for, else the request's
     await etape('le guide complet pour le panneau d’aide', async () => {
       const fichier = (f) => fs.readFileSync(path.join(depot, f), 'utf8').replace(/\r\n?/g, '\n').replace(/\n+$/, '');

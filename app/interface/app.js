@@ -4,8 +4,8 @@
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
-import { el, icone, menuContextuel, barreMenus, dialogue } from './ui.js';
-import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
+import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
+import { creerCommandes, menus, menuExemples, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
@@ -256,14 +256,31 @@ const app = {
     if (res) await apresOuverture(res);
   },
 
-  // the example project (made-up data), with its first model open, scores coloured by variety
-  async ouvrirExemple() {
-    const res = await occupe(() => demander('exemple'));
-    await apresOuverture(res);
-    if (!res.modeles.length) return;
-    const id = await app.calculer(res.id, res.modeles[0].numero);
-    const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
-    if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
+  // Help › Example projects (made-up or simulated data), opened as new projects that Save puts where
+  // asked: the apples, with their first model open, scores coloured by variety; the skylark counts
+  // and transects of the monitoring tutorial, then the trout of the BACI tutorial, with their models
+  // fitted and their views open as their sessions say (exemple/creer_exemples_ecologie.js), the
+  // counts' TRIM in front, and their tutorial in the status bar while they are in front (aide.js)
+  async ouvrirExemple(cle = 'pommes') {
+    if (cle === 'pommes') {
+      const res = await occupe(() => demander('exemple', { nom: 'pommes' }));
+      await apresOuverture(res);
+      if (!res.modeles.length) return;
+      const id = await app.calculer(res.id, res.modeles[0].numero);
+      const variete = res.variables.find((v) => v.nom === 'variety' || v.nom === 'variete');  // (orchards.json, vergers.json)
+      if (variete) app.ouvrirVue('scores', id, { couleur: 'v' + variete.uid });
+      return;
+    }
+    const { projets, tutoriel } = { alouettes: { projets: ['alouettes_comptages', 'alouettes_transects'], tutoriel: 'suivi' }, baci: { projets: ['baci'], tutoriel: 'baci' } }[cle];
+    const ids = [];
+    for (const nom of projets) {
+      const res = await occupe(() => demander('exemple', { nom }));
+      if (app.noterTutoriel) app.noterTutoriel(res.id, tutoriel);
+      await apresOuverture(res);
+      ids.push(res.id);
+    }
+    const premier = app.modelesDe(ids[0])[0];
+    if (ids.length > 1 && premier) app.ouvrirModele(premier.id);
   },
 
   // collecte: File › Import from KoboToolbox or ODK (kobo.js), the import asked for (another file is refused)
@@ -2184,6 +2201,8 @@ function majEtat() {
     !VUE_SEULE && app.avisDonnees ? app.avisDonnees() : null,
     // (the active project's versions to send and to get: versions.js)
     !VUE_SEULE && app.indicateurVersions ? app.indicateurVersions() : null,
+    // (an example project in front: its tutorial, aide.js)
+    !VUE_SEULE && app.lienTutoriel ? app.lienTutoriel(app.projetActif()) : null,
     m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
@@ -2203,7 +2222,7 @@ function rendreAccueil(conteneur) {
         title: etat.seance.precedente.map((x) => x.chemin).join('\n') }, icone('rotate-ccw'), t('seance_bouton')) : null,
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
-      el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
+      el('button', { onclick: (e) => ouvrirMenuSous(e.currentTarget, menuExemples(C).sous), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple'), icone('chevron-down')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
       el('button', { onclick: () => app.quelleAnalyse(), disabled: !app.projetActif() }, icone('signpost'), t('quelle_analyse')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),

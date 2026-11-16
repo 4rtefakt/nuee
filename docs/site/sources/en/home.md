@@ -78,7 +78,8 @@ How to install: see [Install](page:installation). Every version and its notes: t
 - [The tutorials](page:tutoriels) follow six studies from start to finish: a before-after with
   controls (BACI), a PLS on spectra, the monitoring of a bird population, the ground beetles of
   three habitats (community ecology), maps and spatial models, and the report of a study.
-- In the application, Help › Example project opens 120 made-up apples with four ready models.
+- In the application, Help › Example projects opens 120 made-up apples with four ready models,
+  and the skylarks and the trout of the tutorials with theirs.
 - [The user guide](page:guide) describes every window and every calculation.
 
 Nuée is free software ([GPL-3.0](https://github.com/4rtefakt/nuee/blob/main/LICENSE)). The

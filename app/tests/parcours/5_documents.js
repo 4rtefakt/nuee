@@ -1,4 +1,4 @@
-// Documents: the example project (Help › Example project, its PCA M1 fitted), File › New document,
+// Documents: the example project (Help › Example projects › Apples, its PCA M1 fitted), File › New document,
 // a sentence typed in its editor that cites {{M1.Q2}} and a line that shows the PCA's scores (a
 // dialog opened and closed meanwhile gives the keyboard back to the text where it was); the
 // preview gives the engine's Q2 and the plot; then Compile › HTML, Word and PDF, each written where
@@ -13,7 +13,7 @@ const texte = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/g, 
 
 module.exports = {
   async executer(n, verifier, { dossier }) {
-    await n.menu('m_aide', 'projet_exemple');
+    await n.sousMenu('m_aide', 'projet_exemple', 'exemple_pommes');
     await n.attendre(n.ligneModele('M1', true), 120000);
     const m1 = await n.modele('M1');
     const q2 = enAnglais([].concat(m1.composantes.Q2cum)[m1.A - 1]);

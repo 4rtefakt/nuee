@@ -450,6 +450,13 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       }
       await n.cliquer(item);
     },
+    // ... and an item of one of its submenus (Help › Example projects › Apples), by their keys
+    async sousMenu(cleMenu, cleItem, cleSous) {
+      await n.menu(cleMenu, cleItem);
+      const item = `(() => { const x = __n.t(${JSON.stringify(cleSous)}); return __n.tous('.menu.sous-menu > .item').find((e) => __n.norm((e.querySelector('.libelle') || e).textContent) === x); })()`;
+      await n.attendre(`!!${item}`, 10000);
+      await n.cliquer(item);
+    },
     // (a press outside the menus closes them, ui.js)
     fermerMenus: () => n.evaluer("document.querySelectorAll('.menu').length ? (document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), true) : true"),
     // a button of the dialog in front, by its label's key

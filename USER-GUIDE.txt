@@ -74,10 +74,20 @@ SPC spectra together make one project, as Import spectra; other files each open 
 Open. Double-clicking a .nuee project in Windows Explorer opens it in Nuée (in the window
 already open, if there is one).
 The last files opened are in File › Open recent.
-To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
-conventional growing, a dozen measurements and a tasting score) with four ready models: a
-PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
-original table, orchards.csv, is next to it (resources\exemple), to try opening a table.
+To try it, Help › Example projects:
+- Apples: 120 made-up apples (four varieties, organic or conventional growing, a dozen
+  measurements and a tasting score) with four ready models: a PCA, a PLS of the score, a PLS-DA
+  of the varieties and an OPLS-DA of the growing method. The original table, orchards.csv, is
+  next to it (resources\exemple), to try opening a table.
+- Skylark monitoring: the two projects of the monitoring tutorial, a skylark counted on 40 sites
+  over 17 years (TRIM and a negative binomial mixed model, fitted) and its line transects
+  (distance sampling: density and abundance).
+- A weir removed: the young trout of the BACI tutorial, before and after a weir was removed,
+  with the before/after view of Statistical tests and its mixed model.
+Their data are made up or simulated (the tutorials' tables can be downloaded from the
+documentation website). Each opens as a new project, its models fitted and its views open; Save
+asks where to put it. While a project of the skylarks or the trout is in front, the status bar
+links to its tutorial.
 
 Field data from KoboToolbox or ODK
 ----------------------------------
