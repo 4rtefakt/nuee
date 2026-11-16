@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "dockview-core": "^8.8.3",
+    "isomorphic-git": "^1.44.8",
     "plotly.js-dist-min": "^4.2.0"
   }
 }

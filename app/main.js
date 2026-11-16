@@ -1,6 +1,6 @@
 // Desktop application: starts the R server (moteur/serveur.R) once and shows its interface
 // in as many windows as wanted. Windows remember their size; recent files are kept.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, session, shell, screen } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net: reseau, safeStorage, session, shell, screen } = require('electron');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -9,6 +9,7 @@ const net = require('net');
 const path = require('path');
 const { fileURLToPath } = require('url');
 const { demanderZotero } = require('./zotero');
+const { creerVersions, magasinJetons } = require('./versions');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -436,6 +437,18 @@ function fichierDonne(argv) {
   return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
+// Versions of a project kept with git (versions.js): GitHub and GitLab reached through Chromium's
+// network stack, so that the system's proxy and certificates apply; the tokens encrypted by the
+// system (safeStorage) in jetons.json beside the settings, the author with the settings; the
+// versions read written in this run's temporary folder, deleted when Nuée closes.
+const versions = creerVersions({
+  fetch: (url, init) => reseau.fetch(url, init),
+  jetons: magasinJetons({ fichier: () => path.join(app.getPath('userData'), 'jetons.json'), safeStorage }),
+  langue: () => langue,
+  auteur: { lire: () => reglages.auteur || null, ecrire: (a) => { reglages.auteur = a; ecrireReglages(); } },
+  temporaire: () => { dossierTemporaireR(); return temporaireR; },
+});
+
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
   // only the interface's own pages may ask (see deLInterface)
@@ -534,6 +547,14 @@ function ipc() {
     }
   });
   recevoir('ouvrir-chemin', (_, chemin) => shell.openPath(chemin));
+  // a project's versions (versions.js): { valeur }, or { erreur } with its message in the
+  // interface's language, which preload.js throws again in the page (an error thrown here would
+  // reach it inside Electron's own words)
+  for (const [nom, f] of Object.entries(versions)) {
+    recevoir(`versions-${nom}`, async (_, ...args) => {
+      try { return { valeur: await f(...args) }; } catch (e) { return { erreur: e.message }; }
+    });
+  }
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
