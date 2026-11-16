@@ -2706,8 +2706,12 @@ function rendreResumeRegression(conteneur, ctx, m) {
     const liste = [].concat(r.verifications || []);
     if (!liste.length) return;
     const signe = { ok: '✓', attention: '⚠', info: 'ℹ' };
+    // (a quantitative X far from 0 crossed with a qualitative variable, not centred: refit it centred,
+    // moteur/R/verifications_modele.R)
+    const centrer = (v) => (v.centrer === undefined || v.centrer === null ? null
+      : [' ', el('button', { onclick: () => ctx.reajuster(m.id, { centrer: v.centrer }) }, t('verif_centrer', { nom: v.nom }))]);
     verifs.replaceChildren(el('h4', {}, t('verifications_titre')), ...liste.map((v) => el('p', { class: `verification ${v.statut}` },
-      el('span', { class: 'signe', 'aria-hidden': 'true' }, signe[v.statut] || '•'), ' ', v.texte)), el('p', { class: 'note' }, t('verifications_note')));
+      el('span', { class: 'signe', 'aria-hidden': 'true' }, signe[v.statut] || '•'), ' ', v.texte, centrer(v))), el('p', { class: 'note' }, t('verifications_note')));
   }).catch(() => {});
 }
 

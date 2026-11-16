@@ -306,6 +306,18 @@ console.log('La réponse proposée quand une seule convient');
   choisirReponse(deja, F, uid(p, 'skylarks'), p);
   deja.reponse = 'mesure';
   egal('une réponse déjà choisie et son genre restent', [proposerReponse(deja, F, p).y, deja.reponse], [uid(p, 'skylarks'), 'mesure']);
+  // the time of a trend centred on its mean (its own scaling), the other variables in their units
+  const glm = construire('glm_nb', R, F, p);
+  egal('le GLM d’une tendance : l’année en X, centrée sur sa moyenne, les autres dans leurs unités', [glm.reglages.x, glm.reglages.echelle, glm.reglages.echelles],
+    [[uid(p, 'year')], 'none', { [uid(p, 'year')]: 'Ctr' }]);
+  egal('rempli : centrée sur sa moyenne, l’année ; et la note qui dit pourquoi', [glm.rempli.find((x) => x.cle === 'qa_rempli_centree').noms,
+    notesPour('glm_nb', contexte(R, F, p)).includes('qa_note_temps_centre')], [['year'], true]);
+  egal('le modèle mixte d’une mesure suivie, une seule série (Séries) ou TRIM : seul le premier centre l’année', [construire('normal', R, F, p).reglages.echelles,
+    construire('series', R, F, p).reglages, construire('trim', R, F, p).reglages.echelles], [{ [uid(p, 'year')]: 'Ctr' }, undefined, undefined]);
+  const effet = { ...proposer(p, F), question: 'effet', x: [uid(p, 'year'), uid(p, 'habitat')] };
+  choisirReponse(effet, F, uid(p, 'skylarks'), p);
+  egal('l’effet de l’année sur une autre question : rien n’est centré (le choix reste celui de Nouveau modèle)', [construire('glm_nb', effet, F, p).reglages.echelles,
+    notesPour('glm_nb', contexte(effet, F, p)).includes('qa_note_temps_centre')], [undefined, false]);
 }
 
 console.log('Des spectres et des coordonnées');

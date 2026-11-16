@@ -513,6 +513,7 @@ export const NOTES = [
   { si: { annees: true }, pour: ['normal', 'lm_log'], cle: 'qa_note_annees' },
   { si: { question: 'tendance' }, pour: ['normal'], cle: 'qa_note_puissance' },
   { si: { tempsNonQuantitatif: true, question: 'tendance' }, pour: REGRESSIONS, cle: 'qa_note_temps_x' },
+  { si: { annees: true, tempsNonQuantitatif: false, question: 'tendance' }, pour: REGRESSIONS, cle: 'qa_note_temps_centre' },
   { si: { bornes01: true }, pour: ['glm_beta', 'gam', 'gam_spatial'], cle: 'qa_note_bornes01' },
   { si: { coordonnees: true, question: 'effet' }, pour: REGRESSIONS, cle: 'qa_note_espace_residus' },
   { si: { especesEntieres: false }, pour: ['rarefaction'], cle: 'qa_note_especes_non_entieres' },
@@ -590,6 +591,13 @@ export function construire(id, R, F, p, c = contexte(R, F, p), options = {}) {
       if (r.type !== 'LM' && r.type !== 'LMM') r.famille = e.famille === 'reponse' ? familleDe(c) : e.famille === 'especes' ? familleDe(c, especes.map((u) => F.get(u))) : e.famille;
       ajouter('qa_rempli_y', noms(r.y));
       ajouter('qa_rempli_x', noms(r.x));
+      // (the time of a trend centred on its mean, its own scaling, the others in their units: crossed
+      // with a factor, each category's coefficient is then its difference at the mean year, not in
+      // year 0, far from the data)
+      if (c.question === 'tendance' && tempsUid !== null && r.x.includes(tempsUid)) {
+        Object.assign(r, { echelle: 'none', echelles: { [tempsUid]: 'Ctr' } });
+        ajouter('qa_rempli_centree', noms([tempsUid]));
+      }
       if (site) { r.aleatoires = [site]; ajouter('qa_rempli_aleatoire', [nomColonne(R.site, p)]); }
       vc();
       if (r.famille) rempli.push({ cle: 'qa_rempli_loi', texte: `famille_${r.famille}` });
@@ -897,6 +905,7 @@ export const TEXTES_CHOIX = {
     qa_rempli_y: 'Y', qa_rempli_classe: 'Classe', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X ajustées sur le plan', qa_rempli_especes: 'Espèces',
     qa_rempli_aleatoire: 'Effet aléatoire', qa_rempli_vc: 'Groupes de validation croisée', qa_rempli_loi: 'Loi', qa_rempli_courbes: 'Courbes',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Lissage spatial', qa_rempli_site: 'Site', qa_rempli_temps: 'Temps',
+    qa_rempli_centree: 'Centrée sur sa moyenne',
     qa_rempli_groupes: 'Groupes', qa_rempli_apparier: 'Apparié par', qa_rempli_unite: 'Unité', qa_rempli_lignes: 'Lignes', qa_rempli_tendances: 'Tendances',
     qa_rempli_couleur: 'Couleur', qa_rempli_formule: 'Formule', qa_rempli_distance_x: 'Distance des X', qa_rempli_composantes: 'Composantes',
     qa_rempli_plan: 'Plan', qa_rempli_transect: 'Transect ou point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Strate', qa_rempli_aire: 'Aire',
@@ -1018,6 +1027,7 @@ export const TEXTES_CHOIX = {
     qa_note_moyennes: 'Puis Graphiques › Moyennes ajustées compare les groupes deux à deux (Tukey).',
     qa_note_annees: 'Des années qui se suivent se ressemblent : après l’ajustement, Graphiques › Autocorrélation des résidus, puis au besoin Ajuster avec CAR1.',
     qa_note_puissance: 'Graphiques › Puissance pour une tendance dit ensuite combien d’années il faut pour la détecter.',
+    qa_note_temps_centre: 'Le temps est centré sur sa moyenne (son échelle Ctr) : la pente ne change pas, et si vous croisez le temps avec une variable qualitative (la tendance diffère-t-elle d’un habitat à l’autre ?), le coefficient de chaque catégorie est son écart à l’année moyenne, non en l’an 0, loin des données.',
     qa_note_temps_x: 'Le temps choisi n’est pas une variable quantitative : pour l’avoir en X, faites-en une (Édition › Nouvelle variable).',
     qa_note_bornes01: 'La réponse touche 0 ou 1, que la loi bêta refuse : ramenez-la d’abord dans l’intervalle, en le disant (Édition › Nouvelle variable : (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen 2006).',
     qa_note_espace_residus: 'Avec des coordonnées : après l’ajustement, Graphiques › Autocorrélation spatiale de ses résidus.',
@@ -1079,6 +1089,7 @@ export const TEXTES_CHOIX = {
     qa_rempli_y: 'Y', qa_rempli_classe: 'Class', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X fitted onto the plane', qa_rempli_especes: 'Species',
     qa_rempli_aleatoire: 'Random effect', qa_rempli_vc: 'Cross-validation groups', qa_rempli_loi: 'Distribution', qa_rempli_courbes: 'Curves',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Spatial smooth', qa_rempli_site: 'Site', qa_rempli_temps: 'Time',
+    qa_rempli_centree: 'Centred on its mean',
     qa_rempli_groupes: 'Groups', qa_rempli_apparier: 'Paired by', qa_rempli_unite: 'Unit', qa_rempli_lignes: 'Lines', qa_rempli_tendances: 'Trends',
     qa_rempli_couleur: 'Colour', qa_rempli_formule: 'Formula', qa_rempli_distance_x: 'Distance of the X', qa_rempli_composantes: 'Components',
     qa_rempli_plan: 'Design', qa_rempli_transect: 'Transect or point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Stratum', qa_rempli_aire: 'Area',
@@ -1200,6 +1211,7 @@ export const TEXTES_CHOIX = {
     qa_note_moyennes: 'Then Plots › Adjusted means compares the groups two by two (Tukey).',
     qa_note_annees: 'Successive years resemble each other: after the fit, Plots › Residual autocorrelation, then Fit with CAR1 if needed.',
     qa_note_puissance: 'Plots › Trend power then says how many years it takes to detect it.',
+    qa_note_temps_centre: 'The time is centred on its mean (its scaling Ctr): the slope doesn’t change, and if you cross the time with a qualitative variable (does the trend differ from one habitat to another?), each category’s coefficient is its difference at the mean year, not in year 0, far from the data.',
     qa_note_temps_x: 'The time chosen isn’t a quantitative variable: to have it as an X, make one (Edit › New variable).',
     qa_note_bornes01: 'The response reaches 0 or 1, which the beta distribution refuses: bring it inside the interval first, saying so (Edit › New variable: (y * (n - 1) + 0.5) / n for n observations; Smithson and Verkuilen 2006).',
     qa_note_espace_residus: 'With coordinates: after the fit, Plots › Spatial autocorrelation of its residuals.',

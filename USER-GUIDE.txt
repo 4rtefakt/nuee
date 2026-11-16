@@ -324,7 +324,11 @@ The main choices:
   - a trend: TRIM for counts by site and year (one row per site and year: no more observations
     than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a
     measurement on several sites: the mixed model with the year as X; a single series: Series
-    and its trends;
+    and its trends; a trend's regression has its time centred on its mean (its scaling Ctr, the
+    other variables keeping their units): the slope doesn't change, and once the time is
+    crossed with a qualitative variable (does the trend differ between habitats?), each
+    category's coefficient is its difference at the mean year rather than in year 0, which the
+    Methods and Results texts say;
   - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
     random forest otherwise, boosted trees for counts and presences;
   - a density or an abundance: distance sampling, the distances as Y, lines or points, its
@@ -1111,9 +1115,15 @@ Model conditions (a regression's Summary): pointers in words, each ✓ or ⚠ wi
 residuals' distribution (Shapiro–Wilk, on the quantile residuals for counts, presence-absence and
 positive values), a spread of the residuals that changes with the fitted values, influential
 observations (Cook's distance beyond 4/n, linear model), overdispersion and an excess of zeros
-(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, and the
-residuals' spatial autocorrelation when the project has coordinates. With many observations a
-test sees harmless departures, with few it sees none: the residual plots remain the reference.
+(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, the
+residuals' spatial autocorrelation when the project has coordinates, and ℹ a quantitative X far
+from 0 (a year: 0 outside its values and its mean beyond 5 standard deviations) crossed with a
+qualitative variable without being centred: each category's coefficient is then its difference
+where that X is 0, far from the data, hence its size and its wide interval. Its button, "Fit
+again with “year” centred", fits a new model (M1 (1)) with its scaling Ctr: the same model, the
+difference read at the mean year, as its Methods and Results texts then say. With many
+observations a test sees harmless departures, with few it sees none: the residual plots remain
+the reference.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,

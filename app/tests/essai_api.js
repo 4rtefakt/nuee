@@ -1104,6 +1104,32 @@ async function principal() {
         && col(garde2.moyennes, 'estimation').every((x, i) => Math.abs(x - est[i]) < 1e-12) && !(await api('projets_modifies', {})).noms.includes(q2.nom),
       `enregistrées avec le projet, rouvertes : ${JSON.stringify(garde2.reglages)}`);
     });
+    await etape('une année loin de 0 croisée avec un secteur : les conditions du modèle disent pourquoi le coefficient d’un secteur est si grand, et le réajustement la centre', async () => {
+      // (moteur/R/verifications_modele.R ; serveur.R : reajuster_demande, q$centrer)
+      let g = 29;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const pentes = { S1: 0.1, S2: 0.3, S3: -0.1 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) for (const sec of ['S1', 'S2', 'S3']) for (let an = 2001; an <= 2008; an += 1) lignes.push([`${s}${sec}${an}`, s, sec, an, (3 + pentes[sec] * (an - 2000) + 0.3 * alea()).toFixed(4)]);
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Centrer' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee, v.secteur], y: [v.y], echelle: 'none', nom: 'C1',
+        croises: [[v.annee, v.secteur]], aleatoires: [{ by: 'variable', variable: v.site }] });
+      const centrage = (r) => [].concat(r.verifications || []).find((x) => String(x.cle).startsWith('centrage'));
+      const c = centrage(await api('verifications_modele', { modele: lmm.id }));
+      verifier(!!c && c.statut === 'info' && Number(c.centrer) === v.annee && c.nom === 'annee' && /« secteur »/.test(c.texte) && /2004,5/.test(c.texte),
+        `la condition : ${JSON.stringify(c)}`);
+      const re = await api('reajuster', { modele: lmm.id, centrer: c.centrer });
+      const co = (m, terme) => [].concat(m.coefficients_regression.estimation)[[].concat(m.coefficients_regression.terme).indexOf(terme)];
+      const attendu = co(lmm, 'secteur(S1)') + co(lmm, 'annee*secteur(S1)') * 2004.5;
+      verifier(re.reglages.echelles[v.annee] === 'Ctr' && re.reglages.echelles[v.secteur] === 'none' && Math.abs(co(re, 'annee') - co(lmm, 'annee')) < 1e-6
+        && Math.abs(co(re, 'secteur(S1)') - attendu) < 1e-6 && Math.abs(re.qualite.logLik - lmm.qualite.logLik) < 1e-6 && !centrage(await api('verifications_modele', { modele: re.id }))
+        && /^C1 \(\d+\)$/.test(re.nom),
+      `réajusté centré : ${re.nom}, secteur(S1) ${co(re, 'secteur(S1)')} au lieu de ${co(lmm, 'secteur(S1)')} (attendu ${attendu})`);
+      let refus = '';
+      try { await api('reajuster', { modele: lmm.id, centrer: v.secteur }); } catch (err) { refus = err.message; }
+      verifier(/pas une variable quantitative X/.test(refus), `une variable qualitative à centrer, refusée : « ${refus} »`);
+    });
     await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
       // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1
       let g = 41;

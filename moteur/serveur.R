@@ -506,7 +506,8 @@ groupements_demande <- function(s, tous = FALSE) {
 
 # Réajuste un modèle sans certaines observations, ou avec un autre nombre de composantes ; une
 # régression, aussi avec une autocorrélation CAR1 (q$car1 : son temps et ses groupes, comme pour
-# l'autocorrélation des résidus).
+# l'autocorrélation des résidus), ou avec une variable quantitative X centrée sur sa moyenne (q$centrer :
+# son numéro ; les Conditions du modèle le proposent, verifications_modele.R).
 reajuster_demande <- function(q) {
   e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
@@ -523,6 +524,13 @@ reajuster_demande <- function(q) {
   if (!is.null(q$car1)) {  # Autocorrélation des résidus › Ajuster avec CAR1 : la même définition, avec CAR1 (regression.R)
     if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     d <- definition_car1(p, d, groupements_demande(q$car1$temps), groupements_demande(q$car1$groupe, TRUE))
+  }
+  if (length(q$centrer)) {  # l'échelle Ctr pour ses termes simples (ses termes croisés gardent la leur)
+    if (!est_regression(d)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
+    u <- as.numeric(unlist(q$centrer))
+    simple <- vapply(d$x, function(t) length(t$variables) == 1 && categorie(t) == 0 && isTRUE(as.numeric(t$variables) %in% u), TRUE)
+    if (!any(simple)) stop(traduire("Cette variable n'est pas une variable quantitative X du modèle.", "This variable isn't a quantitative X variable of the model."), call. = FALSE)
+    for (k in which(simple)) d$x[[k]]$scaling$type <- "Ctr"
   }
   exclues <- as.numeric(q$exclues %||% numeric(0))
   if (length(q$garder)) {  # ne garder que ces termes X (et les facteurs de leurs termes croisés)
@@ -1652,7 +1660,7 @@ DEMANDES <- list(
     e <- modele(q$modele)
     if (!inherits(e$modele, "modele_regression")) return(list(verifications = list()))
     langue <- getOption("nuee.langue") %||% "fr"
-    if (is.null(e$verifications[[langue]])) etat$modeles[[q$modele]]$verifications[[langue]] <- verifications_regression(projet(e$projet), e$modele)
+    if (is.null(e$verifications[[langue]])) etat$modeles[[q$modele]]$verifications[[langue]] <- verifications_regression(projet(e$projet), e$modele, e$definition)
     list(verifications = etat$modeles[[q$modele]]$verifications[[langue]])
   },
   # Le texte des résultats d'un modèle (resultats_texte.R), dans la langue demandée.
