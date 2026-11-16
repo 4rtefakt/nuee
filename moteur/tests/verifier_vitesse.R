@@ -21,7 +21,9 @@
 #   - les arbres boostés : le tirage de chaque arbre comme la boucle de gbm l'écrit, et les arbres
 #     faits par la fonction C de rpart comme par rpart() ;
 #   - l'échantillonnage par distances : les intégrales de la fonction de détection (une clé seule,
-#     des termes d'ajustement ; lignes et points) comme avec detection_distance en chaque point.
+#     des termes d'ajustement ; lignes et points) comme avec detection_distance en chaque point ;
+#   - TRIM : l'inverse de la corrélation sérielle de chaque site, calculée une fois par motif de
+#     temps observés, comme site par site.
 #   Rscript moteur/tests/verifier_vitesse.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -356,6 +358,26 @@ for (k in cas_distance) {
            all(vapply(bornes, function(ab) identical(integrale_detection(k[[2]], k[[3]], ab[[1]], ab[[2]]), integrale_avant(k[[2]], k[[3]], ab[[1]], ab[[2]])) &&
                                              identical(integrale_detection(k[[2]], k[[3]], ab[[1]], ab[[2]], TRUE), integrale_avant(k[[2]], k[[3]], ab[[1]], ab[[2]], TRUE)), TRUE)))
 }
+
+cat("TRIM : l'inverse de la corrélation sérielle de chaque site\n")
+set.seed(6)
+gt <- expand.grid(j = 1:10, i = 1:25)
+compte <- stats::rpois(nrow(gt), exp(2 + stats::rnorm(25)[gt$i] + 0.05 * gt$j))
+compte[stats::runif(nrow(gt)) < 0.25] <- NA
+compte[gt$i <= 6] <- ifelse(gt$j[gt$i <= 6] %in% c(3, 7), NA, pmax(1, compte[gt$i <= 6], na.rm = TRUE))  # (six sites au même motif)
+ptr <- projet_depuis_tableau(data.frame(nom = sprintf("r%03d", seq_len(nrow(gt))), site = sprintf("S%02d", gt$i), annee = 2000 + gt$j, compte = compte), "trim.csv")
+mtr <- ajuster(ptr, definir_modele(ptr, "TRIM", x = NULL, y = 3, echelle = "none",
+                                   options = list(site = list(by = "variable", variable = 1), temps = list(by = "variable", variable = 2), modele = 3)))
+tt <- mtr$donnees
+Jt <- length(tt$temps)
+Rg <- mtr$rho^abs(outer(seq_len(Jt), seq_len(Jt), "-"))
+inverses <- inverses_trim(tt, mtr$rho)
+verifier(sprintf("ρ = %.3f, %d sites, %d motifs de temps observés : chaque inverse comme calculé pour son site seul", mtr$rho, length(tt$sites),
+                 length(unique(apply(!is.na(tt$f), 1, paste, collapse = "")))),
+         is.null(inverses_trim(tt, 0)) && all(vapply(seq_along(tt$sites), function(i) {
+           o <- which(!is.na(tt$f[i, ]))
+           identical(inverses[[i]], chol2inv(chol(Rg[o, o, drop = FALSE])))
+         }, TRUE)))
 
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

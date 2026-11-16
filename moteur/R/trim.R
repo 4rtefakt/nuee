@@ -245,15 +245,34 @@ dessins_trim <- function(t, modele, cp = integer(0)) {
 # La matrice du temps d'un site.
 dessin_site <- function(des, i) if (is.null(des$Bs)) des$B0 else des$Bs[[i]]
 
+# L'inverse Ri⁻¹ de la corrélation sérielle de chaque site entre ses temps observés (ρ^|j−k|, rtrim
+# § 3.3), pour un ρ donné ; NULL sans corrélation (ρ = 0). Calculée une fois par motif de temps
+# observés (des sites le partagent souvent : comptés les mêmes années), et une fois pour toutes les
+# équations d'un même ρ (systeme_trim, alphas_trim) : l'estimation les écrit plusieurs fois à chaque
+# tour, et le test du score de chaque point de changement retiré au ρ du modèle.
+inverses_trim <- function(t, rho) {
+  if (rho == 0) return(NULL)
+  J <- length(t$temps)
+  Rg <- rho^abs(outer(seq_len(J), seq_len(J), "-"))
+  vus <- !is.na(t$f)
+  motifs <- apply(vus, 1, function(v) paste(which(v), collapse = " "))
+  uniques <- unique(motifs)
+  inverses <- lapply(match(uniques, motifs), function(i) {
+    o <- which(vus[i, ])
+    chol2inv(chol(Rg[o, o, drop = FALSE]))
+  })
+  inverses[match(motifs, uniques)]
+}
+
 # Les équations du modèle pour α, β, σ² et ρ donnés (rtrim § 3.2–3.4) : μ (toutes les cases), et
 # pour chaque site, ses cases observées o, Ωi = diag(μo) Vi⁻¹ diag(μo) avec Vi = σ² A½ Ri A½,
 # di = 1ᵀΩi1 et Fi = (1ᵀΩi Bo) / di ; le score des paramètres du temps U = Σ Boᵀ diag(μo) Vi⁻¹ (fo − μo)
 # et leur information, les effets des sites concentrés, I* = Σ Boᵀ (Ωi − Ωi11ᵀΩi / di) Bo.
-systeme_trim <- function(t, des, alpha, beta, sig2, rho) {
+# `inverses` : les Ri⁻¹ de ce ρ (inverses_trim).
+systeme_trim <- function(t, des, alpha, beta, sig2, rho, inverses = inverses_trim(t, rho)) {
   I <- length(t$sites)
   J <- length(t$temps)
   p <- des$p
-  Rg <- if (rho != 0) rho^abs(outer(seq_len(J), seq_len(J), "-")) else NULL
   mu <- matrix(0, I, J)
   U <- numeric(p)
   Is <- matrix(0, p, p)
@@ -266,11 +285,11 @@ systeme_trim <- function(t, des, alpha, beta, sig2, rho) {
     m <- mu[i, o]
     s <- sqrt(m)
     r <- (t$f[i, o] - m) / s
-    if (is.null(Rg)) {
+    if (is.null(inverses)) {
       w <- m / sig2
       Ur <- s * r / sig2
     } else {
-      Rinv <- chol2inv(chol(Rg[o, o, drop = FALSE]))
+      Rinv <- inverses[[i]]
       w <- s * drop(Rinv %*% s) / sig2
       Ur <- s * drop(Rinv %*% r) / sig2
     }
@@ -280,7 +299,7 @@ systeme_trim <- function(t, des, alpha, beta, sig2, rho) {
       bw <- drop(crossprod(Bo, w))
       F[i, ] <- bw / d[i]
       U <- U + drop(crossprod(Bo, Ur))
-      Om <- if (is.null(Rg)) Bo * (m / sig2) else (outer(s, s) * Rinv / sig2) %*% Bo
+      Om <- if (is.null(inverses)) Bo * (m / sig2) else (outer(s, s) * Rinv / sig2) %*% Bo
       Is <- Is + crossprod(Bo, Om) - outer(bw, bw) / d[i]
     }
   }
@@ -292,17 +311,16 @@ systeme_trim <- function(t, des, alpha, beta, sig2, rho) {
 # dépend pas de αi (à un facteur près, eo^−½ ⊙ Ri⁻¹ eo^½), et vaut 1 sans corrélation sérielle (le
 # maximum de vraisemblance : αi = ln Σ fo − ln Σ eo). Si zᵀ fo n'est pas positif (une corrélation
 # forte et un seul comptage positif), le site prend l'équation sans corrélation, comme rtrim.
-alphas_trim <- function(t, des, beta, rho) {
+# `inverses` : les Ri⁻¹ de ce ρ (inverses_trim).
+alphas_trim <- function(t, des, beta, rho, inverses = inverses_trim(t, rho)) {
   I <- length(t$sites)
-  J <- length(t$temps)
-  Rg <- if (rho != 0) rho^abs(outer(seq_len(J), seq_len(J), "-")) else NULL
   vapply(seq_len(I), function(i) {
     o <- which(!is.na(t$f[i, ]))
     B <- dessin_site(des, i)
     e <- exp((if (des$p) drop(B[o, , drop = FALSE] %*% beta) else 0) - log(t$w[i, o]))
     fo <- t$f[i, o]
-    if (!is.null(Rg)) {
-      z <- drop(chol2inv(chol(Rg[o, o, drop = FALSE])) %*% sqrt(e)) / sqrt(e)
+    if (!is.null(inverses)) {
+      z <- drop(inverses[[i]] %*% sqrt(e)) / sqrt(e)
       if (sum(z * fo) > 0 && sum(z * e) > 0) return(log(sum(z * fo)) - log(sum(z * e)))
     }
     log(sum(fo)) - log(sum(e))
@@ -364,9 +382,10 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
                             "The model can't be estimated: the time parameter %s goes to infinity (too few positive counts around it?)."), nom_parametre_trim(t, des, k[1])), call. = FALSE)
     }
   }
+  inverses <- NULL  # (les Ri⁻¹ du ρ courant, inverses_trim : aucune tant que ρ = 0)
   for (iter in seq_len(TRIM_ITERATIONS)) {
-    alpha <- alphas_trim(t, des, beta, rho)
-    s <- systeme_trim(t, des, alpha, beta, sig2, rho)
+    alpha <- alphas_trim(t, des, beta, rho, inverses)
+    s <- systeme_trim(t, des, alpha, beta, sig2, rho, inverses)
     if (gee) {
       ds <- dispersion_trim(t$f, s$mu, I + p, surdispersion, correlation)
       if (correlation && abs(ds$rho) >= 1) {
@@ -376,9 +395,10 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
       changement <- max(abs(ds$sig2 - sig2), abs(ds$rho - rho))
       if (ds$rho != rho || ds$sig2 != sig2) {
         sig2 <- ds$sig2
+        if (ds$rho != rho) inverses <- inverses_trim(t, ds$rho)
         rho <- ds$rho
-        if (ds$rho != 0) alpha <- alphas_trim(t, des, beta, rho)
-        s <- systeme_trim(t, des, alpha, beta, sig2, rho)
+        if (ds$rho != 0) alpha <- alphas_trim(t, des, beta, rho, inverses)
+        s <- systeme_trim(t, des, alpha, beta, sig2, rho, inverses)
       }
     } else changement <- 0
     db <- if (p) solve(s$I, s$U) else numeric(0)
@@ -389,7 +409,7 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
         nouveau <- beta + pas * db
         ok <- all(is.finite(nouveau)) && all(abs(nouveau) <= 2 * TRIM_PARAMETRE_MAX)
         if (ok && !gee && pas > 1 / 128) {
-          a <- alphas_trim(t, des, nouveau, rho)
+          a <- alphas_trim(t, des, nouveau, rho, inverses)
           mu <- t(vapply(seq_along(t$sites), function(i) exp(a[i] + drop(dessin_site(des, i) %*% nouveau) - log(t$w[i, ])), numeric(length(t$temps))))
           ok <- is.finite(rapport_vraisemblance(t$f, mu)) && rapport_vraisemblance(t$f, mu) <= lr0 * (1 + 1e-12) + 1e-12
         }
@@ -412,8 +432,8 @@ estimer_trim <- function(t, des, surdispersion, correlation) {
     stop(sprintf(traduire("L'ajustement ne converge pas après %d tours : essayez un modèle plus simple, ou sans la corrélation sérielle.",
                           "The fit doesn't converge after %d rounds: try a simpler model, or without the serial correlation."), TRIM_ITERATIONS), call. = FALSE)
   }
-  alpha <- alphas_trim(t, des, beta, rho)
-  s <- systeme_trim(t, des, alpha, beta, sig2, rho)
+  alpha <- alphas_trim(t, des, beta, rho, inverses)
+  s <- systeme_trim(t, des, alpha, beta, sig2, rho, inverses)
   V <- if (p) solve(s$I) else matrix(0, 0, 0)
   list(alpha = alpha, beta = beta, V = V, sig2 = sig2, rho = rho, mu = s$mu, d = s$d, F = s$F, I = s$I, U = s$U, iterations = iter,
        methode = if (avec_gee) "GEE" else "ML", des = des, surdispersion = surdispersion, correlation = correlation)
@@ -659,8 +679,9 @@ droite_ecarts_trim <- function(fit) {
 
 # Le test du score d'un point de changement retiré (rtrim § 4.1.1 ; Score) : le modèle avec lui,
 # sa pente égale à celle d'avant (le même μ que le modèle sans lui), S = Uᵀ I*⁻¹ U au point du modèle
-# sans lui (ses α, σ² et ρ) ; χ² à autant de degrés de liberté que de blocs.
-score_changement <- function(t, fit, cp_actifs, c) {
+# sans lui (ses α, σ² et ρ) ; χ² à autant de degrés de liberté que de blocs. `inverses` : les Ri⁻¹
+# du ρ du modèle (inverses_trim), les mêmes pour chaque point essayé.
+score_changement <- function(t, fit, cp_actifs, c, inverses = inverses_trim(t, fit$rho)) {
   cp <- sort(c(cp_actifs, c))
   des <- dessins_trim(t, 2, cp)
   nb <- length(des$blocs)
@@ -668,7 +689,7 @@ score_changement <- function(t, fit, cp_actifs, c) {
   b <- matrix(fit$beta, length(cp_actifs), nb)
   ajout <- if (avant == 0) matrix(0, 1, nb) else b[avant, , drop = FALSE]
   bt <- rbind(b[seq_len(avant), , drop = FALSE], ajout, b[avant + seq_len(length(cp_actifs) - avant), , drop = FALSE])
-  s <- systeme_trim(t, des, fit$alpha, as.vector(bt), fit$sig2, fit$rho)
+  s <- systeme_trim(t, des, fit$alpha, as.vector(bt), fit$sig2, fit$rho, inverses)
   S <- drop(t(s$U) %*% solve(s$I, s$U))
   stats::pchisq(S, nb, lower.tail = FALSE)
 }
@@ -700,7 +721,8 @@ pas_a_pas_trim <- function(t, cp, r) {
     entre <- FALSE
     candidats <- depart[!actifs]
     if (length(candidats)) {
-      ps <- vapply(candidats, function(c) score_changement(t, fit, depart[actifs], c), 0)
+      inverses <- inverses_trim(t, fit$rho)
+      ps <- vapply(candidats, function(c) score_changement(t, fit, depart[actifs], c, inverses), 0)
       k <- which.min(ps)
       if (ps[k] < TRIM_ENTREE) {
         c <- candidats[k]
