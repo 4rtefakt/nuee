@@ -121,17 +121,22 @@ const app = {
     const p = dock && dock.activePanel;
     if (estPage(p) && etat.modeles[p.id.slice(5)]) return p.id.slice(5);
     const n = /\/m\/([^/]+)/.exec(etat.noeud || '');
+    // (a view of a project in front, its data, a figure or a document: the model chosen in the
+    // explorer only if it is of that project)
+    if (n && etat.modeles[n[1]] && e && etat.projets[e.params.projet] && etat.modeles[n[1]].projet !== e.params.projet) return null;
     return n && etat.modeles[n[1]] ? n[1] : null;
   },
 
+  // The project the menus act on (Save, New model, Which analysis?, New document...): the active
+  // model's, else that of the view in front, else the one chosen in the explorer
   projetActif() {
     const m = app.modeleActif();
     if (m) return etat.modeles[m].projet;
-    const n = (etat.noeud || '').split('/')[0];
-    if (etat.projets[n]) return n;
     const c = panneauCourant();
     const e = c && etat.panneaux.get(c.id);
     if (e && etat.projets[e.params.projet]) return e.params.projet;
+    const n = (etat.noeud || '').split('/')[0];
+    if (etat.projets[n]) return n;
     const tous = Object.keys(etat.projets);
     return tous.length === 1 ? tous[0] : null;
   },
