@@ -1215,10 +1215,16 @@ renumeroter_variable <- function(p, de, vers) {
 #     (definition_suivie : les nouvelles y entrent, sauf pour les modèles de `sans_nouvelles`, leurs
 #     noms ou leurs numéros) ; le rapport nomme les modèles qui ont pris une catégorie, et les
 #     régressions dont la référence change quand même, sa catégorie n'ayant plus de lignes.
-# Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Rend
-# list(projet, rapport : ce qui a changé ; vers_nouveau : le numéro dans `nouveau` de chaque
-# observation, nommé par le sien ; absentes : les numéros des variables parties).
-aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
+# Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Avec
+# `selon_rejeu` (une étape retirée : serveur.R, retirer_etape_demande ; la source n'a pas changé), les
+# variables sont telles que la source et les autres étapes les donnent, et non telles que le projet les
+# avait : leur type (une variable qu'un modèle utilise et qui changerait de type : refusé), leurs
+# catégories dans leur ordre (les modèles les suivent par leur nom, ou par leurs lignes quand l'étape
+# retirée les avait renommées), leur unité et leur description, les coordonnées ; une variable d'une
+# formule qu'elles n'ont plus part. Rend list(projet, rapport : ce qui a changé ; vers_nouveau : le
+# numéro dans `nouveau` de chaque observation, nommé par le sien ; absentes : les numéros des variables
+# parties).
+aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu = FALSE) {
   nom <- function(v) as.character(v$ids[1])
   uid <- function(x) numeros_entiers(x$uid)
   uids <- function(l) numeros_entiers(vapply(l, `[[`, 0, "uid"))
@@ -1262,9 +1268,32 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   # (les variables dont les catégories ont changé de numéros, nommées par le leur : celles d'avant et
   # les nouvelles, pour les définitions des modèles)
   cartes <- list()
+  retypees <- numeric(0)
+  communes <- which(!is.na(m))
   for (i in seq_along(vn)) {
     v <- vn[[i]]
-    if (!is.na(k[i])) {
+    if (!is.na(k[i]) && selon_rejeu) {
+      # (une étape retirée : la variable telle que la source et les autres étapes la donnent)
+      a <- va[[k[i]]]
+      ca <- as.character(unlist(a$categories))
+      cn <- as.character(unlist(v$categories))
+      if (xor(length(ca) > 0, length(cn) > 0)) {
+        retypees <- c(retypees, uid_v[i])
+      } else if (length(ca) && !identical(ca, cn)) {
+        # (chaque catégorie d'avant : celle du même nom, ou celle que toutes ses lignes ont maintenant)
+        xa <- unname(actuel$donnees[as.character(uo_a[m[communes]]), as.character(uid(a))])
+        xn <- unname(X[communes, i])
+        carte <- match(ca, cn)
+        for (j in which(is.na(carte))) {
+          vues <- unique(xn[!is.na(xa) & xa == j & !is.na(xn)])
+          if (length(vues) == 1 && !cn[vues] %in% ca) carte[j] <- vues
+        }
+        neuves <- setdiff(cn, cn[carte[!is.na(carte)]])
+        cartes[[as.character(uid_v[i])]] <- list(anciennes = ca, carte = carte, neuves = neuves)
+        if (length(neuves)) categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
+      }
+      v$ids[1] <- nom(a)
+    } else if (!is.na(k[i])) {
       a <- va[[k[i]]]
       ca <- as.character(unlist(a$categories))
       cn <- as.character(unlist(v$categories))
@@ -1331,7 +1360,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   co <- if (is.list(co) && length(co$x) && length(co$y)) list(x = unname(mv[as.character(numeros_entiers(co$x))]), y = unname(mv[as.character(numeros_entiers(co$y))]),
                                                                 systeme = co$systeme)
   p["coordonnees"] <- list(if (!is.null(co) && !anyNA(c(co$x, co$y))) co
-                           else if (is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
+                           else if (!selon_rejeu && is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
   if (!is.null(nouveau$collecte)) p$collecte <- nouveau$collecte
   # (les variables qui manquent : celles d'une formule sont calculées de nouveau, sous leur numéro)
   absentes <- va[setdiff(seq_along(va), k)]
@@ -1339,7 +1368,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   parties <- list()
   for (a in absentes) {
     formule <- if (identical(premier_texte(a$origine$type), "formule")) premier_texte(a$formula) else ""
-    essai <- if (nzchar(formule)) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
+    essai <- if (nzchar(formule) && !selon_rejeu) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
     if (is.null(essai)) {
       parties[[length(parties) + 1]] <- a
       next
@@ -1370,11 +1399,24 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   # catégories (sauf les classes d'une PLS-DA : ses observations d'une classe nouvelle n'y entrent
   # pas, nouvelles_admises), puis les observations suivent)
   p$models <- actuel$models
+  # (une étape retirée qui rend une variable à son autre type : refusé quand un modèle l'utilise, dont
+  # les termes ne seraient plus les siens)
+  for (u in retypees) {
+    v <- variable_du_projet(p, u)
+    qui <- modeles_variable(actuel, u, nom(v))$definitions
+    if (length(qui)) {
+      fr <- !identical(getOption("nuee.langue"), "en")
+      stop(sprintf(traduire("Sans cette étape, %s serait de nouveau en %s, et %s l'utilise : modifiez ou supprimez d'abord ce modèle (Modèle › Modifier le modèle), ou gardez l'étape.",
+                            "Without this step, %s would be %s again, and %s uses it: modify or delete that model first (Model › Modify model), or keep the step."),
+                   guillemets_texte(nom(v), fr), if (length(v$categories)) traduire("catégories", "categories") else traduire("nombres", "numbers"),
+                   liste_mots(qui, fr)), call. = FALSE)
+    }
+  }
   gagnees <- list()
   for (u in names(cartes)) {
     uu <- as.numeric(u)
     finales <- as.character(unlist(variable_du_projet(p, uu)$categories))
-    p <- suivre_categories(p, uu, match(cartes[[u]]$anciennes, finales), cartes[[u]]$anciennes)
+    p <- suivre_categories(p, uu, cartes[[u]]$carte %||% match(cartes[[u]]$anciennes, finales), cartes[[u]]$anciennes)
     codes <- match(cartes[[u]]$neuves, finales)
     for (i in seq_along(p$models)) {
       d <- p$models[[i]]
@@ -1519,7 +1561,10 @@ cles_alignement <- function(actuel, nouveau) {
 # changé, avec ce qu'a donné chaque étape (`etapes`), le fichier lu (`fichier`), ce qu'il faut savoir
 # de sa lecture (`notes`) et si ses observations se retrouvent par leur place, sans colonne qui les
 # nomme (`par_position`)). Un fichier de plusieurs tableaux sans table choisie : list(choisir, chemin).
-mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NULL, dossier = dossier_projet(actuel), etapes = actuel$etapes %||% list()) {
+# `selon_rejeu` : une étape retirée, les variables telles que la source et les autres étapes les donnent
+# (aligner_projet).
+mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NULL, dossier = dossier_projet(actuel), etapes = actuel$etapes %||% list(),
+                        selon_rejeu = FALSE) {
   s <- actuel$source_donnees
   chemin <- premier_texte(chemin)
   if (!nzchar(chemin)) {
@@ -1550,7 +1595,7 @@ mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NU
   if (lecteur == "collecte") collecte <- brut$import_collecte %||% collecte
   brut$note <- brut$import_collecte <- NULL
   r <- rejouer_etapes(sans_attributs(brut), etapes, dossier, sans_nouvelles)
-  a <- aligner_projet(actuel, r$projet, sans_nouvelles)
+  a <- aligner_projet(actuel, r$projet, sans_nouvelles, selon_rejeu)
   n <- a$projet
   n$etapes <- etapes
   n$source_donnees <- source_fichier(chemin, lecteur, table, reglages, collecte)

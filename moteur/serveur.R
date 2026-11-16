@@ -1385,7 +1385,7 @@ retirer_etape_demande <- function(q) {
         basename(premier_texte(f$chemin))))
     }
   }
-  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n])
+  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n], selon_rejeu = TRUE)
   if (!is.null(r$choisir)) return(r)
   if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
   remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))

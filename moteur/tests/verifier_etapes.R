@@ -51,7 +51,10 @@
 #     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler ;
 #   - Annuler et Rétablir, et les modèles ajustés depuis : un modèle ajusté après un changement reste quand
 #     on l'annule (refusé quand il lit une variable que l'annulation retirerait) ; un modèle ajusté après
-#     Annuler ne laisse plus Rétablir ; les modèles réajustés par leur numéro, si.
+#     Annuler ne laisse plus Rétablir ; les modèles réajustés par leur numéro, si ;
+#   - une étape retirée défait ce qu'elle avait fait : des coordonnées, des catégories renommées et rangées
+#     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
+#     modèle l'y utilise).
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -1053,6 +1056,43 @@ demande("ajuster", list(projet = aid, type = "LM", x = list(ua("w")), y = ua("y"
 avant_refus <- projet(aid)
 verifier("un modèle ajusté sur une variable qu'Annuler retirerait : Annuler refusé, en disant de supprimer d'abord le modèle",
          grepl("M3", refus("annuler", list(projet = aid))) && grepl("« w »", refus("annuler", list(projet = aid))) && identical(projet(aid), avant_refus))
+
+cat("Une étape retirée : les variables telles que la source et les autres étapes les donnent\n")
+# (une variable en catégories, une unité, des catégories renommées et rangées, des coordonnées : chaque
+# étape retirée défait ce qu'elle avait fait, et non plus rien ; un modèle suit ses catégories, et sa
+# condition les nomme de nouveau)
+ret_csv <- fichier("retrait.csv")
+set.seed(3)
+utils::write.csv(data.frame(nom = paste0("O", 1:12), annee = rep(2016:2019, 3), habitat = rep(c("foret", "lande", "prairie"), each = 4),
+                            X = 1:12, Y = 12:1, y = round(rnorm(12), 3)), ret_csv, row.names = FALSE)
+rid2 <- demande("ouvrir", list(chemin = ret_csv))$id
+ur <- function(n) uid_de(projet(rid2), n)
+demande("type_variable", list(projet = rid2, variable = ur("annee"), type = "qualitative"))
+demande("decrire_variables", list(projet = rid2, descriptions = list(list(variable = ur("y"), unite = "kg"))))
+demande("categories", list(projet = rid2, variable = ur("habitat"), noms = c("forêt", "lande", "prairie"), ordre = c("prairie", "lande", "forêt")))
+demande("coordonnees", list(projet = rid2, regler = TRUE, x = ur("X"), y = ur("Y"), systeme = "2154"))
+demande("ajuster", list(projet = rid2, type = "LM", x = list(ur("habitat")), y = ur("y"), nom = "H", condition = 'habitat != "forêt"'))
+ma <- demande("ajuster", list(projet = rid2, type = "LM", x = list(ur("annee")), y = ur("y"), nom = "A"))
+etape_n <- function(quoi) which(vapply(projet(rid2)$etapes, function(e) e$demande, "") == quoi)
+retirer <- function(quoi) demande("retirer_etape", list(projet = rid2, n = etape_n(quoi)))
+retirer("coordonnees")
+verifier("les coordonnées retirées : le projet n'en a plus", is.null(projet(rid2)$coordonnees))
+retirer("categories")
+dh <- definition(projet(rid2), "H")
+verifier("les catégories : leurs noms et leur ordre d'avant ; le modèle suit, sa condition aussi",
+         identical(categories_de(projet(rid2), "habitat"), c("foret", "lande", "prairie")) &&
+           setequal(vapply(dh$x, function(t) t$name, ""), paste0("habitat(", c("foret", "lande", "prairie"), ")")) &&
+           identical(texte_condition(dh$condition), 'habitat != "foret"') && demande("ajuster", list(projet = rid2, numero = dh$number))$N == 8)
+retirer("decrire_variables")
+verifier("l'unité retirée", !nzchar(variable_du_projet(projet(rid2), ur("y"))$unite %||% ""))
+avant_type <- projet(rid2)
+refus_type <- refus("retirer_etape", list(projet = rid2, n = etape_n("type_variable")))
+verifier("annee de nouveau en nombres, qu'un modèle utilise en catégories : refusé, le modèle nommé, rien de changé",
+         grepl("de nouveau en nombres", refus_type) && grepl("A", refus_type, fixed = TRUE) && identical(projet(rid2), avant_type))
+demande("supprimer_modele", list(modele = ma$id, definition = TRUE))
+if (length(etape_n("type_variable"))) retirer("type_variable")
+verifier("sans le modèle : annee de nouveau en nombres, plus d'étape, les données d'accord",
+         !length(variable_du_projet(projet(rid2), ur("annee"))$categories) && !length(projet(rid2)$etapes) && isTRUE(donnees_conformes(projet(rid2))))
 
 cat("En anglais\n")
 options(nuee.langue = "en")
