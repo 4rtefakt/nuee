@@ -1599,7 +1599,8 @@ function ouvrirPage(id) {
 function remplacerPage(ancien, nouveau) {
   const page = dock && dock.getPanel(`page:${ancien}`);
   const interne = pages.get(ancien);
-  if (!page || !interne) return;
+  // (two fits of the definition in the session, each with its page: the first one's page is kept)
+  if (!page || !interne || dock.getPanel(`page:${nouveau}`)) return;
   const m = etat.modeles[nouveau];
   const ids = new Map();
   for (const e of etat.panneaux.values()) {

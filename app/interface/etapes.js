@@ -219,9 +219,10 @@ async function dialogueMiseAJour(app, pid) {
         es.etat === 'aucune' ? el('span', {}, t('etapes_maj_fichier')) : radio('autre', t('etapes_maj_autre')),
         el('button', { onclick: () => choisirAutre() }, icone('folder-open'), t('etapes_maj_choisir')),
         st.autre ? el('span', { class: 'chemin-fichier', title: st.autre }, st.autre) : null),
-      st.tables ? el('div', { class: 'ligne' }, el('span', {}, t('etapes_maj_table')),
-        el('select', { onchange: (e) => { st.table = e.target.value || null; previsualiser(); } },
-          el('option', { value: '' }, t('etapes_maj_table_choisir')), st.tables.map((x) => el('option', { value: x, selected: x === st.table }, x)))) : null);
+      // (a file of several tables: the list File › Open shows, app.js choisirTable)
+      st.tables ? el('div', { class: 'ligne table-maj' }, el('span', {}, t('etapes_maj_table')),
+        el('select', { class: 'liste-tables', size: Math.min(8, Math.max(3, st.tables.length)), onchange: (e) => { st.table = e.target.value || null; previsualiser(); } },
+          st.tables.map((x) => el('option', { value: x, selected: x === st.table }, x)))) : null);
   };
   const choisirAutre = async () => {
     const c = await app.choisirTableau();

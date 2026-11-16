@@ -530,6 +530,8 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .retrait-etape > p { margin: 2px 0 6px; }
 .fichier-maj .ligne { flex-wrap: wrap; gap: 6px 10px; margin: 4px 0; }
 .fichier-maj .champ { color: var(--texte); }
+.fichier-maj .table-maj { align-items: flex-start; }
+.fichier-maj .liste-tables { width: auto; }
 .apercu-maj { min-height: 6em; }
 .resume-maj { font-weight: 600; margin: 4px 0 8px; }
 .resume-maj.rien { color: var(--ok); }

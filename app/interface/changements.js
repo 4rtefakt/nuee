@@ -62,7 +62,7 @@ export async function resumerProjet(app, pid, { surProgression } = {}) {
 // `pid`, titled `titre`; it opens at once and fills in as the engine answers. Resolves to what it
 // shows: { id, titre, pid, modeles: [{ nom, numero, type, comparaison | erreur }], avantSeul, apresSeul,
 // donnees, documents }. After an update of the data (etapes.js): `donnees`, its report as
-// etapes_texte.js reads it ({ resume, sections, fichier }); `documents`, the documents whose cited
+// etapes_texte.js reads it ({ resume, rien, sections, fichier }); `documents`, the documents whose cited
 // values changed ([{ id, titre, valeurs: [{ debut, fin, brut, avant, apres, phrase, perime }] }]).
 export async function afficherChangements(app, { titre, pid, avant, apres, donnees = null, documents = null }) {
   const id = `C${++compteur}-${Date.now().toString(36)}`;
