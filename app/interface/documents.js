@@ -254,7 +254,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
         CM.search({ top: true }), CM.highlightSelectionMatches(),
         CM.keymap.of([...CM.closeBracketsKeymap, ...CM.defaultKeymap, ...CM.searchKeymap, ...CM.historyKeymap, ...CM.completionKeymap, CM.indentWithTab]),
         CM.placeholder(t('document_placeholder')),
-        CM.EditorView.contentAttributes.of({ spellcheck: 'true', lang: s.langue }),
+        CM.EditorView.contentAttributes.of({ spellcheck: 'true', lang: s.langue, 'aria-label': t('texte_document') }),
         marques,
         CM.EditorView.updateListener.of((u) => {
           if (u.selectionSet) loc.curseur = u.state.selection.main.head;

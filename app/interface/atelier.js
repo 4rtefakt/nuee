@@ -228,7 +228,7 @@ export function dialogueVariables(app, p, uid = null) {
         el('td', {}, v.qualitative ? el('button', { onclick: () => { d.fermer(); app.categoriesVariable(p.id, v.uid); } }, icone('tag'), t('atelier_categories')) : ''));
     }));
     zone.replaceChildren(el('table', { class: 'tableau compact' },
-      el('thead', {}, el('tr', {}, [t('variables'), t('atelier_unite'), t('atelier_description'), ''].map((h) => el('th', {}, h)))), corps));
+      el('thead', {}, el('tr', {}, [t('variables'), t('atelier_unite'), t('atelier_description'), el('span', { class: 'lecteur-seul' }, t('atelier_categories'))].map((h) => el('th', {}, h)))), corps));
     infos.textContent = vues.length === LIGNES_MAX ? t('atelier_premieres', { n: LIGNES_MAX }) : '';
   };
   async function valider() {

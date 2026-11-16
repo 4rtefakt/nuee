@@ -56,7 +56,9 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
   const sig = (i) => col('p_corrige')[i] !== null && col('p_corrige')[i] <= 0.05;
   const y = ordre.map((i) => col('reponse')[i]);
   if (courbe) {
+    // (a corrected p ≤ 0.05: its colour, and a star, not the colour alone)
     tracer(ctx, g1, [{ type: 'bar', orientation: 'h', x: ordre.map((i) => col('edf')[i]), y, marker: { color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])) },
+      text: ordre.map((i) => (sig(i) ? '*' : '')), textposition: 'outside', cliponaxis: false,
       customdata: ordre.map((i) => [valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
       hovertemplate: '<b>%{y}</b><br>edf = %{x:.2f}<br>p = %{customdata[0]} · ' + t('par_reponse_p_corrige') + ' = %{customdata[1]}<extra></extra>' }],
     { title: { text: `${m.nom} · ${loc.terme} · edf` }, dragmode: 'zoom', showlegend: false, margin: { l: 110, r: 18, t: 34, b: 48 },
@@ -65,7 +67,7 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
     tracer(ctx, g1, [{ type: 'scatter', mode: 'markers', x: ordre.map((i) => col('estimation')[i]), y,
       error_x: { type: 'data', symmetric: false, array: ordre.map((i) => col('haut')[i] - col('estimation')[i]), arrayminus: ordre.map((i) => col('estimation')[i] - col('bas')[i]),
         color: c.doux, thickness: 1.2, width: 3 },
-      marker: { size: 8, color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])) },
+      marker: { size: 8, color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])), symbol: ordre.map((i) => (sig(i) ? 'circle' : 'circle-open')) },
       // (the interval's bounds with the estimate's 4 decimals)
       customdata: ordre.map((i) => [fmt(col('bas')[i], 4), fmt(col('haut')[i], 4), valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
       hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]} · ${t('par_reponse_p_corrige')} = %{customdata[3]}<extra></extra>` }],

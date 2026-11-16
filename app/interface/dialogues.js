@@ -441,7 +441,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         el('button', { title: t('transfos_suggerees_aide'), onclick: () => suggerer(vars) }, icone('wand-sparkles'), t('transfos_suggerees')),
         st.suggerees !== undefined ? el('span', { class: 'infos' }, t('transfos_appliquees', { n: st.suggerees })) : null),
       el('div', { class: 'defile' }, el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, ''), el('th', {}, t('role')), el('th', {}, t('echelle')),
+        el('thead', {}, el('tr', {}, el('th', {}, t('variables')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('categories'))), el('th', {}, t('role')), el('th', {}, t('echelle')),
           el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
           regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, t('transformation')),
           st.type === 'GAM' ? el('th', { title: t('courbe_aide') }, t('courbe')) : null)),
@@ -563,9 +563,9 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
         el('button', { disabled: !st.croises.length, onclick: () => { st.croises = []; st.croisesReglages = {}; rendre(); } }, t('tout_retirer'))),
       el('p', { class: 'note' }, t(regression() ? 'termes_note_regression' : 'termes_note')),
       el('div', { class: 'defile' }, st.croises.length ? el('table', { class: 'tableau' },
-        el('thead', {}, el('tr', {}, el('th', {}, t('termes')), el('th', {}, ''), el('th', {}, t('echelle')),
+        el('thead', {}, el('tr', {}, el('th', {}, t('termes')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('remarque'))), el('th', {}, t('echelle')),
           el('th', { title: regression() ? t('bloc_aide_regression') : t('bloc_aide') }, t('bloc')),
-          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, ''))),
+          regression() ? null : el('th', { title: t('modificateur_aide') }, t('modificateur')), el('th', {}, el('span', { class: 'lecteur-seul' }, t('retirer'))))),
         el('tbody', {}, st.croises.map((fs, i) => {
           // (in a regression, a factor without a role: no main effect; with another role than X: refused)
           const seuls = regression() ? [...new Set(fs)].filter((u) => !st.roles[u]) : [];
@@ -587,7 +587,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
             regression() ? null : el('td', {}, el('input', { type: 'number', step: 'any', min: 0, placeholder: '1', title: t('modificateur_aide'),
               value: r2.modificateur !== undefined ? +Number(r2.modificateur).toPrecision(5) : '', style: 'width:5em',
               oninput: (e) => { const x2 = parseFloat(e.target.value); reglage('modificateur', Number.isFinite(x2) && x2 !== 1 ? x2 : null); } })),
-            el('td', { class: 'num' }, el('button', { class: 'icone-seule', onclick: () => { st.croises.splice(i, 1); delete st.croisesReglages[k]; rendre(); } }, icone('x-circle'))));
+            el('td', { class: 'num' }, el('button', { class: 'icone-seule', title: t('retirer'), 'aria-label': `${t('retirer')} ${fs.map(nom).join(' × ')}`, onclick: () => { st.croises.splice(i, 1); delete st.croisesReglages[k]; rendre(); } }, icone('x-circle'))));
         }))) : el('p', { class: 'infos' }, t('aucun_terme'))));
   };
 
@@ -778,7 +778,8 @@ const AIDE = {
       ['Variables en évidence', 'Un clic sur une variable (barre des VIP, des coefficients ou des loadings, point des loadings, du biplot ou du S-plot, ligne d’un profil ou de la liste des variables) la met en évidence sur tous les graphiques du modèle ; un cadre en choisit plusieurs dans les nuages de points. Échap les efface.'],
       ['Fenêtres', 'Un onglet par modèle : sa page montre résumé, scores et loadings, ses autres vues s’y ajoutent en onglets. Les vues se déplacent par leur onglet (glisser-déposer), se divisent et s’empilent ; glisser l’onglet d’un modèle à côté d’un autre pour les comparer. Clic droit sur un onglet : détacher dans une fenêtre, agrandir, fermer. Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète.'],
       ['Graphiques', 'Molette : zoom ; clic droit : copier l’image, l’enregistrer en PNG ou SVG, voir les contributions de la sélection, en faire une classe. Listes Couleur et Étiquettes : par classe, groupe du dendrogramme, identifiant ou n’importe quelle variable.'],
-      ['Tableaux et commandes', 'Ctrl+C copie le tableau de la vue, à coller dans Excel (avec du texte sélectionné : le texte). Ctrl+K : rechercher une commande par son nom.'],
+      ['Tableaux et commandes', 'Ctrl+C copie le tableau de la vue, à coller dans Excel (avec du texte sélectionné : le texte ; une vue qui n’a qu’un graphique : ses nombres). Ctrl+K : rechercher une commande par son nom.'],
+      ['Clavier et lecteurs d’écran', 'Alt (ou F10) mène à la barre de menus, les flèches dans ses menus, Entrée lance une commande, Échap revient ; Alt et la lettre soulignée d’un menu l’ouvre (Alt+F Fichier…). F6 et Maj+F6 vont de zone en zone (barre d’outils, explorateur, chaque groupe de panneaux, barre d’état), Ctrl+Tab et Ctrl+Maj+Tab d’onglet en onglet ; sur un onglet, les flèches et Suppr. L’explorateur est un arbre (flèches ; Entrée ouvre, Espace choisit), un tableau une grille (flèches ; Entrée ou F2 modifie une cellule, Espace choisit une ligne, Entrée sur un en-tête trie). Maj+F10 ou la touche menu donne le menu de ce qui a le clavier (nœud, ligne, colonne, onglet, graphique). Un graphique est nommé par ce qu’il montre, Ctrl+C copie ses nombres. Les dialogues gardent le clavier jusqu’à leur fermeture. Les deux thèmes respectent les contrastes WCAG AA, et le réglage « réduire les animations » du système ; Mise en forme › Couleurs « lisibles par les daltoniens » (Okabe-Ito) est faite pour les déficiences de la vision des couleurs.'],
       ['Prédire un fichier', 'Prédiction › Prédire un fichier : un tableau (CSV, Excel, R, SPSS…) dont les colonnes portent les noms des variables du modèle. Les observations hors du domaine du modèle sont signalées ; le résultat s’exporte dans tous les formats d’export.'],
       ['Modèles hiérarchiques', 'Modèle › Scores en variables : les scores d’un modèle deviennent des variables ($M1.t1…) utilisables comme X d’un autre modèle. Après avoir modifié le modèle de base, refaire cette étape puis réajuster le modèle supérieur.'],
       ['Exporter', 'Fichier › Exporter les données : le tableau du projet ; Fichier › Exporter les résultats du modèle (Ctrl+E) : scores, T2, DModX, loadings, VIP, coefficients… Formats : Excel, CSV, texte, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Les qualitatives restent qualitatives ; pour SPSS, Stata et SAS, les noms de variables sont rendus valides et le nom d’origine devient l’étiquette.'],
@@ -855,7 +856,8 @@ const AIDE = {
       ['Highlighted variables', 'Clicking a variable (a bar of the VIP, coefficients or loadings, a point of the loadings, biplot or S-plot, a line of a profile or of the variable list) highlights it on all the model’s graphs; a box picks several in the scatter plots. Esc clears them.'],
       ['Windows', 'One tab per model: its page shows the summary, scores and loadings, and its other views join it as tabs. Drag views by their tab to move, split and stack them; drag a model’s tab beside another to compare them. Right-click a tab to move it to a new window, maximize or close it. Window › New window opens a second full window.'],
       ['Plots', 'Wheel: zoom; right-click: copy the image, save it as PNG or SVG, see the contributions of the selection, make it a class. Colour and Labels lists: by class, dendrogram group, ID or any variable.'],
-      ['Tables and commands', 'Ctrl+C copies the view’s table, to paste into Excel (with text selected: the text). Ctrl+K: find a command by its name.'],
+      ['Tables and commands', 'Ctrl+C copies the view’s table, to paste into Excel (with text selected: the text; a view with only a plot: its numbers). Ctrl+K: find a command by its name.'],
+      ['Keyboard and screen readers', 'Alt (or F10) goes to the menu bar, the arrows through its menus, Enter runs a command, Esc goes back; Alt with a menu’s underlined letter opens it (Alt+F File…). F6 and Shift+F6 go from area to area (toolbar, explorer, each group of panels, status bar), Ctrl+Tab and Ctrl+Shift+Tab from tab to tab; on a tab, the arrows and Delete. The explorer is a tree (arrows; Enter opens, Space chooses), a table a grid (arrows; Enter or F2 edits a cell, Space chooses a row, Enter on a header sorts). Shift+F10 or the menu key gives the menu of what has the keyboard (a node, a row, a column, a tab, a plot). A plot is named by what it shows, Ctrl+C copies its numbers. Dialogs keep the keyboard until they close. Both themes meet WCAG AA contrast and follow the system’s “reduce motion” setting; Format plot › Colours “colour-blind safe” (Okabe-Ito) is made for colour-vision deficiencies.'],
       ['Predict a file', 'Predict › Predict a file: a table (CSV, Excel, R, SPSS…) whose columns carry the model’s variable names. Observations outside the model’s domain are flagged; results export to every export format.'],
       ['Hierarchical models', 'Model › Scores as variables: a model’s scores become variables ($M1.t1…) usable as X of another model. After changing the base model, do it again and refit the upper model.'],
       ['Export', 'File › Export data: the project’s table; File › Export model results (Ctrl+E): scores, T2, DModX, loadings, VIP, coefficients… Formats: Excel, CSV, text, R (.rds, .RData), SPSS, Stata, SAS, jamovi, dBase, Weka. Qualitative variables stay qualitative; for SPSS, Stata and SAS, variable names are made valid and the original name becomes the label.'],
