@@ -704,11 +704,17 @@ enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(c
   p$observations <- json_observations(p$observations)
   p$models <- json_termes_modeles(p$models)
   ecrire <- function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE)
-  if (is.null(copie)) return(ecrire_sans_risque(chemin, ecrire))
-  ecrire(copie)
+  # (une copie qui ne s'écrit pas, le disque de la séance plein : le fichier s'écrit comme avant, sans elle ;
+  # attr(, "copie") dit si elle est là)
+  if (!is.null(copie) && !isTRUE(tryCatch({ ecrire(copie); TRUE }, error = function(e) FALSE))) {
+    unlink(copie)
+    copie <- NULL
+  }
+  if (is.null(copie)) return(invisible(structure(ecrire_sans_risque(chemin, ecrire), copie = NULL)))
   ecrire_sans_risque(chemin, function(f) {
     if (!file.copy(copie, f, overwrite = TRUE)) stop(sprintf(traduire("Impossible d'écrire %s", "Couldn't write %s"), chemin), call. = FALSE)
   })
+  invisible(structure(chemin, copie = copie))
 }
 
 # Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à

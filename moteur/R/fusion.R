@@ -294,15 +294,38 @@ cellules_conflit <- function(obs, i, vb, vm, vl, ob) {
                                                                                               mien = valeur_lisible(texte_valeurs(vm)[j]), leur = valeur_lisible(texte_valeurs(vl)[j])))))
 }
 
+# Les catégories qu'un côté `tX` a renommées dans la variable de clé `k` (tableau_fusion) : chacune de la
+# base qu'il n'a plus, dont toutes les cellules ont pris chez lui un même nom nouveau ; le nouveau nom de
+# chacune, nommé par l'ancien.
+renommages_categories <- function(tB, tX, k) {
+  cb <- as.character(unlist(tB$vars[[k]]$categories))
+  cx <- as.character(unlist(tX$vars[[k]]$categories))
+  r <- character(0)
+  if (!length(cb) || !length(cx)) return(r)
+  oc <- intersect(tB$cles_o, tX$cles_o)
+  vb <- valeurs_fusion(tB, k, oc)
+  vx <- valeurs_fusion(tX, k, oc)
+  for (o in setdiff(cb, cx)) {
+    n <- unique(vx[!is.na(vb) & vb == o])
+    if (length(n) == 1 && !is.na(n) && !n %in% cb) r[[o]] <- n
+  }
+  r
+}
+
 # Les catégories d'une variable qualitative après fusion. `cb`, `cm`, `cl` : celles de la base, la mienne
 # et la leur (NULL quand le côté ne l'a pas en qualitative) ; `depart` : la liste d'où partir (la mienne,
-# ou celle que les étapes rejouées donnent) ; `utilisees` : celles qu'ont les valeurs fusionnées. Une
-# catégorie qu'un côté a retirée (renommée, fusionnée dans une autre) part, sauf si une valeur l'a encore ;
-# celles qu'un côté a ajoutées, et toute catégorie qu'une valeur a, viennent juste avant la dernière, qui
-# reste la dernière (etapes.R : categories_alignees ; la référence d'une régression ne change pas).
-# L'ordre des catégories communes est celui du côté qui l'a changé ; changé autrement des deux côtés, un
-# conflit.
-categories_fusion <- function(cb, cm, cl, depart, utilisees, ctx, k) {
+# d'ordinaire) ; `utilisees` : celles qu'ont les valeurs fusionnées ; `renommees` : celles qu'un côté a
+# renommées (renommages_categories). Une catégorie renommée prend la place de l'ancienne (comme Édition ›
+# Catégories la lui donne) ; une catégorie qu'un côté a retirée (fusionnée dans une autre) part, sauf si
+# une valeur l'a encore ; celles qu'un côté a ajoutées, et toute catégorie qu'une valeur a, viennent juste
+# avant la dernière, qui reste la dernière (etapes.R : categories_alignees ; la référence d'une régression
+# ne change pas). L'ordre des catégories communes est celui du côté qui l'a changé ; changé autrement des
+# deux côtés, un conflit.
+categories_fusion <- function(cb, cm, cl, depart, utilisees, ctx, k, renommees = character(0)) {
+  for (o in names(renommees)) {
+    i <- match(o, depart)
+    if (!is.na(i) && !renommees[[o]] %in% depart && !o %in% utilisees) depart[i] <- renommees[[o]]
+  }
   retirees <- c(if (length(cb) && !is.null(cm)) setdiff(cb, cm), if (length(cb) && !is.null(cl)) setdiff(cb, cl))
   liste <- depart[!(depart %in% retirees) | depart %in% utilisees]
   neuves <- unique(c(if (!is.null(cm)) setdiff(cm, cb), if (!is.null(cl)) setdiff(cl, cb), utilisees))
@@ -406,8 +429,11 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
   }
   obs <- c(garder_m, oL[(!oL %in% oM & !oL %in% oB) | oL %in% rendues])
   n <- length(obs)
-  # (les valeurs de chaque variable gardée, cellule par cellule)
+  # (les valeurs de chaque variable gardée, cellule par cellule ; une variable ajoutée des deux côtés et
+  # faite autrement, une variable calculée de deux formules : un seul conflit, dont le choix donne aussi
+  # ses champs, `entiere`)
   valeurs <- list()
+  entiere <- list()
   for (k in garder_v) {
     ob <- if (k %in% kB) obs %in% oB else rep(FALSE, n)
     om <- if (k %in% kM) obs %in% oM else rep(FALSE, n)
@@ -430,9 +456,21 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
     pris_l <- deux & !eml & emb
     r[pris_l] <- vl[pris_l]
     conflit <- deux & !eml & !emb & !elb
-    if (any(conflit)) {
-      x <- cellules_conflit(obs, which(conflit), vb, vm, vl, ob)
-      if (conflit_fusion(ctx, paste0("variable:", k), "variable", k, titre_cle_fusion(k), x$mien, x$leur, x$details) == "leur") r[conflit] <- vl[conflit]
+    champs <- character(0)
+    if (!startsWith(k, ID_FUSION) && k %in% kM && k %in% kL && !k %in% kB) {
+      wm <- tM$vars[[k]]
+      wl <- tL$vars[[k]]
+      champs <- setdiff(unique(c(names(wm), names(wl))), c("uid", "categories"))
+      champs <- champs[vapply(champs, function(f) !identical(texte_champ(wm, f), texte_champ(wl, f)), TRUE)]
+    }
+    if (any(conflit) || length(champs)) {
+      x <- if (any(conflit)) cellules_conflit(obs, which(conflit), vb, vm, vl, ob) else list(mien = character(0), leur = character(0))
+      decrire <- function(w, cellules) paste(c(vapply(champs, function(f) sprintf(traduire("%s : %s", "%s: %s"), nom_champ_variable(f), paste(as.character(unlist(w[[f]])), collapse = " ")), ""),
+                                               cellules), collapse = " ; ")
+      choix <- conflit_fusion(ctx, paste0("variable:", k), "variable", k, titre_cle_fusion(k), decrire(tM$vars[[k]], x$mien), decrire(tL$vars[[k]], x$leur),
+                              c(x$details, if (length(champs)) list(champs = I(champs))))
+      if (choix == "leur") r[conflit] <- vl[conflit]
+      if (length(champs)) entiere[[k]] <- choix
     }
     valeurs[[k]] <- r
   }
@@ -459,7 +497,7 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
     vl <- tL$vars[[k]]
     v <- vm %||% vl %||% vb
     for (f in setdiff(unique(c(names(vb), names(vm), names(vl))), c("uid", "categories"))) {
-      cote <- cote_fusion(texte_champ(vb, f), texte_champ(vm, f), texte_champ(vl, f))
+      cote <- entiere[[k]] %||% cote_fusion(texte_champ(vb, f), texte_champ(vm, f), texte_champ(vl, f))
       if (cote == "conflit") cote <- conflit_champ_variable(ctx, k, f, vm, vl)
       source <- if (cote == "leur" || is.null(vm)) vl else vm
       v <- avec_champ(v, f, if (f %in% names(source)) source[[f]])
@@ -485,7 +523,8 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
       x <- texte_valeurs(x)
       cats <- function(w) if (!is.null(w) && length(unlist(w$categories))) as.character(unlist(w$categories))
       depart <- cats(vm) %||% cats(vl) %||% cats(vb) %||% character(0)
-      liste <- categories_fusion(cats(vb), cats(vm), cats(vl), depart, unique(x[!is.na(x)]), ctx, k)
+      liste <- categories_fusion(cats(vb), cats(vm), cats(vl), depart, unique(x[!is.na(x)]), ctx, k,
+                                 c(renommages_categories(tB, tM, k), renommages_categories(tB, tL, k)))
       v$categories <- liste
       codes <- match(x, liste)
     }
@@ -632,7 +671,8 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     if (!length(cats)) next
     de <- function(t) if (k %in% t$cles_v && length(unlist(t$vars[[k]]$categories))) as.character(unlist(t$vars[[k]]$categories))
     x <- valeurs_fusion(tD, k, tD$cles_o)
-    liste <- categories_fusion(de(tB), de(tM), de(tL), cats, unique(x[!is.na(x)]), ctx, k)
+    liste <- categories_fusion(de(tB), de(tM), de(tL), de(tM) %||% cats, unique(x[!is.na(x)]), ctx, k,
+                               c(renommages_categories(tB, tM, k), renommages_categories(tB, tL, k)))
     if (identical(liste, cats)) next
     i <- which(vapply(D$variables, function(w) identical(as.numeric(w$uid), as.numeric(v$uid)), TRUE))
     D$variables[[i]]$categories <- liste

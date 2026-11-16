@@ -1922,21 +1922,22 @@ DEMANDES <- list(
     # (sans q$chemin, un fichier à télécharger : les chemins relatifs restent ceux depuis le dossier du projet ;
     # avec, le fichier est écrit d'abord dans la séance, la base d'une fusion à venir, puis copié à sa place)
     copie <- if (!is.null(q$chemin)) copie_fichier_lu()
-    tryCatch(enregistrer_projet(p, chemin, as.character(q$version %||% ""), dossier = if (!is.null(q$chemin)) dirname(chemin) else dossier_projet(p),
-                                copie = copie, auteur = q$auteur),
-             error = function(e) {
-               if (!is.null(copie)) unlink(copie)
-               stop(e)
-             })
+    ecrit <- tryCatch(enregistrer_projet(p, chemin, as.character(q$version %||% ""), dossier = if (!is.null(q$chemin)) dirname(chemin) else dossier_projet(p),
+                                         copie = copie, auteur = q$auteur),
+                      error = function(e) {
+                        if (!is.null(copie)) unlink(copie)
+                        stop(e)
+                      })
+    copie <- attr(ecrit, "copie")
     if (!is.null(q$chemin)) {
       p <- chemins_relatifs(p, dirname(chemin))  # (comme le fichier les écrit : etapes.R)
       p$chemin_enregistrement <- chemin
-      p$fichier_lu <- c(etat_fichier(chemin), list(copie = copie))
+      p$fichier_lu <- c(etat_fichier(chemin), if (!is.null(copie)) list(copie = copie))
       p$lecture_seule <- NULL  # (une ancienne version enregistrée ailleurs : une copie, un projet comme un autre)
     }
     p$modifie <- FALSE
     etat$projets[[p$id]] <- p
-    if (!is.null(copie)) {
+    if (!is.null(q$chemin)) {
       garder_copie(p$id, copie)
       ranger_copies(p$id)
     }
