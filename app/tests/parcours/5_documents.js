@@ -83,7 +83,8 @@ module.exports = {
     // menus, status bar and explorer stay English meanwhile and after
     await n.cliquer("document.querySelector('.document .cm-content')");
     await n.evaluer(`(() => { const v = window.CM.EditorView.findFromDOM(document.querySelector('.document .cm-editor'));
-      v.dispatch({ changes: { from: v.state.doc.length, insert: '\\n\\n{{M1.table.resume | Résumé}}\\n' }, selection: { anchor: v.state.doc.length + 35 } }); return true; })()`);
+      const x = '\\n\\n{{M1.table.resume | Résumé}}\\n';
+      v.dispatch({ changes: { from: v.state.doc.length, insert: x }, selection: { anchor: v.state.doc.length + x.length } }); return true; })()`);
     await n.choisir("document.querySelector('.document .barre-document select')", 'fr');
     const francais = await n.attendre(`(() => { const a = document.querySelector('.document .apercu-document'); const i = a && a.querySelector('img');
       const cellules = a ? [...a.querySelectorAll('.ref-tableau th, .ref-tableau td')].map((x) => __n.norm(x.textContent)) : [];

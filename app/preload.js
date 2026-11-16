@@ -46,7 +46,8 @@ contextBridge.exposeInMainWorld('bureau', {
     listerDistant: (url) => version('listerDistant', url),
     ouvrirDistant: (url, cheminDistant, dossier) => version('ouvrirDistant', url, cheminDistant, dossier),
     copierHistoire: (ancien, nouveau) => version('copierHistoire', ancien, nouveau),
-    // what the background exchanges did: { type: 'recu' | 'conflit' | 'attente' | 'envoi' | 'envoye' | 'erreur', chemin, … }
+    // what the background exchanges did: { type: 'recu' | 'pret' | 'conflit' | 'attente' | 'envoi' | 'envoye' | 'erreur', chemin, … }
+    // ('pret': a version for a project open in a window, written once that window gets it: recevoir)
     surVersions: (f) => ipcRenderer.on('versions', (_, e) => f(e)),
   },
   // signing in to a server (github.com, gitlab.com, a self-hosted GitLab), given by its name; no

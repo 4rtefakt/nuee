@@ -7,8 +7,9 @@
 //     each save (apresEnregistrement, with the former path after Save as) and when it closes
 //     (aLaFermeture): the hooks app.js calls (suivreProjet, apresEnregistrementVersions,
 //     fermetureVersions);
-//   - what the background did (surVersions): a version received reloads the open project and says
-//     so, with What changed; a conflict, a wait or an error shows in the status bar;
+//   - what the background did (surVersions): a version ready for an open project is taken once no
+//     window holds anything unsaved (the engine's word), then the project read again and said so,
+//     with What changed; otherwise it waits, said, as a conflict or an error is in the status bar;
 //   - a version opened beside the project, read-only (app.ouvrirLectureSeule; the engine keeps its
 //     source, oid and date: serveur.R, ouvrir), which Save refuses (app.refuserEnregistrement);
 //   - a version compared with the project now: opened in the engine only, its models fitted
