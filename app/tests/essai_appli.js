@@ -302,7 +302,7 @@ async function brancher(cible) {
     await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });
 
     // a document in English, the interface in French: the table it cites is in English, words and
-    // numbers, as its values are (documents.js, i18n.js: dansLangue); the references of the Methods
+    // numbers, as its values are (documents.js: dansSaLangue, a hidden page of its language); the references of the Methods
     // text it cites are in its list of references (bibliographie.js: joindreReferences)
     await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('fr'))");
     await p.api('document_enregistrer', { projet: exemple.id, titre: 'Document EN', langue: 'en', texte: 'Q2 = {{M2.Q2}}.\n\n{{M2.table.resume | Summary}}\n\n{{M2.methodes}}\n' });

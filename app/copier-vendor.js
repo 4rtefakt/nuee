@@ -16,7 +16,7 @@ for (const f of ['plotly.js-dist-min/plotly.min.js', 'dockview-core/dist/dockvie
 const editeur = require('esbuild').buildSync({
   stdin: {
     contents: `
-      import { EditorState, Compartment } from '@codemirror/state';
+      import { EditorState, Compartment, Transaction } from '@codemirror/state';
       import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType, lineNumbers } from '@codemirror/view';
       import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
       import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput, StreamLanguage, bracketMatching } from '@codemirror/language';
@@ -25,7 +25,7 @@ const editeur = require('esbuild').buildSync({
       import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
       import { tags } from '@lezer/highlight';
       import markdownit from 'markdown-it';
-      window.CM = { EditorState, Compartment, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
+      window.CM = { EditorState, Compartment, Transaction, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
         WidgetType, defaultKeymap, history, historyKeymap, indentWithTab, syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput,
         markdown, markdownLanguage, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion, search, searchKeymap,
         highlightSelectionMatches, openSearchPanel, tags, lineNumbers, StreamLanguage, bracketMatching };

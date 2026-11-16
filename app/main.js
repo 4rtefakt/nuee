@@ -913,8 +913,10 @@ function ipc() {
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
-  // (before a restart's recovery copies: what every window's documents and figures still hold goes to
-  // the engine, as before closing; and the engine the copies are made with: idMoteur)
+  // (what every window's documents and figures still hold goes to the engine, as before closing:
+  // before a restart's recovery copies, and before a window decides on a project's unsaved changes,
+  // interface/versions.js: a version received, restored or merged; and the engine the copies are
+  // made with: idMoteur)
   recevoir('vider-fenetres', () => viderFenetres());
   recevoir('id-moteur', () => idMoteur());
   recevoir('arreter-calcul', () => arreterCalcul());

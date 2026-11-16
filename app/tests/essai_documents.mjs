@@ -88,6 +88,11 @@ contient('le code et l’échappé restent tels quels', html, ['<code>{{M1.Q2}}<
 contient('saut de page, erreur avec sa raison', html, ['<p class="saut-page"></p>', 'class="ref erreur"', '<small>— M1.inconnu']);
 contient('dans une liste et dans un tableau', html, ['<li><span class="ref" title="{{M1.A}}">2</span></li>', '<td style="text-align:right"><span class="ref" title="{{M1.Q2}}">0,65</span></td>']);
 contient('le titre du document', html, ['<h1 class="titre-document">Essai</h1>', 'A. Auteur']);
+// a figure's source: the engine's PNG, or the preview's blob: copy of it (documents.js, urlApercu); anything else dropped
+const figure = (image) => versHTML(md, analyser(md, '{{M1.scores}}\n'), [{ genre: 'figure', image, numero: 1 }], libelles);
+const blob = 'blob:http://127.0.0.1:52817/0b6f2d9e-6c1a-4b0e-9a55-3f1d2e4c5b6a';
+contient('la copie de l’aperçu (blob:) gardée', figure(blob), [`<img src="${blob}"`]);
+contient('une autre source laissée de côté', figure('https://exemple.invalid/x.png') + figure('javascript:alert(1)'), ['<img src=""', '<img src=""']);
 // a plot in a sentence is refused (documents.js gives it this error); the text alone stays a paragraph
 const b = analyser(md, 'Texte {{M1.scores}} suite.\n\n{{M1.Q2}}\n');
 const html2 = versHTML(md, b, [{ erreur: 'seul' }, { genre: 'valeur', texte: '0,65' }], libelles);

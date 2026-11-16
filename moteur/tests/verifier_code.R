@@ -442,6 +442,23 @@ approuver(autre)
 ok <- demande("ajuster", list(projet = r2$id, numero = s1$numero))
 verifier("Exécuter : approuvé, il s'ajuste", identical(ok$type, "CODE") && identical(ok$code, autre))
 
+cat("Modifier le code : le modèle garde son numéro\n")
+code_b <- "fit <- lm(y ~ x, data = donnees)\nfit"
+approuver(code_b)
+definitions <- function() Filter(function(d) identical(d$type, "CODE"), projet(r2$id)$models)
+q_b <- c(list(projet = r2$id, type = "CODE", nom = "R1", titre = "", options = list(code = code_b)), list(meme_numero = s1$numero))
+mb <- demande("ajuster", q_b)
+verifier("son code modifié sous son nom (meme_numero, comme Modifier le code l'envoie) : le même numéro, une seule définition de ce numéro, le nouveau code",
+         identical(as.numeric(mb$numero), as.numeric(s1$numero)) && sum(vapply(definitions(), function(d) identical(as.numeric(d$number), as.numeric(s1$numero)), TRUE)) == 1 &&
+           identical(Find(function(d) identical(as.numeric(d$number), as.numeric(s1$numero)), definitions())$options$code, code_b))
+mc <- demande("ajuster", utils::modifyList(q_b, list(nom = "R1 bis")))
+verifier("… renommé en même temps : toujours ce numéro, l'ancienne définition remplacée (plus de R1), les autres modèles gardés",
+         identical(as.numeric(mc$numero), as.numeric(s1$numero)) && !any(vapply(definitions(), function(d) identical(d$name, "R1"), TRUE)) &&
+           identical(Find(function(d) identical(as.numeric(d$number), as.numeric(s1$numero)), definitions())$name, "R1 bis") &&
+           any(vapply(definitions(), function(d) identical(d$name, "R2"), TRUE)))
+md <- demande("ajuster", c(list(projet = r2$id, type = "CODE", nom = "R3", titre = "", options = list(code = code_b))))
+verifier("un nouveau modèle, lui, prend un numéro libre", !as.numeric(md$numero) %in% vapply(Filter(function(d) !identical(d$name, "R3"), projet(r2$id)$models), function(d) as.numeric(d$number), 0))
+
 # ---------------------------------------------------------------- la politique
 
 cat("La politique qui retire le type (DisableCustomCode)\n")

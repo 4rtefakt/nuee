@@ -77,5 +77,25 @@ module.exports = {
     // each file was handed to the system to open (main.js: shell.openPath), and opened by nobody here
     const ouverts = (await n.principal()).ouverts;
     verifier('ouvertsApresCompilation', [html, docx, pdf].every((f) => ouverts.includes(f)), ouverts);
+
+    // ---- the document in French, the interface in English: its table and plot made by a hidden page
+    // of its language (documents.js: dansSaLangue), in French words and numbers; the window's own
+    // menus, status bar and explorer stay English meanwhile and after
+    await n.cliquer("document.querySelector('.document .cm-content')");
+    await n.evaluer(`(() => { const v = window.CM.EditorView.findFromDOM(document.querySelector('.document .cm-editor'));
+      const x = '\\n\\n{{M1.table.resume | Résumé}}\\n';
+      v.dispatch({ changes: { from: v.state.doc.length, insert: x }, selection: { anchor: v.state.doc.length + x.length } }); return true; })()`);
+    await n.choisir("document.querySelector('.document .barre-document select')", 'fr');
+    const francais = await n.attendre(`(() => { const a = document.querySelector('.document .apercu-document'); const i = a && a.querySelector('img');
+      const cellules = a ? [...a.querySelectorAll('.ref-tableau th, .ref-tableau td')].map((x) => __n.norm(x.textContent)) : [];
+      return i && i.complete && i.naturalWidth > 0 && cellules.includes('Valeur propre') && !document.querySelector('.document .etat-document .erreur')
+        ? { cellules: cellules.slice(0, 12), virgule: cellules.some((x) => /^0,\\d{3}$/.test(x)), point: cellules.some((x) => /^0\\.\\d{3}$/.test(x)) } : null; })()`, 120000)
+      .catch(() => null);
+    verifier('documentFrancaisParSaPageCachee', !!francais && francais.virgule && !francais.point
+      && await n.evaluer("!!document.querySelector('iframe[src*=\"vue=hors_ecran\"]')"), francais);
+    const interfaceAnglaise = await n.evaluer(`({ menu: __n.norm(document.querySelector('.menu-haut').textContent), statut: __n.statut(),
+      explorateur: !!__n.tous('.arbre .noeud').find((e) => __n.norm(e.textContent).startsWith('Fitted models')), langue: __n.langueActuelle() })`);
+    verifier('interfaceResteAnglaise', interfaceAnglaise.menu === 'File' && interfaceAnglaise.langue === 'en' && interfaceAnglaise.explorateur
+      && !/[éè]|Moteur|prêt/i.test(interfaceAnglaise.statut), interfaceAnglaise);
   },
 };

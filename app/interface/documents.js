@@ -9,7 +9,7 @@
 // names (bibliography:), from Zotero on this computer (zotero.js: My Library or a group library), or
 // kept in the document itself (its `bib`: the references added from Zotero, with where they are in
 // it, or pasted, and a copy of those cited from files).
-import { t, tDans, dansLangue, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
+import { t, tDans, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous, inscrireEditeur } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
@@ -55,6 +55,53 @@ const MOTS = {
 };
 const mots = (langue) => MOTS[langue] || MOTS.fr;
 const libelles = (langue) => ({ figure: mots(langue).figure, tableau: mots(langue).tableau, seul: t('document_seul'), references: mots(langue).references });
+
+// A table or a plot a document cites, in its language: made here when it is the interface's (`ici`);
+// in the other language, by a page of that language hidden in this window (app.js: ?vue=hors_ecran,
+// demarrerHorsEcran), so that nothing of this window changes language meanwhile, its menus, dialogs,
+// status bar and explorer, nor the engine's messages to its other requests. `demande`: the model, the
+// part ({ genre: 'tableau', cle }) or the view ({ genre: 'image', vue, variante }) with the settings of
+// its open panel here and the model's selection (loc, etat), as imageVue takes them. One page per
+// language, made the first time; a table's blocks or a plot's PNG come back (null: no plot).
+const dansSaLangue = (s, demande, ici) => (s.langue === langueActuelle() ? ici() : dansLaLangue(s.langue, demande));
+const pagesLangue = new Map();
+function pageLangue(langue) {
+  if (pagesLangue.has(langue)) return pagesLangue.get(langue);
+  const cadre = el('iframe', { src: `./?vue=hors_ecran&langue=${langue}`, title: '', 'aria-hidden': 'true', tabindex: -1,
+    style: 'position:fixed;left:-40000px;top:0;width:1200px;height:900px;border:0' });
+  cadre.inert = true;
+  const pret = new Promise((ok, ko) => {
+    const ecoute = (ev) => {
+      if (ev.source !== cadre.contentWindow || !ev.data || ev.data.type !== 'hors_ecran_pret') return;
+      clearTimeout(fin);
+      window.removeEventListener('message', ecoute);
+      ok(cadre.contentWindow);
+    };
+    const fin = setTimeout(() => { window.removeEventListener('message', ecoute); ko(new Error(t('document_page_langue'))); }, 90000);
+    window.addEventListener('message', ecoute);
+  });
+  // (a page that didn't come: made again next time)
+  pret.catch(() => { pagesLangue.delete(langue); cadre.remove(); });
+  document.body.append(cadre);
+  pagesLangue.set(langue, pret);
+  return pret;
+}
+let demandesLangue = 0;
+async function dansLaLangue(langue, demande) {
+  const page = await pageLangue(langue);
+  const id = (demandesLangue += 1);
+  return new Promise((ok, ko) => {
+    const ecoute = (ev) => {
+      if (ev.source !== page || !ev.data || ev.data.type !== 'hors_ecran_fait' || ev.data.id !== id) return;
+      clearTimeout(fin);
+      window.removeEventListener('message', ecoute);
+      if (ev.data.erreur) ko(new Error(ev.data.erreur)); else ok(ev.data.resultat);
+    };
+    const fin = setTimeout(() => { window.removeEventListener('message', ecoute); ko(new Error(t('document_page_langue'))); }, 300000);
+    window.addEventListener('message', ecoute);
+    page.postMessage({ type: 'hors_ecran', id, demande }, location.origin);
+  });
+}
 
 // The Markdown in the editor, in the theme's colours (light or dark).
 let styleTexte = null;
@@ -110,6 +157,14 @@ export function installerDocuments(app) {
     montrerDansDocument: (pid, id, valeur) => montrerDansDocument(app, pid, id, valeur),
     // a document written in another window: shown again here, unless it is being written here too
     surDocument: (msg) => { for (const s of ouverts) if (s.pid === msg.projet && s.id === msg.id && !s.modifie) s.recharger(); },
+    // a project read again from its file (app.js: rechargerProjet, projet_recharge): its documents
+    // open here follow it to its new id; what was typed meanwhile is sent there, else its text shown
+    reattacherDocuments: async (ancien, nouveau) => {
+      for (const s of [...ouverts].filter((x) => x.pid === ancien)) {
+        s.pid = nouveau;
+        if (s.modifie) await s.enregistrer(); else await s.recharger();
+      }
+    },
   });
   window.addEventListener('beforeunload', () => { for (const s of ouverts) s.enregistrer(true); });
 }
@@ -179,7 +234,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   s.construireBarre = () => {
     s.langueUI = langueActuelle();
     s.champTitre = el('input', { class: 'titre-document-champ', value: s.titre, placeholder: t('document_sans_titre'), 'aria-label': t('document_titre'),
-      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre')); } });
+      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(cleDocument(s.pid, s.id), s.titre || t('document_sans_titre')); } });
     s.choixLangue = el('select', { title: t('document_langue_aide'), 'aria-label': t('document_langue_aide'),
       onchange: (e) => { s.langue = e.target.value; s.vue.contentDOM.setAttribute('lang', s.langue); s.programmer(true); } },
     [['fr', 'Français'], ['en', 'English']].map(([v, n]) => el('option', { value: v, selected: v === s.langue }, n)));
@@ -204,11 +259,11 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   // (the values an update of the data changed, marked in the preview: how many, and Hide changes)
   s.bandeChangements = el('div', { class: 'changements-document', hidden: true });
   s.majChangements = (n) => {
-    const m = changementsValeurs.get(`${pid}|${s.id}`);
+    const m = changementsValeurs.get(`${s.pid}|${s.id}`);
     s.bandeChangements.hidden = !n || !m;
     if (!n || !m) return;
     s.bandeChangements.replaceChildren(icone('refresh-cw'), el('span', {}, t('document_changements', { n, date: m.date })),
-      el('button', { onclick: () => { changementsValeurs.delete(`${pid}|${s.id}`); s.rafraichir(); } }, t('document_cacher_changements')));
+      el('button', { onclick: () => { changementsValeurs.delete(`${s.pid}|${s.id}`); s.rafraichir(); } }, t('document_cacher_changements')));
   };
   cadre.append(s.bandeChangements, corps);
   s.construireBarre();
@@ -306,7 +361,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     clearTimeout(s.attente);
     if (!s.modifie || s.ferme) return;
     s.modifie = false;
-    const q = { projet: pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() };
+    const q = { projet: s.pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() };
     if (s.bib !== s.bibEnvoye) q.bib = s.bib;
     if (s.style !== s.styleEnvoye) q.style = s.style;
     try {
@@ -314,10 +369,10 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       if (q.bib !== undefined) s.bibEnvoye = q.bib;
       if (q.style !== undefined) s.styleEnvoye = q.style;
       if (r.id !== s.id) { s.id = r.id; loc.doc = r.id; }  // (deleted meanwhile, in another window: it comes back)
-      const avant = app.projet(pid) || {};
+      const avant = app.projet(s.pid) || {};
       // (the explorer is drawn again only when what it shows changes: a title, the project now modified)
       if (avant.modifie !== r.projet.modifie || JSON.stringify(avant.documents) !== JSON.stringify(r.projet.documents)) app.majProjet(r.projet);
-      app.diffuser('document', { projet: pid, id: r.id });
+      app.diffuser('document', { projet: s.pid, id: r.id });
       if (!s.modifie) s.etatEnregistrement.textContent = '';
     } catch {
       if (s.ferme) return;
@@ -325,18 +380,20 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       s.etatEnregistrement.textContent = t('document_non_enregistre');
     }
   };
-  // the document as written in another window
+  // the document as written in another window (or changed by the engine: undone, merged), outside
+  // the editor's own undo history (its Ctrl+Z would bring the text before back)
   s.recharger = async () => {
-    const x = await demander('document', { projet: pid, id: s.id }, { silencieux: true }).catch(() => null);
+    const x = await demander('document', { projet: s.pid, id: s.id }, { silencieux: true }).catch(() => null);
     if (!x || s.ferme || s.modifie) return;
     if ((x.texte || '') !== s.vue.state.doc.toString()) {
       s.distant = true;
-      s.vue.dispatch({ changes: { from: 0, to: s.vue.state.doc.length, insert: x.texte || '' } });
+      s.vue.dispatch({ changes: { from: 0, to: s.vue.state.doc.length, insert: x.texte || '' },
+        ...(CM.Transaction ? { annotations: CM.Transaction.addToHistory.of(false) } : {}) });
       s.distant = false;
     }
     s.titre = x.titre || '';
     s.champTitre.value = s.titre;
-    app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre'));
+    app.titrePanneau(cleDocument(s.pid, s.id), s.titre || t('document_sans_titre'));
     if (x.langue && x.langue !== s.langue) { s.langue = x.langue; s.choixLangue.value = x.langue; }
     if ((x.bib || '') !== s.bib) { s.bib = x.bib || ''; s.bibEnvoye = s.bib; s.biblio.cache = null; }
     if (x.style && x.style !== s.style) { s.style = x.style; s.styleEnvoye = x.style; }
@@ -354,8 +411,8 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   };
   s.rafraichir();
   // (opened to show a value that changed: montrerDansDocument)
-  const v = aMontrer.get(`${pid}|${s.id}`);
-  if (v) { aMontrer.delete(`${pid}|${s.id}`); montrerValeur(s, v); }
+  const v = aMontrer.get(`${s.pid}|${s.id}`);
+  if (v) { aMontrer.delete(`${s.pid}|${s.id}`); montrerValeur(s, v); }
   return s;
 }
 
@@ -492,13 +549,13 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('resultats_texte', { modele: m.id, langue: s.langue }));
     return { genre: 'texte', paragraphes: [].concat(r.paragraphes).filter(Boolean) };
   }
-  // (tables and plots in the document's language, its words and its numbers: dansLangue)
+  // (tables and plots in the document's language, its words and its numbers: dansSaLangue)
   if (chemin[0] === 'table') {
     const x = partie(chemin[1], 'tableau');
     if (!x || chemin.length !== 2) return erreur('ref_tableau_inconnu');
     const cle = `${m.id}|${x.cle}|${s.langue}`;
     if (!s.tableaux.has(cle) && !attendre) return null;
-    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await dansLangue(s.langue, () => x.tableau(m)));
+    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await dansSaLangue(s, { genre: 'tableau', cle: x.cle, modele: m.id }, () => x.tableau(m)));
     return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: tDans(s.langue, x.cle), cle: x.cle };
   }
   const x = partie(chemin[0], 'vue');
@@ -515,7 +572,9 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     }
     const cle = `${m.id}|${x.vue}|${JSON.stringify(variante)}|${JSON.stringify(app.locVue(x.vue, m.id) || {})}|${s.langue}`;
     if (!s.images.has(cle) && !attendre) return null;
-    const image = s.images.get(cle) || garder(s.images, cle, await dansLangue(s.langue, () => imageVue(app, x.vue, m, variante)), 40);
+    const locVue = app.locVue(x.vue, m.id);
+    const image = s.images.get(cle) || garder(s.images, cle, await dansSaLangue(s, { genre: 'image', vue: x.vue, modele: m.id, variante,
+      loc: locVue ? app.locEnregistrable(locVue) : null, etat: app.etatModele(m.id) }, () => imageVue(app, x.vue, m, variante)), 40);
     if (!image) return erreur('ref_graphique_absent');
     return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: tDans(s.langue, x.cle), vue: x.vue, variante };
   }
@@ -1567,6 +1626,7 @@ ajouterTextes({
   document_nouveau_note: 'Le document est gardé dans le projet et s’enregistre avec lui. Les modèles cochés y sont déjà cités ; les autres se citent en tapant {{.',
   document_aucun: 'Ce projet n’a pas encore de document.', document_supprime: 'Ce document a été supprimé.', document_aucun_modele: 'Aucun modèle ajusté dans ce projet',
   document_chargement: 'Ouverture du document…', document_editeur_absent: 'L’éditeur de documents n’a pas pu être chargé (vendor/editeur.min.js).',
+  document_page_langue: 'Les tableaux et graphiques dans la langue du document n’ont pas pu être faits (sa page ne répond pas).',
   document_placeholder: 'Écrivez en Markdown. Tapez {{ pour citer un résultat du projet : {{M1.Q2}}, {{M1.scores | légende}}…',
   document_inserer: 'Insérer', document_inserer_aide: 'Insérer une valeur, un graphique, un tableau ou le texte des méthodes d’un modèle du projet',
   document_compiler: 'Compiler', document_compiler_aide: 'Écrire le document en Word, PDF, HTML ou Quarto, les références remplacées par leurs résultats',
@@ -1649,6 +1709,7 @@ ajouterTextes({
   document_nouveau_note: 'The document is kept in the project and saved with it. The models ticked are cited in it already; the others are cited by typing {{.',
   document_aucun: 'This project has no document yet.', document_supprime: 'This document was deleted.', document_aucun_modele: 'No fitted model in this project',
   document_chargement: 'Opening the document…', document_editeur_absent: 'The document editor couldn’t be loaded (vendor/editeur.min.js).',
+  document_page_langue: 'The tables and plots in the document’s language couldn’t be made (its page isn’t answering).',
   document_placeholder: 'Write in Markdown. Type {{ to cite a result of the project: {{M1.Q2}}, {{M1.scores | caption}}…',
   document_inserer: 'Insert', document_inserer_aide: 'Insert a value, a plot, a table or the Methods text of a model of the project',
   document_compiler: 'Compile', document_compiler_aide: 'Write the document as Word, PDF, HTML or Quarto, its references replaced by their results',

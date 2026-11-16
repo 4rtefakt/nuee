@@ -19,6 +19,7 @@ const TEXTES = {
     liste_obs: 'Liste des observations', liste_vars: 'Liste des variables', donnees: 'Données',
     predictions: 'Prédictions', predire: 'Prédire les observations', comparaison: 'Comparer les modèles',
     nouvelle_fenetre: 'Nouvelle fenêtre', detacher: 'Détacher dans une fenêtre', rattacher: 'Remettre dans la fenêtre principale',
+    vue_modele_parti: 'Ce modèle n’est plus dans la séance : son ajustement a été retiré ou remplacé.', fenetre_principale_muette: 'La fenêtre principale ne répond pas : faites-le depuis elle.',
     fermer_panneau: 'Fermer le panneau', fermer_autres: 'Fermer les autres', agrandir: 'Agrandir', restaurer: 'Restaurer',
     fermer_onglets_projet: 'Fermer tous les onglets de « {nom} »', fermer_vues: 'Fermer toutes les vues',
     reinitialiser: 'Réinitialiser la disposition', fenetres_ouvertes: 'Fenêtres ouvertes',
@@ -767,7 +768,7 @@ const TEXTES = {
     etapes_r_type_qualitative: '{variable} a des nombres dans le fichier : gardée qualitative, comme dans le projet',
     etapes_r_type_quantitative: '{variable} a du texte dans le fichier : lue en nombres, comme dans le projet',
     etapes_r_type_perdues: '{variable} a du texte dans le fichier : lue en nombres, comme dans le projet ; {n} valeur(s) qui ne sont pas des nombres deviennent manquantes',
-    etapes_r_toutes: 'Les {n} étapes rejouées.', etapes_r_faites: '{n} étape(s) rejouée(s) sur {total}.',
+    etapes_r_toutes: 'Les {n} étapes rejouées.', etapes_r_toutes_une: 'L’étape rejouée.', etapes_r_faites: '{n} étape(s) rejouée(s) sur {total}.',
     etapes_r_sautee: 'Sautée — {etape} : {raison}', etapes_r_erreur: 'En erreur — {etape} : {raison}', etapes_r_note: '{etape} : {note}',
     etapes_r_bloque: '{nom} ne peut plus être ajusté : il lui manque {variables}',
     etapes_r_reference: '{nom} : sa catégorie de référence de {variable}, {avant}, n’a plus d’observation ; {apres} prend sa place',
@@ -814,6 +815,7 @@ const TEXTES = {
     liste_obs: 'Observation list', liste_vars: 'Variable list', donnees: 'Data',
     predictions: 'Predictions', predire: 'Predict observations', comparaison: 'Compare models',
     nouvelle_fenetre: 'New window', detacher: 'Move to a new window', rattacher: 'Move back to the main window',
+    vue_modele_parti: 'This model is no longer in the session: its fit was removed or replaced.', fenetre_principale_muette: 'The main window isn’t answering: do it from there.',
     fermer_panneau: 'Close panel', fermer_autres: 'Close others', agrandir: 'Maximize', restaurer: 'Restore',
     fermer_onglets_projet: 'Close all tabs of “{nom}”', fermer_vues: 'Close all views',
     reinitialiser: 'Reset layout', fenetres_ouvertes: 'Open windows',
@@ -1557,7 +1559,7 @@ const TEXTES = {
     etapes_r_type_qualitative: '{variable} holds numbers in the file: kept qualitative, as in the project',
     etapes_r_type_quantitative: '{variable} holds text in the file: read as numbers, as in the project',
     etapes_r_type_perdues: '{variable} holds text in the file: read as numbers, as in the project; {n} value(s) that aren’t numbers become missing',
-    etapes_r_toutes: 'All {n} steps replayed.', etapes_r_faites: '{n} of {total} steps replayed.',
+    etapes_r_toutes: 'All {n} steps replayed.', etapes_r_toutes_une: 'The step replayed.', etapes_r_faites: '{n} of {total} steps replayed.',
     etapes_r_sautee: 'Skipped — {etape}: {raison}', etapes_r_erreur: 'Failed — {etape}: {raison}', etapes_r_note: '{etape}: {note}',
     etapes_r_bloque: '{nom} can’t be fitted again: {variables} missing',
     etapes_r_reference: '{nom}: its reference category of {variable}, {avant}, has no observations left; {apres} takes its place',
@@ -1606,29 +1608,20 @@ export function ecrire(k, v) {
 // the choice was kept only when changed: a profile that has shown an earlier version's What's new
 // (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
 // profile's What's new doesn't turn it French at its next start.
-let langue = lire('langue');
+// (the hidden page that draws a document's tables and plots in the other language, app.js:
+// ?vue=hors_ecran&langue=…: that language, its own, never kept as the person's choice. A global
+// language held across the awaits of a drawing would switch the window's menus, dialogs, status bar
+// and the engine's messages to it meanwhile: documents.js, dansSaLangue.)
+const page = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
+const langueDePage = page && page.get('vue') === 'hors_ecran' ? page.get('langue') : null;
+let langue = langueDePage === 'fr' || langueDePage === 'en' ? langueDePage : lire('langue');
 if (langue !== 'fr' && langue !== 'en') {
   langue = lire('version_vue') ? 'fr' : 'en';
   ecrire('langue', langue);
 }
 
-// A document in another language than the interface's (documents.js): the tables and plots it
-// cites are built in its language. While dansLangue() runs f, t(), libelleResultat() and the
-// numbers (nombres.js, Plotly's separators, the engine's messages) take that language; one at a
-// time, the others waiting their turn.
-let langueDocument = null;
-let tour = Promise.resolve();
-export function dansLangue(l, f) {
-  const suite = tour.then(async () => {
-    langueDocument = l === 'en' ? 'en' : 'fr';
-    try { return await f(); } finally { langueDocument = null; }
-  });
-  tour = suite.catch(() => {});
-  return suite;
-}
-
 export function t(cle, valeurs) {
-  return tDans(langueDocument || langue, cle, valeurs);
+  return tDans(langue, cle, valeurs);
 }
 
 // A string in the language `l` (a document's), whatever the interface's.
@@ -1664,7 +1657,7 @@ const PREFIXES_RESULTATS = [['probabilité ', 'probability '], ['distance au cen
 const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (OOB)', 'predicted (OOB)'],
   ['prédit (lien)', 'predicted (link)'], ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
-  const l = langueDocument || langue;
+  const l = langue;
   const dico = RESULTATS[l] || RESULTATS.fr;
   if (cle in dico) return dico[cle];
   if (l !== 'en') return cle;
@@ -1673,14 +1666,14 @@ export function libelleResultat(cle) {
   return cle;
 }
 
-export function langueActuelle() { return langueDocument || langue; }
+export function langueActuelle() { return langue; }
 
-// The interface's typography: a space before a colon or a percent sign in French only
-// ("Erreur : …", "5 %"; "Error: …", "5%")
-export const deuxPoints = () => (langue === 'fr' ? ' : ' : ': ');
-export const pourcent = () => (langue === 'fr' ? ' %' : '%');
+// The interface's typography, that of the page's language (a document's in its hidden page): a
+// space before a colon or a percent sign in French only ("Erreur : …", "5 %"; "Error: …", "5%")
+export const deuxPoints = () => (langueActuelle() === 'fr' ? ' : ' : ': ');
+export const pourcent = () => (langueActuelle() === 'fr' ? ' %' : '%');
 // between an interval's bounds, as references.js writes them: "[0,12 ; 0,56]", "[0.12, 0.56]"
-export const separateurIntervalle = () => (langue === 'fr' ? ' ; ' : ', ');
+export const separateurIntervalle = () => (langueActuelle() === 'fr' ? ' ; ' : ', ');
 
 export function changerLangue(l) {
   langue = l;

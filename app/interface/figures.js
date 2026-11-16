@@ -71,6 +71,14 @@ export function installerFigures(app) {
     },
     // (before a project is saved or closed: what was just changed in its figures goes in first)
     viderFigures: (pid) => Promise.all([...ouvertes].filter((s) => !pid || s.pid === pid).map((s) => s.enregistrer())),
+    // (a project read again from its file, app.js: projet_recharge: its figures open here follow it
+    // to its new id, a change made meanwhile sent there, else the figure shown as it is there)
+    reattacherFigures: async (ancien, nouveau) => {
+      for (const s of [...ouvertes].filter((x) => x.pid === ancien)) {
+        s.pid = nouveau;
+        if (s.modifie) await s.enregistrer(); else await s.recharger();
+      }
+    },
   });
   // (app.js's channel says when models change, in this window too: a model refitted, its figures
   // drawn again with its new fit)

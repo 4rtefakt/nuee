@@ -74,6 +74,9 @@ module.exports = {
     // ---- its code edited (the summary's Edit the code): fitted again in its place, under its name
     await n.cliquer(`__n.tous('button').find((b) => __n.norm(b.textContent) === __n.t('code_modifier'))`);
     await n.attendre(`!!${boite} && !!${boite}.querySelector('.editeur-code .cm-content')`);
+    // (its type stays: the fit takes the place of an R-code model's)
+    const typeFige = await n.evaluer(`__n.tous('select', ${boite}).find((s) => [...s.options].some((o) => o.value === 'PCA')).disabled`);
+    verifier('typeFigeEnModifiant', typeFige === true, typeFige);
     const CODE2 = CODE.replace('year * group', 'year + group');
     await n.evaluer(`(() => { const v = window.CM.EditorView.findFromDOM(${boite}.querySelector('.editeur-code .cm-editor'));
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: ${JSON.stringify(CODE2)} } }); return true; })()`);
@@ -82,6 +85,29 @@ module.exports = {
     const m2 = await n.attendre(`__n.api('etat').then((e) => { const x = [].concat(e.modeles).filter((y) => y.nom === ${JSON.stringify(m.nom)} && y.projet === ${JSON.stringify(m.projet)});
       return x.length === 1 && x[0].id !== ${JSON.stringify(id)} ? x[0] : null; })`);
     verifier('codeModifieReajuste', m2.code === CODE2 && ![].concat(m2.coefficients.terme).includes('year:groupimpact'), [].concat(m2.coefficients.terme).join(', '));
+    // (its number kept: its figures, documents and session know it by it; one definition of it)
+    const definitions = [].concat((await n.api('projet', { projet: m.projet })).modeles).filter((d) => d.nom === m.nom);
+    verifier('numeroGarde', m2.numero === m.numero && definitions.length === 1 && definitions[0].numero === m.numero, { avant: m.numero, apres: m2.numero, definitions: definitions.length });
+    await n.plotlyPret(coefficients, 1);
+    // ---- Edit the code from its summary in a window of its own: the dialog in the main window (app.js:
+    // demanderPrincipale), its fit followed in that window (ajustement_remplace), still one fit
+    const ongletResume = `__n.onglet(__n.t('resume'))`;
+    await n.cliquer(ongletResume);
+    await n.cliquer(`${ongletResume}.closest('.dv-groupview').querySelector('.actions-groupe button[title="' + __n.t('detacher') + '"]')`);
+    const fr = await n.fenetre('vue=resume');
+    await fr.cliquer(`__n.tous('button').find((b) => __n.norm(b.textContent) === __n.t('code_modifier'))`);
+    await n.attendre(`!!${boite} && !!${boite}.querySelector('.editeur-code .cm-content')`);
+    const CODE2b = `${CODE2}\n# edited from a window of its own`;
+    await n.evaluer(`(() => { const v = window.CM.EditorView.findFromDOM(${boite}.querySelector('.editeur-code .cm-editor'));
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: ${JSON.stringify(CODE2b)} } }); return true; })()`);
+    await n.bouton('ajuster');
+    await n.attendre('!__n.dialogue()', 180000);
+    const m3 = await n.attendre(`__n.api('etat').then((e) => { const x = [].concat(e.modeles).filter((y) => y.nom === ${JSON.stringify(m.nom)} && y.projet === ${JSON.stringify(m.projet)});
+      return x.length === 1 && x[0].code === ${JSON.stringify(CODE2b)} ? x[0] : null; })`);
+    const suivi = await fr.attendre(`location.search.includes(${JSON.stringify(`modele=${m3.id}`)}) && __n.tous('.resume').some((x) => __n.norm(x.textContent).includes('lme'))`).catch((e) => e.message);
+    verifier('modifierLeCodeDepuisSaFenetre', suivi === true && m3.numero === m.numero, suivi);
+    await fr.evaluer('window.close(), true').catch(() => {});
+    fr.fermer();
     await n.plotlyPret(coefficients, 1);
 
     // ---- saved, then changed by a colleague in a copy
@@ -108,6 +134,9 @@ module.exports = {
     await n.dialogue('code_montrer');
     const montre = await n.attendre(`(() => { const p = ${boite}.querySelector('pre.code-r'); return p ? [...p.querySelectorAll('.ligne-code')].map((l) => l.textContent).join('\\n') : null; })()`);
     verifier('codeMontreTelQuel', montre === CODE3, montre);
+    // (the keyboard on the code, not on Run it: Enter runs nothing unread)
+    const focus = await n.evaluer(`(() => { const a = document.activeElement; return a === ${boite}.querySelector('.corps-dialogue') ? 'code' : a && a.matches('button.principal') ? 'executer' : (a && a.tagName) || ''; })()`);
+    verifier('clavierSurLeCode', focus === 'code', focus);
     await capture('4-montrer');
     await n.bouton('code_executer');
     const fait = await n.attendre(`__n.api('etat').then((e) => [].concat(e.modeles).find((x) => x.projet === ${JSON.stringify(pc.id)} && x.type === 'CODE') || null)`, 180000);

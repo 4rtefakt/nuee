@@ -970,16 +970,21 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
   // Their branch brought into this history, path by path: every path other than the project's is
   // theirs; the project's, what decider says. A fast-forward when this history is in theirs, else
   // a merge commit whose two parents are both histories. Nothing changes on a conflict, nor when
-  // their project would be written over an open project's changes not saved ('attente').
-  // { resultat: 'a_jour' | 'recu' | 'conflit' | 'attente', version (theirs, when the file took it),
-  //   aEnvoyer (a merge made here) }
-  async function integrer(d, leur) {
+  // their project would be written over an open project's changes not saved ('attente'), nor, for
+  // the background (ouvertSansAccord false), over a project open in a window at all ('pret'): the
+  // window first makes sure it holds nothing unsaved, in any of its windows, then gets it (recevoir).
+  // { resultat: 'a_jour' | 'recu' | 'conflit' | 'attente' | 'pret', version (theirs, when the file
+  //   took it or would), aEnvoyer (a merge made here) }
+  async function integrer(d, leur, { ouvertSansAccord = true } = {}) {
     if (!leur || leur === d.tete || (d.tete && (await ancetres(d, d.tete)).has(leur))) return { resultat: 'a_jour' };
     const dec = await decider(d, leur);
     if (dec.quoi === 'conflit') return { resultat: 'conflit' };
     const blob = dec.quoi === 'leur' ? dec.blobLeur : d.blobTete;
     const change = blob !== d.blobTete;
     if (change && enAttenteIci(d)) return { resultat: 'attente' };
+    if (change && !ouvertSansAccord && ouverts.has(cle(d.chemin))) {
+      return { resultat: 'pret', version: (await enVersions(d, (await versionsDe(d, leur)).slice(0, 1)))[0] };
+    }
     // (the file first: if it can't be written, the history stays as it was)
     if (change) await ecrireProjet(d, blob);
     const avance = !d.tete || (await ancetres(d, leur)).has(d.tete);
@@ -1056,16 +1061,17 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
   }
 
   // An exchange with the remote (under the history's lock): the file made a version first if it
-  // changed, their branch fetched and brought in (integrer); when sending, and nothing waits for
-  // the user, this history pushed (again once if the remote moved meanwhile); then the names.
-  // { resultat: 'a_jour' | 'recu' | 'conflit' | 'attente' | 'envoye', version?, aEnvoyer? }
-  async function echanger(d, { envoi }) {
+  // changed, their branch fetched and brought in (integrer; ouvertSansAccord: as there); when
+  // sending, and nothing waits for the user, this history pushed (again once if the remote moved
+  // meanwhile); then the names.
+  // { resultat: 'a_jour' | 'recu' | 'conflit' | 'attente' | 'pret' | 'envoye', version?, aEnvoyer? }
+  async function echanger(d, { envoi, ouvertSansAccord = true }) {
     exigerPartage(d);
     if (actifPour(d)) await versionDuFichier(d);
     for (let essai = 0; ; essai += 1) {
       const leur = await chercher(d);
-      const r = await integrer(d, leur);
-      if (r.resultat === 'conflit' || r.resultat === 'attente' || !envoi) {
+      const r = await integrer(d, leur, { ouvertSansAccord });
+      if (['conflit', 'attente', 'pret'].includes(r.resultat) || !envoi) {
         await accorderNoms(d, { envoi: false });
         await ecrireConfig(d, 'nuee.echange', new Date(maintenant()).toISOString());
         return r;
@@ -1104,7 +1110,8 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
           if (!d.existe || !d.url || !d.hote || d.reglage === false) return null;
           if (envoi) evenement({ type: 'envoi', chemin: d.chemin });
           try {
-            const res = await echanger(d, { envoi });
+            // (a project open in a window: its file written once the window agrees, 'pret')
+            const res = await echanger(d, { envoi, ouvertSansAccord: false });
             erreurs.delete(cle(d.chemin));
             // (a conflict told once, with its files, until either side moves)
             if (res.resultat === 'conflit') {
@@ -1122,6 +1129,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
         });
         if (!r) return;
         if (r.resultat === 'recu') evenement({ type: 'recu', chemin: r.chemin, version: r.version });
+        if (r.resultat === 'pret') evenement({ type: 'pret', chemin: r.chemin, version: r.version });
         if (r.resultat === 'conflit') evenement({ type: 'conflit', chemin: r.chemin, mien: r.mien, leur: r.leur, fichiers: r.fichiers });
         if (r.resultat === 'attente') evenement({ type: 'attente', chemin: r.chemin });
         if (r.resultat === 'envoye') evenement({ type: 'envoye', chemin: r.chemin });
@@ -1188,7 +1196,8 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
     return {};
   }
 
-  async function apresEnregistrement(chemin, { ancien = null } = {}) {
+  // (auto: false, no automatic version: the interface makes one with its words at once, marquer)
+  async function apresEnregistrement(chemin, { ancien = null, auto = true } = {}) {
     if (ancien && cle(ancien) !== cle(chemin)) {
       const avant = ouverts.get(cle(ancien));
       ouverts.delete(cle(ancien));
@@ -1197,6 +1206,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
     }
     const o = ouverts.get(cle(chemin));
     if (o) o.modifie = false;
+    if (auto === false) return { version: null };
     const v = await ecrire(chemin, async (d) => {
       if (!actifPour(d)) return null;
       const derniere = d.tete ? (await lireCommit(d, d.tete)).committer.timestamp * 1000 : null;

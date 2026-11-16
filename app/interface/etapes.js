@@ -198,12 +198,18 @@ function apercuDonnees(pid, { demande, parametres, surChangement, n, choix = tru
   const zone = el('div', { class: 'apercu-maj', 'aria-live': 'polite' });
   const st = { tables: null, table: null, rapport: null, lu: null, exclus: new Set(), numero: 0 };
   const cle = (c) => (c.numero !== null && c.numero !== undefined ? c.numero : c.nom);
-  const montrer = (...enfants) => remplir(zone, el('h3', {}, t('etapes_maj_apercu')),
-    st.tables ? el('div', { class: 'ligne table-maj' }, el('span', {}, t('etapes_maj_table')),
-      el('select', { class: 'liste-tables', size: Math.min(8, Math.max(3, st.tables.length)), 'aria-label': t('etapes_maj_table'),
-        onchange: (e) => { st.table = e.target.value || null; previsualiser(); } },
-      st.tables.map((x) => el('option', { value: x, selected: x === st.table }, x)))) : null,
-    ...enfants);
+  const montrer = (...enfants) => {
+    // (the list of tables drawn again with the preview: the keyboard stays on it)
+    const surListe = !!(document.activeElement && document.activeElement.matches && document.activeElement.matches('.apercu-maj .liste-tables') && zone.contains(document.activeElement));
+    remplir(zone, el('h3', {}, t('etapes_maj_apercu')),
+      st.tables ? el('div', { class: 'ligne table-maj' }, el('span', {}, t('etapes_maj_table')),
+        el('select', { class: 'liste-tables', size: Math.min(8, Math.max(3, st.tables.length)), 'aria-label': t('etapes_maj_table'),
+          onchange: (e) => { st.table = e.target.value || null; previsualiser(); } },
+        st.tables.map((x) => el('option', { value: x, selected: x === st.table }, x)))) : null,
+      ...enfants);
+    const tables = surListe && zone.querySelector('.liste-tables');
+    if (tables) tables.focus();
+  };
   const rapport = () => {
     const lu = st.lu;
     return [
@@ -270,11 +276,16 @@ async function dialogueMiseAJour(app, pid) {
   const version = boiteVersion(p, descriptionVersion());
 
   const rendreFichier = () => {
+    // (drawn again: the keyboard stays where it was, on the same choice or button)
+    const a = document.activeElement;
+    const avant = a && zoneFichier.contains(a) ? (a.name === 'fichier-maj' ? `radio:${a.value}` : 'choisir') : null;
+    // (Another file chosen without a file yet: its preview asks for one, Choose… opens the dialog;
+    // the arrow keys go through the choices without opening it)
     const radio = (valeur, libelle, desactive = false) => el('label', { class: 'champ' },
-      el('input', { type: 'radio', name: 'fichier-maj', checked: st.quel === valeur, disabled: desactive, onchange: () => {
+      el('input', { type: 'radio', name: 'fichier-maj', value: valeur, checked: st.quel === valeur, disabled: desactive, onchange: () => {
         st.quel = valeur;
         rendreFichier();
-        if (valeur === 'autre' && !st.autre) choisirAutre(); else apercu.previsualiser({ nouveau: true });
+        apercu.previsualiser({ nouveau: true });
       } }), libelle);
     remplir(zoneFichier, el('h3', {}, t('etapes_maj_le_fichier')),
       es.etat === 'aucune' ? el('p', { class: 'note' }, t('etapes_maj_sans_source')) : el('div', { class: 'ligne' },
@@ -282,8 +293,11 @@ async function dialogueMiseAJour(app, pid) {
         el('span', { class: 'chemin-fichier', title: s.trouve || s.chemin }, s.trouve || s.chemin)),
       el('div', { class: 'ligne' },
         es.etat === 'aucune' ? el('span', {}, t('etapes_maj_fichier')) : radio('autre', t('etapes_maj_autre')),
-        el('button', { onclick: () => choisirAutre() }, icone('folder-open'), t('etapes_maj_choisir')),
+        el('button', { class: 'choisir-fichier-maj', onclick: () => choisirAutre() }, icone('folder-open'), t('etapes_maj_choisir')),
         st.autre ? el('span', { class: 'chemin-fichier', title: st.autre }, st.autre) : null));
+    const cible = avant === 'choisir' ? zoneFichier.querySelector('.choisir-fichier-maj')
+      : avant ? zoneFichier.querySelector(`input[name="fichier-maj"][value="${avant.slice(6)}"]`) : null;
+    if (cible) cible.focus();
   };
   const choisirAutre = async () => {
     const c = await app.choisirTableau();
@@ -367,23 +381,26 @@ const LIBELLES = {
 };
 
 // The progress of an update, in a dialog: what is being done, a bar, and Stop: the model being
-// fitted stopped too (moteur/R/arret.R, the stop of the status bar), and no more models fitted again
-// (before the data change, no update at all). Closing the dialog fits no more models either, the one
-// being fitted finishing.
+// fitted stopped too (moteur/R/arret.R, the stop of the status bar, which this Stop follows), and no
+// more models fitted again (before the data change, no update at all). Closing the dialog (Esc, ×;
+// not a click beside it) fits no more models either, the one being fitted finishing.
 function progression(titre) {
   const etape = el('p', { class: 'etape-maj' });
   const barre = el('progress', { class: 'barre-maj' });
   const detail = el('p', { class: 'note' });
   let arret = false;
-  const d = dialogue({ titre, contenu: el('div', { class: 'progression-maj' }, etape, barre, detail),
+  // (the status bar's Stop: app.js, arreterCalcul)
+  const surArret = () => arreter(false);
+  const d = dialogue({ titre, contenu: el('div', { class: 'progression-maj' }, etape, barre, detail), clicDehors: false,
     boutons: [{ libelle: t('etapes_arreter'), action: () => { arreter(); return false; } }],
-    surFermeture: () => { arret = true; } });
+    surFermeture: () => { arret = true; window.removeEventListener('arret-demande', surArret); } });
+  window.addEventListener('arret-demande', surArret);
   const bouton = d.boite.querySelector('.pied-dialogue button');
-  function arreter() {
+  function arreter(moteur = true) {
     arret = true;
     bouton.disabled = true;
     bouton.textContent = t('etapes_arret_demande');
-    if (bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
+    if (moteur && bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
   }
   return {
     arrete: () => arret,
@@ -398,10 +415,11 @@ function progression(titre) {
   };
 }
 
-// The version saved before the change (versions.js), once the project is saved, when the layer
-// makes one on request (marquer) and the project keeps versions.
+// The version saved before the change (versions.js), once the project is saved (without the
+// automatic version an hour after the last one: this one, with its words), when the layer makes
+// one on request (marquer) and the project keeps versions.
 async function marquerVersion(app, pid, chemin, description) {
-  if (!(await app.enregistrer(pid, false))) throw new Error(t('etapes_p_non_enregistre'));
+  if (!(await app.enregistrer(pid, false, { versionAuto: false }))) throw new Error(t('etapes_p_non_enregistre'));
   const v = bureau && bureau.versions;
   if (!v || typeof v.marquer !== 'function' || (await v.etat(chemin)).actif !== true) return;
   await v.marquer(chemin, description);
@@ -439,7 +457,8 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
       await marquerVersion(app, pid, p.chemin_enregistrement, version);
     }
     const suivre = (cle) => (x) => pr.montrer(t(cle, { n: Math.min(x.fait + 1, x.total), total: x.total }), x.fait, x.total, { note: x.nom || '' });
-    const avant = await resumerProjet(app, pid, { surProgression: suivre('etapes_p_avant') });
+    // (Stop, of the dialog or of the status bar, here: no update at all, not the models' results in full)
+    const avant = await resumerProjet(app, pid, { surProgression: suivre('etapes_p_avant'), arrete: pr.arrete });
     // (the documents' values, a part of What changed that never stops the change: null if unread)
     const citees = () => valeursCitees(app, pid).catch(() => null);
     const citeesAvant = await citees();
@@ -448,7 +467,6 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
     change = true;
-    noterRemplacement(pid, r);
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
     const refaits = await reajusterTout(app, pid, pr, modeles);
@@ -479,24 +497,17 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
 
 // ------------------------------------------------------------ undone
 
-// The label of each change of the data this window made from the source (an update, a step
-// removed), as Undo names it, by project.
-const remplacements = new Map();
-function noterRemplacement(pid, r) {
-  const etiquette = r && r.projet && r.projet.annulable;
-  if (!etiquette) return;
-  if (!remplacements.has(pid)) remplacements.set(pid, new Set());
-  remplacements.get(pid).add(etiquette);
-}
-
-// One of them undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
-// retablirAction): the data, the source, the steps and the models' definitions are back, but the
-// session's fits are those of the other data; every model is fitted again, as the change did (its
-// progress, Stop), and the status bar says so.
+// A change undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
+// retablirAction), in whichever window it was made. One that replaced the data (an update, a step
+// removed: r.reajuster) brings the data, the source, the steps and the models' definitions back, but
+// the session's fits are those of the other data: every model is fitted again, as the change did.
+// Another may leave fits on variables the project no longer has (a column's rename undone after
+// its models were fitted again under the new name: r.a_reajuster, their numbers): those are. Its
+// progress, Stop, and the status bar says so.
 async function apresAnnulation(app, pid, r, retabli = false) {
-  const faits = remplacements.get(pid);
-  if (!faits || !faits.has(r.etiquette) || !app.projet(pid)) return;
-  const modeles = modelesAReajuster(r.projet);
+  if (!app.projet(pid)) return;
+  const numeros = new Set(liste(r.a_reajuster).map(Number));
+  const modeles = modelesAReajuster(r.projet).filter((m) => r.reajuster || numeros.has(Number(m.numero)));
   if (!modeles.length) return;
   const cle = retabli ? 'etapes_retablissement' : 'etapes_annulation';
   const pr = progression(t(`${cle}_titre`, { quoi: r.etiquette, nom: app.projet(pid).nom }));

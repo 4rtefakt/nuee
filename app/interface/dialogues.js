@@ -117,6 +117,8 @@ const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'), apres = null, type = null) {
   const p = projet;
   const remplace = r && r.remplace ? r.remplace : null;
+  const ancien = remplace && app.modele ? app.modele(remplace) : null;
+  const numeroRemplace = ancien && ancien.numero !== null && ancien.numero !== undefined ? ancien.numero : null;
   const st = {
     type: r ? r.type : type || 'PLS', nom: remplace ? r.nom : nomLibre(p),
     titre: remplace ? r.titre || '' : r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
@@ -406,7 +408,8 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   }
 
   const general = () => el('div', { class: 'grille-champs' },
-    el('label', {}, t('type')), el('select', { onchange: (e) => {
+    // (an R-code model's code edited: its type stays, the fit takes the old one's place)
+    el('label', {}, t('type')), el('select', { disabled: !!remplace, onchange: (e) => {
       const avant = echelleType();
       st.type = e.target.value;
       if (!r && echelleType() !== avant) st.echelle = echelleType();
@@ -725,7 +728,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
       famille: generalise() ? st.famille : null, lisses: st.type === 'GAM' ? [...st.lisses].filter((u) => st.roles[u] === 'x') : [], k_courbes: kCourbesEnvoyes(),
       par_courbes: parCourbesEnvoyes(), validation: regression() || analyse() ? undefined : st.validation,
       decalage: generalise() && FAMILLES_LOG.includes(st.famille) ? st.decalage : null, lisse_spatial: spatialEnvoye(), croises_reglages: croisesReglages, nom: st.nom, titre: st.titre,
-      options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined, condition: st.condition.trim() };
+      options: analyse() && analyse().options ? analyse().options(st, cles, p) : undefined, condition: st.condition.trim(),
+      // (the fit it replaces, an R-code model's code edited: its model keeps its number, which its
+      // figures, documents and session know it by, even renamed: moteur/serveur.R, definition_interface)
+      ...(numeroRemplace !== null ? { meme_numero: numeroRemplace } : {}) };
     if (!enCours) verifierPuisAjuster(q);
     return false;  // the dialog closes once the model is fitted
   }
