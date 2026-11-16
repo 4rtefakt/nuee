@@ -5,7 +5,7 @@
 // and the dark one (images/<langue>/sombre/, shown by the site's dark theme). Each tutorial
 // starts a fresh engine. `readme` takes the README's screenshots (docs/captures/), only when named:
 // see "the README's screenshots", below.
-//   node docs/site/captures.mjs [baci] [pls] [suivi] [readme] [--langue fr|en] [--theme clair|sombre]
+//   node docs/site/captures.mjs [baci] [pls] [suivi] [communautes] [cartes] [rapport] [readme] [--langue fr|en] [--theme clair|sombre]
 // Needs Node 22 or later, R with the engine's packages (RSCRIPT=/path/to/Rscript, otherwise R
 // 4.6.2's default place on Windows, or Rscript on the PATH) and Chrome or Edge (CHROME=...).
 // With Python and Pillow, the images are then reduced to 256 colours (a third of their size).
@@ -569,6 +569,359 @@ async function tutorielSuivi(langue, images) {
   }
 }
 
+// ------------------------------------------------------------ steps shared by the next tutorials
+
+// Which analysis? on a question, its dialog left open on the recommended analysis
+async function quelleAnalyse(p, question) {
+  await menu(p, 'm_modele', 'quelle_analyse');
+  await p.cliquer(`document.querySelector('[data-cle="qa-question:${question}"]')`);
+  await p.attendre("!!document.querySelector('.qa-carte .qa-ouvrir button')");
+  await pause(600);
+}
+
+// An analysis Which analysis? offers beside its recommendation (by its name's key), opened in New
+// model on its General tab
+async function ouvrirAutre(p, cleNom) {
+  await p.cliquer(`[...document.querySelectorAll('.qa-autres details')].find((d) => d.querySelector('.qa-nom').textContent === __n.t('${cleNom}')).querySelector('summary button')`);
+  await p.attendre("!!document.querySelector('.fond-dialogue .onglets')");
+  await p.cliquer(`__n.texte('.fond-dialogue .onglets button', __n.t('general'))`);
+  await pause(500);
+}
+
+// New model's Fit; the model of this type it adds, once fitted
+async function ajusterNouveau(p, type) {
+  const avant = (await etat(p)).modeles.filter((m) => m.type === type).length;
+  await p.cliquer(`__n.texte('.fond-dialogue button', __n.t('ajuster'))`);
+  await p.attendre(`__n.api('etat').then((e) => e.modeles.filter((m) => m.type === '${type}').length > ${avant})`, 300000);
+  await pause(2500);
+  return (await etat(p)).modeles.filter((m) => m.type === type).pop();
+}
+
+// ------------------------------------------------------------ community ecology
+
+const COMMUNAUTES = {
+  fr: { fichier: 'carabes.csv', groupe: 'habitat' },
+  en: { fichier: 'ground_beetles.csv', groupe: 'habitat' },
+};
+
+async function tutorielCommunautes(langue, images) {
+  const L = COMMUNAUTES[langue];
+  const moteur = await demarrerMoteur();
+  let p;
+  try {
+    p = await demarrer(moteur, langue, path.join(DONNEES, L.fichier));
+    // Which analysis? › many species at once: the species and the habitat proposed
+    await quelleAnalyse(p, 'especes');
+    await p.capture(path.join(images, 'com-choix.png'), '__n.boite()');
+    await fermerDialogues(p);
+    const proj = (await etat(p)).projets[0];
+    const habitat = proj.variables.find((v) => v.nom === L.groupe).uid;
+    const especes = proj.variables.filter((v) => v.uid !== habitat).map((v) => v.uid);
+    // the rarefaction of each trap, then the accumulation of species over the traps of each habitat
+    const tracee = "document.querySelectorAll('.js-plotly-plot .main-svg').length > 0 && document.querySelectorAll('table tbody tr').length > 0";
+    await captureVue(moteur, path.join(images, 'com-rarefaction.png'), 'rarefaction', { projet: proj.id, loc: { especes, groupe: String(habitat), mode: 'rarefaction' },
+      largeur: 1000, hauteur: 760, attente: tracee });
+    await captureVue(moteur, path.join(images, 'com-accumulation.png'), 'rarefaction', { projet: proj.id, loc: { especes, groupe: String(habitat), mode: 'accumulation' },
+      largeur: 1000, hauteur: 720, attente: tracee });
+    // the NMDS, after a square root then Wisconsin's double standardization, as metaMDS
+    await quelleAnalyse(p, 'especes');
+    await ouvrirAutre(p, 'qa_nom_nmds');
+    await p.evaluer("__n.choisir(__n.select('racine_wisconsin'), 'racine_wisconsin')");
+    await pause(400);
+    await p.capture(path.join(images, 'com-nmds-modele.png'), '__n.boite()');
+    const nmds = await ajusterNouveau(p, 'NMDS');
+    await garderTextes(p, 'nmds', nmds.id, langue);
+    await captureVue(moteur, path.join(images, 'com-nmds.png'), 'ordination_dist', { modele: nmds.id, loc: { couleur: `v${habitat}`, especes: false }, largeur: 820, hauteur: 640 });
+    await captureVue(moteur, path.join(images, 'com-shepard.png'), 'shepard', { modele: nmds.id, largeur: 820, hauteur: 600 });
+    // the PERMANOVA Which analysis? recommends, on the same distance
+    await quelleAnalyse(p, 'especes');
+    await p.cliquer("document.querySelector('.qa-carte .qa-ouvrir button')");
+    await p.attendre("!!document.querySelector('.fond-dialogue .onglets')");
+    await p.cliquer(`__n.texte('.fond-dialogue .onglets button', __n.t('general'))`);
+    await pause(500);
+    await p.evaluer("__n.choisir(__n.select('racine_wisconsin'), 'racine_wisconsin')");
+    await pause(400);
+    const permanova = await ajusterNouveau(p, 'PERMANOVA');
+    await garderTextes(p, 'permanova', permanova.id, langue);
+    await captureVue(moteur, path.join(images, 'com-permanova.png'), 'permanova', { modele: permanova.id, largeur: 760, hauteur: 640, contenu: true,
+      attente: "document.querySelectorAll('table').length > 0 && document.querySelectorAll('.js-plotly-plot .main-svg').length > 0" });
+    await captureVue(moteur, path.join(images, 'com-dispersion.png'), 'dispersion', { modele: permanova.id, loc: { mode: 'boites' }, largeur: 820, hauteur: 900 });
+    // the indicator species
+    await quelleAnalyse(p, 'especes');
+    await ouvrirAutre(p, 'qa_nom_indval');
+    const indval = await ajusterNouveau(p, 'INDVAL');
+    await garderTextes(p, 'indval', indval.id, langue);
+    await captureVue(moteur, path.join(images, 'com-indval.png'), 'indicatrices', { modele: indval.id, largeur: 1160, hauteur: 820, attente: "document.querySelectorAll('table tbody tr').length > 0" });
+    // the PERMANOVA's Methods text
+    await choisirDansExplorateur(p, permanova.nom);
+    await menu(p, 'm_modele', 'texte_methodes');
+    await p.attendre("!!document.querySelector('.texte-methodes p')");
+    await pause(600);
+    await p.capture(path.join(images, 'com-methodes.png'), '__n.boite()');
+    await fermerDialogues(p);
+  } finally {
+    if (p) await p.fermer();
+    arreter(moteur.proc);
+  }
+}
+
+// ------------------------------------------------------------ maps and spatial models
+
+const CARTES = {
+  fr: { fichier: 'prairies.csv', raster: 'altitude.tif', y: 'biomasse' },
+  en: { fichier: 'meadows.csv', raster: 'elevation.tif', y: 'biomass' },
+};
+
+// The meadows' coordinates proposed and applied (the Map view), the elevation read from the DEM
+// (Edit › Add raster values: in the browser, the file's path is typed in a prompt, which this
+// script answers), the linear regression Which analysis? recommends, then the additive model with
+// a spatial smooth it offers beside it. With `images`, the screenshots of these steps.
+async function cartesModeles(p, L, images) {
+  const capture = (nom, expr, marges) => (images ? p.capture(path.join(images, nom), expr, marges) : null);
+  await menu(p, 'm_graphiques', 'carte');
+  const formulaire = "__n.tous('.panneau').find((x) => x.querySelector('.carte-coordonnees'))";
+  await p.attendre(`!!(${formulaire})`, 30000);
+  await pause(800);
+  await capture('cartes-coordonnees.png', formulaire, { contenu: true });
+  await p.cliquer(`__n.tous('button', ${formulaire}).find((b) => __n.norm(b.textContent) === __n.t('carte_appliquer'))`);
+  await p.attendre("__n.tous('button').some((b) => __n.norm(b.textContent) === __n.t('raster_valeurs'))", 30000);
+  await pause(1000);
+  await p.cliquer("__n.tous('button').find((b) => __n.norm(b.textContent) === __n.t('raster_valeurs'))");
+  await p.attendre("!!__n.boite() && __n.boite().textContent.includes(__n.t('raster_choisir'))", 20000);
+  await p.evaluer(`window.prompt = () => ${JSON.stringify(path.join(DONNEES, L.raster))}; true`);
+  await p.cliquer("__n.tous('.fond-dialogue button').find((b) => __n.norm(b.textContent) === __n.t('raster_choisir'))");
+  await p.attendre("!!__n.boite().querySelector('.raster-fichier')", 30000);
+  await pause(600);
+  await capture('cartes-raster.png', '__n.boite()');
+  await p.cliquer("__n.tous('.fond-dialogue button').find((b) => __n.norm(b.textContent) === __n.t('ajouter'))");
+  await p.attendre("!!__n.boite() && __n.boite().textContent.includes(__n.t('raster_annuler'))", 30000);
+  await fermerDialogues(p);
+  // Which analysis? › the effect of variables on one response: the biomass
+  await menu(p, 'm_modele', 'quelle_analyse');
+  await p.cliquer("document.querySelector('[data-cle=\"qa-question:effet\"]')");
+  await p.attendre("!!document.querySelector('[data-cle=\"qa-y\"]')");
+  await p.evaluer(`(() => { const s = document.querySelector('[data-cle="qa-y"]'); return __n.choisir(s, [...s.options].find((o) => o.textContent === ${JSON.stringify(L.y)}).value); })()`);
+  await p.attendre("!!document.querySelector('.qa-carte .qa-ouvrir button')");
+  await pause(800);
+  await capture('cartes-choix.png', '__n.boite()');
+  await p.cliquer("document.querySelector('.qa-carte .qa-ouvrir button')");
+  await p.attendre("!!document.querySelector('.fond-dialogue .onglets')");
+  const lm = await ajusterNouveau(p, 'LM');
+  // (Which analysis? keeps the answers)
+  await menu(p, 'm_modele', 'quelle_analyse');
+  await p.attendre("!!document.querySelector('.qa-carte .qa-ouvrir button')");
+  await pause(600);
+  await ouvrirAutre(p, 'qa_nom_gam_spatial');
+  await capture('cartes-gam-modele.png', '__n.boite()');
+  const gam = await ajusterNouveau(p, 'GAM');
+  const proj = (await etat(p)).projets[0];
+  return { proj, lm, gam };
+}
+
+async function tutorielCartes(langue, images) {
+  const L = CARTES[langue];
+  const moteur = await demarrerMoteur();
+  let p;
+  try {
+    p = await demarrer(moteur, langue, path.join(DONNEES, L.fichier));
+    const { proj, lm, gam } = await cartesModeles(p, L, images);
+    await garderTextes(p, 'lm', lm.id, langue);
+    await garderTextes(p, 'gam', gam.id, langue);
+    const uid = (nom) => proj.variables.find((v) => v.nom === nom).uid;
+    // the map coloured by a variable, or by a column of a model's results
+    const carte = (fichier, couleur, modele) => captureVue(moteur, path.join(images, fichier), 'carte', { projet: proj.id, ...(modele ? { modele } : {}), loc: { couleur },
+      largeur: 900, hauteur: 660, attente: "document.querySelectorAll('.js-plotly-plot .main-svg').length > 0" });
+    await carte('cartes-carte.png', `v${uid(L.y)}`);
+    const conditions = "document.querySelectorAll('.verifications .verification').length > 0";
+    await captureVue(moteur, path.join(images, 'cartes-lm-resume.png'), 'resume', { modele: lm.id, largeur: 560, hauteur: 900, contenu: true, attente: conditions });
+    await captureVue(moteur, path.join(images, 'cartes-moran.png'), 'autocorrelation_spatiale', { modele: lm.id, projet: proj.id, loc: { source: `r:${lm.id}` },
+      largeur: 1100, hauteur: 820, attente: "!!document.querySelector('.resume-autocorrelation') && document.querySelectorAll('.js-plotly-plot .main-svg').length > 1" });
+    await carte('cartes-residus.png', `m${lm.id}|residu`, lm.id);
+    await captureVue(moteur, path.join(images, 'cartes-gam-resume.png'), 'resume', { modele: gam.id, largeur: 560, hauteur: 900, contenu: true, attente: conditions });
+    await carte('cartes-lissage.png', `m${gam.id}|s(X_L93, Y_L93)`, gam.id);
+    // File › Export data: GeoPackage is offered once the project has coordinates
+    await choisirDansExplorateur(p, L.fichier);
+    await menu(p, 'm_fichier', 'exporter_donnees');
+    await p.attendre("!!__n.boite() && !!__n.boite().querySelector('input[value=gpkg]')", 20000);
+    await p.cliquer("__n.boite().querySelector('input[value=gpkg]')");
+    await pause(400);
+    await p.capture(path.join(images, 'cartes-export.png'), '__n.boite()');
+    await fermerDialogues(p);
+  } finally {
+    if (p) await p.fermer();
+    arreter(moteur.proc);
+  }
+}
+
+// ------------------------------------------------------------ a report document
+
+// The report the tutorial writes, in the document's language: values, the Methods and Results
+// texts, a plot and citations from references.bib
+const RAPPORT = {
+  fr: { titre: 'Biomasse du foin et altitude', resultats: 'Résultats', texte: `---
+title: "Biomasse du foin et altitude"
+author: ""
+bibliography: references.bib
+---
+
+# Introduction
+
+Sur un plateau d'altitude, le rendement en foin baisse avec l'altitude. Mais des prairies voisines partagent aussi leurs sols et les pratiques de leurs exploitants : leurs écarts à un modèle se ressemblent, et un modèle qui l'ignore est trop sûr de lui [@legendre1993; @dormann2007].
+
+# Matériel et méthodes
+
+{{M2.methodes}}
+
+Nous l'avons comparé à la régression linéaire de la biomasse sur la seule altitude, dont les résidus étaient autocorrélés dans l'espace (I de Moran, 4 plus proches voisins).
+
+# Résultats
+
+La pente de la biomasse sur l'altitude est de {{M2.est.altitude}} g/m² par mètre (IC à 95 % {{M2.ic.altitude}}, {{M2.p.altitude}}). Le lissage spatial fait baisser l'AIC de {{M1.AIC}} à {{M2.AIC}} et monter le Q² en validation croisée de {{M1.Q2}} à {{M2.Q2}} ({{ref:fig-effet}}).
+
+{{M2.resultats}}
+
+{{M2.effets.altitude #fig-effet | Effet de l'altitude sur la biomasse du foin dans le modèle additif, avec sa bande de confiance à 95 %.}}
+
+# Discussion
+
+L'effet de l'altitude tient une fois la structure spatiale prise en compte, ce qui n'est pas toujours le cas [@hodges2010; voir aussi @wood2017].
+
+# Références
+` },
+  en: { titre: 'Hay biomass and elevation', resultats: 'Results', texte: `---
+title: "Hay biomass and elevation"
+author: ""
+bibliography: references.bib
+---
+
+# Introduction
+
+On a mountain plateau, the hay yield falls with elevation. But neighbouring meadows also share their soils and their farmers' practices: their departures from a model resemble each other, and a model that ignores it is too sure of itself [@legendre1993; @dormann2007].
+
+# Materials and methods
+
+{{M2.methodes}}
+
+We compared it with the linear regression of biomass on elevation alone, whose residuals were autocorrelated in space (Moran's I, 4 nearest neighbours).
+
+# Results
+
+The slope of biomass on elevation was {{M2.est.elevation}} g/m² per metre (95% CI {{M2.ic.elevation}}, {{M2.p.elevation}}). The spatial smooth lowered the AIC from {{M1.AIC}} to {{M2.AIC}} and raised the cross-validated Q² from {{M1.Q2}} to {{M2.Q2}} ({{ref:fig-effet}}).
+
+{{M2.resultats}}
+
+{{M2.effets.elevation #fig-effet | Effect of elevation on hay biomass in the additive model, with its 95% confidence band.}}
+
+# Discussion
+
+The effect of elevation holds once the spatial structure is accounted for, which is not always the case [@hodges2010; see also @wood2017].
+
+# References
+` },
+};
+
+async function tutorielRapport(langue, images) {
+  const L = CARTES[langue];
+  const R = RAPPORT[langue];
+  const moteur = await demarrerMoteur();
+  let p;
+  try {
+    p = await demarrer(moteur, langue, path.join(DONNEES, L.fichier), [1440, 900]);
+    const { gam } = await cartesModeles(p, L, null);
+    // File › New document: an article that cites the additive model
+    await choisirDansExplorateur(p, L.fichier);
+    await menu(p, 'm_fichier', 'nouveau_document');
+    await p.attendre("!!__n.boite() && !!__n.boite().querySelector('.dialogue-document')", 20000);
+    await p.evaluer(`__n.saisir(__n.boite().querySelector('.dialogue-document input:not([type])'), ${JSON.stringify(R.titre)})`);
+    await p.cliquer("[...__n.boite().querySelectorAll('label')].find((l) => __n.norm(l.textContent) === __n.t('document_gabarit_article')).querySelector('input')");
+    await p.cliquer(`[...__n.boite().querySelectorAll('.modeles-gabarit label')].find((l) => __n.norm(l.textContent) === ${JSON.stringify(gam.nom)}).querySelector('input')`);
+    await pause(400);
+    await p.capture(path.join(images, 'rapport-nouveau.png'), '__n.boite()');
+    await p.cliquer("__n.tous('.fond-dialogue button').find((b) => __n.norm(b.textContent) === __n.t('creer_document'))");
+    await p.attendre("!!document.querySelector('.cm-editor')", 60000);
+    await pause(2000);
+    // Cite › Link a file: references.bib, beside the table (in the browser, its path in a prompt)
+    const barre = "document.querySelector('.cm-editor').closest('.panneau')";
+    const bouton = (cle) => `__n.tous('button', ${barre}).find((b) => __n.norm(b.textContent) === __n.t('${cle}'))`;
+    await p.evaluer(`window.prompt = () => ${JSON.stringify(path.join(DONNEES, 'references.bib'))}; true`);
+    await p.cliquer(bouton('document_citer'));
+    await p.attendre("!!document.querySelector('.menu .item')");
+    await p.cliquer("__n.debut('.menu .item', __n.t('citer_lier'))");
+    await p.attendre("document.querySelector('.cm-content').innerText.includes('bibliography: references.bib')", 20000);
+    // the report's text, typed over the template's
+    await p.cliquer("document.querySelector('.cm-content')");
+    await p.touche('a', 2);
+    await p.taper(R.texte);
+    await pause(300);
+    await p.touche('Escape');
+    await p.attendre("document.querySelector('.apercu-document').innerText.includes('Figure 1')", 60000);
+    await pause(2500);
+    // Cite › Insert a citation: the references of the file
+    await p.cliquer(bouton('document_citer'));
+    await p.attendre("!!document.querySelector('.menu .item')");
+    await p.cliquer("__n.debut('.menu .item', __n.t('citer_inserer'))");
+    await p.attendre("!!__n.boite() && !!__n.boite().querySelector('.liste-citations .ligne-citation')", 20000);
+    await pause(800);
+    await p.capture(path.join(images, 'rapport-citer.png'), '__n.boite()');
+    await fermerDialogues(p);
+    // the document's group of tabs maximized, the text and its preview at the results
+    await p.cliquer(`(${barre}).closest('.dv-groupview').querySelector('[title="' + __n.t('agrandir') + '"]')`);
+    await pause(1500);
+    await p.attendre("[...document.querySelectorAll('.apercu-document img')].every((i) => i.complete && i.naturalWidth > 0)", 30000);
+    await pause(500);
+    // (the text first: the preview follows its scrolling; then the preview, at the same heading)
+    await p.evaluer(`[...document.querySelectorAll('.cm-line')].find((x) => x.textContent === ${JSON.stringify(`# ${R.resultats}`)}).scrollIntoView({ block: 'start' }); true`);
+    await pause(600);
+    await p.evaluer(`[...document.querySelectorAll('.apercu-document h1')].find((x) => x.textContent === ${JSON.stringify(R.resultats)}).scrollIntoView({ block: 'start' }); true`);
+    await pause(800);
+    await p.capture(path.join(images, 'rapport-document.png'), `(${barre}).closest('.dv-groupview')`);
+    // Compile › Quarto (.qmd): results written in, or reproducible
+    await p.cliquer(bouton('document_compiler'));
+    await p.attendre("!!document.querySelector('.menu .item')");
+    await p.cliquer("__n.debut('.menu .item', __n.t('document_qmd'))");
+    await p.attendre("!!__n.boite() && !!__n.boite().querySelector('.dialogue-quarto')", 30000);
+    await p.cliquer("[...__n.boite().querySelectorAll('.dialogue-quarto input[type=radio]')][1]");
+    await pause(600);
+    await p.capture(path.join(images, 'rapport-quarto.png'), '__n.boite()');
+    await fermerDialogues(p);
+    // the figure: the map coloured by the additive model's smooth (A) and its effect of elevation (B)
+    await p.cliquer(`(${barre}).closest('.dv-groupview').querySelector('[title="' + __n.t('agrandir') + '"]')`);  // (back from maximized)
+    await pause(800);
+    const carte = "__n.tous('.panneau').find((x) => x.querySelector('.js-plotly-plot') && x.textContent.includes(__n.t('carte_changer')))";
+    await p.cliquer(`__n.tous('.dv-tab').find((t) => __n.norm(t.textContent).endsWith(__n.t('carte')))`);
+    await p.attendre(`!!(${carte})`, 30000);
+    const couleur = `[...(${carte}).querySelectorAll('select')].find((x) => [...x.options].some((o) => o.textContent === ${JSON.stringify(L.y)}))`;
+    // (a change draws the view again, with the models fitted since it opened)
+    await p.evaluer(`(() => { const s = ${couleur}; return __n.choisir(s, [...s.options].find((o) => o.textContent === ${JSON.stringify(L.y)}).value); })()`);
+    await pause(1200);
+    await p.evaluer(`(() => { const s = ${couleur}; return __n.choisir(s, [...s.options].find((o) => o.value === 'm${gam.id}|s(X_L93, Y_L93)').value); })()`);
+    await pause(2000);
+    await menu(p, 'm_graphiques', 'figure_composer');
+    await p.attendre("!!document.querySelector('.cadre-figure')", 30000);
+    await pause(1500);
+    // (the plot in front comes first: the map; then the effects, unless there already)
+    const ajout = "__n.tous('select').find((s) => s.options.length > 1 && s.options[0].textContent === __n.t('figure_vues_ouvertes'))";
+    for (const v of [`carte:${(await etat(p)).projets[0].id}`, `effets:${gam.id}`]) {
+      await p.attendre(`!!(${ajout}) && [...(${ajout}).options].some((o) => o.value === '${v}')`);
+      const nom = await p.evaluer(`[...(${ajout}).options].find((o) => o.value === '${v}').textContent`);
+      if (await p.evaluer(`__n.tous('.ligne-panneau .nom-panneau').some((x) => __n.norm(x.textContent) === __n.norm(${JSON.stringify(nom)}))`)) continue;
+      await p.evaluer(`__n.choisir(${ajout}, '${v}')`);
+      await pause(2500);
+    }
+    await p.evaluer("__n.choisir(__n.select('174'), '174')");
+    await pause(800);
+    const hauteur = "__n.tous('.cadre-figure label.champ').find((l) => l.title === __n.t('figure_hauteur_aide'))";
+    await p.cliquer(`(${hauteur}).querySelector('input')`);
+    await pause(500);
+    await p.evaluer(`__n.saisir((${hauteur}).parentElement.querySelector('input[type=number]'), '80')`);
+    await pause(3500);
+    await p.capture(path.join(images, 'rapport-figure.png'), "document.querySelector('.cadre-figure')", { hauteur: 640 });
+  } finally {
+    if (p) await p.fermer();
+    arreter(moteur.proc);
+  }
+}
+
 // ------------------------------------------------------------ the README's screenshots
 
 // docs/captures/*.png, shown by README.md and README.fr.md: the whole window, 1440 × 900, in
@@ -836,7 +1189,7 @@ async function readme() {
 
 // ------------------------------------------------------------ run
 
-const TUTORIELS = { baci: tutorielBaci, pls: tutorielPls, suivi: tutorielSuivi };
+const TUTORIELS = { baci: tutorielBaci, pls: tutorielPls, suivi: tutorielSuivi, communautes: tutorielCommunautes, cartes: tutorielCartes, rapport: tutorielRapport };
 
 // the screenshots taken by this run (only they are reduced: a screenshot reduced again changes its bytes)
 const prises = new Set();
