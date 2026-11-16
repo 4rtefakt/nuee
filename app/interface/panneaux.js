@@ -3517,7 +3517,15 @@ function rendreComparaison(conteneur, ctx, p, loc) {
   });
   rendreEmboites(emboites, ctx, loc, lignes);
   if (!ms.length) return;
-  const noms = lignes.map((l) => l.nom);
+  // (a group of bars per model: with models of several projects, each named after its project,
+  // "orchards · M2", so that two M2 don't fall into one bar; a name that still repeats is numbered)
+  const plusieurs = new Set(lignes.map((l) => l.projet)).size > 1;
+  const vus = new Map();
+  const noms = lignes.map((l) => {
+    const nom = plusieurs ? `${String(l.projet || '').replace(/\.[^.]+$/, '')} · ${l.nom}` : l.nom;
+    vus.set(nom, (vus.get(nom) || 0) + 1);
+    return vus.get(nom) > 1 ? `${nom} (${vus.get(nom)})` : nom;
+  });
   tracer(ctx, graphe, [
     { type: 'bar', name: 'R2X(cum)', x: noms, y: lignes.map((l) => l.R2X), marker: { color: '#9aa7b8' } },
     { type: 'bar', name: regressions ? `R2Y(cum) / ${t('r2_regression')}` : 'R2Y(cum)', x: noms, y: lignes.map((l) => l.R2Y ?? l.R2 ?? null), marker: { color: '#3b9a5b' } },
