@@ -62,8 +62,10 @@ async function principal() {
   }
   fs.rmSync(copies, { recursive: true, force: true });
   // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
-  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs']) {
+  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language; an
+  // update of the data read for its dialogs
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs',
+    'essai_etapes.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
