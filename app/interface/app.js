@@ -499,10 +499,11 @@ const app = {
     const e = etat.panneaux.get(cle);
     if (e && e.api) e.api.setTitle(titre);
   },
-  nouveauModele(pid) {
+  // (type: the one New model starts with, Find a command's "New model: TRIM…", palette.js)
+  nouveauModele(pid, type = null) {
     const p = etat.projets[pid || app.projetActif()];
     if (!p) return statut(t('choisir_projet'), true);
-    dialogueModele(app, p);
+    dialogueModele(app, p, null, undefined, null, type);
   },
   // Model › Which analysis?: a few questions, then New model already filled in, or the right view
   quelleAnalyse(pid) {

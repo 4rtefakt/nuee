@@ -1,11 +1,23 @@
 // Command palette (Ctrl+K): every item of the menus, found by typing part of its name or of
-// its menu's ("vip", "export r", "anglais"), run with Enter or a click.
-import { t } from './i18n.js';
+// its menu's ("vip", "export r", "anglais"), run with Enter or a click; and every analysis by
+// its name in either language or its code ("trim", "glm", "nmds", "random forest"), opening New
+// model with that type. The active model's views are in the Plots menu (commandes.js).
+import { t, tDans, langueActuelle } from './i18n.js';
 import { el, icone, majInert } from './ui.js';
 import { menus } from './commandes.js';
+import { typesModele } from './dialogues.js';
 
 // "Exporter vers R" and "exporter vers r" alike, accents too
 const simple = (s) => String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+// A type's name in the other language, when its string is known (type_<code>: an analysis's module)
+const CLES_TYPES = { CLASSES: 'modeles_classe' };
+function nomAutreLangue(type) {
+  if (type === 'PCA') return 'ACP';
+  const cle = CLES_TYPES[type] || `type_${type.toLowerCase().replace(/-/g, '_')}`;
+  const s = tDans(langueActuelle() === 'fr' ? 'en' : 'fr', cle);
+  return s === cle ? '' : s;
+}
 
 export function ouvrirPalette(app, C) {
   if (document.querySelector('.fond-dialogue')) return;
@@ -19,6 +31,15 @@ export function ouvrirPalette(app, C) {
     }
   };
   for (const d of menus(app, C)) parcourir(d.items(), [t(d.cle)]);
+  // New model: TRIM (indices and trends of counts)..., for the active project, under its family
+  const pid = app.projetActif();
+  for (const g of typesModele()) {
+    for (const [type, nom] of g.types) {
+      entrees.push({ libelle: t('palette_nouveau_type', { type: nom }), tete: nom, chemin: `${t('m_modele')} › ${g.libelle}`, icone: 'file-plus',
+        actif: !!pid, action: () => app.nouveauModele(pid, type),
+        cle: simple(`${t('m_modele')} ${g.libelle} ${t('nouveau_modele')} ${nom} ${type} ${nomAutreLangue(type)}`) });
+    }
+  }
 
   // (for screen readers: a combobox whose list's current item, the one Enter runs, is its
   // aria-activedescendant; the window behind is inert while it is open, ui.js: majInert)
@@ -41,7 +62,8 @@ export function ouvrirPalette(app, C) {
   };
   const rendre = () => {
     const mots = simple(saisie.value).split(/\s+/).filter(Boolean);
-    const debut = (x) => mots.length && simple(x.libelle).startsWith(mots[0]);
+    // (an analysis by its own name: "trim" ranks New model: TRIM first)
+    const debut = (x) => mots.length && simple(x.tete || x.libelle).startsWith(mots[0]);
     trouvees = entrees.filter((x) => mots.every((m) => x.cle.includes(m)));
     trouvees = [...trouvees.filter(debut), ...trouvees.filter((x) => !debut(x))];  // names that start with the text first
     rang = Math.min(rang, Math.max(0, trouvees.length - 1));

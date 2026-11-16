@@ -111,12 +111,12 @@ const ETAPES = ['', 'snv', 'msc', 'detrend', 'ligne_base', 'sg0', 'sg1', 'sg2'];
 // by Model › Which analysis? (quelle_analyse.js: with a default scaling `echelle` and `auto` for an
 // automatic number of components); r.remplace: the fit whose place the new one takes, under the same
 // name and title (an R-code model's code edited: vues_code.js); apres(id): called with the new model's
-// id once it is fitted.
-export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'), apres = null) {
+// id once it is fitted; type: a new model's type to start with (Find a command: palette.js).
+export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'), apres = null, type = null) {
   const p = projet;
   const remplace = r && r.remplace ? r.remplace : null;
   const st = {
-    type: r ? r.type : 'PLS', nom: remplace ? r.nom : nomLibre(p),
+    type: r ? r.type : type || 'PLS', nom: remplace ? r.nom : nomLibre(p),
     titre: remplace ? r.titre || '' : r && r.nom ? `${r.titre ? r.titre + ' — ' : ''}${langueActuelle() === 'fr' ? 'd’après' : 'from'} ${r.nom}` : '',
     A: r ? r.A : 0, auto: !r || r.auto === true, G: r ? r.G || 7 : 7, echelle: (r && r.echelle) || 'UV', roles: {}, echelles: {}, transfos: {},
     // cross-validation groups: null = in turn (G groups), else { by: 'id', id } | { by: 'variable', variable } | { by: 'groups', … } (moteur/R/validation_croisee.R)
@@ -257,6 +257,10 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
   const avecTest = () => !analyse() || !!analyse().test;
   // each type's default scaling: a regression keeps the units, another analysis says its own
   const echelleType = () => (regression() ? 'none' : analyse() ? analyse().echelle || 'UV' : 'UV');
+  if (!r && type) {  // (a type chosen beforehand: its scaling, and its General tab first)
+    st.echelle = echelleType();
+    st.onglet = 'general';
+  }
   const generalise = () => ['GLM', 'GAM'].includes(st.type);
   const FAMILLES = ['gaussienne', 'poisson', 'binomiale_negative', 'binomiale', 'gamma', 'tweedie', 'poisson_zi', 'beta'];
   const FAMILLES_LOG = ['poisson', 'binomiale_negative', 'gamma', 'tweedie', 'poisson_zi'];  // (an offset needs a log link)

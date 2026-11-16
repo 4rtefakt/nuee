@@ -41,5 +41,18 @@ module.exports = {
       && !menu.some((x) => x.libelle === libelles.scores) && menu.some((x) => x.libelle === libelles.autres && x.sous), menu.map((x) => x.libelle));
     await n.fermerMenus();
     verifier('regressionAjustee', lm.type === 'LM', lm.nom);
+
+    // ---- Find a command knows the analyses by their names: "trim", then Enter, opens New model on TRIM
+    await n.menu('m_affichage', 'chercher_commande');
+    await n.attendre("!!document.querySelector('.palette-saisie')");
+    await n.taper('trim');
+    const premiere = await n.attendre("(() => { const x = document.querySelector('.palette-item'); return x ? __n.norm(x.querySelector('.palette-libelle').textContent) : null; })()");
+    verifier('paletteTrim', premiere === await n.evaluer("__n.t('palette_nouveau_type', { type: __n.t('type_trim') })"), premiere);
+    await n.touche('Enter');
+    await n.dialogue('nouveau_modele');
+    const type = await n.attendre("(() => { const s = __n.tous('select', __n.boite()).find((x) => [...x.options].some((o) => o.value === 'PCA')); return s && s.value; })()");
+    verifier('paletteNouveauModele', type === 'TRIM', type);
+    await n.bouton('annuler');
+    await n.attendre('!__n.dialogue()');
   },
 };
