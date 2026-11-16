@@ -1,7 +1,7 @@
 // Main window: menu bar, toolbar, project explorer, dockable panels and status bar.
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
-import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire } from './i18n.js';
+import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
@@ -123,17 +123,22 @@ const app = {
     const p = dock && dock.activePanel;
     if (estPage(p) && etat.modeles[p.id.slice(5)]) return p.id.slice(5);
     const n = /\/m\/([^/]+)/.exec(etat.noeud || '');
+    // (a view of a project in front, its data, a figure or a document: the model chosen in the
+    // explorer only if it is of that project)
+    if (n && etat.modeles[n[1]] && e && etat.projets[e.params.projet] && etat.modeles[n[1]].projet !== e.params.projet) return null;
     return n && etat.modeles[n[1]] ? n[1] : null;
   },
 
+  // The project the menus act on (Save, New model, Which analysis?, New document...): the active
+  // model's, else that of the view in front, else the one chosen in the explorer
   projetActif() {
     const m = app.modeleActif();
     if (m) return etat.modeles[m].projet;
-    const n = (etat.noeud || '').split('/')[0];
-    if (etat.projets[n]) return n;
     const c = panneauCourant();
     const e = c && etat.panneaux.get(c.id);
     if (e && etat.projets[e.params.projet]) return e.params.projet;
+    const n = (etat.noeud || '').split('/')[0];
+    if (etat.projets[n]) return n;
     const tous = Object.keys(etat.projets);
     return tous.length === 1 ? tous[0] : null;
   },
@@ -303,6 +308,9 @@ const app = {
     }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
+    // (the project file, with its models, in File › Open recent and on the start page, where only the
+    // table it came from was)
+    if (bureau) recents = await bureau.ajouterRecent(r.chemin);
     await rafraichirProjet(pid);
     if (p.lecture_seule) retitrer(pid);  // (an old version saved elsewhere: a project like any other, its tabs unmarked)
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
@@ -493,7 +501,7 @@ const app = {
           oublierModele(id);
           if (r.projet) projetChange(r.projet);
           diffuser('modeles');
-        }).catch((e) => statut(`${t('erreur')} : ${e.message}`, true));
+        }).catch((e) => statut(`${t('erreur')}${deuxPoints()}${e.message}`, true));
         return true;
       } }] });
   },
@@ -504,7 +512,7 @@ const app = {
   },
   async noterModele(id, note) {
     let r;
-    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')} : ${e.message}`, true); return; }
+    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')}${deuxPoints()}${e.message}`, true); return; }
     if (etat.modeles[id]) etat.modeles[id].note = r.note;
     projetRecu(r.projet);
     app.rafraichirExplorateur();
@@ -535,7 +543,7 @@ const app = {
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
-    if (erreur) { statut(`${t('erreur')} : ${erreur}`, true); return; }
+    if (erreur) { statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
@@ -828,7 +836,6 @@ const app = {
   async resumer(pid, q) {
     const res = await occupe(() => demander('resumer_groupes', { projet: pid, ...q }));
     await apresOuverture(res);
-    app.ouvrirVue('donnees', null, null, res.id);
     statut(res.resume.phrase);
   },
   async modifierValeur(pid, observation, variable, valeur) {
@@ -1005,7 +1012,7 @@ async function occupe(f) {
     return r;
   } catch (e) {
     console.error(e);
-    statut(`${t('erreur')} : ${e.message}`, true);
+    statut(`${t('erreur')}${deuxPoints()}${e.message}`, true);
     throw e;
   } finally {
     etat.occupe -= 1;
@@ -1141,6 +1148,9 @@ async function apresOuverture(res, session = null) {
   majEtat();
   document.title = `${t('titre')} — ${res.nom}`;
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
+  // a table (a project without models): its data open, in front, so that the menus act on it
+  // (New model, Which analysis?, Save) rather than on the model shown before
+  if (dock && ![].concat(res.modeles || []).length) app.ouvrirVue('donnees', null, null, res.id);
 }
 
 // ------------------------------------------------------------ recovery copies (desktop app)
@@ -1237,7 +1247,9 @@ const plusRecente = (a, b) => {
 
 function quoiDeNeuf(tout = false) {
   const vue = lire('version_vue');
-  const liste = tout ? NOUVEAUTES : NOUVEAUTES.filter((n) => !vue || plusRecente(n.version, vue));
+  // (after an update only: a first start, with no version seen yet, opens on the start page alone,
+  // not on the changes of every version since the first)
+  const liste = tout ? NOUVEAUTES : vue ? NOUVEAUTES.filter((n) => plusRecente(n.version, vue)) : [];
   ecrire('version_vue', VERSION);
   if (!liste.length) return;
   const date = (d) => new Date(d).toLocaleDateString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long' });
@@ -1685,7 +1697,7 @@ function rendrePanneau(entree) {
   let rendu;
   try { rendu = v.rendre(entree.element, contexte(entree), entree.params, entree.loc); } catch (e) { rendu = Promise.reject(e); }
   Promise.resolve(rendu).catch((e) => {
-    entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
+    entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${e.message}`));
   });
   const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
   // (in its model's page, the model's name goes without saying, and the page's tab has the mark)
@@ -1751,14 +1763,16 @@ function enregistrerImage(div = app.grapheActif(), format = 'png') {
 app.copierImage = () => copierImage();
 
 // Ctrl+C in a panel that shows a table (and no text selected): the table as tab-separated
-// text, for Excel. A list copies all its rows at full precision (its copy button), any other
-// table as shown.
+// text, for Excel. A table of panneaux.js's tableau() copies all its rows at full precision (its
+// copy button), whether it fills the panel or sits under a plot; a view's own copy comes first;
+// any other table as shown.
 app.tableauActif = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
   const e = p && etat.panneaux.get(p.id);
   const table = e && e.element && e.element.querySelector('table');
   if (!table) return null;
   if (e.element._copierTableau) return e.element._copierTableau;
+  for (let x = table.parentElement; x && x !== e.element; x = x.parentElement) if (x._copierTableau) return x._copierTableau;
   return () => {
     const texte = (c) => { const x = c.cloneNode(true); x.querySelectorAll('.marque').forEach((m) => m.remove()); return x.textContent.replace(/[▲▼]/g, '').trim(); };
     navigator.clipboard.writeText([...table.rows].map((r) => [...r.cells].map(texte).join('\t')).join('\n')).then(() => statut(t('table_copiee')));

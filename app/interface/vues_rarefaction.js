@@ -7,7 +7,7 @@
 // (±2 SD, as vegan draws it) with Chao2, the jackknifes and the bootstrap, one curve per group
 // of a qualitative variable or ID if one is chosen. A click or a box selects observations, kept
 // under the project's id as in Series. Imported by app.js.
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, deuxPoints } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau } from './panneaux.js';
 
@@ -77,7 +77,7 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
     try { cache.res = await ctx.demander('rarefaction', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, cases, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, cases, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const niveaux = liste(r.niveaux);
   const couleur = (g) => (niveaux.length ? PALETTE[Math.max(0, niveaux.indexOf(g)) % PALETTE.length] : PALETTE[0]);

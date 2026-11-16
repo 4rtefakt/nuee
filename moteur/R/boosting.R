@@ -413,10 +413,12 @@ resultat_boost <- function(id) {
   y <- m$y$nom
   q <- m$qualite
   r <- m$reglages_boost
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
+  nb <- function(x) nombre_texte(x, 2, fr)
   chiffres <- switch(m$loi,
-    gaussienne = sprintf("R2 %.2f · Q2 %.2f · %d %s", q$r2, q$Q2, m$meilleur, traduire("arbres", "trees")),
-    binomiale = sprintf("AUC %s %.2f · D2 %s %.2f · %d %s", traduire("VC", "CV"), q$auc_vc, traduire("VC", "CV"), q$D2_vc, m$meilleur, traduire("arbres", "trees")),
-    sprintf("D2 %.2f · D2 %s %.2f · %d %s", q$D2, traduire("VC", "CV"), q$D2_vc, m$meilleur, traduire("arbres", "trees")))
+    gaussienne = sprintf("R2 %s · Q2 %s · %d %s", nb(q$r2), nb(q$Q2), m$meilleur, traduire("arbres", "trees")),
+    binomiale = sprintf("AUC %s %s · D2 %s %s · %d %s", traduire("VC", "CV"), nb(q$auc_vc), traduire("VC", "CV"), nb(q$D2_vc), m$meilleur, traduire("arbres", "trees")),
+    sprintf("D2 %s · D2 %s %s · %d %s", nb(q$D2), traduire("VC", "CV"), nb(q$D2_vc), m$meilleur, traduire("arbres", "trees")))
   gauss <- m$loi == "gaussienne"
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "BOOST", analyse = TRUE, prediction = TRUE,
        classement = FALSE, loi = m$loi, regression = FALSE, opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(y),

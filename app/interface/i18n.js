@@ -1408,6 +1408,7 @@ const RESULTATS = {
     ajuste: 'ajusté', impute: 'imputé', dans_troncature: 'dans la troncature' },
   en: { residu: 'residual', quantile_normal: 'normal quantile', levier: 'leverage', cook: 'Cook’s distance', groupe_vc: 'CV group',
     classe: 'class', classe_predite: 'predicted class', classe_predite_vc: 'predicted class (CV)', 'classe ajustée': 'fitted class',
+    'classe prédite': 'predicted class', 'classe observée': 'observed class',
     'classe prédite (VC)': 'predicted class (CV)', 'classe prédite (OOB)': 'predicted class (OOB)', voisin: 'neighbouring cluster',
     feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)',
     'classe prédite': 'predicted class', 'classe observée': 'observed class', groupe: 'group', 'groupe prédit': 'predicted group',
@@ -1427,6 +1428,13 @@ export function libelleResultat(cle) {
 }
 
 export function langueActuelle() { return langue; }
+
+// The interface's typography: a space before a colon or a percent sign in French only
+// ("Erreur : …", "5 %"; "Error: …", "5%")
+export const deuxPoints = () => (langue === 'fr' ? ' : ' : ': ');
+export const pourcent = () => (langue === 'fr' ? ' %' : '%');
+// between an interval's bounds, as references.js writes them: "[0,12 ; 0,56]", "[0.12, 0.56]"
+export const separateurIntervalle = () => (langue === 'fr' ? ' ; ' : ', ');
 
 export function changerLangue(l) {
   langue = l;

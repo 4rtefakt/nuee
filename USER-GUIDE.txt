@@ -179,7 +179,8 @@ Menus and toolbar
 -----------------
 File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+O open              Ctrl+S save                Ctrl+E export the results
-  Ctrl+V paste a table
+  Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+  Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
   Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
   Esc    clear the selection       Ctrl+Del exclude the selection and refit
   Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
@@ -223,8 +224,9 @@ them and fit" or "Fit anyway".
 
 Which analysis? (Model › Which analysis?)
 -----------------------------------------
-Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few
-questions in plain words, then the analysis that answers them, already set up.
+Model › Which analysis? (also a button of the start page, next to New model, and found by typing
+"which" in View › Find a command, Ctrl+K): a few questions in plain words, then the analysis that
+answers them, already set up.
   - Your question: compare groups or periods; the effect of variables on one response; many
     species at once (how the composition changes, one model per species, the species that
     characterize each group); a trend over time or a monitoring index; a density or an

@@ -1017,12 +1017,12 @@ resultat_communaute <- function(id, extra) {
          demande = d$demande %||% list(type = d$type, numero = d$number)), extra(p, m, d))
 }
 
-pourcent_chiffre <- function(x) paste0(formatC(100 * x, format = "f", digits = 1), " %")
-
+# (la ligne de l'explorateur de chacune dans la langue de l'interface : sa virgule décimale)
 resultat_pcoa <- function(id) resultat_communaute(id, function(p, m, d) {
   k <- m$noyau
   vp <- table_valeurs_pcoa(k)
-  list(chiffres = sprintf("%s · PCoA1 %s", nom_court_distance(m$options$distance, m$options$binaire), pourcent_chiffre(vp$part[1])),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("%s · PCoA1 %s", nom_court_distance(m$options$distance, m$options$binaire), pourcent_texte(vp$part[1], fr)),
        vues_defaut = I(c("ordination_dist", "valeurs_propres_pcoa")),
        observations = cbind(data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE), colonnes_axes(k$points)),
        axes = I(utils::head(colnames(k$points), AXES_INTERFACE)), valeurs_propres = vp, inertie = list(totale = k$totale),
@@ -1042,7 +1042,7 @@ resultat_nmds <- function(id) resultat_communaute(id, function(p, m, d) {
   garde <- if (length(sh$dissimilarite) > SHEPARD_MAX) unique(round(seq(1, length(sh$dissimilarite), length.out = SHEPARD_MAX))) else seq_along(sh$dissimilarite)
   obs <- cbind(data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE), colonnes_axes(k$points))
   obs$stress <- k$stress_observations
-  list(chiffres = sprintf("stress %s · k = %d", formatC(k$stress, format = "f", digits = 3), m$options$k),
+  list(chiffres = sprintf("stress %s · k = %d", nombre_texte(k$stress, 3, !identical(getOption("nuee.langue"), "en")), m$options$k),
        vues_defaut = I(c("ordination_dist", "shepard")), observations = obs, axes = I(colnames(k$points)),
        stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, nuls = k$nuls,
        stress_departs = data.frame(depart = seq_along(k$stress_departs) - 1, stress = k$stress_departs),
@@ -1069,7 +1069,8 @@ resultat_permanova <- function(id) resultat_communaute(id, function(p, m, d) {
     obs$classe <- as.character(premiere$groupe)[match(m$observations, premiere$observations)]
     for (r in m$dispersions) obs[[sprintf(traduire("distance au centre (%s)", "distance to centre (%s)"), r$variable)]] <- unname(r$distances)[match(m$observations, r$observations)]
   }
-  list(chiffres = sprintf("R2 %s · p %s", formatC(k$modele$R2, format = "f", digits = 2), if (is.na(k$modele$p)) "—" else format(signif(k$modele$p, 2))),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("R2 %s · p %s", nombre_texte(k$modele$R2, 2, fr), p_explorateur(k$modele$p, fr)),
        vues_defaut = I(c("permanova", if (length(m$dispersions)) "dispersion" else "liste_obs")), observations = obs,
        table = k$table, par = m$options$par, modele = k$modele, alias = I(k$alias), termes = I(unique(m$X$groupes)),
        dispersions = unname(lapply(m$dispersions, dispersion_interface)), dispersion_type = m$options$dispersion,
@@ -1081,7 +1082,8 @@ resultat_mantel <- function(id) resultat_communaute(id, function(p, m, d) {
   np <- length(m$paires$y)
   garde <- if (np > SHEPARD_MAX) sort(avec_graine(1, sample.int(np, SHEPARD_MAX))) else seq_len(np)
   t <- m$test
-  list(chiffres = sprintf("r %s · p %s", formatC(t$r, format = "f", digits = 2), if (is.na(t$p)) "—" else format(signif(t$p, 2))),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("r %s · p %s", nombre_texte(t$r, 2, fr), p_explorateur(t$p, fr)),
        vues_defaut = I(c("mantel", if (!is.null(m$correlogramme)) "correlogramme" else "liste_obs")),
        observations = data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE),
        test = t, methode = m$options$methode, termes_x = I(m$X$termes), echelles_x = I(m$X$echelles), termes_z = I(m$Z$termes),

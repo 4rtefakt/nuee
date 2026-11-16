@@ -7,7 +7,7 @@
 // selection shared with the project's models. The autocorrelation view gives Moran's I of a
 // variable or of a regression's residuals, its correlogram and the semivariogram.
 // Imported by app.js.
-import { t, ajouterTextes, libelleResultat, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, libelleResultat, langueActuelle, deuxPoints } from './i18n.js';
 import { el, fmt, decimal, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -42,15 +42,17 @@ function formulaireCoordonnees(ctx, pid, infos, loc, apres) {
   const proj = ctx.projet(pid);
   const quantitatives = proj.variables.filter((v) => !v.qualitative);
   const actuelles = infos.coordonnees || infos.proposition || {};
-  loc.cx ??= actuelles.x ?? (quantitatives[0] || {}).uid;
-  loc.cy ??= actuelles.y ?? (quantitatives[1] || quantitatives[0] || {}).uid;
+  // (no variable named like a coordinate: chosen here, not the table's first two, a weight as longitude)
+  loc.cx ??= actuelles.x ?? '';
+  loc.cy ??= actuelles.y ?? '';
   loc.csys ??= String(actuelles.systeme ?? 4326);
-  const options = quantitatives.map((v) => [v.uid, v.nom]);
+  const options = [['', t('carte_choisir')]].concat(quantitatives.map((v) => [v.uid, v.nom]));
   const systemes = liste(infos.systemes).map((s) => [String(s.code), `${s.nom} (EPSG:${s.code})`]).concat([['plan', t('carte_plan')]]);
   if (!systemes.some(([c]) => c === loc.csys)) systemes.unshift([loc.csys, `EPSG:${loc.csys}`]);
   const erreur = el('span', { class: 'erreur' });
   const appliquer = el('button', { class: 'principal', onclick: async () => {
     erreur.textContent = '';
+    if (loc.cx === '' || loc.cy === '') { erreur.textContent = t('carte_choisir_xy'); return; }
     try {
       await ctx.occupe(() => ctx.demander('coordonnees', { projet: pid, regler: true, x: Number(loc.cx), y: Number(loc.cy), systeme: loc.csys }));
       await ctx.apresConsole([pid]);
@@ -60,8 +62,8 @@ function formulaireCoordonnees(ctx, pid, infos, loc, apres) {
   const autre = el('input', { type: 'text', placeholder: 'EPSG', style: 'width:6em', title: t('carte_autre_code'),
     onchange: (e) => { const c = e.target.value.replace(/^EPSG:/i, '').trim(); if (c) { loc.csys = c; ctx.rafraichir(); } } });
   return el('div', { class: 'carte-coordonnees' }, outils(
-    choix(t('carte_x'), options, loc.cx, (v) => { loc.cx = Number(v); }),
-    choix(t('carte_y'), options, loc.cy, (v) => { loc.cy = Number(v); }),
+    choix(t('carte_x'), options, loc.cx, (v) => { loc.cx = v === '' ? '' : Number(v); }),
+    choix(t('carte_y'), options, loc.cy, (v) => { loc.cy = v === '' ? '' : Number(v); }),
     choix(t('carte_systeme'), systemes, loc.csys, (v) => { loc.csys = v; }), autre, appliquer, erreur),
   el('p', { class: 'note' }, t('carte_coordonnees_note')));
 }
@@ -290,7 +292,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
     try { cache.res = await ctx.demander('autocorrelation_spatiale', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const mo = r.moran;
   const km = r.distance_max > 5000;
@@ -325,7 +327,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
     { type: 'scatter', mode: 'lines+markers', name: 'I', x: D.map((d) => (km ? d / 1000 : d)), y: I, line: { color: c.doux, width: 1 },
       marker: { size: 9, color: PH.map((x) => (x !== null && x <= 0.05 ? PALETTE[1] : PALETTE[0])) },
       customdata: liste(cg.paires).map((n, i) => [n, valeurP(liste(cg.p)[i]), valeurP(PH[i])]),
-      hovertemplate: `%{x:.3~f} ${unite}<br>I = %{y:.4f}<br>${t('carte_paires')} : %{customdata[0]}<br>p = %{customdata[1]} (Holm : %{customdata[2]})<extra></extra>` },
+      hovertemplate: `%{x:.3~f} ${unite}<br>I = %{y:.4f}<br>${t('carte_paires')}${deuxPoints()}%{customdata[0]}<br>p = %{customdata[1]} (Holm${deuxPoints()}%{customdata[2]})<extra></extra>` },
     { type: 'scatter', mode: 'lines', name: t('autocorrelation_esperance'), x: D.map((d) => (km ? d / 1000 : d)), y: E,
       line: { color: c.doux, dash: 'dash', width: 1 }, hoverinfo: 'skip' }],
   { title: { text: `${t('autocorrelation_correlogramme')} · ${r.nom}` }, dragmode: 'zoom', showlegend: false,
@@ -338,7 +340,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
   tracer(ctx, g2, [
     { type: 'scatter', mode: 'markers', name: 'γ', x: VD, y: liste(vg.gamma), customdata: NP,
       marker: { color: PALETTE[0], size: NP.map((n) => 5 + 10 * Math.sqrt(n / maxNP)) },
-      hovertemplate: `%{x:.3~f} ${unite}<br>γ = %{y:.4~g}<br>${t('carte_paires')} : %{customdata}<extra></extra>` },
+      hovertemplate: `%{x:.3~f} ${unite}<br>γ = %{y:.4~g}<br>${t('carte_paires')}${deuxPoints()}%{customdata}<extra></extra>` },
     { type: 'scatter', mode: 'lines', name: t('autocorrelation_variance'), x: [0, Math.max(...VD, 0)], y: [variance, variance],
       line: { color: c.doux, dash: 'dash', width: 1 }, hoverinfo: 'skip' }],
   { title: { text: `${t('autocorrelation_variogramme')} · ${r.nom}` }, dragmode: 'zoom', showlegend: false,
@@ -364,6 +366,7 @@ ICONES_VUES.autocorrelation_spatiale = 'radar';
 ajouterTextes({
   carte: 'Carte', carte_titre_coordonnees: 'Coordonnées des observations', carte_x: 'X (est ou longitude)', carte_y: 'Y (nord ou latitude)',
   carte_systeme: 'Système', carte_plan: 'Coordonnées planes en mètres, autre système', carte_appliquer: 'Utiliser ces coordonnées',
+  carte_choisir: '— choisir —', carte_choisir_xy: 'Choisissez les deux variables des coordonnées, X et Y.',
   carte_autre_code: 'Un autre code EPSG : une zone UTM (326xx au nord, 327xx au sud), 4258, 4171, 9794…',
   carte_coordonnees_note: 'Deux variables du projet donnent la position de chaque observation, dans leur système de coordonnées : des longitudes et latitudes en degrés (WGS 84), du Lambert-93, une zone UTM… Elles sont enregistrées avec le projet. Un système plan non listé garde des distances justes, sans fond de carte.',
   carte_resume: '{x}, {y} · {systeme}', carte_changer: 'Changer…', carte_taille: 'Taille', carte_fond: 'Fond',
@@ -398,6 +401,7 @@ ajouterTextes({
 }, {
   carte: 'Map', carte_titre_coordonnees: 'Coordinates of the observations', carte_x: 'X (east or longitude)', carte_y: 'Y (north or latitude)',
   carte_systeme: 'System', carte_plan: 'Plane coordinates in metres, another system', carte_appliquer: 'Use these coordinates',
+  carte_choisir: '— choose —', carte_choisir_xy: 'Choose the two variables of the coordinates, X and Y.',
   carte_autre_code: 'Another EPSG code: a UTM zone (326xx north, 327xx south), 4258, 4171, 9794…',
   carte_coordonnees_note: 'Two of the project’s variables give each observation’s position, in their coordinate system: longitudes and latitudes in degrees (WGS 84), Lambert-93, a UTM zone… They are saved with the project. A plane system not listed keeps the distances right, without a background map.',
   carte_resume: '{x}, {y} · {systeme}', carte_changer: 'Change…', carte_taille: 'Size', carte_fond: 'Background',

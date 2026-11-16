@@ -5,7 +5,7 @@
 // the histogram of distances, the average one with covariates and one curve per category of a
 // qualitative covariate, and for points the pdf of the distances; the QQ plot; the density and
 // abundance by stratum), its report parts and its strings. Imported by app.js.
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, pourcent } from './i18n.js';
 import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
@@ -114,7 +114,7 @@ const parIntervalles = (m) => liste(m.intervalles).length > 0;
 const texteTroncature = (m) => {
   const tr = m.troncature || {};
   if (parIntervalles(m)) return t('distance_n_intervalles', { k: liste(m.intervalles).length - 1, de: sig(tr.L), a: avecUnite(sig(tr.w), uDist(m)) });
-  return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${decimal(tr.pourcentage)} %)` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
+  return `${avecUnite(sig(tr.w), uDist(m))}${fini(tr.pourcentage) ? ` (${decimal(tr.pourcentage)}${pourcent()})` : ''}${tr.L > 0 ? ` · ${t('distance_gauche')} ${sig(tr.L)}` : ''}`;
 };
 const phraseDetection = (m) => t(m.p_moyenne ? 'distance_phrase_p_moyenne' : 'distance_phrase_p', { p: fmt(m.p, 3), se: fmt(m.se_p, 3), cv: pct(m.cv_p), quoi: effectifLibelle(m),
   e: avecUnite(sig(m.effectif.valeur), uDist(m)), se_e: avecUnite(sig(m.effectif.se, 3), uDist(m)) });

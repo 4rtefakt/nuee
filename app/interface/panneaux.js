@@ -1,6 +1,6 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
-import { t, lire, ecrire, langueActuelle, libelleResultat } from './i18n.js';
+import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
@@ -1062,7 +1062,7 @@ function rendreObsPred(conteneur, ctx, p, loc) {
   const [lo, hi] = etendue(vals);
   const unite = uniteAxe(ctx, m.projet, y, transformeeDans(ctx, m, y));
   tracer(ctx, graphe, points,
-  { showlegend: points.length > 1, title: { text: `${m.nom} · ${y} : ${t('observe')} / ${t('ajuste')}` },
+  { showlegend: points.length > 1, title: { text: `${m.nom} · ${y}${deuxPoints()}${t('observe')} / ${t('ajuste')}` },
     shapes: [{ type: 'line', x0: lo, y0: lo, x1: hi, y1: hi, line: { color: '#888', dash: 'dot', width: 1 } }],
     xaxis: { title: { text: `${y} ${t('observe')}${unite}` } }, yaxis: { title: { text: `${y} ${t('ajuste')}${unite}` } } });
   brancherSelection(graphe, ctx, m.id);
@@ -1152,7 +1152,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
   const infos = el('span', { class: 'infos' }, `${o.nom.length} ${t('obs')}`,
     hors ? ` · ${hors} ${t(m.regression ? 'extrapolations' : 'hors_domaine')}` : '',
     inconnues ? el('span', { class: 'erreur', title: t('categorie_inconnue_aide') }, ` · ${inconnues} ${t('categories_inconnues')}`) : '',
-    fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')} : ${[].concat(r.absentes).join(', ')}`) : '',
+    fichier && r.absentes && [].concat(r.absentes).length ? el('span', { class: 'erreur' }, ` · ${t('variables_absentes')}${deuxPoints()}${[].concat(r.absentes).join(', ')}`) : '',
     // values of the file read as missing (text in a quantitative column: <0.5, nd...)
     fichier && r.note && [].concat(r.note).length ? el('span', { class: 'erreur' }, ` · ${[].concat(r.note).join(' ; ')}`) : '');
   loc.graphe ??= 'scores';
@@ -1334,7 +1334,9 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     const vides = x.reduce((s, y) => s + (y === null ? 1 : 0), 0);
     const distinctes = new Set(x.filter((y) => y !== null)).size;
     const valeurs = [vides ? t('atelier_vides_n', { n: vides }) : '', t('atelier_distinctes', { n: distinctes })].filter(Boolean).join(' · ');
-    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i],
+    // (a column of whole numbers, years or counts, without decimals: 2008, not 2008.0000)
+    const entiers = x.every((y) => typeof y !== 'number' || Number.isInteger(y));
+    return { cle: i, titre: d.variables[i], modifiable: true, uid: d.uid_variables[i], decimales: entiers ? 0 : undefined,
       sousTitre: [v.unite, resume ? valeurs : ''].filter(Boolean).join(' · ') || null,
       info: [v.description, `${d.variables[i]}${v.unite ? ` (${v.unite})` : ''} · ${v.qualitative ? t([].concat(v.categories || []).length === 1 ? 'atelier_qualitative_une' : 'atelier_qualitative', { n: [].concat(v.categories || []).length }) : t('atelier_quantitative')} · ${valeurs}`,
         t('atelier_entete_aide')].filter(Boolean).join('\n') };
@@ -1413,7 +1415,7 @@ function collerCellules(conteneur, ctx, p, loc, d) {
       const res = await ctx.changerDonnees('coller_cellules', p.projet, { observations: rangs.map((i) => ld.uid_observations[i]),
         variables: cles.map((j) => ld.uid_variables[j]), valeurs: rangs.map((_, a) => cles.map((_, b) => (lignes[a][b] === undefined ? null : lignes[a][b]))) });
       ctx.statut(t('atelier_colle', { n: res.collage.cellules }) + (hors > 0 ? ` ${t('atelier_coller_hors')}` : ''));
-    } catch (e) { ctx.statut(`${t('erreur')} : ${e.message}`, true); }
+    } catch (e) { ctx.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true); }
   };
 }
 const COLONNES_MAX = 200;
@@ -1542,7 +1544,7 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
     loc.cleValeurs = cle;
   }
   const x = loc.valeurs;
-  const titre = { text: `${s.nom[k]}${s.suggestion[k] ? ` · ${t('suggestion')} : ${libelleTransfo(s.suggestion[k])}` : ''}` };
+  const titre = { text: `${s.nom[k]}${s.suggestion[k] ? ` · ${t('suggestion')}${deuxPoints()}${libelleTransfo(s.suggestion[k])}` : ''}` };
   if (s.qualitative[k]) {
     // (in the order of its categories: Edit › Categories, atelier.js)
     const v = proj && proj.variables.find((w) => w.uid === s.uid[k]);
@@ -1659,7 +1661,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
     try { cache.res = await ctx.demander('series', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const T = liste(r.points.temps);
   const Y = liste(r.points.valeur);
@@ -1770,7 +1772,7 @@ async function rendreSeries(conteneur, ctx, p, loc) {
       choix(t('series_saisons'), optionsSaisons, loc.saisons, (x) => { loc.saisons = x === '' || x === 'mois' ? x : lire(x); ctx.rafraichir(); }))];
     bas = el('div', { class: 'bas', style: { flex: '0 1 auto', maxHeight: '45%' } });  // (the plot first; the table scrolls)
     if (r.tendances_erreur) {
-      bas.replaceChildren(outils(...avant), el('p', { class: 'erreur' }, `${t('erreur')} : ${r.tendances_erreur}`));
+      bas.replaceChildren(outils(...avant), el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${r.tendances_erreur}`));
     } else {
       const col = (k) => liste(r.tendances[k]);
       const sig = (v) => decimal(+Number(v).toPrecision(4));
@@ -1930,7 +1932,7 @@ async function rendreTestsClasses(conteneur, ctx, p, loc, modes) {
     } catch (e) { loc.res = { erreur: e.message }; }
     loc.cle = cle;
   }
-  if (loc.res.erreur) { conteneur.replaceChildren(barre(), el('p', { class: 'erreur' }, `${t('erreur')} : ${loc.res.erreur}`)); return; }
+  if (loc.res.erreur) { conteneur.replaceChildren(barre(), el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${loc.res.erreur}`)); return; }
   const tab = loc.res.tableau;
   const col = (k) => [].concat(tab[k]);
   const noms = col('nom');
@@ -2069,7 +2071,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     if (L.baseTest !== base) L.test = null;
     L.baseTest = base;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const liste = (xs) => (xs.length > 8 ? `${xs.slice(0, 8).join(', ')}… (${xs.length})` : xs.join(', '));
   // every pair of levels (within each group, if one is chosen), with the columns of the test
@@ -2116,7 +2118,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
   if (r.type === 'apparie' && r.erreur) {
     // the pair A–B can't be tested: why, and the table of all pairs still there
     const bas = el('div', { class: 'bas' });
-    conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${r.erreur}`),
+    conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${r.erreur}`),
       r.sans_groupe ? el('p', { class: 'note' }, t('paires_sans_groupe', { groupe: r.dans.nom, niveaux: liste([].concat(r.sans_groupe)) })) : '', bas);
     tableauToutes(bas, [el('b', {}, nomToutes)]);
     return;
@@ -2316,7 +2318,7 @@ async function rendreCorrelations(conteneur, ctx, p, loc, modes) {
     try { cache.res = await ctx.demander('correlations_variables', { projet: p.projet, methode: C.methode, correction: C.correction }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const noms = [].concat(r.noms);
   const uid = [].concat(r.uid);
@@ -2439,7 +2441,7 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
     try { cache.res = await ctx.demander('baci', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, unites, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, unites, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const s = (k) => [].concat(r.serie[k]);
   const xs = s('temps');
@@ -2489,7 +2491,7 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
   boutonModele.onclick = async () => {
     try { await ctx.ajusterBaci({ ...q, car1 }); } catch (e) { cache.erreurModele = { cle: cleModele, message: e.message }; ctx.rafraichir(); }
   };
-  const refus = cache.erreurModele && cache.erreurModele.cle === cleModele ? el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreurModele.message}`) : null;
+  const refus = cache.erreurModele && cache.erreurModele.cle === cleModele ? el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreurModele.message}`) : null;
   const graphe = el('div', { class: 'graphe' });
   const details = el('div', { class: 'defile', style: { flex: '0 1 auto', maxHeight: '40%' } });
   const bas = el('div', { class: 'bas' });
@@ -2540,7 +2542,7 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
         el('td', { class: 'num' }, ddlTexte(tc('ddl1')[i])),
         el('td', { class: 'num' }, valeurP(tc('p')[i])),
         el('td', { class: 'num' }, tc('effet')[i] === null ? '' : `${effets[tc('nom_effet')[i]] || ''} = ${fmt(tc('effet')[i], 3)}`),
-        el('td', { class: 'num' }, tc('bas')[i] === null ? '' : `${fmt(difference, 3)} [${fmt(tc('bas')[i], 3)} ; ${fmt(tc('haut')[i], 3)}]`))))),
+        el('td', { class: 'num' }, tc('bas')[i] === null ? '' : `${fmt(difference, 3)} [${fmt(tc('bas')[i], 3)}${separateurIntervalle()}${fmt(tc('haut')[i], 3)}]`))))),
     el('table', { class: 'tableau compact', style: { marginTop: '10px' } },
       el('thead', {}, el('tr', {}, [t('baci_periode'), 'n', t('baci_de'), t('baci_a'), t('baci_ecart_moyen'), t('ecart_type'), t('baci_ecart_median'), t('shapiro_p')]
         .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
@@ -2723,7 +2725,7 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
     marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])) },
     customdata: idx.map((i) => [fmt(bas[i], 4), fmt(haut[i], 4), valeurP(pv[i])]),
-    hovertemplate: '<b>%{y}</b><br>%{x:.4f} [%{customdata[0]} ; %{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>' }],
+    hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}` }, dragmode: 'zoom', showlegend: false,
     xaxis: { title: { text: t('estimation_ic') } }, yaxis: { autorange: 'reversed' },
     shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: 0, x1: 0, line: { color: '#888', width: 1, dash: 'dot' } }] });
@@ -3063,7 +3065,7 @@ async function rendreACF(conteneur, ctx, p, loc) {
   const apres = decalages.slice(1);
   tracer(ctx, graphe, series.map((s, j) => ({ type: 'bar', x: decalages, y: [].concat(s.acf), customdata: [].concat(r.paires),
     name: t(r.car1 && s.residus !== 'normalises' ? 'acf_sans_car1' : RESIDUS_ACF[s.residus]), marker: { color: PALETTE[j ? 2 : 0] },
-    hovertemplate: `${t('acf_decalage')} %{x} : %{y:.3f}<br>n = %{customdata}<extra>%{fullData.name}</extra>` }))
+    hovertemplate: `${t('acf_decalage')} %{x}${deuxPoints()}%{y:.3f}<br>n = %{customdata}<extra>%{fullData.name}</extra>` }))
     .concat([1, -1].map((signe) => ({ type: 'scatter', mode: 'lines', x: apres, y: apres.map((k) => signe * bande[k]), name: t('acf_bande'),
       showlegend: signe > 0, line: { color: c.doux, width: 1, dash: 'dash' }, hoverinfo: 'skip' }))),
   { title: { text: `${m.nom} · ${t('acf')}` }, barmode: 'group', dragmode: 'zoom', showlegend: true,
@@ -3298,10 +3300,10 @@ async function rendrePuissance(conteneur, ctx, p, loc) {
     const propre = u === pl.unites;
     return { type: 'scatter', mode: 'lines', x: i.map((j) => ta[j]), y: i.map((j) => tp[j]), line: { color: PALETTE[k % PALETTE.length], width: propre ? 3 : 1.5 },
       name: propre ? `${libelleUnites(r, u)} (${t('puissance_donnees')})` : libelleUnites(r, u),
-      hovertemplate: `${libelleUnites(r, u)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` };
+      hovertemplate: `${libelleUnites(r, u)} · %{x} ${t('puissance_ans')}${deuxPoints()}%{y:.2f}<extra></extra>` };
   }).concat(s ? [{ type: 'scatter', mode: 'markers', x: [s.annees], y: [s.puissance], name: t('puissance_simulee'),
     error_y: { type: 'data', array: [1.96 * s.erreur_mc], color: c.texte }, marker: { symbol: 'diamond', size: 10, color: c.texte },
-    hovertemplate: `${t('puissance_simulee')} · ${libelleUnites(r, s.unites)} · %{x} ${t('puissance_ans')} : %{y:.2f}<extra></extra>` }] : []),
+    hovertemplate: `${t('puissance_simulee')} · ${libelleUnites(r, s.unites)} · %{x} ${t('puissance_ans')}${deuxPoints()}%{y:.2f}<extra></extra>` }] : []),
   { title: { text: `${m.nom} · ${t('puissance')}` }, dragmode: 'zoom', showlegend: true,
     xaxis: { title: { text: t('puissance_axe_annees') } }, yaxis: { title: { text: t('puissance_axe') }, range: [0, 1.02] },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: r.seuil, y1: r.seuil, line: { color: '#d1495b', width: 1, dash: 'dash' } }] });
@@ -3430,7 +3432,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
       error_y: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: PALETTE[k % PALETTE.length], thickness: 1.5 },
       marker: { size: 9, color: PALETTE[k % PALETTE.length] },
       customdata: idx.map((i) => [cm('niveau')[i], fmt(bas[i], 4), fmt(haut[i], 4)]),
-      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]} ; %{customdata[2]}]<extra></extra>` };
+      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]}${separateurIntervalle()}%{customdata[2]}]<extra></extra>` };
   }), { title: { text: `${m.nom} · ${pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes')}` }, dragmode: 'zoom', showlegend: groupes.length > 1,
     xaxis: { title: { text: r.facteur.nom }, tickmode: 'array', tickvals: niveaux.map((_, i) => i), ticktext: niveaux, range: [-0.5, niveaux.length - 0.5], zeroline: false },
     // (the response's unit: on its own scale, or that of a log link's means, not on a link's or a transformation's)
@@ -3466,7 +3468,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
 // regressions ticked, side by side (rendreCoteACote).
 function rendreComparaison(conteneur, ctx, p, loc) {
   loc.mode ??= 'ajustement';
-  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as shown)
+  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as its copy button does)
   conteneur._copierTableau = null;
   conteneur._coefficients = null;
   const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
@@ -3645,7 +3647,7 @@ async function rendrePermutations(conteneur, ctx, p, loc) {
     m.noms_y.length > 1 ? choix(t('y_var'), m.noms_y.map((n, i) => [i, n]), loc.y, (v) => { loc.y = +v; ctx.rafraichir(); }) : null,
     el('label', { class: 'champ' }, el('span', {}, t('nb_permutations')), el('input', { type: 'number', min: 1, max: 999, value: loc.n, style: 'width:5em',
       onchange: (e) => { loc.n = Math.max(1, Math.min(999, Math.round(+e.target.value) || 20)); ctx.rafraichir(); } })),
-    el('span', { class: 'infos' }, `${t('ordonnees')} : R2 = ${fmt(r.ordonnee_R2, 3)} · Q2 = ${fmt(r.ordonnee_Q2, 3)}`),
+    el('span', { class: 'infos' }, `${t('ordonnees')}${deuxPoints()}R2 = ${fmt(r.ordonnee_R2, 3)} · Q2 = ${fmt(r.ordonnee_Q2, 3)}`),
     el('span', { class: 'badge ' + (valide ? 'bon' : 'alerte') }, valide ? t('pas_surajuste') : t('surajustement_possible'))),
   el('p', { class: 'note' }, t('permutations_note')), graphe);
   const idx = (orig) => pts.correlation.map((_, i) => i).filter((i) => pts.origine[i] === orig);
@@ -3654,7 +3656,7 @@ async function rendrePermutations(conteneur, ctx, p, loc) {
     x: idx(orig).map((i) => pts.correlation[i]), y: idx(orig).map((i) => pts[cle2][i]),
     marker: { color: couleur, symbol: symbole, size: orig ? 12 : 8, line: { width: orig ? 1.5 : 0, color: '#333' } },
     hovertemplate: `${cle2} %{y:.3f}<br>r = %{x:.3f}<extra></extra>` }));
-  const droite = (a, b, nom, couleur) => ({ type: 'scatter', mode: 'lines', name: `${nom} : ${fmt(a, 3)} + ${fmt(b, 3)} r`,
+  const droite = (a, b, nom, couleur) => ({ type: 'scatter', mode: 'lines', name: `${nom}${deuxPoints()}${fmt(a, 3)} + ${fmt(b, 3)} r`,
     x: [0, 1], y: [a, a + b], line: { color: couleur, dash: 'dash', width: 1.5 }, hoverinfo: 'skip' });
   tracer(ctx, graphe, [...nuage('R2', '#3b9a5b', 'circle'), ...nuage('Q2', '#2f6fb5', 'square'),
     droite(r.ordonnee_R2, r.pente_R2, 'R2', '#3b9a5b'), droite(r.ordonnee_Q2, r.pente_Q2, 'Q2', '#2f6fb5')],
@@ -3701,7 +3703,7 @@ function rendreClassification(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe' });
   conteneur.replaceChildren(outils(
     choix('', [['vc', t('validation_croisee')], ['ajuste', t('valeurs_ajustees')]], loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
-    el('span', { class: 'infos' }, `${t('bien_classes')} : ${pct(r.global)}`)),
+    el('span', { class: 'infos' }, `${t('bien_classes')}${deuxPoints()}${pct(r.global)}`)),
   el('p', { class: 'note' }, t(m.analyse ? 'classification_note_proba' : 'classification_note')), el('div', { class: 'tableau-court' }, table), graphe);
   const traces = r.roc.map((roc, j) => ({ type: 'scatter', mode: 'lines', name: `${classes[j]} (AUC ${fmt(roc.auc, 3)})`,
     x: roc.fpr, y: roc.tpr, line: { color: PALETTE[j % PALETTE.length], width: 2, shape: 'hv' } }));

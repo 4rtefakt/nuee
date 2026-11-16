@@ -366,9 +366,10 @@ resultat_forest <- function(id) {
   r <- m$reglages_foret
   qualite <- if (m$classement) list(bien_classes_oob = 1 - m$oob$erreur, bien_classes_vc = m$classification$vc$global, erreur_oob = m$oob$erreur)
              else list(mse_oob = m$oob$mse, r2_oob = m$oob$r2, Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, RMSE_oob = sqrt(m$oob$mse))
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   chiffres <- if (m$classement) sprintf("%s %s · %s %s", fmt_pourcent(1 - m$oob$erreur), traduire("bien classées (OOB)", "correct (OOB)"),
                                         fmt_pourcent(m$classification$vc$global), traduire("(VC)", "(CV)"))
-              else sprintf("R2 OOB %.2f · Q2 %.2f · %d %s", m$oob$r2, m$vc$Q2, r$arbres, traduire("arbres", "trees"))
+              else sprintf("R2 OOB %s · Q2 %s · %d %s", nombre_texte(m$oob$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), r$arbres, traduire("arbres", "trees"))
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "FOREST", analyse = TRUE, prediction = TRUE,
        classement = m$classement, regression = FALSE, opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(y),
        transformation_y = nom_transformation(m$y$transform) %||% "", observations = observations_foret(p, m),

@@ -199,7 +199,8 @@ Menus et barre d'outils
 -----------------------
 Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
   Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
-  Ctrl+V coller un tableau
+  Ctrl+V coller un tableau Ctrl+Z annuler             Ctrl+H chercher et remplacer
+  Ctrl+K rechercher une commande    Ctrl+J console R  Ctrl+C copier le tableau
   Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
   Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster
   Ctrl+Maj+N nouvelle fenêtre    Ctrl+Maj+D détacher le panneau   Ctrl+W fermer le panneau
@@ -243,8 +244,9 @@ Avant le calcul, l'application vérifie les données : variables ou observations
 
 Quelle analyse ? (Modèle › Quelle analyse ?)
 --------------------------------------------
-Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et
-Ctrl+K) : quelques questions en mots simples, puis l'analyse qui y répond, déjà réglée.
+Modèle › Quelle analyse ? (aussi un bouton de la page d'accueil, à côté de Nouveau modèle, et en
+tapant « quelle » dans Affichage › Rechercher une commande, Ctrl+K) : quelques questions en mots
+simples, puis l'analyse qui y répond, déjà réglée.
   - Votre question : comparer des groupes ou des périodes ; l'effet de variables sur une
     réponse ; beaucoup d'espèces à la fois (comment la composition change, un modèle par
     espèce, les espèces qui caractérisent chaque groupe) ; une tendance dans le temps ou un

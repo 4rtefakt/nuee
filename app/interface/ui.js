@@ -155,7 +155,10 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
       el('button', { class: 'icone-seule', onclick: fermer, title: `${t('fermer')} (Esc)`, 'aria-label': t('fermer') }, icone('x'))),
     el('div', { class: 'corps-dialogue' }, contenu), pied);
   fond.append(boite);
-  fond.addEventListener('mousedown', (e) => { if (e.target === fond) fermer(); });
+  // a click beside it closes a dialog that only shows something; one with fields to fill in (New
+  // model, Export to R...) stays, so that a click beside it doesn't lose what was chosen (Esc or ×)
+  const champs = () => boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea');
+  fond.addEventListener('mousedown', (e) => { if (e.target === fond && !champs()) fermer(); });
   document.addEventListener('keydown', touche, true);
   document.body.append(fond);
   const premier = boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea')

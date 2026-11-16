@@ -866,10 +866,11 @@ resultat_trim <- function(id) {
   fit <- m$ajustement_noyau
   pi <- m$pentes[1, ]
   matrice <- function(M) { M <- unname(M); M }
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = "TRIM", analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = length(t$covariables), noms_y = I(t$noms$y),
-       chiffres = sprintf("%s %s · %s", traduire("pente", "slope"), if (is.na(pi$multiplicative)) "—" else formatC(pi$multiplicative, format = "f", digits = 3),
-                          libelle_classe_trim(pi$classe, !identical(getOption("nuee.langue"), "en"))),
+       chiffres = sprintf("%s %s · %s", traduire("pente", "slope"), if (is.na(pi$multiplicative)) "—" else nombre_texte(pi$multiplicative, 3, fr),
+                          libelle_classe_trim(pi$classe, fr)),
        vues_defaut = I(c("trim_indices", "trim_totaux")),
        observations = observations_trim(p, m), sites = sites_trim(m),
        modele_trim = m$modele, changements = I(m$changements), changements_retires = I(m$changements_retires), pas_a_pas = m$pas_a_pas,

@@ -683,6 +683,8 @@ exporter_prediction_demande <- function(q) {
   out <- out[c("nom", setdiff(names(out), c("nom", "uid")))]
   names(out)[1] <- "Observation"
   rownames(out) <- NULL
+  # (ses colonnes dans la langue de l'interface, comme celles d'Exporter les résultats : formats.R)
+  out <- noms_tables_langue(list(predictions = out), projet(modele(q$modele)$projet))[[1]]
   ecrire_tableau(out, chemin, objet = "predictions")
   list(chemin = chemin, chemins = I(chemin))
 }
