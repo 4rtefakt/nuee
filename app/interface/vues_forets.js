@@ -2,7 +2,7 @@
 // settings in the model dialog, their views (summary, variable importance, partial dependence
 // computed on request, observed against predicted or the classification, the error against the
 // number of trees), their report parts and strings. Imported by app.js.
-import { t, ajouterTextes, deuxPoints } from './i18n.js';
+import { t, ajouterTextes, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans, etendue } from './panneaux.js';
@@ -15,7 +15,7 @@ const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R
 const estEnsemble = (m) => !!m && !!m.analyse && ['FOREST', 'BOOST'].includes(m.type);
 const foret = (m) => m.type === 'FOREST';
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
-const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${fmt(100 * v, d)} %`);
+const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${fmt(100 * v, d)}${pourcent()}`);
 const titreFiche = (m) => el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
 const groupesVC = (m) => (m.vc_par ? `${m.G} (${m.vc_par})` : String(m.G));
 // a classification: a forest of classes, or boosted trees of a 0/1 response (classified at 0.5)
@@ -42,7 +42,7 @@ function rendreImportance(conteneur, ctx, p, loc) {
     : t('ens_influence_note');
   conteneur.replaceChildren(foret(m) ? outils(choix('', [['permutation', t('ens_permutation')], ['impurete', t('ens_impurete')]], loc.quoi,
     (v) => { loc.quoi = v; ctx.rafraichir(); })) : el('span'), el('p', { class: 'note' }, note), graphe, bas);
-  const unite = foret(m) ? '' : ' %';
+  const unite = foret(m) ? '' : pourcent();
   tracer(ctx, graphe, noms.map((b, k) => {
     const idx = vars.map((_, i) => i).filter((i) => blocs[i] === b);
     return { type: 'bar', orientation: 'h', name: b === '—' ? t('aucun') : b, y: idx.map((i) => vars[i]), x: idx.map((i) => vals[i]),
@@ -376,7 +376,7 @@ const blocsResume = (m) => {
 const blocsImportance = (m) => (foret(m)
   ? [{ entetes: [t('variable_arbre'), t('ens_permutation'), t('ens_impurete')],
     lignes: liste(m.importance.variable).map((v, i) => [v, fmt(liste(m.importance.permutation)[i], 4), fmt(liste(m.importance.impurete)[i], 4)]) }]
-  : [{ entetes: [t('variable_arbre'), t('ens_influence')], lignes: liste(m.influence.variable).map((v, i) => [v, `${fmt(liste(m.influence.pourcentage)[i], 1)} %`]) }]);
+  : [{ entetes: [t('variable_arbre'), t('ens_influence')], lignes: liste(m.influence.variable).map((v, i) => [v, `${fmt(liste(m.influence.pourcentage)[i], 1)}${pourcent()}`]) }]);
 const blocsClassement = (m) => {
   const r = m.classification[foret(m) ? 'oob' : 'vc'];
   const classes = liste(r.classes);

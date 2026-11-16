@@ -322,6 +322,14 @@ for (id in c("A1", "A2", "L1", "K1", "T1")) {
            isTRUE(r$analyse) && isTRUE(r$prediction) && nzchar(r$chiffres) && length(r$vues_defaut) == 2 && r$N == etat$modeles[[id]]$modele$N &&
              inherits(json(r), "json") && is.data.frame(r$observations) && identical(names(r$observations)[1:2], c("uid", "nom")))
 }
+verifier("leurs lignes de l'explorateur en français : « 85 % bien classées (VC) », R2 et Q2 à la virgule",
+         grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("A2")$chiffres) && grepl("^[0-9]+ % bien classées \\(VC\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+,[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+langue_avant <- options(nuee.langue = "en")
+verifier("et en anglais : « 85% correct (CV) », R2 et Q2 au point décimal",
+         grepl("^[0-9]+% correct \\(CV\\)", resultat("A2")$chiffres) && grepl("^[0-9]+% correct \\(CV\\)", resultat("L1")$chiffres) &&
+           grepl("^R2 -?[0-9]+\\.[0-9]{2} · Q2 ", resultat("A1")$chiffres))
+options(langue_avant)
 r <- resultat("A1")
 verifier("arbre de régression : observé, ajusté, résidus ; Q² et RMSEcv pour Comparer les modèles ; ses nœuds pour le dessin",
          all(c("densite observé", "densite ajusté", "residu", "quantile_normal", "feuille") %in% names(r$observations)) &&

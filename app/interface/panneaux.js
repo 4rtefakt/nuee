@@ -1,6 +1,6 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
-import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle } from './i18n.js';
+import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle, pourcent } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
@@ -430,7 +430,7 @@ export function ficheTest(m) {
       el('small', {}, t('test_sans_prediction')), ' ', el('b', {}, m.test.inconnues)) : null,
     m.test.statistiques ? [].concat(m.test.statistiques.y).map((y, j) => [['RMSEP', 'RMSEP', 4], ['biais', t('biais'), 4], ['Q2ext', 'Q2ext', 3]]
       .map(([k, n, d]) => el('span', {}, el('small', {}, `${n}${[].concat(m.test.statistiques.y).length > 1 ? ` ${y}` : ''}`), ' ', el('b', {}, fmt([].concat(m.test.statistiques[k])[j], d))))) : null,
-    m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)} %`)) : null,
+    m.test.classement ? el('span', {}, el('small', {}, t('bien_classes_test')), ' ', el('b', {}, `${fmt(100 * m.test.classement.bien_classees, 1)}${pourcent()}`)) : null,
     m.regression ? null : el('span', {}, el('small', {}, t('hors_domaine_court')), ' ', el('b', {}, m.test.hors_domaine)));
 }
 
@@ -465,7 +465,7 @@ function noteGardes(m) {
   const parts = [].concat(c.part ?? []);
   const g = [].concat(c.terme ?? []).map((terme, i) => ({ terme, groupe: groupes[i], part: parts[i] }));
   if (!g.length) return null;
-  const pct = (x) => (x < 1e-4 ? `< ${fmt(0.01, 2)} %` : `${fmt(100 * x, x < 0.01 ? 2 : 1)} %`);
+  const pct = (x) => (x < 1e-4 ? `< ${fmt(0.01, 2)}${pourcent()}` : `${fmt(100 * x, x < 0.01 ? 2 : 1)}${pourcent()}`);
   const tous = g.map((x) => t('garde_vc_ligne', { terme: x.terme, groupe: x.groupe, part: pct(x.part) })).join('\n');
   return el('p', { class: 'note', title: tous }, t('garde_vc', { terme: g[0].terme, groupe: g[0].groupe, part: pct(g[0].part) }),
     g.length > 1 ? ' ' + t('garde_vc_autres', { n: g.length }) : '');
@@ -526,7 +526,7 @@ function rendreResume(conteneur, ctx, p) {
       pls && m.RMSEcv ? Object.entries(m.RMSEcv).map(([y, v]) => el('span', {}, el('small', {}, `RMSEcv ${y}`), ' ', el('b', {}, fmt(v, 4)))) : null,
       pls && m.cv_anova ? Object.entries(m.cv_anova).map(([y, a]) => el('span', { title: 'CV-ANOVA' }, el('small', {}, `CV-ANOVA p ${y}`), ' ',
         el('b', {}, a.p[1] === null ? '—' : a.p[1] < 0.001 ? decimal(Number(a.p[1]).toExponential(1)) : fmt(a.p[1], 3)))) : null,
-      m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)} %`)) : null),
+      m.classification ? el('span', {}, el('small', {}, t('bien_classes_vc')), ' ', el('b', {}, `${fmt(100 * m.classification.vc.global, 1)}${pourcent()}`)) : null),
     ficheTest(m), ficheCondition(m), noteGardes(m), noteHierarchique(m));
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, t('comp')), cols.map(([, n]) => el('th', { class: 'num' }, n)))),
@@ -934,7 +934,7 @@ function rendreLigneObs(conteneur, ctx, p, loc, vue) {
     vue === 'dmodx' ? choix('', [['1', t('ponderee')], ['0', t('normale')]], loc.pondere ? '1' : '0', (v) => { loc.pondere = v === '1'; ctx.rafraichir(); }) : null,
     controleCouleur(ctx, m, loc),
     controleEtiquettes(ctx, m, loc),
-    vue === 't2' ? el('span', { class: 'infos' }, `T²Crit 95 % = ${fmt(m.limites['T2Crit(95%)'], 3)} · 99 % = ${fmt(m.limites['T2Crit(99%)'], 3)}`)
+    vue === 't2' ? el('span', { class: 'infos' }, `T²Crit 95${pourcent()} = ${fmt(m.limites['T2Crit(95%)'], 3)} · 99${pourcent()} = ${fmt(m.limites['T2Crit(99%)'], 3)}`)
       : el('span', { class: 'infos' }, `DCrit (0,05) = ${fmt(m.limites['DCrit(5%)'], 3)}`)), graphe);
   const x = o.uid.map((_, i) => i + 1);
   const c = couleursTheme(ctx);
@@ -1837,7 +1837,7 @@ async function rendreCoomans(conteneur, ctx, p, loc) {
   const tableParts = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, r.variable), el('th', { class: 'num' }, 'n'), classes.map((c) => el('th', { class: 'num' }, `${t('modele_court')} ${c}`)))),
     el('tbody', {}, [].concat(r.table).map((l) => el('tr', {}, el('td', {}, l.classe), el('td', { class: 'num' }, l.n),
-      [].concat(l.parts).map((v, k) => el('td', { class: 'num' + (l.classe === classes[k] ? ' choisie' : '') }, `${fmt(100 * v, 0)} %`))))));
+      [].concat(l.parts).map((v, k) => el('td', { class: 'num' + (l.classe === classes[k] ? ' choisie' : '') }, `${fmt(100 * v, 0)}${pourcent()}`))))));
   conteneur.replaceChildren(outils(
     choix(t('axe_x'), classes.map((c) => [c, c]), loc.x, (v) => { loc.x = v; ctx.rafraichir(); }),
     choix(t('axe_y'), classes.filter((c) => c !== loc.x).map((c) => [c, c]), loc.y, (v) => { loc.y = v; ctx.rafraichir(); }),
@@ -2145,7 +2145,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
     const cleRaison = { normalite: 'raison_normalite_apparie', constantes: 'raison_constantes_apparie', nombre: 'raison_nombre_apparie',
       non_testee: 'raison_non_testee_apparie' }[r.raison] || 'raison_ok_apparie';
     raison = t(cleRaison, { p: r.shapiro_p === null ? '—' : valeurP(r.shapiro_p) });
-  } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)} %`, min: fmt(r.attendu_min, 2) });
+  } else if (r.raison === 'attendus') raison = t('raison_attendus', { part: `${fmt(100 * r.part_attendus_faibles, 0)}${pourcent()}`, min: fmt(r.attendu_min, 2) });
   else if (r.raison === 'variances') raison = t('raison_variances', { p: valeurP(r.variances.p) });
   else if (r.raison === 'normalite' && r.type === 'groupes') {
     const d = normaliteDouteuse([].concat(r.groupes.shapiro_p), [].concat(r.groupes.n));
@@ -2241,7 +2241,7 @@ async function rendreTestDeux(conteneur, ctx, p, loc, modes) {
       el('tr', {}, el('td', {}, el('b', {}, t('total'))), totalC.map((n) => el('td', { class: 'num' }, String(n))), el('td', { class: 'num' }, String(r.n))))),
     el('p', { class: 'note' }, t('contingence_note')));
     tracer(ctx, graphe, colonnes.map((c, j) => ({ type: 'bar', name: c, x: lignes, y: eff.map((l, i) => (100 * l[j]) / totalL[i]), customdata: eff.map((l) => l[j]),
-      marker: { color: PALETTE[j % PALETTE.length] }, hovertemplate: `%{x} · ${c}<br>%{y:.1f} % (%{customdata})<extra></extra>` })),
+      marker: { color: PALETTE[j % PALETTE.length] }, hovertemplate: `%{x} · ${c}<br>%{y:.1f}${pourcent()} (%{customdata})<extra></extra>` })),
     { barmode: 'stack', showlegend: true, dragmode: false, title: { text: t('repartition', { x: r.x.nom, y: r.y.nom }) },
       xaxis: { title: { text: r.x.nom } }, yaxis: { title: { text: '%' }, range: [0, 100] } });
     return;
@@ -2614,7 +2614,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
       m.decalage ? chiffre(t('decalage'), `log(${m.decalage})`) : null) : null,
     el('div', { class: 'fiche-chiffres' },
       mixte ? [chiffre(t('r2_marginal'), q.marginal), chiffre(t('r2_conditionnel'), q.conditionnel)]
-        : q.deviance_expliquee !== undefined ? [chiffre(t('r2_ajuste'), q.r2_ajuste), chiffre(t('deviance_expliquee'), `${fmt(100 * q.deviance_expliquee, 1)} %`)]
+        : q.deviance_expliquee !== undefined ? [chiffre(t('r2_ajuste'), q.r2_ajuste), chiffre(t('deviance_expliquee'), `${fmt(100 * q.deviance_expliquee, 1)}${pourcent()}`)]
           : [chiffre('R2', q.r2), chiffre(t('r2_ajuste'), q.r2_ajuste)],
       chiffre('Q2', q.Q2), chiffre(`RMSEE ${y}`, m.RMSEE[y], 4), chiffre(`RMSEcv ${y}`, q.RMSEcv, 4)),
     el('div', { class: 'fiche-chiffres', title: t('aic_aide') },
@@ -2637,7 +2637,7 @@ function rendreResumeRegression(conteneur, ctx, m) {
     el('tbody', {}, [].concat(v.composante).map((c, i) => el('tr', {}, el('td', {}, c), avecPentes ? el('td', {}, [].concat(v.terme)[i]) : null,
       el('td', { class: 'num' }, fmt(variances[i], 4)), el('td', { class: 'num' }, fmt(variances[i] == null ? null : Math.sqrt(variances[i]), 4)),
       correlations ? el('td', { class: 'num', title: t('correlation_ordonnee_aide') }, fmt([].concat(v.correlation)[i], 3)) : null,
-      parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)} %`) : null)))) : null;
+      parts ? el('td', { class: 'num' }, `${fmt((100 * variances[i]) / total, 1)}${pourcent()}`) : null)))) : null;
   const cb = m.courbes;
   // (with each curve's concurvity: in red above 0.8, a curve confounded with the other terms; a curve
   // per category, s(x, by = f): a row per category, named in its own column)
@@ -2759,7 +2759,7 @@ export function notesPentes(m) {
   const notes = [t('pentes_note')];
   if (mgcvSeul) notes.push(t('pentes_independantes'));
   const pv = m.parts_variance;
-  if (pv) notes.push(t('pentes_parts', { parts: [].concat(pv.composante).map((c, i) => `${c} ${fmt(100 * [].concat(pv.part)[i], 1)} %`).join(', ') }));
+  if (pv) notes.push(t('pentes_parts', { parts: [].concat(pv.composante).map((c, i) => `${c} ${fmt(100 * [].concat(pv.part)[i], 1)}${pourcent()}`).join(', ') }));
   const s = m.singularites;
   if (s) {
     const col = (k) => [].concat(s[k]);
@@ -3699,7 +3699,7 @@ function rendreClassification(conteneur, ctx, p, loc) {
   const classes = [].concat(r.classes);
   const tab = r.table;
   const somme = (v) => v.reduce((a, b) => a + b, 0);
-  const pct = (x) => `${fmt(100 * x, 1)} %`;
+  const pct = (x) => `${fmt(100 * x, 1)}${pourcent()}`;
   const table = el('table', { class: 'tableau compact' },
     el('thead', {}, el('tr', {}, el('th', {}, `${t('observee')} \\ ${t('predite')}`), classes.map((k) => el('th', { class: 'num' }, k)),
       el('th', { class: 'num' }, t('total')), el('th', { class: 'num' }, t('bien_classes')))),

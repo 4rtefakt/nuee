@@ -200,7 +200,7 @@ function tableauRegression(m) {
       m.decalage ? `${t('decalage')}${deuxPoints()}log(${m.decalage})` : ''].filter(Boolean).join(' · '));
   }
   const stats = (q.marginal !== undefined ? [[t('r2_marginal'), q.marginal], [t('r2_conditionnel'), q.conditionnel]]
-    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)} %`]]
+    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)}${pourcent()}`]]
       : [['R2', q.r2], [t('r2_ajuste'), q.r2_ajuste]])
     .concat([['Q2', q.Q2], ['RMSEE', m.RMSEE && m.RMSEE[y]], ['RMSEcv', q.RMSEcv], ['AIC', q.AIC], ['AICc', q.AICc], ['BIC', q.BIC], ['logLik', q.logLik], [t('parametres'), q.parametres]]);
   const blocs = [...infos.map((texte) => ({ texte })), { entetes: stats.map(([n]) => n), lignes: [stats.map(([, v]) => nombre(v, 3))] }];
@@ -340,7 +340,7 @@ function tableauClassification(m) {
   const somme = (v) => v.reduce((a, b) => a + b, 0);
   return [{ texte: `${t('validation_croisee')} · ${t('bien_classes')}${deuxPoints()}${fmt(100 * r.global, 1)}${pourcent()}` },
     { entetes: [`${t('observee')} \\ ${t('predite')}`, ...classes, t('total'), t('bien_classes')],
-      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)} %`]) }];
+      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)}${pourcent()}`]) }];
 }
 
 function tableauVariables(m) {

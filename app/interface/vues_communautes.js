@@ -4,7 +4,7 @@
 // their views (the ordination with the species and the fitted X, the eigenvalues, the Shepard
 // diagram, the fitted variables, the PERMANOVA table, the dispersion, the Mantel tests and the
 // correlogram), their summaries, report parts and strings. Imported by app.js.
-import { t, ajouterTextes, langueActuelle } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, pourcent } from './i18n.js';
 import { el, fmt, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, valeurP, ficheCondition } from './panneaux.js';
@@ -49,7 +49,7 @@ const textePermutations = (m) => `${(m.distance || {}).permutations ?? 0} ${t('o
   + (m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : '');
 const axes = (m) => liste(m.axes);
 const partAxe = (m, k) => (m.type === 'PCOA' ? liste(m.valeurs_propres.part)[k] : null);
-const libelleAxe = (m, k) => (m.type === 'PCOA' ? `${axes(m)[k]} (${fmt(100 * partAxe(m, k), 1)} %)` : axes(m)[k]);
+const libelleAxe = (m, k) => (m.type === 'PCOA' ? `${axes(m)[k]} (${fmt(100 * partAxe(m, k), 1)}${pourcent()})` : axes(m)[k]);
 
 // ------------------------------------------------------------ the ordination plot (PCOA, NMDS)
 
@@ -156,9 +156,9 @@ function rendreValeursPropresPCoA(conteneur, ctx, p, loc) {
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
-      marker: { color: neg.slice(0, n).map((k) => (k ? PALETTE[1] : PALETTE[0])) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' },
+      marker: { color: neg.slice(0, n).map((k) => (k ? PALETTE[1] : PALETTE[0])) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` },
     { type: 'scatter', mode: 'lines+markers', name: t('ord_cumul'), x: ax.slice(0, n), y: cumul.slice(0, n).map((v) => 100 * v), yaxis: 'y2',
-      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<extra></extra>' }],
+      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: `<b>%{x}</b><br>%{y:.1f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('valeurs_propres')}` }, dragmode: false, yaxis: { title: { text: t('ord_part_inertie') } }, margin: { r: 54 },
     yaxis2: { overlaying: 'y', side: 'right', showgrid: false, zeroline: false, title: { text: `${t('ord_cumul')} (%)` } } });
   loc.table ??= {};
@@ -380,7 +380,7 @@ function rendreResumeCommunaute(conteneur, ctx, m) {
   const textes = [texteDistance(m)];
   if (m.type === 'PCOA') {
     const part = liste(m.valeurs_propres.part);
-    ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre(t('com_inertie_totale'), m.inertie.totale, 4), ...axes(m).slice(0, 3).map((a, k) => chiffre(a, `${fmt(100 * part[k], 1)} %`)),
+    ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre(t('com_inertie_totale'), m.inertie.totale, 4), ...axes(m).slice(0, 3).map((a, k) => chiffre(a, `${fmt(100 * part[k], 1)}${pourcent()}`)),
       m.negatives && m.negatives.n ? chiffre(t('com_negatives'), m.negatives.n, 0) : null);
     textes.push(t('com_resume_pcoa'));
   } else if (m.type === 'NMDS') {

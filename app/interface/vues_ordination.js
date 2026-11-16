@@ -3,7 +3,7 @@
 // plot, eigenvalues, permutation tests, contributions, summary), their report parts and their
 // strings. A CCA is shown as the RDA is (a triplot, its tests), with the CA's three scalings.
 // Imported by app.js.
-import { t, ajouterTextes, deuxPoints } from './i18n.js';
+import { t, ajouterTextes, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
@@ -19,7 +19,7 @@ const GRIS = '#9aa7b8';
 const estOrdination = (m) => !!m && !!m.analyse && ['RDA', 'CA', 'CCA'].includes(m.type);
 const contrainte = (m) => m.type === 'RDA' || m.type === 'CCA';  // (constrained axes, X arrows, tests)
 const axes = (m) => liste(m.axes);
-const libelleAxe = (m, k) => `${axes(m)[k]} (${fmt(100 * liste(m.valeurs_propres.part)[k], 1)} %)`;
+const libelleAxe = (m, k) => `${axes(m)[k]} (${fmt(100 * liste(m.valeurs_propres.part)[k], 1)}${pourcent()})`;
 const caseACocher = (libelle, valeur, changer) => el('label', { class: 'champ' },
   el('input', { type: 'checkbox', checked: valeur, onchange: (e) => changer(e.target.checked) }), libelle);
 const chiffre = (k, v, d = 3) => el('span', {}, el('small', {}, k), ' ', el('b', {}, typeof v === 'number' ? fmt(v, d) : v ?? '—'));
@@ -139,9 +139,9 @@ function rendreValeursPropres(conteneur, ctx, p, loc) {
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [
     { type: 'bar', name: t('ord_part_inertie'), x: ax.slice(0, n), y: part.slice(0, n).map((v) => 100 * v),
-      marker: { color: contraint.slice(0, n).map((k) => (k || !rda ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' },
+      marker: { color: contraint.slice(0, n).map((k) => (k || !rda ? PALETTE[0] : GRIS)) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` },
     { type: 'scatter', mode: 'lines+markers', name: t('ord_cumul'), x: ax.slice(0, n), y: cumul.slice(0, n).map((v) => 100 * v), yaxis: 'y2',
-      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: '<b>%{x}</b><br>%{y:.1f} %<extra></extra>' }],
+      line: { color: c.doux, width: 1.5 }, marker: { size: 5, color: c.doux }, hovertemplate: `<b>%{x}</b><br>%{y:.1f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('valeurs_propres')}` }, dragmode: false, yaxis: { title: { text: t('ord_part_inertie') } }, margin: { r: 54 },
     yaxis2: { overlaying: 'y', side: 'right', range: [0, 101], tickmode: 'array', tickvals: [0, 25, 50, 75, 100], showgrid: false, zeroline: false,
       title: { text: `${t('ord_cumul')} (%)` } } });
@@ -241,7 +241,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
   const moyenne = 100 / Math.max(1, nom.length);
   const c = couleursTheme(ctx);
   tracer(ctx, graphe, [{ type: 'bar', x: ordre.map((i) => nom[i]), y: ordre.map((i) => ctr[i]),
-    marker: { color: ordre.map((i) => (ctr[i] > moyenne ? PALETTE[0] : GRIS)) }, hovertemplate: '<b>%{x}</b><br>%{y:.2f} %<extra></extra>' }],
+    marker: { color: ordre.map((i) => (ctr[i] > moyenne ? PALETTE[0] : GRIS)) }, hovertemplate: `<b>%{x}</b><br>%{y:.2f}${pourcent()}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('ord_ctr')} · ${ax}` }, dragmode: false, showlegend: false, xaxis: { tickangle: -40 }, yaxis: { title: { text: t('ord_ctr') } },
     shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: moyenne, y1: moyenne, line: { color: c.doux, width: 1, dash: 'dot' } }] });
   loc.table ??= {};
@@ -261,7 +261,7 @@ function rendreContributionsCA(conteneur, ctx, p, loc) {
 function rendreResumeOrdination(conteneur, ctx, m) {
   const titre = el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, m.type), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
   const i = m.inertie;
-  const pct = (v) => `${fmt(100 * v / i.totale, 1)} %`;
+  const pct = (v) => `${fmt(100 * v / i.totale, 1)}${pourcent()}`;
   let fiche;
   let table;
   const textes = [];
@@ -274,7 +274,7 @@ function rendreResumeOrdination(conteneur, ctx, m) {
         m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
       el('div', { class: 'fiche-chiffres' }, chiffre('R2', m.r2), chiffre(t('r2_ajuste'), m.r2_ajuste ?? '—'), chiffre(t('ord_pseudo_f'), m.test.F, 2),
         chiffre('p', m.test.permutations ? pValeur(m.test.p) : '—'), chiffre(t('nb_permutations'), m.test.permutations || 0, 0)));
-    table = tableCompacte([t('ord_inertie'), '', '%'], [[t('ord_inertie_totale'), fmt(i.totale, 5), '100 %']]
+    table = tableCompacte([t('ord_inertie'), '', '%'], [[t('ord_inertie_totale'), fmt(i.totale, 5), `100${pourcent()}`]]
       .concat(i.conditionnelle > 0 ? [[t('ord_inertie_conditionnelle'), fmt(i.conditionnelle, 5), pct(i.conditionnelle)]] : [],
         [[t('ord_inertie_contrainte'), fmt(i.contrainte, 5), pct(i.contrainte)], [t('ord_inertie_residuelle'), fmt(i.residuelle, 5), pct(i.residuelle)]]));
     textes.push((cca ? t('ord_reglages_cca') : t('ord_reglages_rda', { tr: t('ord_tr_' + (o.transformation || 'aucune')), centrage: t(o.reduire ? 'ord_reduites' : 'ord_centrees') }))
@@ -287,7 +287,7 @@ function rendreResumeOrdination(conteneur, ctx, m) {
     fiche = el('div', { class: 'fiche' }, titre,
       el('div', { class: 'fiche-chiffres' }, chiffre('N', m.N, 0), chiffre(t('variables'), m.K, 0), chiffre(t('ord_total_tableau'), m.total, 0),
         m.exclues_manquantes ? chiffre(t('obs_incompletes'), m.exclues_manquantes, 0) : null),
-      el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_inertie_totale'), i.totale, 4), ...axes(m).slice(0, 3).map((n, k) => chiffre(n, `${fmt(100 * vp[k], 1)} %`))));
+      el('div', { class: 'fiche-chiffres' }, chiffre(t('ord_inertie_totale'), i.totale, 4), ...axes(m).slice(0, 3).map((n, k) => chiffre(n, `${fmt(100 * vp[k], 1)}${pourcent()}`))));
     if (liste(m.variables_vides).length) textes.push(t('ord_variables_vides', { noms: liste(m.variables_vides).join(', ') }));
     textes.push(t('ord_resume_ca'));
   }
