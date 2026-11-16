@@ -541,6 +541,21 @@ ETAPES_DONNEES <- list(
       }
       decrire_variables(p, d)
     }),
+  # (une variable renommée, supprimée, en catégories ou en nombres : atelier.R. Rejouée sur des données
+  # qui n'ont pas la variable, elle est sautée comme les autres ; un nom déjà pris, une variable déjà de ce
+  # type, des catégories qui ne sont pas des nombres la font sauter, et le disent)
+  renommer_variable = list(variables = "variable",
+    appliquer = function(p, q, rejeu = NULL) {
+      if (is.null(rejeu)) return(renommer_variable(p, q$variable, q$nom))
+      tryCatch(renommer_variable(p, q$variable, q$nom), error = function(err) etape_sautee(conditionMessage(err)))
+    }),
+  supprimer_variable = list(variables = "variable",
+    appliquer = function(p, q, rejeu = NULL) supprimer_variable(p, q$variable, modeles = is.null(rejeu))),
+  type_variable = list(variables = "variable",
+    appliquer = function(p, q, rejeu = NULL) {
+      if (is.null(rejeu)) return(changer_type_variable(p, q$variable, q$type))
+      tryCatch(changer_type_variable(p, q$variable, q$type, modeles = FALSE), error = function(err) etape_sautee(conditionMessage(err)))
+    }),
   coordonnees = list(variables = c("x", "y"),
     appliquer = function(p, q, rejeu = NULL) regler_coordonnees(p, q$x, q$y, q$systeme)),
   classe_selection = list(observations = "observations", partielles = "observations",
@@ -572,6 +587,15 @@ ETAPES_DONNEES <- list(
 # Le changement d'une demande (serveur.R) ou d'une étape rejouée : sa fonction de ETAPES_DONNEES.
 appliquer_etape <- function(nom, p, q, rejeu = NULL) ETAPES_DONNEES[[nom]]$appliquer(p, q, rejeu)
 
+# Ce que dit une variable renommée (`autre` : son nouveau nom), supprimée, ou en catégories ou en nombres
+# (`autre` : "qualitative" ou "quantitative"), pour Annuler (serveur.R) et pour ses étapes (etiquette_etape).
+etiquette_variable <- function(demande, nom, autre = "") {
+  switch(demande,
+    renommer_variable = sprintf(traduire("%s renommée %s", "%s renamed %s"), nom, autre),
+    supprimer_variable = sprintf(traduire("suppression de %s", "deletion of %s"), nom),
+    type_variable = sprintf(if (identical(autre, "qualitative")) traduire("%s en catégories", "%s as categories") else traduire("%s en nombres", "%s as numbers"), nom))
+}
+
 # Ce que dit une étape, dans la langue de la demande qui la montre (pas celle où elle a été faite) :
 # écrit d'après sa demande et ses paramètres, qui nomment ses variables et ses observations ; une
 # demande que cette version ne connaît pas garde l'étiquette notée avec elle.
@@ -600,6 +624,9 @@ etiquette_etape <- function(e) {
     categories = sprintf(traduire("catégories de %s", "categories of %s"), t(q$variable)),
     coller_cellules = sprintf(traduire("cellules collées dans %s", "cells pasted into %s"), liste(q$variables)),
     decrire_variables = sprintf(traduire("unités et descriptions de %s", "units and descriptions of %s"), liste(valeur_chemin(q, "descriptions$variable"))),
+    renommer_variable = etiquette_variable("renommer_variable", t(q$variable), t(q$nom)),
+    supprimer_variable = etiquette_variable("supprimer_variable", t(q$variable)),
+    type_variable = etiquette_variable("type_variable", t(q$variable), t(q$type)),
     coordonnees = if (length(q$x)) sprintf(traduire("coordonnées %s et %s", "coordinates %s and %s"), t(q$x), t(q$y)) else traduire("coordonnées retirées", "coordinates removed"),
     ajouter_colonnes = sprintf(traduire("colonnes de %s", "columns from %s"), if (!is.null(q$texte)) traduire("cellules collées", "pasted cells") else fichier),
     ajouter_raster = sprintf(traduire("valeurs de %s", "values from %s"), liste(basename(as.character(unlist(valeur_chemin(q, "fichiers$chemin")))))),

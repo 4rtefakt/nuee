@@ -1936,6 +1936,25 @@ spreadsheet from that cell on, in the rows and columns as the view shows them (s
 filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a
 text in a quantitative variable is refused, naming the observation, and nothing changes); cells
 beyond the table are left out. One Ctrl+Z undoes the whole block.
+Right-click on a column's header (or on a variable of Variable statistics) › Rename…, Treat as
+categories (or Treat as numbers), Delete…: each is one change that Ctrl+Z undoes and Ctrl+Y
+redoes, and a data step that Update the data replays in its place. Rename: as you type, the
+dialog says what follows the new name, the definitions of the project's models (their terms,
+their conditions), the formulas of computed variables, the documents' references to its terms
+({{M1.coef.site}}, their format and caption kept), and what doesn't: an R-code model's code,
+which is never rewritten. A name that another variable or an identifier of the observations
+has is refused. The models fitted with the old name keep it until fitted again: a box, ticked,
+fits them again at once. Undo gives the documents' references back too, even in a document
+written since. Treat as categories: each distinct value becomes a category, in the numbers'
+order (a site coded 1, 2, 3, which a random effect wants qualitative); Treat as numbers reads
+each category as a number ("3,5" included), refused while one isn't (Find and replace first).
+The models that have the variable as an X follow (a term per category, or a single one in
+numbers), their fits keeping their results until fitted again; a model that has it as its
+response, its class, a curve, a random effect or in its condition has to be modified first.
+Delete asks first, and is refused while a model uses the variable (modify or delete the model
+first); it names an R-code model whose code reads it, a computed variable's formula that reads
+it, and coordinates it was one of. In Model › Which analysis?, a column of sites coded in
+numbers gets a button that treats it as categories, to make it the site.
 
 Adding columns from another table
 ---------------------------------

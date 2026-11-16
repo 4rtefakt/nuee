@@ -34,7 +34,7 @@ import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
 import { nomFichier } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
-import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
+import { dialogueRemplacer, dialogueCategories, dialogueVariables, actionsVariable } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
@@ -580,8 +580,11 @@ const app = {
       } }] });
   },
   async annulerAction(pid) {
+    // (what is being typed in a document goes in first: Undo may give its references back, a variable renamed)
+    if (app.viderDocuments) await app.viderDocuments(pid);
     const r = await occupe(() => demander('annuler', { projet: pid }));
     projetChange(r.projet);
+    app.relireDocuments(pid, [].concat(r.documents || []));
     statut(t('annule', { quoi: r.etiquette }));
     if (app.verifierSource) app.verifierSource(pid);  // (an update undone: the source read before, which may have changed since)
     // (an update of the data or a step removed, undone: the models fitted again on the data back, etapes.js)
@@ -590,8 +593,10 @@ const app = {
   // Edit › Redo (Ctrl+Y, Ctrl+Shift+Z): the change Undo took back, made again as it was (its data,
   // source and steps); an update of the data redone fits the models again, as its undo did
   async retablirAction(pid) {
+    if (app.viderDocuments) await app.viderDocuments(pid);
     const r = await occupe(() => demander('retablir', { projet: pid }));
     projetChange(r.projet);
+    app.relireDocuments(pid, [].concat(r.documents || []));
     statut(t('retabli', { quoi: r.etiquette }));
     if (app.verifierSource) app.verifierSource(pid);
     if (app.apresAnnulation) await app.apresAnnulation(pid, r, true);
@@ -948,6 +953,16 @@ const app = {
   remplacerDonnees: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueRemplacer(app, p, uid); },
   categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
   variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
+  // (a column's header: rename, treat as categories or as numbers, delete; atelier.js)
+  actionsVariable: (pid, uid) => actionsVariable(app, etat.projets[pid], uid),
+  // the documents whose text the engine changed (references that follow a variable renamed, undone,
+  // redone): drawn again in their editors here, and in the other windows
+  relireDocuments(pid, ids) {
+    for (const id of ids) {
+      if (app.surDocument) app.surDocument({ projet: pid, id });
+      diffuser('document', { projet: pid, id });
+    }
+  },
   // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
   // (an answer that is a report holds the project's summary under `projet`: mettre_a_jour,
   // retirer_etape; one that asks which table of a file to read, none: nothing changed)
@@ -1920,6 +1935,7 @@ function contexte(entree) {
     remplacerDonnees: app.remplacerDonnees,
     categoriesVariable: app.categoriesVariable,
     variablesProjet: app.variablesProjet,
+    actionsVariable: app.actionsVariable,
     changerDonnees: app.changerDonnees,
     lirePressePapiers: app.lirePressePapiers,
     modeleActif: () => app.modeleActif(),

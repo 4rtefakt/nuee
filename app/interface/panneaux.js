@@ -1344,8 +1344,8 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
   const d = loc.d;
   let k = d.variables.map((_, i) => i);
   // (the data workbench, atelier.js: Find and replace, Categories, Units and descriptions; also from
-  // a column's header, by a right-click; under each name, its unit and, unless untoggled, its
-  // number of empty cells and of distinct values)
+  // a column's header, by a right-click, with Rename, Treat as categories or as numbers, and Delete;
+  // under each name, its unit and, unless untoggled, its number of empty cells and of distinct values)
   const variables = new Map((proj ? proj.variables : []).map((v) => [v.uid, v]));
   const resume = loc.resume !== false;
   const avant = [el('button', { onclick: () => ctx.nouvelleVariable(p.projet) }, icone('calculator'), t('nouvelle_variable')),
@@ -1374,7 +1374,8 @@ async function rendreDonnees(conteneur, ctx, p, loc) {
     menuContextuel(e.clientX, e.clientY, [
       { libelle: t('atelier_unite_de', { nom }), icone: 'ruler', action: () => ctx.variablesProjet(p.projet, c.uid) },
       { libelle: t('atelier_categories_de', { nom }), icone: 'tag', actif: !!v.qualitative, action: () => ctx.categoriesVariable(p.projet, c.uid) },
-      { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, c.uid) }]);
+      { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, c.uid) },
+      ...ctx.actionsVariable(p.projet, c.uid)]);
   };
   let filtreColonnes = null;
   if (k.length > COLONNES_MAX) {
@@ -1556,7 +1557,8 @@ async function rendreStatistiques(conteneur, ctx, p, loc) {
       menuContextuel(e.clientX, e.clientY, [
         { libelle: t('atelier_unite_de', { nom }), icone: 'ruler', action: () => ctx.variablesProjet(p.projet, s.uid[i]) },
         { libelle: t('atelier_categories_de', { nom }), icone: 'tag', actif: !!s.qualitative[i], action: () => ctx.categoriesVariable(p.projet, s.uid[i]) },
-        { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, s.uid[i]) }]);
+        { libelle: t('atelier_remplacer_dans', { nom }), icone: 'search', action: () => ctx.remplacerDonnees(p.projet, s.uid[i]) },
+        ...ctx.actionsVariable(p.projet, s.uid[i])]);
     },
     choisie: (i) => loc.mode === 'histogramme' && i === k,
   });

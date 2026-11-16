@@ -142,7 +142,7 @@ annuler_demande <- function(q) {
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
   ranger_copies(q$projet)
-  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
+  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, ancien))
 }
 
 # Rétablir (Ctrl+Y, Ctrl+Maj+Z) : le changement qu'Annuler a défait, refait tel qu'il était (ses données,
@@ -158,7 +158,7 @@ retablir_demande <- function(q) {
   etat$projets[[q$projet]] <- apres
   reviser(q$projet)
   ranger_copies(q$projet)
-  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette)
+  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, apres))
 }
 
 # Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
@@ -174,7 +174,16 @@ revenir_a <- function(actuel, e) {
   # (l'empreinte que fichier_change ajoute à l'état du fichier ne le change pas)
   sans_empreinte <- function(x) x[setdiff(names(x), "sha256")]
   if (is.null(f) || !identical(sans_empreinte(actuel$fichier_lu), sans_empreinte(f$fichier_lu))) ancien$fichier_lu <- actuel$fichier_lu
-  if (is.null(f) || !identical(actuel$documents, f$documents)) ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+  if (is.null(f) || !identical(actuel$documents, f$documents)) {
+    ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+    # (un nom de variable changé : les références que ses documents ont suivies le suivent encore, même
+    # écrits depuis : atelier.R, suivre_references)
+    if (length(e$references)) {
+      noms <- unique(c(vapply(ancien$models, function(d) premier_texte(d$name), ""), vapply(actuel$models, function(d) premier_texte(d$name), "")))
+      docs <- suivre_references(actuel$documents, noms, e$references)
+      if (length(attr(docs, "changes"))) ancien$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+    }
+  }
   if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
   ancien$modifie <- TRUE
   suivre_conditions_seance(actuel, ancien)
@@ -182,10 +191,20 @@ revenir_a <- function(actuel, e) {
 }
 
 # L'entrée de l'autre pile qui ramène à `actuel`, quitté pour l'entrée `e` : son étiquette et, pour une
-# fusion, les documents, les figures et l'état du fichier que ce retour a donnés au projet (`apres`).
+# fusion, les documents, les figures et l'état du fichier que ce retour a donnés au projet (`apres`) ;
+# les références d'un nom de variable changé, dans l'autre sens.
 entree_inverse <- function(actuel, e, apres) {
   c(list(etiquette = e$etiquette, projet = actuel),
-    if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)))
+    if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)),
+    if (length(e$references)) list(references = carte_inverse(e$references)))
+}
+
+# Les documents dont le texte a changé de `avant` à `apres` (Annuler, Rétablir : l'interface les relit).
+documents_changes <- function(avant, apres) {
+  texte <- function(p) stats::setNames(vapply(p$documents %||% list(), function(d) premier_texte(d$texte), ""), vapply(p$documents %||% list(), function(d) premier_texte(d$id), ""))
+  a <- texte(avant)
+  b <- texte(apres)
+  I(names(b)[is.na(a[names(b)]) | a[names(b)] != b])
 }
 
 # Les modèles de la séance du projet `p` dont la condition d'observations était celle de leur
@@ -445,6 +464,12 @@ modele <- function(id, a_jour = FALSE) {
   if (!length(id) || is.na(id[1]) || !nzchar(as.character(id[1]))) stop(traduire("Quel modèle ? La demande n'en désigne pas (modele).", "Which model? The request names none (modele)."), call. = FALSE)
   e <- etat$modeles[[as.character(id)[1]]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
   p <- etat$projets[[e$projet]]
+  # (une variable qu'il utilise renommée, supprimée, ou passée en catégories ou en nombres depuis son
+  # ajustement : atelier.R, variables_changees ; sa définition, elle, a suivi dans le projet)
+  if (a_jour && !is.null(p) && length(e$variables)) {
+    changees <- variables_changees(p, e$definition, e$variables)
+    if (!is.null(changees)) stop(changees, call. = FALSE)
+  }
   if (length(e$categories) && !is.null(p)) {
     d <- aligner_categories(p, e$definition, e$categories)
     if (is.null(attr(d, "perimee"))) e$definition <- d
@@ -624,8 +649,10 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     etat$projets[[p$id]] <- p
   }
   # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R ;
-  # leur ordre dans tout le projet, pour l'écrire en R tel qu'il a été ajusté : script_demande)
-  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d), ordres = ordres_categories(p))
+  # leur ordre dans tout le projet, pour l'écrire en R tel qu'il a été ajusté : script_demande ; le nom
+  # et le type de ses variables : variables_vues)
+  etat$modeles[[id]] <- list(projet = p$id, definition = d, modele = m, categories = categories_definition(p, d), ordres = ordres_categories(p),
+                             variables = variables_vues(p, d))
   resultat_modele(id)
 }
 
@@ -872,6 +899,49 @@ changer_projet_dit <- function(q, f, etiquette, attribut, etape = NULL) {
     n
   }, etiquette, etape)
   c(r, stats::setNames(list(info), attribut))
+}
+
+# Une variable renommée (atelier.R : renommer_variable), un seul Ctrl+Z, notée en étape : les définitions
+# des modèles du projet suivent, et les références des documents qui citent ses termes ({{M1.coef.site}}) ;
+# Annuler les remet, même dans un document écrit depuis (memoriser : references). La réponse dit ce qui a
+# suivi (`renommage` : ses phrases, les documents réécrits et combien de références, les numéros des
+# modèles du projet dont un ajustement de la séance a l'ancien nom, à ajuster de nouveau) ; avec q$apercu,
+# rien ne change.
+renommer_variable_demande <- function(q) {
+  avant <- projet(q$projet)
+  n <- renommer_variable(avant, q$variable, q$nom)
+  info <- attr(n, "renommage")
+  carte <- attr(n, "termes")
+  n <- sans_attributs(n)
+  noms <- vapply(n$models, function(d) premier_texte(d$name), "")
+  docs <- suivre_references(n$documents, noms, carte)
+  info$documents <- I(attr(docs, "changes"))
+  info$references <- attr(docs, "n")
+  if (info$references) info$phrases <- I(c(info$phrases, sprintf(traduire("%d référence(s) des documents suivent.", "%d reference(s) in the documents follow."), info$references)))
+  vus <- Filter(function(e) identical(e$projet, avant$id) && as.character(info$variable) %in% names(e$variables), etat$modeles)
+  info$ajustes <- I(unique(as.numeric(unlist(lapply(vus, function(e) e$definition$number)))))
+  if (isTRUE(q$apercu)) return(list(renommage = info))
+  if (length(info$documents)) n$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+  etiquette <- etiquette_variable("renommer_variable", info$ancien, info$nom)
+  n <- noter_etape(avant, n, "renommer_variable", q, etiquette)
+  suivre_conditions_seance(avant, n)
+  memoriser(avant, etiquette, fusion = if (length(info$documents)) list(fichier_lu = n$fichier_lu, documents = n$documents, figures = n$figures),
+            references = if (length(info$documents)) carte_inverse(carte))
+  n$modifie <- TRUE
+  etat$projets[[n$id]] <- n
+  reviser(n$id)
+  c(resume_projet(n), list(renommage = info))
+}
+
+# Une variable supprimée, ou traitée en catégories ou en nombres (atelier.R), un seul Ctrl+Z, notée en
+# étape ; avec q$apercu, ce que le changement dirait (ou son refus), sans rien changer.
+changer_variable_demande <- function(q, demande) {
+  avant <- projet(q$projet)
+  v <- variable_du_projet(avant, q$variable)
+  f <- function(p) appliquer_etape(demande, p, q)
+  attribut <- if (demande == "supprimer_variable") "suppression" else "type"
+  if (isTRUE(q$apercu)) return(stats::setNames(list(attr(f(avant), attribut)), attribut))
+  changer_projet_dit(q, f, etiquette_variable(demande, as.character(v$ids[1]), premier_texte(q$type)), attribut, demande)
 }
 
 classe_demande <- function(q) {
@@ -1968,6 +2038,12 @@ DEMANDES <- list(
   # L'unité et la description des variables (q$descriptions : variable, unite, description)
   decrire_variables = function(q) changer_projet(q, function(p) appliquer_etape("decrire_variables", p, q), traduire("unités et descriptions", "units and descriptions"),
                                                  "decrire_variables"),
+  # Une variable renommée (q$variable, q$nom), supprimée (q$variable), traitée en catégories ou en nombres
+  # (q$variable, q$type : "qualitative" ou "quantitative") : un clic droit sur l'en-tête de sa colonne ;
+  # chacune avec q$apercu, sans rien changer (son refus, ou ce qu'elle dirait)
+  renommer_variable = renommer_variable_demande,
+  supprimer_variable = function(q) changer_variable_demande(q, "supprimer_variable"),
+  type_variable = function(q) changer_variable_demande(q, "type_variable"),
   # Les rapports vivants (etapes.R). La source et les étapes du projet q$projet : `source` (le
   # fichier d'où viennent ses données : `chemin`, `relatif`, `table`, `lecteur` ; `trouve`, celui qui
   # serait lu, d'abord par son chemin relatif ; `existe` ; `modifie`, s'il a changé depuis qu'il a

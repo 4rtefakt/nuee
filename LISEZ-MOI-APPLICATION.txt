@@ -2112,6 +2112,27 @@ cellules copiées dans un tableur, dans les lignes et les colonnes telles que la
 nouvelle catégorie s'ajoute ; un texte dans une variable quantitative est refusé, en nommant
 l'observation, et rien ne change) ; les cases au-delà du tableau sont laissées. Un seul Ctrl+Z
 annule tout le bloc.
+Un clic droit sur l'en-tête d'une colonne (ou sur une variable des Statistiques des variables) ›
+Renommer…, Traiter en catégories (ou Traiter en nombres), Supprimer… : chacun est un seul
+changement, qu'annule Ctrl+Z et que rétablit Ctrl+Y, et une étape des données que Mettre à jour
+les données rejoue à sa place. Renommer : à mesure qu'on tape, le dialogue dit ce qui suit le
+nouveau nom, les définitions des modèles du projet (leurs termes, leurs conditions), les
+formules des variables calculées, les références des documents à ses termes ({{M1.coef.site}},
+leur format et leur légende gardés), et ce qui ne le suit pas : le code d'un modèle de code R,
+jamais réécrit. Un nom que porte une autre variable ou un identifiant des observations est
+refusé. Les modèles ajustés avec l'ancien nom le gardent jusqu'à ce qu'on les ajuste à nouveau :
+une case, cochée, les ajuste à nouveau tout de suite. Annuler remet aussi les références des
+documents, même dans un document écrit depuis. Traiter en catégories : chaque valeur distincte
+devient une catégorie, dans l'ordre des nombres (un site codé 1, 2, 3, qu'un effet aléatoire
+demande qualitatif) ; Traiter en nombres lit chaque catégorie comme un nombre (« 3,5 » compris),
+refusé tant que l'une n'en est pas un (Chercher et remplacer d'abord). Les modèles qui ont la
+variable en X suivent (un terme par catégorie, ou un seul en nombres), leurs ajustements gardant
+leurs résultats jusqu'à ce qu'on les ajuste à nouveau ; un modèle qui l'a en réponse, en classe,
+en courbe, en effet aléatoire ou dans sa condition est à modifier d'abord. Supprimer demande
+d'abord, et est refusé tant qu'un modèle utilise la variable (modifier ou supprimer le modèle
+d'abord) ; il nomme un modèle de code R dont le code la lit, la formule d'une variable calculée
+qui la lit, et les coordonnées dont elle était. Dans Modèle › Quelle analyse ?, une colonne de
+sites codés en nombres a un bouton qui la traite en catégories, pour en faire le site.
 
 Ajouter des colonnes d'un autre tableau
 ---------------------------------------

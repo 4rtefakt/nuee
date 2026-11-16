@@ -147,6 +147,9 @@ journaliser <- function(nom, q, r) {
                               vecteur_r(as.numeric(unlist(q$variables))), code_r(as.matrix(q$valeurs))),
     categories = sprintf("%s <- changer_categories(%s, %s, %s%s)", q$projet, q$projet, q$variable, vecteur_r(as.character(unlist(q$noms))),
                          if (length(q$ordre)) paste(", ordre =", vecteur_r(as.character(unlist(q$ordre)))) else ""),
+    renommer_variable = if (!isTRUE(q$apercu)) sprintf("%s <- renommer_variable(%s, %s, %s)", q$projet, q$projet, q$variable, code_r(as.character(q$nom))),
+    supprimer_variable = if (!isTRUE(q$apercu)) sprintf("%s <- supprimer_variable(%s, %s)", q$projet, q$projet, q$variable),
+    type_variable = if (!isTRUE(q$apercu)) sprintf("%s <- changer_type_variable(%s, %s, %s)", q$projet, q$projet, q$variable, code_r(as.character(q$type))),
     decrire_variables = {
       d <- q$descriptions
       if (is.data.frame(d)) d <- lapply(seq_len(nrow(d)), function(i) as.list(d[i, , drop = FALSE]))

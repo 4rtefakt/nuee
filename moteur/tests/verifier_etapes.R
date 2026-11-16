@@ -35,6 +35,10 @@
 #   - les prédictions d'un modèle ajusté avant un nouvel ordre des catégories (une forêt, des arbres
 #     boostés, un arbre, une LDA aux X qualitatifs, un modèle hiérarchique) : les mêmes, sur ses
 #     observations, un jeu de prédiction et un fichier ; après un nom changé, refusées.
+#   - une variable renommée, traitée en catégories, supprimée, d'un clic droit sur sa colonne : chacune
+#     une étape (l'ancien nom et le nouveau), rejouées sur le même fichier puis sur celui de l'année
+#     suivante ; un modèle et les références d'un document qui suivent le nom, Annuler et Rétablir qui
+#     les remettent, même dans un document écrit depuis ; un ajustement fait avec l'ancien nom, à refaire.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -749,6 +753,92 @@ verifier("un nom changé depuis : prédire refusé, d'un fichier aussi, et par l
          grepl("ont changé depuis l'ajustement de foret", refus("predire", list(modele = ids_o[["foret"]]))) &&
            grepl("ont changé depuis l'ajustement de foret", refus("predire_fichier", list(modele = ids_o[["foret"]], chemin = f_pred))) &&
            grepl("ont changé depuis l'ajustement de base", refus("predire_fichier", list(modele = ids_o[["haut"]], chemin = f_pred))))
+
+cat("Une variable renommée, supprimée, en catégories : des étapes qui se rejouent\n")
+# (quatre sites codés 1 à 4, une mesure, une colonne de remarques laissée par le terrain, une réponse ;
+# l'année suivante, un cinquième site et des lignes de plus)
+releves_v <- function(annees, sites, graine) {
+  set.seed(graine)
+  l <- expand.grid(annee = annees, site = sites)
+  data.frame(nom = sprintf("S%d-%d", l$site, l$annee), site = l$site, annee = l$annee, mesure = round(rnorm(nrow(l), 10, 2), 2),
+             remarques = sample(c("ras", "pluie", "vent"), nrow(l), TRUE), y = round(1 + 0.3 * l$site + rnorm(nrow(l), 0, 0.2), 3))
+}
+dossier_v <- file.path(dossier, "variables")
+dir.create(dossier_v)
+f_v <- file.path(dossier_v, "releves.csv")
+utils::write.csv(releves_v(2016:2020, 1:4, 3), f_v, row.names = FALSE)
+vid <- demande("ouvrir", list(chemin = f_v))$id
+uv <- function(nom) uid_de(projet(vid), nom)
+m_v <- demande("ajuster", list(projet = vid, type = "LM", x = list(uv("mesure"), uv("site")), y = list(uv("y")), nom = "R1", condition = "mesure > 5"))
+doc <- demande("document_enregistrer", list(projet = vid, titre = "Rapport", texte = "La mesure : {{R1.coef.mesure}}, {{R1.est.mesure:3 #m | sa pente}} ; R² {{R1.R2}}."))
+avant_v <- projet(vid)
+ap <- demande("renommer_variable", list(projet = vid, variable = uv("mesure"), nom = "mesure (cm)", apercu = TRUE))
+verifier("renommer, l'aperçu : ce qui suivra (la définition de R1, deux références), R1 ajusté avec l'ancien nom ; rien ne change",
+         identical(as.character(ap$renommage$modeles), "R1") && ap$renommage$references == 2 && identical(as.numeric(ap$renommage$ajustes), definition(avant_v, "R1")$number) &&
+           identical(projet(vid), avant_v))
+rn <- demande("renommer_variable", list(projet = vid, variable = uv("mesure"), nom = "mesure (cm)"))
+pv <- projet(vid)
+dr <- definition(pv, "R1")
+verifier("renommée : la variable, son étape (l'ancien nom et le nouveau), un seul Ctrl+Z nommé",
+         "mesure (cm)" %in% pv$noms_var && !"mesure" %in% pv$noms_var && identical(derniere(pv)$demande, "renommer_variable") &&
+           identical(parametres(pv, length(pv$etapes))[c("variable", "nom")], list(variable = "mesure", nom = "mesure (cm)")) &&
+           identical(rn$annulable, "mesure renommée mesure (cm)") && identical(etiquette_etape(derniere(pv)), "mesure renommée mesure (cm)"))
+verifier("la définition de R1 suit (son terme, sa condition entre accents graves) ; les références du document aussi, leur format, étiquette et légende gardés",
+         "mesure (cm)" %in% vapply(dr$x, `[[`, "", "name") && identical(texte_condition(dr$condition), "`mesure (cm)` > 5") &&
+           identical(Find(function(d) identical(d$id, doc$id), pv$documents)$texte,
+                     "La mesure : {{R1.coef.mesure (cm)}}, {{R1.est.mesure (cm):3 #m | sa pente}} ; R² {{R1.R2}}.") &&
+           identical(as.character(rn$renommage$documents), doc$id))
+verifier("l'ajustement de la séance, fait avec l'ancien nom : réajuster est refusé en le disant ; la définition du projet s'ajuste, ses coefficients sous le nouveau nom, les mêmes valeurs",
+         grepl("s'appelle « mesure (cm) » depuis l'ajustement de R1", refus("reajuster", list(modele = m_v$id, exclues = list(1))), fixed = TRUE) &&
+           { r1 <- demande("ajuster", list(projet = vid, numero = dr$number)); co <- r1$coefficients_regression
+             "mesure (cm)" %in% co$terme && isTRUE(all.equal(unname(co$estimation), unname(m_v$coefficients_regression$estimation))) })
+tv <- demande("type_variable", list(projet = vid, variable = uv("site"), type = "qualitative"))
+pv <- projet(vid)
+verifier("le site en catégories : 1 à 4 dans l'ordre des nombres, R1 prend un terme par site, l'étape notée",
+         identical(categories_de(pv, "site"), c("1", "2", "3", "4")) && identical(unname(valeurs(pv, "site")[1:2]), c("1", "1")) &&
+           identical(vapply(Filter(function(t) startsWith(t$name, "site"), definition(pv, "R1")$x), `[[`, "", "name"), sprintf("site(%d)", 1:4)) &&
+           identical(parametres(pv, length(pv$etapes))[c("variable", "type")], list(variable = "site", type = "qualitative")) && identical(tv$annulable, "site en catégories"))
+sv <- demande("supprimer_variable", list(projet = vid, variable = uv("remarques")))
+pv <- projet(vid)
+verifier("les remarques supprimées : leur colonne, l'étape notée ; une variable qu'utilise R1 ne se supprime pas, en le disant",
+         !"remarques" %in% pv$noms_var && !as.character(uid_de(avant_v, "remarques")) %in% colnames(pv$donnees) && identical(sv$annulable, "suppression de remarques") &&
+           identical(parametres(pv, length(pv$etapes))$variable, "remarques") && grepl("R1 utilise « y »", refus("supprimer_variable", list(projet = vid, variable = uv("y")))))
+verifier("les données encore celles de leurs étapes", isTRUE(donnees_conformes(pv)))
+a_v <- demande("mettre_a_jour", list(projet = vid, apercu = TRUE))
+verifier("rejouées sur le même fichier : les trois étapes faites, les mêmes données (aucune variable de plus ou de moins, aucune cellule changée)",
+         all(statuts(a_v) == "ok") && length(a_v$etapes) == 3 && a_v$observations$cellules == 0 && !length(a_v$variables$nouvelles) &&
+           !length(a_v$variables$absentes) && !length(a_v$variables$types))
+f_v2 <- file.path(dossier_v, "releves 2021.csv")
+utils::write.csv(rbind(releves_v(2016:2020, 1:4, 3), releves_v(2021, 1:5, 4)), f_v2, row.names = FALSE)
+mv <- demande("mettre_a_jour", list(projet = vid, chemin = f_v2))
+pv <- projet(vid)
+verifier("l'année suivante : renommée, en catégories et supprimée de nouveau ; le cinquième site avant la dernière catégorie ; R1 suit",
+         all(statuts(mv) == "ok") && length(pv$observations) == 25 && "mesure (cm)" %in% pv$noms_var && !"remarques" %in% pv$noms_var &&
+           identical(categories_de(pv, "site"), c("1", "2", "3", "5", "4")) && unname(valeurs(pv, "site")["S5-2021"]) == "5" &&
+           "site(5)" %in% vapply(definition(pv, "R1")$x, `[[`, "", "name") && isTRUE(donnees_conformes(pv)))
+demande("annuler", list(projet = vid))
+demande("annuler", list(projet = vid))
+verifier("Ctrl+Z (la mise à jour, la suppression) : les remarques revenues, deux étapes", "remarques" %in% projet(vid)$noms_var && length(projet(vid)$etapes) == 2 &&
+           isTRUE(donnees_conformes(projet(vid))))
+demande("retablir", list(projet = vid))
+verifier("Ctrl+Y : supprimées de nouveau, trois étapes, les données d'accord", !"remarques" %in% projet(vid)$noms_var && length(projet(vid)$etapes) == 3 &&
+           isTRUE(donnees_conformes(projet(vid))))
+demande("annuler", list(projet = vid))
+demande("annuler", list(projet = vid))
+texte_doc <- function() Find(function(d) identical(d$id, doc$id), projet(vid)$documents)$texte
+u_r <- demande("annuler", list(projet = vid))
+verifier("Ctrl+Z du nom : l'ancien nom, sa définition et ses références revenues ; le document dit à relire",
+         "mesure" %in% projet(vid)$noms_var && identical(texte_doc(), avant_v$documents[[1]]$texte) && identical(as.character(u_r$documents), doc$id) &&
+           identical(texte_condition(definition(projet(vid), "R1")$condition), "mesure > 5") && !length(projet(vid)$etapes))
+demande("retablir", list(projet = vid))
+verifier("Ctrl+Y : le nouveau nom, ses références de nouveau", "mesure (cm)" %in% projet(vid)$noms_var && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE))
+# (un document écrit depuis le changement de nom : Annuler remet ses références, sans toucher au reste)
+demande("document_enregistrer", list(projet = vid, id = doc$id, texte = paste(texte_doc(), "Ajouté : {{R1.p.mesure (cm)}}.")))
+demande("annuler", list(projet = vid))
+verifier("un document écrit depuis : Annuler remet ses références à l'ancien nom, et garde ce qui y a été écrit",
+         identical(texte_doc(), paste(avant_v$documents[[1]]$texte, "Ajouté : {{R1.p.mesure}}.")))
+demande("retablir", list(projet = vid))
+verifier("et Rétablir les remet au nouveau", grepl("Ajouté : {{R1.p.mesure (cm)}}.", texte_doc(), fixed = TRUE) && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE))
 
 cat("En anglais\n")
 options(nuee.langue = "en")

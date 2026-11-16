@@ -249,6 +249,36 @@ async function principal() {
       verifier(!r.retablissable, `un nouveau changement vide Rétablir (${r.retablissable})`);
       await api('annuler', { projet: p.id });
     });
+    await etape('renommer, traiter en catégories, supprimer une variable (clic droit sur sa colonne)', async () => {
+      // (x1 is in the PLS fitted above: its definition follows, and its fit with the old name is refused a refit until fitted again)
+      const ap = await api('renommer_variable', { projet: p.id, variable: uid.x1, nom: 'x1 (cm)', apercu: true });
+      verifier([].concat(ap.renommage.modeles).includes('PLS') && [].concat(ap.renommage.ajustes).includes(pls.numero), `aperçu : ${JSON.stringify(ap.renommage)}`);
+      let r = await api('renommer_variable', { projet: p.id, variable: uid.x1, nom: 'x1 (cm)' });
+      verifier(r.variables.some((v) => v.nom === 'x1 (cm)') && r.annulable === 'x1 renommée x1 (cm)', `renommée : ${r.annulable}`);
+      let refus = '';
+      try { await api('reajuster', { modele: pls.id, exclues: [1], A: 2 }); } catch (e) { refus = e.message; }
+      verifier(/x1 \(cm\)/.test(refus), `réajuster le PLS ajusté avec l’ancien nom : ${refus}`);
+      await api('annuler', { projet: p.id });
+      verifier((await api('reajuster', { modele: pls.id, exclues: [1], A: 2 })).N === 59, 'le nom revenu, il se réajuste');
+      // a code in numbers as categories, then as numbers again; a variable a model uses can't be deleted, another can
+      await api('variable_calculee', { projet: p.id, nom: 'code', formule: 'rep(c(3, 1, 2), 20)' });
+      const code = (await api('projet', { projet: p.id })).variables.find((v) => v.nom === 'code').uid;
+      r = await api('type_variable', { projet: p.id, variable: code, type: 'qualitative' });
+      const vc = r.variables.find((v) => v.uid === code);
+      verifier(vc.qualitative && [].concat(vc.categories).join() === '1,2,3' && r.annulable === 'code en catégories', `en catégories : ${JSON.stringify(vc)}`);
+      r = await api('type_variable', { projet: p.id, variable: code, type: 'quantitative' });
+      verifier(!r.variables.find((v) => v.uid === code).qualitative, 'en nombres');
+      refus = '';
+      try { await api('type_variable', { projet: p.id, variable: uid.zone, type: 'quantitative' }); } catch (e) { refus = e.message; }
+      verifier(/zone/.test(refus), `les catégories A, B, C en nombres : refusé (${refus})`);
+      refus = '';
+      try { await api('supprimer_variable', { projet: p.id, variable: uid.x2, apercu: true }); } catch (e) { refus = e.message; }
+      verifier(/PLS/.test(refus) && /x2/.test(refus), `une variable qu’utilisent des modèles : ${refus}`);
+      r = await api('supprimer_variable', { projet: p.id, variable: code });
+      verifier(!r.variables.some((v) => v.uid === code) && r.annulable === 'suppression de code', `supprimée : ${r.annulable}`);
+      for (let i = 0; i < 4; i += 1) r = (await api('annuler', { projet: p.id })).projet;
+      verifier(r.variables.length === 9 && !r.variables.some((v) => v.nom === 'code'), `annulées : ${r.variables.length} variables`);
+    });
     await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
       // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty
       // one, a missing value; the columns by a range in the table's order, a list, or both

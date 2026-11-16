@@ -62,6 +62,7 @@ export const ICONES_ETAPES = {
   modifier_valeur: 'pencil', variable_calculee: 'calculator', imputer: 'wand-sparkles', classes_valeurs: 'tag', ajouter_colonnes: 'file-spreadsheet',
   ajouter_raster: 'layers', remplacer: 'search', categories: 'tag', coller_cellules: 'clipboard-paste', decrire_variables: 'ruler',
   coordonnees: 'map', classe_selection: 'tag', baci_modele: 'flask-conical', scores_en_variables: 'git-merge', kmeans_variable: 'shapes',
+  renommer_variable: 'pencil', supprimer_variable: 'trash-2', type_variable: 'hash',
 };
 export const genreEtape = (demande) => (ICONES_ETAPES[demande] ? t(`etapes_genre_${demande}`) : String(demande || ''));
 
