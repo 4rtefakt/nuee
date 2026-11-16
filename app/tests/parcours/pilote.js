@@ -9,17 +9,18 @@
 // files are opened, links followed and recent documents added only on paper: a run never opens
 // Word or a browser, nor touches the system's list of recent files.
 //
-// A scenario (parcours/<number>_<name>.js) gets the object `n` that demarrer() returns:
+// A scenario (parcours/<number>_<name>.js) exports executer(n, verifier, contexte); `n`, which
+// demarrer() returns, drives the window:
 //   n.menu('m_fichier', 'ouvrir')        a menu item, by the keys of its labels (i18n.js)
 //   n.cliquer(expression)                a click at the middle of an element (an expression in the page)
-//   n.ecrire(expression, texte)          a field emptied, then typed into
+//   n.ecrire(expression, texte)          a field's text replaced, typed
 //   n.choisir(expression, valeur)        an option of a <select> chosen
 //   n.bouton('ajuster')                  a button of the dialog in front, by its label's key
 //   n.attendre(expression)               until the expression is true in the page (60 s at most)
 //   n.fichierAOuvrir(chemin)             the answer of the next Open dialog (n.fichierAEnregistrer: Save)
+//   n.nouveauModele({ type, y, sans })   Model › New model filled in, then fitted
 //   n.api('etat')                        a request to the engine, as the interface makes it
-//   n.reglages, n.dossier                the scenario's own folder, for its files
-// and the helpers below (graphe, plotlyPret, cliquerPoint, modele, ...).
+// and the helpers below (graphe, plotlyPret, cliquerPoint, modele, lireClasseur, ...).
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const net = require('net');
@@ -27,7 +28,6 @@ const path = require('path');
 const zlib = require('zlib');
 
 const windows = process.platform === 'win32';
-const mac = process.platform === 'darwin';
 const attente = (ms) => new Promise((r) => setTimeout(r, ms));  // (between two looks at a condition only)
 const ATTENTE = Number(process.env.NUEE_ATTENTE || 60000);    // the longest wait for one condition, in ms
 
@@ -153,8 +153,7 @@ const OUTILS = `(async () => {
   return true;
 })()`;
 
-const TOUCHES = { Enter: 13, Escape: 27, Tab: 9, Delete: 46, Backspace: 8, ArrowDown: 40, ArrowUp: 38, Home: 36, End: 35 };
-const MODIFICATEURS = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
+const TOUCHES = { Enter: 13, Escape: 27 };
 
 // A zip archive's files (an .xlsx, a .docx), read without anything else: name -> Buffer.
 function lireZip(octets) {
@@ -370,27 +369,23 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         const sous = document.elementFromPoint(x, y);
         return sous && (sous === e || e.contains(sous) || sous.contains(e)) ? { x, y } : null; })()`, ms);
     },
-    async souris(x, y, { clics = 1, bouton = 'left', modificateurs = 0 } = {}) {
-      await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, modifiers: modificateurs });
+    async souris(x, y, clics = 1) {
+      await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       for (let k = 1; k <= clics; k += 1) {
-        await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: bouton, buttons: bouton === 'left' ? 1 : 2, clickCount: k, modifiers: modificateurs });
-        await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: bouton, buttons: 0, clickCount: k, modifiers: modificateurs });
+        await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: k });
+        await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: k });
       }
     },
-    async cliquer(expression, options = {}) {
-      const c = await n.centre(expression, options.ms);
-      await n.souris(c.x, c.y, options);
+    async cliquer(expression, clics = 1) {
+      const c = await n.centre(expression);
+      await n.souris(c.x, c.y, clics);
     },
-    double: (expression) => n.cliquer(expression, { clics: 2 }),
-    droit: (expression) => n.cliquer(expression, { bouton: 'right' }),
+    double: (expression) => n.cliquer(expression, 2),
     taper: (texte) => envoyer('Input.insertText', { text: texte }),
-    // a key, with modifiers: 'ctrl', 'shift', 'ctrl+shift'
-    async touche(key, modificateurs = '') {
-      const m = modificateurs.split('+').filter(Boolean).reduce((s, k) => s | MODIFICATEURS[k], 0);
-      const vk = key.length === 1 ? key.toUpperCase().charCodeAt(0) : TOUCHES[key];
-      const code = key.length === 1 ? (/[a-z]/i.test(key) ? `Key${key.toUpperCase()}` : `Digit${key}`) : key;
-      await envoyer('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: m });
-      await envoyer('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: m });
+    // a key: Enter, Escape (TOUCHES)
+    async touche(key) {
+      const vk = TOUCHES[key];
+      for (const type of ['rawKeyDown', 'keyUp']) await envoyer('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
     },
     // a text field's text replaced by `texte`, typed (its input events), then left (its change)
     async ecrire(expression, texte, { quitter = true } = {}) {
@@ -420,8 +415,8 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
 
     // ---- the interface
     // a menu of the menu bar, then one of its items (keys of their labels; an item whose label
-    // goes on, "Undo « … »", by its start); waits until the item can be chosen
-    async menu(cleMenu, cleItem, sousCle = null) {
+    // goes on, "Undo “…”", by its start); waits until the item can be chosen
+    async menu(cleMenu, cleItem) {
       const item = `(() => { const x = __n.t(${JSON.stringify(cleItem)}); const items = __n.tous('.menu:not(.sous-menu) > .item');
         const l = (e) => __n.norm((e.querySelector('.libelle') || e).textContent);
         return items.find((e) => l(e) === x) || items.find((e) => l(e).startsWith(x.replace(/…$/, ''))); })()`;
@@ -434,28 +429,16 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         if (Date.now() > fin) throw new Error(`menu item still disabled: ${cleMenu} › ${cleItem}`);
         await attente(250);  // (not ready yet: the menu is opened again)
       }
-      if (sousCle) {
-        await n.evaluer(`(${item}).dispatchEvent(new MouseEvent('mouseenter'))`);
-        await n.cliquer(`__n.tous('.sous-menu .item').find((e) => __n.norm((e.querySelector('.libelle') || e).textContent) === ${JSON.stringify(sousCle)})`);
-      } else {
-        await n.cliquer(item);
-      }
+      await n.cliquer(item);
     },
     // (a press outside the menus closes them, ui.js)
     fermerMenus: () => n.evaluer("document.querySelectorAll('.menu').length ? (document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), true) : true"),
-    // a button of the dialog in front, by its label's key (or its label, when `texte`)
-    async bouton(cle, { texte = false } = {}) {
-      const libelle = texte ? JSON.stringify(cle) : `__n.t(${JSON.stringify(cle)})`;
-      await n.cliquer(`(() => { const b = __n.boite(); return b && __n.tous('button', b).find((x) => __n.norm(x.textContent) === __n.norm(${libelle}) && !x.disabled); })()`);
-    },
-    // the dialog whose title starts with this text (its key's), then its box
-    async dialogue(cle, { texte = false } = {}) {
-      const titre = texte ? JSON.stringify(cle) : `__n.t(${JSON.stringify(cle)}).replace(/…$/, '')`;
-      await n.attendre(`__n.titreDialogue().startsWith(${titre})`);
-    },
+    // a button of the dialog in front, by its label's key
+    bouton: (cle) => n.cliquer(`(() => { const b = __n.boite(); return b && __n.tous('button', b).find((x) => __n.norm(x.textContent) === __n.norm(__n.t(${JSON.stringify(cle)})) && !x.disabled); })()`),
+    // until the dialog in front is the one whose title starts with its key's text
+    dialogue: (cle) => n.attendre(`__n.titreDialogue().startsWith(__n.t(${JSON.stringify(cle)}).replace(/…$/, ''))`),
     // the engine idle: nothing under way in the window
     libre: () => n.attendre('!__n.occupe()'),
-    statut: () => n.evaluer('__n.statut()'),
     // a line of the explorer: the project, a model's definition or its fit, by its bold name
     ligneProjet: (nom) => `__n.tous('.arbre .noeud.n1').find((e) => __n.norm((e.querySelector('.libelle b') || {}).textContent) === ${JSON.stringify(nom)})`,
     ligneModele: (nom, calcule = true) => `__n.tous('.arbre .noeud.n3').find((e) => e.classList.contains('calcule') === ${calcule}
@@ -468,21 +451,21 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
     },
     // a click on a point of a plot: its trace whose customdata holds `valeur` (an observation's
     // uid), the mouse brought over it until Plotly's hover finds it, then pressed
-    async cliquerPoint(debut, valeur, { modificateurs = 0 } = {}) {
+    async cliquerPoint(debut, valeur) {
       const g = n.graphe(debut);
       const pos = await n.attendre(`(() => { const g = ${g}; if (!g || !g._fullLayout) return null;
-        for (const [i, tr] of g._fullData.entries()) {
+        for (const tr of g._fullData) {
           const k = [].concat(tr.customdata || []).findIndex((c) => c === ${JSON.stringify(valeur)});
           if (k < 0 || !tr.visible) continue;
           const xa = g._fullLayout[(tr.xaxis || 'x').replace('x', 'xaxis')], ya = g._fullLayout[(tr.yaxis || 'y').replace('y', 'yaxis')];
           const r = g.getBoundingClientRect();
-          return { x: r.left + xa._offset + xa.l2p(xa.d2l(tr.x[k])), y: r.top + ya._offset + ya.l2p(ya.d2l(tr.y[k])), trace: i, point: k };
+          return { x: r.left + xa._offset + xa.l2p(xa.d2l(tr.x[k])), y: r.top + ya._offset + ya.l2p(ya.d2l(tr.y[k])) };
         } return null; })()`);
       await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pos.x - 3, y: pos.y - 3 });
       await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pos.x, y: pos.y });
       await n.attendre(`(() => { const g = ${g}; return !!(g && g._hoverdata && g._hoverdata.some((p) => p.customdata === ${JSON.stringify(valeur)})); })()`, 10000);
-      await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', buttons: 1, clickCount: 1, modifiers: modificateurs });
-      await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', buttons: 0, clickCount: 1, modifiers: modificateurs });
+      await envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', buttons: 1, clickCount: 1 });
+      await envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', buttons: 0, clickCount: 1 });
       await envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });  // (the hover label leaves the plot)
     },
 
@@ -490,7 +473,7 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
     // the cross-validation groups (an option's text: a variable's name); on its Variables tab
     // every variable X, then `y` as Y and `sans` without a role; then Fit, until the model is in
     // the explorer. Returns the fit as the engine has it.
-    async nouveauModele({ type, y = [], sans = [], vc = null, ms = 180000 }) {
+    async nouveauModele({ type, y = [], sans = [], vc = null }) {
       const boite = '__n.boite()';
       await n.menu('m_modele', 'nouveau_modele');
       await n.dialogue('nouveau_modele');
@@ -505,7 +488,7 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       for (const v of sans) await n.choisir(role(v), '');
       const avant = (await n.etat()).modeles.map((m) => m.id);
       await n.bouton('ajuster');
-      await n.attendre('!__n.dialogue()', ms);
+      await n.attendre('!__n.dialogue()', 180000);
       const id = await n.attendre(`__n.api('etat').then((e) => { const m = [].concat(e.modeles).find((x) => !${JSON.stringify(avant)}.includes(x.id)); return m ? m.id : null; })`);
       const m = await n.api('modele', { modele: id });
       await n.attendre(n.ligneModele(m.nom, true));
@@ -524,8 +507,7 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       const m = e.modeles.filter((x) => x.nom === nom && (!pid || x.projet === pid)).pop();
       return m ? n.api('modele', { modele: m.id }) : null;
     },
-    // the requests the window has sent since `depuis` (the count of an earlier call)
-    requetes: (depuis = 0) => n.evaluer(`window.__essai.requetes.slice(${depuis})`),
+    // how many requests the window has sent (those after it: window.__essai.requetes.slice(k))
     nombreRequetes: () => n.evaluer('window.__essai.requetes.length'),
 
     // ---- the system's dialogs, answered by the main process
@@ -558,9 +540,13 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       for (const p of e.projets) await n.api('fermer_projet', { projet: p.id });
       // (their recovery copies too: the reload would offer them as an earlier stop's)
       await n.evaluer('window.bureau.secoursIndex([])');
-      const charge = new Promise((ok) => { const fin = page.ecouter((j) => { if (j.method === 'Page.loadEventFired') { fin(); ok(); } }); });
+      let fin;
+      const charge = new Promise((ok, ko) => {
+        const ecoute = page.ecouter((j) => { if (j.method === 'Page.loadEventFired') { ecoute(); ok(); } });
+        fin = setTimeout(() => { ecoute(); ko(new Error(`the window didn't load again within ${ATTENTE / 1000} s`)); }, ATTENTE);
+      });
       await envoyer('Page.reload', { ignoreCache: false });
-      await charge;
+      await charge.finally(() => clearTimeout(fin));
       await n.attendre("document.querySelectorAll('.menu-haut').length > 3 && !!document.querySelector('#dock .accueil-explorateur')");
       await n.outils();
       await n.attendre('!__n.occupe()');
@@ -585,4 +571,4 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
   return n;
 }
 
-module.exports = { demarrer, lireZip, lireClasseur, portLibre };
+module.exports = { demarrer };
