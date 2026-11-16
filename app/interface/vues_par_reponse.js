@@ -5,7 +5,7 @@
 // term's effect in small multiples (one small plot per response, its band, the same x axis); and
 // each model's quality (N, AIC, R², Q²) with the responses that couldn't be fitted.
 // Imported by app.js.
-import { t, ajouterTextes, deuxPoints } from './i18n.js';
+import { t, ajouterTextes, deuxPoints, separateurIntervalle } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, tableau, valeurP } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -64,8 +64,9 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
       error_x: { type: 'data', symmetric: false, array: ordre.map((i) => col('haut')[i] - col('estimation')[i]), arrayminus: ordre.map((i) => col('estimation')[i] - col('bas')[i]),
         color: c.doux, thickness: 1.2, width: 3 },
       marker: { size: 8, color: ordre.map((i) => (sig(i) ? PALETTE[1] : PALETTE[0])) },
-      customdata: ordre.map((i) => [fmt(col('bas')[i], 3), fmt(col('haut')[i], 3), valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
-      hovertemplate: '<b>%{y}</b><br>%{x:.4f} [%{customdata[0]} ; %{customdata[1]}]<br>p = %{customdata[2]} · ' + t('par_reponse_p_corrige') + ' = %{customdata[3]}<extra></extra>' }],
+      // (the interval's bounds with the estimate's 4 decimals)
+      customdata: ordre.map((i) => [fmt(col('bas')[i], 4), fmt(col('haut')[i], 4), valeurP(col('p')[i]), valeurP(col('p_corrige')[i])]),
+      hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]} · ${t('par_reponse_p_corrige')} = %{customdata[3]}<extra></extra>` }],
     { title: { text: `${m.nom} · ${loc.terme}` }, dragmode: 'zoom', showlegend: false, margin: { l: 110, r: 18, t: 34, b: 48 },
       shapes: [{ type: 'line', xref: 'x', yref: 'paper', x0: 0, x1: 0, y0: 0, y1: 1, line: { color: c.doux, dash: 'dash', width: 1 } }],
       xaxis: { title: { text: t('par_reponse_coefficient') }, zeroline: false }, yaxis: { automargin: true } });

@@ -1424,6 +1424,8 @@ export function langueActuelle() { return langue; }
 // ("Erreur : …", "5 %"; "Error: …", "5%")
 export const deuxPoints = () => (langue === 'fr' ? ' : ' : ': ');
 export const pourcent = () => (langue === 'fr' ? ' %' : '%');
+// between an interval's bounds, as references.js writes them: "[0,12 ; 0,56]", "[0.12, 0.56]"
+export const separateurIntervalle = () => (langue === 'fr' ? ' ; ' : ', ');
 
 export function changerLangue(l) {
   langue = l;

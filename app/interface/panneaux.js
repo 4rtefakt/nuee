@@ -1,6 +1,6 @@
 // Views. Each draws one model result (or the project data) into a panel and is re-run when
 // the language, the theme or the shared selection changes. `ctx` comes from app.js.
-import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints } from './i18n.js';
+import { t, lire, ecrire, langueActuelle, libelleResultat, deuxPoints, separateurIntervalle } from './i18n.js';
 import { el, fmt, decimal, entreNombres, icone, menuContextuel } from './ui.js';
 
 export const PALETTES = {
@@ -2542,7 +2542,7 @@ async function rendreBaci(conteneur, ctx, p, loc, modes) {
         el('td', { class: 'num' }, ddlTexte(tc('ddl1')[i])),
         el('td', { class: 'num' }, valeurP(tc('p')[i])),
         el('td', { class: 'num' }, tc('effet')[i] === null ? '' : `${effets[tc('nom_effet')[i]] || ''} = ${fmt(tc('effet')[i], 3)}`),
-        el('td', { class: 'num' }, tc('bas')[i] === null ? '' : `${fmt(difference, 3)} [${fmt(tc('bas')[i], 3)} ; ${fmt(tc('haut')[i], 3)}]`))))),
+        el('td', { class: 'num' }, tc('bas')[i] === null ? '' : `${fmt(difference, 3)} [${fmt(tc('bas')[i], 3)}${separateurIntervalle()}${fmt(tc('haut')[i], 3)}]`))))),
     el('table', { class: 'tableau compact', style: { marginTop: '10px' } },
       el('thead', {}, el('tr', {}, [t('baci_periode'), 'n', t('baci_de'), t('baci_a'), t('baci_ecart_moyen'), t('ecart_type'), t('baci_ecart_median'), t('shapiro_p')]
         .map((h, j) => el('th', { class: j ? 'num' : '' }, h)))),
@@ -2725,7 +2725,7 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
     error_x: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: '#888', thickness: 1.5 },
     marker: { size: 9, color: idx.map((i) => (pv[i] !== null && pv[i] <= 0.05 ? '#d1495b' : PALETTE[0])) },
     customdata: idx.map((i) => [fmt(bas[i], 4), fmt(haut[i], 4), valeurP(pv[i])]),
-    hovertemplate: '<b>%{y}</b><br>%{x:.4f} [%{customdata[0]} ; %{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>' }],
+    hovertemplate: `<b>%{y}</b><br>%{x:.4f} [%{customdata[0]}${separateurIntervalle()}%{customdata[1]}]<br>p = %{customdata[2]}<extra></extra>` }],
   { title: { text: `${m.nom} · ${t('coefficients')} ${m.noms_y[0]}` }, dragmode: 'zoom', showlegend: false,
     xaxis: { title: { text: t('estimation_ic') } }, yaxis: { autorange: 'reversed' },
     shapes: [{ type: 'line', yref: 'paper', y0: 0, y1: 1, x0: 0, x1: 0, line: { color: '#888', width: 1, dash: 'dot' } }] });
@@ -3432,7 +3432,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
       error_y: { type: 'data', symmetric: false, array: idx.map((i) => haut[i] - est[i]), arrayminus: idx.map((i) => est[i] - bas[i]), color: PALETTE[k % PALETTE.length], thickness: 1.5 },
       marker: { size: 9, color: PALETTE[k % PALETTE.length] },
       customdata: idx.map((i) => [cm('niveau')[i], fmt(bas[i], 4), fmt(haut[i], 4)]),
-      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]} ; %{customdata[2]}]<extra></extra>` };
+      hovertemplate: `%{customdata[0]}${gr === null ? '' : ` · ${gr}`}<br>%{y:.4g} [%{customdata[1]}${separateurIntervalle()}%{customdata[2]}]<extra></extra>` };
   }), { title: { text: `${m.nom} · ${pentes ? t('moyennes_titre_pentes', { x: r.pente.nom }) : t('moyennes')}` }, dragmode: 'zoom', showlegend: groupes.length > 1,
     xaxis: { title: { text: r.facteur.nom }, tickmode: 'array', tickvals: niveaux.map((_, i) => i), ticktext: niveaux, range: [-0.5, niveaux.length - 0.5], zeroline: false },
     // (the response's unit: on its own scale, or that of a log link's means, not on a link's or a transformation's)
