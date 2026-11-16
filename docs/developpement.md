@@ -518,13 +518,22 @@ sends them (JSON both ways), on simulated data of three sizes, `petit`, `moyen` 
   validated by site;
 - tables of 1,000, 10,000 and 100,000 rows opened from CSV and .xlsx, with their Data view;
 - a spectra project with 10 fitted models (`petit` and `moyen`), saved, opened again and its
-  models refitted, as when the interface restores the session.
+  models refitted, as when the interface restores the session;
+- the AIC selection and the block contributions of the surveys' mixed model and GAM; a random
+  forest (500 trees) and boosted trees (2,000 trees at most) on the same surveys;
+- communities of 60, 200 and 600 relevés of 30, 50 and 80 species: PCoA and NMDS with the X
+  fitted to their axes, PERMANOVA, a Mantel test and its correlogram, indicator species, an RDA
+  and the tests of its axes and terms, each with 999 permutations;
+- TRIM on 50, 200 and 800 sites counted over 12, 20 and 25 years: model 3 with a covariate, and
+  model 2 with its changepoints chosen stepwise;
+- distance sampling with covariates (the observer and the wind; half-normal and hazard-rate keys)
+  on 22, 70 and 210 transects.
 
 It is not a check (GitHub doesn't run it): each case runs 3 times from the same state, and the
 median is printed.
 
 ```bash
-Rscript moteur/tests/banc_vitesse.R                                    # all of it: about 30 min (2.5 h before 1.0)
+Rscript moteur/tests/banc_vitesse.R                                    # all of it: the cases of 1.0 about 30 min (2.5 h before 1.0), those added since over half an hour more
 Rscript moteur/tests/banc_vitesse.R --tailles=petit,moyen --cas=pls    # some sizes, the cases whose name matches
 Rscript moteur/tests/banc_vitesse.R --moteur=<another copy of Nuée> --garder=<folder>
 Rscript moteur/tests/banc_vitesse.R --comparer=<folder>                # this engine's results against those kept
@@ -562,6 +571,26 @@ the `petit` GAM). Every result stayed the same: `--comparer` found each case's o
 the spectra sent to 6 significant digits, and the Data view's values sent only for the columns it
 shows.
 
+After 1.0, the other analyses and the blocks of spectra models, on a Linux server (a container
+of 4 CPUs of a Xeon Gold 6230 at 2.1 GHz, Ubuntu 26.04, R 4.6.2 and its reference BLAS, other
+jobs running beside), the two versions run one after the other twice (A B A B), the median in
+seconds:
+
+| | `petit` | `moyen` |
+|---|---|---|
+| Boosted trees (2,000 trees, 7-group cross-validation) | 70.2 → 32.2 | 99.9 → 55.2 |
+| Project of 10 models: save, open, refit | 7.86 → 6.47 | 47.5 → 41.7 |
+| PLS, automatic | 0.56 → 0.44 | 4.57 → 3.90 |
+| PLS-DA, automatic | 0.64 → 0.54 | 4.79 → 4.32 |
+| OPLS, automatic | 0.71 → 0.57 | 4.77 → 4.39 |
+| Distance sampling with covariates, hazard-rate key | 5.68 → 3.81 | 6.98 → 4.65 |
+| Distance sampling with covariates, half-normal key | 0.87 → 0.79 | 1.40 → 1.31 |
+| TRIM, model 2, stepwise changepoints | 1.30 → 0.95 | 8.40 → 6.92 |
+| TRIM, model 3 with a covariate | 0.25 → 0.22 | 0.96 → 0.78 |
+
+Every case's outputs stayed identical (`identical()`), at `petit` and `moyen`, and at `grand` for
+the communities, TRIM and distance sampling.
+
 In the interface, with the 2,000 × 2,000 spectra: the Data view appears 1.1 s after it is opened
 (the values of the 200 columns it shows, 3.3 MB, in 0.6 s; 20,100 cells, the next rows drawn as
 they are scrolled into view). Before, the engine sent every column (32 MB in 5.1 s) and the view
@@ -585,11 +614,35 @@ The shortcuts, each checked against the computation it avoids by `verifier_vites
   is saved (`json_observations`, `json_termes_modeles`: the same file, byte for byte);
 - the views (`panneaux.js`): only the spectra drawn and the Data view's columns shown are asked
   of the engine; tables drawn by slices of 20,000 cells; more than 5,000 points drawn by WebGL
-  (`scattergl`).
+  (`scattergl`);
+- a block's simple terms scaled together (`construire_bloc`: `echelle_simples`), each column's
+  mean and standard deviation computed by `mean()` and `sd()` as `echelle()` computes them (a
+  stored or unknown scaling keeps the term-by-term path); the left-out rows' block skips the
+  weighting it doesn't use, and the cross-validation's sub-models share the full model's
+  (`facteurs_ponderation`);
+- boosted trees (`boosting.R`): each tree made by rpart's C function with the arguments
+  `rpart()` gives it, and only the parts of its result the boosting reads (`arbre_rpart`); the
+  first trees are also made by `rpart()`, up to the first with a split, and the C function is used
+  only if it gave them identically (otherwise `rpart()` makes every tree); the bag draw with half
+  the operations per observation (`tirage_sac`). Also checked by `verifier_boosting.R`;
+- distance sampling: the functions `integrate()` evaluates take the parameters' indices once, and
+  for a key alone the key itself from `cle_detection` (`k × 1`, exactly), without
+  `detection_distance`;
+- TRIM: the inverse of each site's serial correlation computed once per ρ and per pattern of
+  observed times (`inverses_trim`), for the GEE's equations and the score test of each changepoint
+  the stepwise selection tries.
 
 What stays slow: a GAM on 20,000 rows validated by site (3 minutes in mgcv); the automatic PCA of
 large spectra (146 s at 2,000 × 2,000), where NIPALS often needs hundreds of iterations per
-component, in the model and in each sub-model of its cross-validation; the Profiles view of
-2,000 spectra of 2,000 wavelengths (about 9 s: 44 MB of numbers written as JSON, then 4 million
-points drawn); reading a large CSV with quoted fields (5 s for 100,000 rows); opening a saved
-project (`lire_projet`: 2.7 s for 500 × 2,000 spectra with 10 models).
+component, in the model and in each sub-model of its cross-validation (three quarters of it in
+BLAS's matrix–vector products); the Profiles view of 2,000 spectra of 2,000 wavelengths (about
+9 s: 44 MB of numbers written as JSON, then 4 million points drawn); reading a large CSV with
+quoted fields (5 s for 100,000 rows); opening a saved project (`lire_projet`: 2.7 s for
+500 × 2,000 spectra with 10 models). On the server above: the AIC selection of a GAM of 5,000
+rows (17 s in mgcv), an NMDS of 600 relevés (400 s, all in `MASS::isoMDS`'s 21 starts), a random
+forest of 5,000 rows (25 s in ranger), boosted trees of 5,000 rows (55 s: a third of it rpart's
+own C code, a sixth the bag draws, and 8 s the console printing the whole model, which has no
+`print` method), a Mantel correlogram of 600 relevés (21 s, mostly `cor()` of each permutation),
+TRIM's stepwise changepoints on 800 sites (33 s). The fits of mixed models, GAMs and NMDS are the
+libraries' own work: only fitting the cross-validation groups or the AIC candidates in parallel
+would shorten them.
