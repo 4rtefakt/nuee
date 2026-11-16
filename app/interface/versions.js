@@ -19,8 +19,8 @@
 //     account signed in shown in History, with Sign out;
 //   - a conflict: both sides' versions, the engine's merge by meaning when it has one (requests
 //     fusionner and fusionner_finir), else Keep mine or Take theirs; Compare first;
-//   - a project on a shared folder changed on disk by someone else (request fichier_change):
-//     their changes merged into the open project, when the engine can.
+//   - a project on a shared folder changed on disk by someone else (request fichier_change), or
+//     met by Save (app.js): their changes merged into the open project, with the same choices.
 import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
@@ -30,6 +30,7 @@ import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, t
   serveurDeComptes, cheminDepot, pageDepot, nomSuivant } from './versions_texte.js';
 import { resumerProjet, afficherChangements, installerChangements } from './changements.js';
 import { ouvrirConnexion, ouvrirInvitation, carteCompte } from './connexion.js';
+import { VERSION } from './nouveautes.js';
 
 // The main process's functions; none in a browser
 const couche = () => (bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
@@ -86,9 +87,10 @@ export function installerVersions(app) {
     suivreProjet: (p) => suivreProjet(app, p),
     apresEnregistrementVersions: (pid, ancien) => apresEnregistrement(app, pid, ancien),
     fermetureVersions: (p) => fermeture(p),
-    // (Save that met a file changed elsewhere: its changes merged first, when the engine can)
-    fusionnerFichier: (pid) => fusionnerFichierChange(app, pid, { avantEnregistrer: true }),
-    fusionPossible: () => moteurFusion(),
+    // (Save that met the file changed on disk by someone else, the engine able to merge: app.js)
+    fusionnerFichier: (pid) => fusionAvantEnregistrement(app, pid),
+    // (the name a saved file says it was written by: app.js, enregistrer)
+    auteurVersions: () => nomAuteur(),
   });
   const c = couche();
   if (!c || VUE_SEULE) return;
@@ -439,6 +441,7 @@ async function dialogueReglages(app, pid) {
       q.auteur = { nom, email };
     }
     try { await c.regler(q); } catch (err) { erreur.textContent = err.message; return; }
+    auteurConnu = undefined;
     d.fermer();
     app.statut(t('versions_reglages_gardes'));
     if (pid) apresAction(app, pid);
@@ -604,9 +607,12 @@ async function restaurerVersion(app, pid, v) {
     if (!choix) return false;
     if (choix === 'enregistrer' && !(await app.enregistrer(pid, false))) return false;
   }
-  if (!(await essayer(app, () => couche().restaurer(chemin, v.oid)))) { apresAction(app, pid); return false; }
-  oublier(chemin);
-  await app.rechargerProjet(pid);
+  ecritures += 1;
+  try {
+    if (!(await essayer(app, () => couche().restaurer(chemin, v.oid)))) { apresAction(app, pid); return false; }
+    oublier(chemin);
+    await app.rechargerProjet(pid);
+  } finally { ecritures -= 1; }
   app.statut(t('versions_restauree', { date }));
   return true;
 }
@@ -767,6 +773,7 @@ async function dialoguePartage(app, pid, { existant = false } = {}) {
     if (!a) return true;
     if (!a.nom.value.trim() || !a.email.value.trim()) { dire(t('versions_auteur_manque'), 'erreur'); (a.nom.value.trim() ? a.email : a.nom).focus(); return false; }
     await c.regler({ auteur: { nom: a.nom.value, email: a.email.value } });
+    auteurConnu = undefined;
     return true;
   };
   // (one action at a time)
@@ -1027,6 +1034,56 @@ async function moteurFusion() {
   return fusionConnue;
 }
 
+// The other side's author as the engine gives it (the file's header, else its name): a file's name
+// says nothing of who, "a colleague" then
+const quiDuFichier = (qui) => (!qui || /\.(nuee|json)$/i.test(String(qui)) ? t('versions_collegue') : String(qui));
+
+// What a merge prepared by the engine (fusionner) shows: nothing clashing, what each side brought;
+// otherwise each clash with Keep mine or Take theirs, and its passages or cells; how the data were
+// merged; its notes. choix: each clash's side, 'mien' to start with, changed by its buttons.
+function contenuFusion(r, qui, choix) {
+  const conflits = [].concat(r.conflits || []);
+  for (const x of conflits) if (!choix[x.id]) choix[x.id] = 'mien';
+  const apports = (titre, phrases) => ([].concat(phrases || []).length
+    ? el('div', { class: 'apports-conflit' }, el('h4', {}, titre), el('ul', {}, [].concat(phrases).map((x) => el('li', {}, x)))) : null);
+  const d = r.donnees || {};
+  const donnees = d.mode === 'etapes' ? t('versions_fusion_donnees_etapes')
+    : d.mode === 'cellules' ? t(d.raison ? 'versions_fusion_donnees_raison' : 'versions_fusion_donnees_cellules', { raison: d.raison || '' }) : '';
+  return el('div', { class: 'fusion-conflit' },
+    el('p', { class: conflits.length ? '' : 'ok-connexion' }, t(conflits.length ? 'versions_fusion_conflits' : 'versions_fusion_auto')),
+    conflits.length ? el('div', { class: 'liste-conflits' }, conflits.map((x) => ligneConflit(x, qui, choix))) : null,
+    el('div', { class: 'cotes-conflit' }, apports(t('versions_fusion_apports_mien'), r.apports && r.apports.mien), apports(t('versions_fusion_apports_leur', { nom: qui }), r.apports && r.apports.leur)),
+    donnees ? el('p', { class: 'note' }, donnees) : null,
+    [].concat(r.notes || []).map((n) => el('p', { class: 'note' }, n)));
+}
+
+// A clash: its title, Keep mine or Take theirs (what each side did), and what each wrote: a
+// document's passages, a variable's cells (the first twenty)
+function ligneConflit(x, qui, choix) {
+  const d = x.details || {};
+  const passages = [].concat(d.passages || []);
+  const cellules = [].concat(d.cellules || []);
+  const n = Number(d.n) || cellules.length;
+  const pre = (texte) => el('pre', {}, texte || '—');
+  return el('div', { class: 'conflit-fusion' },
+    el('div', { class: 'conflit-titre' }, el('b', {}, x.titre || x.cle || '')),
+    el('div', { class: 'choix-conflit', role: 'radiogroup', 'aria-label': x.titre || x.cle || '' }, ['mien', 'leur'].map((cote) => el('label', { class: 'champ' },
+      el('input', { type: 'radio', name: `conflit-${x.id}`, checked: choix[x.id] === cote, onchange: () => { choix[x.id] = cote; } }),
+      el('span', {}, el('b', {}, t(cote === 'mien' ? 'versions_garder_miennes' : 'versions_prendre_leurs')), x[cote] ? ` — ${x[cote]}` : '')))),
+    passages.length ? el('details', { class: 'details-conflit', open: true }, el('summary', {}, t('versions_fusion_passages', { n: passages.length })),
+      passages.map((ps) => el('div', { class: 'passage-conflit' },
+        el('div', { class: 'doux' }, t('versions_fusion_ligne', { ligne: ps.ligne })),
+        el('div', { class: 'cotes-passage' },
+          el('div', {}, el('h5', {}, t('versions_conflit_vous')), pre(ps.mien)),
+          el('div', {}, el('h5', {}, t('versions_conflit_leur', { nom: qui })), pre(ps.leur))),
+        ps.base ? el('div', { class: 'base-passage' }, el('h5', {}, t('changements_avant')), pre(ps.base)) : null))) : null,
+    cellules.length ? el('details', { class: 'details-conflit', open: true }, el('summary', {}, t('versions_fusion_cellules', { n })),
+      el('table', { class: 'tableau-conflit' },
+        el('thead', {}, el('tr', {}, [t('versions_fusion_observation'), t('changements_avant'), t('versions_conflit_vous'), t('versions_conflit_leur', { nom: qui })].map((h) => el('th', {}, h)))),
+        el('tbody', {}, cellules.slice(0, 20).map((c) => el('tr', {}, [c.observation, c.base || '—', c.mien, c.leur].map((v) => el('td', {}, v === '' || v === null || v === undefined ? '—' : String(v))))))),
+      n > Math.min(20, cellules.length) ? el('p', { class: 'note' }, t('versions_fusion_cellules_plus', { n: n - Math.min(20, cellules.length) })) : null) : null);
+}
+
 // The conflict of a shared project, from the History panel or the status bar: its versions and
 // files, as Get now gives them
 async function resoudreConflit(app, pid) {
@@ -1037,9 +1094,11 @@ async function resoudreConflit(app, pid) {
   await recevoirMaintenant(app, pid);
 }
 
-// Both sides changed the project: the two latest versions; the engine's merge when it has one
-// (with nothing clashing, Merge both and what each side brought; otherwise a choice per clash);
-// Keep mine and Take theirs for the whole project; Compare first
+// Both sides changed the shared project: the two latest versions; the engine's merge by meaning
+// (fusionner on the three files the versions layer gives, with nothing clashing Merge both, else a
+// choice per clash), then the merged file kept as the next version (fusionner_finir, choisir);
+// Keep mine and Take theirs for the whole project, also when there is no version in common or the
+// engine can't merge; Compare first
 async function dialogueConflit(app, pid, { mien, leur, fichiers }) {
   const p = app.projet(pid);
   const chemin = fichierProjet(p);
@@ -1068,31 +1127,27 @@ async function dialogueConflit(app, pid, { mien, leur, fichiers }) {
   boutonFusion.disabled = true;
   const fusionner = async () => {
     if (!proposition) return;
-    const fin = await essayer(app, () => demander('fusionner_finir', { fusion: proposition.fusion, choix }));
+    const fin = await essayer(app, () => demander('fusionner_finir', { fusion: proposition.fusion, choix, version: VERSION }));
     if (!fin || !fin.chemin) return;
     d.fermer();
     await choisirCote(app, pid, 'fusion', fin.chemin, hote, t('versions_fusion_description', { nom: qui }));
   };
-  // (the engine's merge, or none: Keep mine, Take theirs)
+  // (the engine's merge; without a version in common, asked without one, which it may refuse: Keep
+  // mine and Take theirs then)
   let r = null;
   if (fichiers && fichiers.mien && fichiers.leur && (await moteurFusion())) {
-    try { r = await demander('fusionner', { base: fichiers.base || null, mien: fichiers.mien, leur: fichiers.leur }); } catch { r = null; }
+    const q = { mien: fichiers.mien, leur: fichiers.leur, ...(fichiers.base && !fichiers.sansBase ? { base: fichiers.base } : {}) };
+    try { r = await demander('fusionner', q); } catch { r = null; }
   }
   if (!d.boite.isConnected) return;
-  if (!r) { fusion.remove(); boutonFusion.remove(); return; }
+  if (!r) {
+    fusion.replaceChildren(el('p', { class: 'note' }, t(fichiers && fichiers.sansBase ? 'versions_fusion_sans_base' : 'versions_fusion_sans_moteur')));
+    boutonFusion.remove();
+    return;
+  }
   proposition = r;
-  const apports = (titre, phrases) => ([].concat(phrases || []).length ? el('div', { class: 'apports-conflit' }, el('h4', {}, titre), el('ul', {}, [].concat(phrases).map((x) => el('li', {}, x)))) : null);
-  const conflits = [].concat(r.conflits || []);
-  for (const x of conflits) choix[x.id] = 'mien';
-  fusion.replaceChildren(
-    el('p', { class: conflits.length ? '' : 'ok-connexion' }, t(conflits.length ? 'versions_fusion_conflits' : 'versions_fusion_auto')),
-    conflits.length ? el('div', { class: 'liste-conflits' }, conflits.map((x) => el('div', { class: 'conflit-fusion' },
-      el('div', { class: 'conflit-titre' }, el('b', {}, x.titre || x.cle || ''), x.details ? el('span', { class: 'doux' }, ` — ${[].concat(x.details).join(' ')}`) : null),
-      ['mien', 'leur'].map((cote) => el('label', { class: 'champ' },
-        el('input', { type: 'radio', name: `conflit-${x.id}`, checked: cote === 'mien', onchange: () => { choix[x.id] = cote; } }),
-        el('span', {}, el('b', {}, t(cote === 'mien' ? 'versions_fusion_choix_mien' : 'versions_fusion_choix_leur')), ` — ${x[cote] || ''}`)))))) : null,
-    el('div', { class: 'cotes-conflit' }, apports(t('versions_fusion_apports_mien'), r.apports && r.apports.mien), apports(t('versions_fusion_apports_leur', { nom: qui }), r.apports && r.apports.leur)));
-  boutonFusion.textContent = t(conflits.length ? 'versions_fusion_appliquer' : 'versions_fusionner');
+  fusion.replaceWith(contenuFusion(r, qui, choix));
+  boutonFusion.textContent = t([].concat(r.conflits || []).length ? 'versions_fusion_appliquer' : 'versions_fusionner');
   boutonFusion.disabled = false;
 }
 
@@ -1112,67 +1167,102 @@ async function choisirCote(app, pid, cote, fichier, hote, description = null) {
   const chemin = fichierProjet(app.projet(pid));
   if (!chemin) return false;
   if (cote !== 'mien' && app.projet(pid).modifie && !(await app.enregistrer(pid, false))) return false;
-  const ok = await essayer(app, () => couche().choisir(chemin, cote, fichier, description));
-  if (!ok) { apresAction(app, pid); return false; }
-  vus.delete(chemin);
-  oublier(chemin);
-  if (cote !== 'mien') await app.rechargerProjet(pid);
-  else apresAction(app, pid);
+  ecritures += 1;
+  try {
+    const ok = await essayer(app, () => couche().choisir(chemin, cote, fichier, description));
+    if (!ok) { apresAction(app, pid); return false; }
+    vus.delete(chemin);
+    oublier(chemin);
+    if (cote !== 'mien') await app.rechargerProjet(pid);
+    else apresAction(app, pid);
+  } finally { ecritures -= 1; }
   app.statut(t(cote === 'mien' ? 'versions_gardees_miennes' : cote === 'leur' ? 'versions_prises_leurs' : 'versions_fusion_faite', { hote }));
   return true;
 }
 
 // ------------------------------------------------------------ a shared folder
 
-// Every 30 seconds, an open project whose file someone else changed on disk (a shared folder, a
-// NAS): their changes merged into the project (engine: fichier_change, fusionner with projet,
-// fusionner_finir), when the engine has these requests; asked once per change of the file
+// The name written in a saved project's file, so that a colleague who has it open sees who changed
+// it (serveur.R: enregistrer's auteur): the versions' author, read once, and again after Settings
+let auteurConnu;
+function nomAuteur() {
+  const c = couche();
+  if (!c) return Promise.resolve(null);
+  if (auteurConnu === undefined) auteurConnu = c.reglages().then((r) => (r && r.auteur && r.auteur.nom) || null, () => null);
+  return auteurConnu;
+}
+
+// Their changes and mine in one project, in a dialog: the engine's merge prepared with the project
+// (fusionner with projet: the copy kept when the file was read is the base, the file on disk
+// theirs), Merge both or the choices per clash, then merged into the open project as one undo step
+// (fusionner_finir, through app.changerDonnees: its views follow). boutons: the other ways out,
+// before Merge, each { libelle, valeur }. Resolves to 'fusion' once merged, a button's value, or
+// null; 'repli' when the engine refuses to prepare it (no copy of the file as it was read, as after
+// a restart).
+async function dialogueFusionFichier(app, pid, { titre, texte, boutons, qui: quiConnu = null }) {
+  let r;
+  try { r = await demander('fusionner', { projet: pid }); } catch { return 'repli'; }
+  const qui = quiConnu || quiDuFichier(r.qui);
+  const choix = {};
+  return new Promise((resolve) => {
+    let fait = false;
+    const finir = async () => {
+      try { await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix }); } catch { return; }
+      fait = true;
+      d.fermer();
+      resolve('fusion');
+    };
+    const d = dialogue({ titre, contenu: el('div', { class: 'dialogue-conflit' }, el('p', {}, texte(qui)), contenuFusion(r, qui, choix)),
+      boutons: [...boutons.map((b) => ({ libelle: b.libelle, action: () => { fait = true; resolve(b.valeur); return true; } })),
+        { libelle: t([].concat(r.conflits || []).length ? 'versions_fusion_appliquer' : 'versions_fusionner'), principal: true, action: () => { finir(); return false; } }],
+      surFermeture: () => { if (!fait) resolve(null); } });
+    d.boite.classList.add('dialogue-moyen');
+  });
+}
+
+// Save met the project's file changed on disk by someone else, and the engine can merge (its
+// answer's `fusion`): Merge both or the choices per clash, Overwrite theirs, Save as…, Cancel (app.js:
+// enregistrer then saves the merged project, or overwrites, or asks for another file)
+function fusionAvantEnregistrement(app, pid) {
+  const p = app.projet(pid);
+  return dialogueFusionFichier(app, pid, { titre: t('versions_dossier_titre', { nom: sansExtension(p.nom) }),
+    texte: (qui) => t('versions_dossier_texte_enregistrer', { qui }),
+    boutons: [{ libelle: t('annuler'), valeur: null }, { libelle: t('enregistrer_sous_bouton'), valeur: 'sous' }, { libelle: t('ecraser'), valeur: 'ecraser' }] });
+}
+
+// Every 30 seconds, an open project's file changed on disk by someone else (a shared folder, a NAS:
+// the engine's fichier_change): their changes merged into the open project, asked first, once per
+// change of the file; when the engine kept no copy of the file as it was read (it restarted), said
+// once, Save then asking whether to overwrite them. A project shared with GitHub or GitLab is the
+// versions layer's: it writes the file itself, and reloads the project.
 let surveillance = true;
 const proposes = new Map();
+// (the versions written to a project's file by this window, until the project is read again: not someone else's)
+let ecritures = 0;
 async function surveillerDossiers(app) {
-  if (!surveillance || document.querySelector('.fond-dialogue')) return;
+  if (!surveillance || ecritures || document.querySelector('.fond-dialogue')) return;
   for (const p of app.projets()) {
-    if (!fichierProjet(p)) continue;
+    const chemin = fichierProjet(p);
+    if (!chemin) continue;
     let r;
     try { r = await demander('fichier_change', { projet: p.id }, { silencieux: true }); } catch (e) {
       if (demandeAbsente(e)) { surveillance = false; return; }
       continue;
     }
-    const cle = r && (r.change || r.changed) ? JSON.stringify([r.date || null, r.taille || null]) : null;
-    if (!cle || proposes.get(p.id) === cle) continue;
+    if (!r || !r.change) { proposes.delete(p.id); continue; }
+    const cle = JSON.stringify([r.date || null, r.taille || null]);
+    if (proposes.get(p.id) === cle || !(await fenetreQuiAgit())) continue;
+    // (shared with GitHub or GitLab: what the background received, which reloads the project itself)
+    const e = await lireEtat(chemin).catch(() => null);
+    if (!e || e.partage || ecritures) continue;
     proposes.set(p.id, cle);
-    if (await fenetreQuiAgit()) await fusionnerFichierChange(app, p.id, { change: r });
+    const qui = r.auteur || t('versions_collegue');
+    if (!r.base) { montrerAvis(app, t('versions_dossier_sans_base', { nom: sansExtension(p.nom), qui })); continue; }
+    const fin = await dialogueFusionFichier(app, p.id, { titre: t('versions_dossier_titre', { nom: sansExtension(p.nom) }), qui: r.auteur || null,
+      texte: (q) => t('versions_dossier_texte', { qui: q }), boutons: [{ libelle: t('versions_pas_maintenant'), valeur: null }] });
+    if (fin === 'fusion') app.statut(t('versions_dossier_fusionne'));
+    else if (fin === 'repli') montrerAvis(app, t('versions_dossier_sans_base', { nom: sansExtension(p.nom), qui }));
   }
-}
-
-// Someone else's changes to the project's file merged into the open project: asked first (unless
-// before a save that met them), with the engine's choices per clash; true once merged
-async function fusionnerFichierChange(app, pid, { avantEnregistrer = false, change = null } = {}) {
-  if (!(await moteurFusion())) return false;
-  const p = app.projet(pid);
-  const chemin = fichierProjet(p) || (p && p.chemin_enregistrement);
-  if (!chemin) return false;
-  let r;
-  try {
-    r = await demander('fusionner', { projet: pid, leur: (change && change.chemin) || chemin, ...(change && change.base ? { base: change.base } : {}) });
-  } catch (e) { app.statut(e.message, true); return false; }
-  const conflits = [].concat(r.conflits || []);
-  const choix = {};
-  for (const x of conflits) choix[x.id] = 'mien';
-  const texte = [el('p', {}, t('versions_dossier_change', { nom: sansExtension(p.nom) })),
-    [].concat((r.apports && r.apports.leur) || []).length ? el('ul', {}, [].concat(r.apports.leur).map((x) => el('li', {}, x))) : null,
-    conflits.length ? el('div', { class: 'liste-conflits' }, el('p', {}, t('versions_fusion_conflits')), conflits.map((x) => el('div', { class: 'conflit-fusion' },
-      el('div', { class: 'conflit-titre' }, el('b', {}, x.titre || x.cle || '')),
-      ['mien', 'leur'].map((cote) => el('label', { class: 'champ' },
-        el('input', { type: 'radio', name: `fichier-${x.id}`, checked: cote === 'mien', onchange: () => { choix[x.id] = cote; } }),
-        el('span', {}, el('b', {}, t(cote === 'mien' ? 'versions_fusion_choix_mien' : 'versions_fusion_choix_leur')), ` — ${x[cote] || ''}`)))))) : null];
-  if (!avantEnregistrer || conflits.length) {
-    const oui = await demanderChoix({ titre: t('versions_conflit_titre'), texte, boutons: [{ libelle: t('versions_dossier_fusionner'), principal: true, valeur: true }] });
-    if (!oui) return false;
-  }
-  try { await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix }); } catch { return false; }
-  if (!avantEnregistrer) app.statut(t('versions_dossier_fusionne'));
-  return true;
 }
 
 // ------------------------------------------------------------ Open from GitHub or GitLab

@@ -295,22 +295,29 @@ const app = {
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
-    const q = { projet: pid, chemin, session, version: VERSION };
-    let r = await occupe(() => demander('enregistrer', q).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
-    if (r.conflit) {  // changed on disk since it was read: their changes merged in, overwrite, save elsewhere, or leave it
-      // (merged: the engine's merge by meaning, when it has it, versions.js)
-      const fusion = !!(app.fusionPossible && await app.fusionPossible());
-      const choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
-        contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
-        boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
-          { libelle: t('ecraser'), action: () => resolve('ecraser') },
-          { libelle: t('enregistrer_sous_bouton'), principal: !fusion, action: () => resolve('sous') }]
-          .concat(fusion ? [{ libelle: t('versions_dossier_fusionner'), principal: true, action: () => resolve('fusion') }] : []),
-        surFermeture: () => resolve(null) }));
+    // (who saves it, written in the file: a colleague who has it open sees who changed it)
+    const auteur = app.auteurVersions ? await app.auteurVersions() : null;
+    const q = { projet: pid, chemin, session, version: VERSION, ...(auteur ? { auteur } : {}) };
+    const sauver = (x) => occupe(() => demander('enregistrer', x).catch((e) => { if (e.reponse && e.reponse.conflit) return e.reponse; throw e; }));
+    let r = await sauver(q);
+    let sansFusion = false;
+    while (r.conflit) {  // changed on disk since it was read: their changes merged in, overwrite, save elsewhere, or leave it
+      // (merged: the engine's merge by meaning when it kept the file as it was read, versions.js;
+      // otherwise, as after a restart, the question alone)
+      let choix = r.fusion && !sansFusion && app.fusionnerFichier ? await app.fusionnerFichier(pid) : 'repli';
+      if (choix === 'repli') {
+        sansFusion = true;
+        choix = await new Promise((resolve) => dialogue({ titre: t('conflit_titre'),
+          contenu: el('p', {}, t('conflit_texte', { nom: chemin.split(/[\\/]/).pop(), date: new Date(r.date * 1000).toLocaleString(langueActuelle()) })),
+          boutons: [{ libelle: t('annuler'), action: () => resolve(null) },
+            { libelle: t('ecraser'), action: () => resolve('ecraser') },
+            { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
+          surFermeture: () => resolve(null) }));
+      }
       if (choix === 'sous') return app.enregistrer(pid, true);
-      if (choix === 'fusion' && !(await app.fusionnerFichier(pid))) return false;
       if (choix !== 'ecraser' && choix !== 'fusion') return false;
-      r = await occupe(() => demander('enregistrer', { ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ecraser: true }));
+      // (merged: saved as it is now, asked again if the file changed once more meanwhile)
+      r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
     }
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);

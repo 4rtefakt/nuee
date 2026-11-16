@@ -718,9 +718,20 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .apports-conflit li { margin: 2px 0; }
 .fusion-conflit { display: flex; flex-direction: column; gap: 6px; }
 .fusion-conflit > p { margin: 2px 0; font-weight: 600; }
-.liste-conflits { display: flex; flex-direction: column; gap: 6px; max-height: 18em; overflow: auto; }
+.liste-conflits { display: flex; flex-direction: column; gap: 6px; max-height: 22em; overflow: auto; }
 .conflit-fusion { border: 1px solid var(--attention); border-radius: 6px; padding: 6px 10px; }
 .conflit-fusion .champ { display: flex; color: var(--texte); margin: 2px 0 0 4px; }
+.fusion-conflit > p.note { font-weight: 400; }
+.details-conflit { margin: 4px 0 0 4px; }
+.details-conflit > summary { cursor: pointer; color: var(--texte-doux); font-size: 12px; }
+.passage-conflit { margin: 4px 0; }
+.cotes-passage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.passage-conflit h5 { margin: 2px 0; font-size: 11px; font-weight: 600; color: var(--texte-doux); }
+.passage-conflit pre { margin: 0; padding: 4px 6px; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; border-radius: 4px; background: var(--fond-barre); border: 1px solid var(--grille); }
+.base-passage pre { color: var(--texte-doux); }
+.tableau-conflit { border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+.tableau-conflit th, .tableau-conflit td { border: 1px solid var(--grille); padding: 2px 8px; text-align: left; }
+.tableau-conflit th { font-weight: 600; color: var(--texte-doux); background: var(--fond-barre); }
 .noeud.lecture-seule > .icone { color: var(--attention); }
 .badge.lecture-seule { margin-left: 6px; background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
 
