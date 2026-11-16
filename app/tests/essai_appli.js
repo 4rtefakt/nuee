@@ -3,7 +3,8 @@
 // a PLS model's views, the R console shows each fit's printout, a plot is saved as an image,
 // Export to R offers all the session's models only with those a session script holds, a
 // .nuee project given on the command line (what a double-click does) opens in the running
-// window, then Nuée quits, R stops and its temporary folder goes (on Windows, in a temporary
+// window, a second main window stays when the first is closed, then Nuée quits from it, R stops
+// and its temporary folder goes (on Windows, in a temporary
 // folder whose path isn't ASCII, with a read-only file in it; an earlier run's goes at the start).
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
@@ -285,6 +286,22 @@ async function brancher(cible) {
     verifier('sansRefusDuMoteur', (await p.evaluer('window.__refus')).length === 0, await p.evaluer('window.__refus'));
     if (capture) await p.capture(capture);
 
+    // Window › New window: a second main window, which outlives the first (main.js: outlivesOpener).
+    // Closing the first one leaves Nuée running in the second, from which it quits below.
+    await commande(await libelle('nouvelle_fenetre'));
+    let cible2;
+    for (let i = 0; i < 60 && !cible2; i += 1) { await pause(500); cible2 = (await pages(port)).find((c) => /[?&]fenetre=/.test(c.url)); }
+    if (!cible2) throw new Error('no second main window');
+    const p2 = await brancher(cible2);
+    await p2.attendre("document.querySelectorAll('.menu-haut').length > 3", 60000);
+    const erreurs1 = p.erreurs;
+    await p.evaluer('setTimeout(() => window.close(), 100); true').catch(() => {});
+    await pause(3000);
+    p.fermer();
+    p = p2;
+    verifier('secondeFenetreGardee', proc.exitCode === null && (await p.evaluer("!!document.querySelector('.arbre')").catch(() => false)),
+      `${proc.exitCode} ${(await pages(port)).map((c) => c.url).join(' ')}`);
+
     // quitting stops R and removes its temporary folder
     verifier('dossierTemporaireR', /nuee-r-[\d-]+$/.test(temporaire) && fs.existsSync(temporaire), temporaire);
     await Promise.race([p.evaluer('window.bureau.quitter()').catch(() => {}), pause(3000)]);  // the page goes with the app
@@ -297,7 +314,7 @@ async function brancher(cible) {
     try { index = JSON.parse(fs.readFileSync(path.join(secours, 'index.json'), 'utf8')); } catch { index = []; }
     verifier('copieDUnArretPrecedentGardee', fs.existsSync(copieAncienne) && index.length === 1 && path.basename(index[0].fichier) === path.basename(copieAncienne),
       `${fs.existsSync(copieAncienne)} / ${JSON.stringify(index)}`);
-    verifier('sansErreurDansLaPage', p.erreurs.length === 0, p.erreurs.slice(0, 10));
+    verifier('sansErreurDansLaPage', !erreurs1.length && !p.erreurs.length, [...erreurs1, ...p.erreurs].slice(0, 10));
   } catch (e) {
     verifier('erreur', false, e.message);
     if (p && capture) try { await p.capture(capture.replace(/\.png$/i, '') + '-erreur.png'); } catch { /* no page */ }

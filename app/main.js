@@ -314,10 +314,13 @@ function preparer(fenetre) {
   fenetre.once('ready-to-show', () => { if (!cachees.has(fenetre)) fenetre.show(); });
   // Windows opened by the interface (a second main window, a detached view) stay in the
   // app; web links go to the default browser; anything else (files, other programs) is refused.
+  // (A main window outlives the one it was opened from; a detached view goes with it. Electron
+  // closes a window with its opener: closing the first main window closed the others, and Nuée
+  // with them, without asking about unsaved projects.)
   fenetre.webContents.setWindowOpenHandler(({ url }) => {
     if (deLInterface(url)) {
       const vue = new URL(url).searchParams.get('vue');
-      return { action: 'allow', overrideBrowserWindowOptions: vue ? options(1000, 720) : options(1300, 850) };
+      return { action: 'allow', outlivesOpener: !vue, overrideBrowserWindowOptions: vue ? options(1000, 720) : options(1300, 850) };
     }
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
