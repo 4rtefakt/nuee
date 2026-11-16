@@ -63,12 +63,14 @@ acp <- list(
 
 # ------------------------------------------------------------ 2. the skylarks' songs, as spectra
 # 120 recordings of singing skylarks, three on each square (made up here, with a fixed seed), each
-# as its long-term average spectrum: the level, in dB, from 1 to 8 kHz in steps of 50 Hz. A song
+# as its long-term average spectrum: the level, in dB, from 1 to 7 kHz in steps of 50 Hz. A song
 # fills 2 to 7 kHz, louder or fainter with the bird's distance; under it, the hum of the nearest
 # road, loud on some squares, where the birds sing a little higher (as birds near roads do). Six
-# are drawn: a recording from each of six squares, from the quietest to the loudest.
+# are drawn: a recording from each of six squares, from the quietest to the loudest, after the
+# engine's SNV (spectres.R), which takes each recording's own level and spread out of it: what is
+# left is the shape of the song, and the hum.
 set.seed(20261117)
-frequences <- seq(1, 8, by = 0.05)
+frequences <- seq(1, 7, by = 0.05)
 route <- stats::runif(nrow(en_large))  # the road's hum on each square, from none (0) to loud (1)
 spectre_chant <- function(bruit) {
   centre <- 3.4 + 0.7 * bruit + stats::rnorm(1, 0, 0.1)
@@ -85,18 +87,18 @@ pic <- frequences[frequences >= 2.5][apply(chants[, frequences >= 2.5], 1, which
 montee <- diff(tapply(pic, bruit_chant >= 0.5, mean))  # how much higher by the loud roads, kHz
 stopifnot(stats::cor(pic, bruit_chant) > 0.5, montee > 0.1)
 trois <- function(carres) carres[order(route[carres])][round(seq(2, length(carres) - 1, length.out = 3))]
-montres <- c(trois(which(route < 0.5)), trois(which(route >= 0.5)))
-S <- chants[(montres - 1) * 3 + 1, ]
+montres <- c(trois(which(route < 1 / 3)), trois(which(route > 2 / 3)))  # (the quiet third and the loud third)
+S <- pretraiter_spectres(chants, list(list(type = "snv")))$X[(montres - 1) * 3 + 1, ]
 etendue <- range(S)
 spectres <- list(
   lignes = lapply(seq_along(montres), function(i) list(
     g = if (route[montres[i]] < 0.5) 0 else 1,
-    pts = ligne_json(vers(frequences, 1, 8), vers(S[i, ], etendue[1], etendue[2], 0.04, 0.96)))),
+    pts = ligne_json(vers(frequences, 1, 7), vers(S[i, ], etendue[1], etendue[2], 0.04, 0.96)))),
   deco = list(
     axes = list(c(0, 0, 1, 0)),
-    gx = graduations(c(2, 4, 6, 8), vers(c(2, 4, 6, 8), 1, 8), "x"),
+    gx = graduations(c(2, 4, 6), vers(c(2, 4, 6), 1, 7), "x"),
     # where the road's hum is: under 2 kHz
-    bandes = list(arrondi(vers(c(1, 2), 1, 8)))),
+    bandes = list(arrondi(vers(c(1, 2), 1, 7)))),
   n = nrow(chants), k = length(frequences), montee = as.numeric(round(1000 * montee, -1)))
 
 # ------------------------------------------------------------ 3. skylark plots: before, after, with controls

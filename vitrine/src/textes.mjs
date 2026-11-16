@@ -61,8 +61,8 @@ export const en = {
   tour1_fig: 'A PCA of the skylarks’ {acp_n} sites, each described by its {acp_k} springs of counts, on a log scale; the springs a site missed stay empty. The first axis carries {acp_r1} of the variance, how many skylarks a site holds; the second, {acp_r2}. Dashed: Hotelling’s T², 95%. {acp_dehors}, outside it, is the site with the most skylarks.',
 
   tour2_nom: 'Spectra', tour2_titre: 'Spectra, read as spectra.',
-  tour2_p: 'JCAMP-DX, SPC or text files in; SNV, MSC, detrending and Savitzky–Golay smoothing or derivatives before the model. Loadings, coefficients and VIP are drawn as lines against the wavelength: drag across a band to leave it out, and iPLS shows which ranges predict best.',
-  tour2_fig: 'Six of {sp_n} made-up recordings of skylark song, each as its spectrum: its level at {sp_k} frequencies, from the quietest square to the one with the loudest road. Shaded: the road’s hum, under 2 kHz. Beside it, the skylarks sing about {sp_montee} Hz higher.',
+  tour2_p: 'A spectrum is a row of neighbouring measurements: an absorbance at each wavelength, a song’s level at each frequency. JCAMP-DX, SPC or text files in; SNV, MSC, detrending and Savitzky–Golay smoothing or derivatives before the model. Loadings, coefficients and VIP are drawn as lines along that axis: drag across a band to leave it out, and iPLS shows which ranges predict best.',
+  tour2_fig: 'Six of {sp_n} made-up recordings of skylark song as spectra, {sp_k} frequencies each, after SNV, which sets aside how loud each recording is. Shaded: the hum of the road, under 2 kHz, a band to leave out of a model. By a loud road the skylarks sing about {sp_montee} Hz higher.',
   tour2_g1: 'quiet squares', tour2_g2: 'by a loud road', tour2_axe: 'frequency, kHz',
 
   tour3_nom: 'Regressions', tour3_titre: 'Mixed, generalized, additive. And explained.',
@@ -168,7 +168,7 @@ export const en = {
   dl_installer: 'How to install', dl_it: 'For IT departments: silent installation, Intune, Group Policy', dl_versions: 'Every version and its notes',
   dl_nouveautes: 'What’s new', dl_tutoriels: 'Three tutorials to start with',
   dl_citer: 'To cite Nuée, let <i>Model › Text for the Methods section</i> do it for you, or: Boutin, C. (2026). <i>Nuée</i> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014',
-  dl_essayer: `Then try <i>Help › Example project</i>, or follow <a href="${DOCS}/en/tutorials/trends.html">the monitoring tutorial</a>: the skylarks of this page, from their counts to their trend.`,
+  dl_essayer: `Then follow <a href="${DOCS}/en/tutorials/trends.html">the monitoring tutorial</a> to redo this page’s skylarks, from their counts to their trend. Or try <i>Help › Example project</i> first: 120 apples, with four models ready.`,
 
   // ---- the footer
   pied_licence: 'Nuée is free software, under the <a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">GNU General Public License v3.0</a> or later.',
@@ -231,8 +231,8 @@ export const fr = {
   tour1_fig: 'Une ACP des {acp_n} sites des alouettes, chacun décrit par ses {acp_k} printemps de comptages, en échelle logarithmique ; les printemps qu’un site a manqués restent vides. Le premier axe porte {acp_r1} de la variance, le nombre d’alouettes d’un site ; le second, {acp_r2}. En tirets : le T² de Hotelling à 95 %. {acp_dehors}, qui en sort, est le site qui compte le plus d’alouettes.',
 
   tour2_nom: 'Spectres', tour2_titre: 'Des spectres, lus comme des spectres.',
-  tour2_p: 'Des fichiers JCAMP-DX, SPC ou texte en entrée ; SNV, MSC, suppression de tendance et lissage ou dérivées de Savitzky–Golay avant le modèle. Les loadings, les coefficients et les VIP se tracent en lignes en fonction de la longueur d’onde : glissez sur une bande pour l’écarter, et l’iPLS montre quelles plages prédisent le mieux.',
-  tour2_fig: 'Six des {sp_n} enregistrements inventés de chants d’alouettes, chacun par son spectre : son niveau à {sp_k} fréquences, du carré le plus calme à celui dont la route est la plus bruyante. En grisé : le bruit de la route, sous 2 kHz. Près d’elle, les alouettes chantent environ {sp_montee} Hz plus haut.',
+  tour2_p: 'Un spectre est une suite de mesures voisines : une absorbance à chaque longueur d’onde, le niveau d’un chant à chaque fréquence. Des fichiers JCAMP-DX, SPC ou texte en entrée ; SNV, MSC, suppression de tendance et lissage ou dérivées de Savitzky–Golay avant le modèle. Les loadings, les coefficients et les VIP se tracent en lignes le long de cet axe : glissez sur une bande pour l’écarter, et l’iPLS montre quelles plages prédisent le mieux.',
+  tour2_fig: 'Six des {sp_n} enregistrements inventés de chants d’alouettes, en spectres de {sp_k} fréquences, après SNV, qui met de côté le niveau sonore de chaque enregistrement. En grisé : le bruit de la route, sous 2 kHz, une bande à écarter d’un modèle. Près d’une route bruyante, les alouettes chantent environ {sp_montee} Hz plus haut.',
   tour2_g1: 'carrés calmes', tour2_g2: 'près d’une route bruyante', tour2_axe: 'fréquence, kHz',
 
   tour3_nom: 'Régressions', tour3_titre: 'Mixtes, généralisés, additifs. Et expliqués.',
@@ -332,7 +332,7 @@ export const fr = {
   dl_installer: 'Comment installer', dl_it: 'Pour les services informatiques : installation silencieuse, Intune, stratégies de groupe', dl_versions: 'Toutes les versions et leurs notes',
   dl_nouveautes: 'Quoi de neuf', dl_tutoriels: 'Trois tutoriels pour commencer',
   dl_citer: 'Pour citer Nuée, laissez <i>Modèle › Texte pour la section Méthodes</i> le faire, ou : Boutin, C. (2026). <i>Nuée</i> [Logiciel]. Zenodo. https://doi.org/10.5281/zenodo.24263014',
-  dl_essayer: `Puis essayez <i>Aide › Projet d’exemple</i>, ou suivez <a href="${DOCS}/fr/tutoriels/tendances.html">le tutoriel de suivi</a> : les alouettes de cette page, de leurs comptages à leur tendance.`,
+  dl_essayer: `Puis suivez <a href="${DOCS}/fr/tutoriels/tendances.html">le tutoriel de suivi</a> pour refaire les alouettes de cette page, de leurs comptages à leur tendance. Ou essayez d’abord <i>Aide › Projet d’exemple</i> : 120 pommes, avec quatre modèles prêts.`,
 
   pied_licence: 'Nuée est un logiciel libre, sous la <a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">licence publique générale GNU v3.0</a> ou ultérieure.',
   pied_source: 'Code source', pied_probleme: 'Signaler un problème', pied_docs: 'Documentation',
