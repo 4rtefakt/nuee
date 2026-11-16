@@ -197,8 +197,20 @@ etapes_json <- vapply(projet(id)$etapes, `[[`, "", "parametres")
 verifier("aucun paramètre noté ne tient un numéro de variable", !any(grepl("\"variables?\":\\[?[0-9]", etapes_json[-c(16, 17)])))
 e <- demande("etapes", list(projet = id))
 verifier("la demande etapes : 17 étapes, chacune son étiquette, sa date, sa demande ; les fichiers des étapes ; les données conformes",
-         length(e$etapes) == 17 && e$etapes[[1]]$etiquette == "modification de x1" && e$etapes[[17]]$demande == "scores_en_variables" &&
+         length(e$etapes) == 17 && e$etapes[[1]]$etiquette == "modification de x1 (S1-2018)" && e$etapes[[17]]$demande == "scores_en_variables" &&
            isFALSE(e$etapes[[11]]$fichiers[[1]]$modifie) && isTRUE(e$conformes))
+# (chaque étiquette écrite d'après la demande et ses paramètres, dans la langue de la demande qui la montre)
+options(nuee.langue = "en")
+en_etapes <- vapply(demande("etapes", list(projet = id))$etapes, `[[`, "", "etiquette")
+options(nuee.langue = "fr")
+verifier("les étiquettes des étapes dans la langue de la demande, faites en français, montrées en anglais",
+         identical(en_etapes, c("edit of x1 (S1-2018)", "edit of x1 (S2-2016)", "variable x12 = x1 * x2", "imputation of x1, x2, y", "variable classe y, classes of y",
+                                "replacement of “-9999” with empty in comptage", "categories of habitat", "cells pasted into x1, y", "units and descriptions of x1",
+                                "coordinates X and Y", "columns from sites.csv", "columns from pasted cells", "values from pente.asc", "class “témoin” of groupe",
+                                "BACI variables (event 2021)", "variable groupes km, clusters of K1", "scores of C1 as variables")))
+inconnue <- list(demande = "plus_tard", etiquette = "une demande d'une version suivante", parametres = "{}")
+verifier("une demande que cette version ne connaît pas : l'étiquette notée avec elle", identical(etiquette_etape(inconnue), "une demande d'une version suivante") &&
+           identical(etiquette_etape(projet(id)$etapes[[6]]), "remplacement de « -9999 » par vide dans comptage"))
 
 cat("Les modèles du projet\n")
 x_lm <- list(u("x1"), u("habitat"))

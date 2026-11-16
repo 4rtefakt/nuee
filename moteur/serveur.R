@@ -697,7 +697,7 @@ scores_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
   r <- scores_en_variables(p, e$modele)
-  etiquette <- sprintf("scores de %s en variables", e$definition$name %||% q$modele)
+  etiquette <- sprintf(traduire("scores de %s en variables", "scores of %s as variables"), e$definition$name %||% q$modele)
   r$projet <- noter_etape(p, r$projet, "scores_en_variables", q, etiquette, list(definition = e$definition))
   memoriser(p, etiquette)
   r$projet$modifie <- TRUE
@@ -737,7 +737,7 @@ changer_projet_dit <- function(q, f, etiquette, attribut, etape = NULL) {
 
 classe_demande <- function(q) {
   avant <- projet(q$projet)
-  etiquette <- sprintf("classe %s", q$etiquette)
+  etiquette <- sprintf(traduire("classe %s", "class %s"), q$etiquette)
   p <- noter_etape(avant, appliquer_etape("classe_selection", avant, q), "classe_selection", q, etiquette)
   memoriser(avant, etiquette)
   p$modifie <- TRUE
@@ -999,7 +999,7 @@ etapes_demande <- function(q) {
   r <- list(source = source,
             etapes = lapply(seq_along(p$etapes), function(k) {
               e <- p$etapes[[k]]
-              list(n = k, etiquette = premier_texte(e$etiquette), date = premier_texte(e$date), demande = premier_texte(e$demande),
+              list(n = k, etiquette = etiquette_etape(e), date = premier_texte(e$date), demande = premier_texte(e$demande),
                    fichiers = lapply(e$fichiers %||% list(), etat_fiche, dossier))
             }))
   if (isFALSE(q$conformes)) return(r)
@@ -1580,7 +1580,7 @@ DEMANDES <- list(
   # données modifiées et variables ajoutées : le projet est à enregistrer ; chaque changement est
   # une étape du projet, qu'il rejoue quand ses données sont mises à jour (etapes.R)
   modifier_valeur = function(q) changer_projet(q, function(p) appliquer_etape("modifier_valeur", p, q),
-    sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]]), "modifier_valeur"),
+    sprintf(traduire("modification de %s", "edit of %s"), projet(q$projet)$noms_var[[as.character(q$variable)]]), "modifier_valeur"),
   variable_calculee = function(q) changer_projet(q, function(p) appliquer_etape("variable_calculee", p, q), sprintf("variable %s", q$nom), "variable_calculee"),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {

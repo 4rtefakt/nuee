@@ -572,6 +572,45 @@ ETAPES_DONNEES <- list(
 # Le changement d'une demande (serveur.R) ou d'une étape rejouée : sa fonction de ETAPES_DONNEES.
 appliquer_etape <- function(nom, p, q, rejeu = NULL) ETAPES_DONNEES[[nom]]$appliquer(p, q, rejeu)
 
+# Ce que dit une étape, dans la langue de la demande qui la montre (pas celle où elle a été faite) :
+# écrit d'après sa demande et ses paramètres, qui nomment ses variables et ses observations ; une
+# demande que cette version ne connaît pas garde l'étiquette notée avec elle.
+etiquette_etape <- function(e) {
+  fr <- !identical(getOption("nuee.langue"), "en")
+  notee <- premier_texte(e$etiquette)
+  q <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = TRUE), error = function(err) NULL)
+  if (!is.list(q)) return(notee)
+  t <- function(x) premier_texte(x)
+  liste <- function(x) {
+    x <- as.character(unlist(x))
+    x <- x[!is.na(x) & nzchar(x)]
+    paste0(paste(utils::head(x, 3), collapse = ", "), if (length(x) > 3) "…" else "")
+  }
+  g <- function(x) guillemets_texte(t(x), fr)
+  fichier <- basename(premier_texte(e$fichiers[[1]]$chemin %||% q$chemin, t(q$nom)))
+  r <- switch(t(e$demande),
+    modifier_valeur = sprintf(traduire("modification de %s (%s)", "edit of %s (%s)"), t(q$variable), cle_lisible(t(q$observation))),
+    variable_calculee = sprintf(traduire("variable %s = %s", "variable %s = %s"), t(q$nom), t(q$formule)),
+    imputer = sprintf(traduire("imputation de %s", "imputation of %s"), liste(q$variables)),
+    classes_valeurs = sprintf(traduire("variable %s, classes de %s", "variable %s, classes of %s"), t(q$nom), t(q$variable)),
+    remplacer = sprintf(traduire("remplacement de %s par %s%s", "replacement of %s with %s%s"),
+                        if (isTRUE(q$vides)) traduire("cellules vides", "empty cells") else g(q$chercher),
+                        if (nzchar(t(q$remplacer))) g(q$remplacer) else traduire("vide", "empty"),
+                        if (length(q$variables)) sprintf(traduire(" dans %s", " in %s"), liste(q$variables)) else ""),
+    categories = sprintf(traduire("catégories de %s", "categories of %s"), t(q$variable)),
+    coller_cellules = sprintf(traduire("cellules collées dans %s", "cells pasted into %s"), liste(q$variables)),
+    decrire_variables = sprintf(traduire("unités et descriptions de %s", "units and descriptions of %s"), liste(valeur_chemin(q, "descriptions$variable"))),
+    coordonnees = if (length(q$x)) sprintf(traduire("coordonnées %s et %s", "coordinates %s and %s"), t(q$x), t(q$y)) else traduire("coordonnées retirées", "coordinates removed"),
+    ajouter_colonnes = sprintf(traduire("colonnes de %s", "columns from %s"), if (!is.null(q$texte)) traduire("cellules collées", "pasted cells") else fichier),
+    ajouter_raster = sprintf(traduire("valeurs de %s", "values from %s"), liste(basename(as.character(unlist(valeur_chemin(q, "fichiers$chemin")))))),
+    classe_selection = sprintf(traduire("classe %s de %s", "class %s of %s"), g(q$etiquette), t(q$variable)),
+    baci_modele = sprintf(traduire("variables BACI (événement %s)", "BACI variables (event %s)"), t(q$evenement)),
+    scores_en_variables = sprintf(traduire("scores de %s en variables", "scores of %s as variables"), t(q$modele)),
+    kmeans_variable = sprintf(traduire("variable %s, groupes de %s", "variable %s, clusters of %s"), t(q$nom), t(q$modele)),
+    NULL)
+  r %||% notee
+}
+
 # Ce qu'une étape qui ajuste un modèle garde pour le refaire : le nom du modèle, sa définition telle
 # qu'il a été ajusté, et le projet qu'il a vu (squelette_projet), en JSON l'un et l'autre, écrits et
 # relus comme ceux d'un fichier de projet.
@@ -695,7 +734,7 @@ rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL
   resultats <- vector("list", length(etapes))
   for (k in seq_along(etapes)) {
     e <- etapes[[k]]
-    r <- list(n = k, demande = premier_texte(e$demande), etiquette = premier_texte(e$etiquette), statut = "ok", raison = "", notes = I(character(0)))
+    r <- list(n = k, demande = premier_texte(e$demande), etiquette = etiquette_etape(e), statut = "ok", raison = "", notes = I(character(0)))
     essai <- tryCatch({
       def <- ETAPES_DONNEES[[r$demande]]
       if (is.null(def)) stop(sprintf(traduire("Étape inconnue de cette version de Nuée : %s", "Step unknown to this version of Nuée: %s"), r$demande), call. = FALSE)

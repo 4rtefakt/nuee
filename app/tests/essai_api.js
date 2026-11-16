@@ -2243,6 +2243,10 @@ async function principal() {
       const leger = await api('etapes', { projet: q.id, conformes: false });
       verifier(q.a_source === true && (await api('projet', { projet: p.id })).a_source === true && !('conformes' in leger) && leger.etapes.length === 2,
         `a_source : ${q.a_source} ; etapes sans empreinte : ${JSON.stringify(Object.keys(leger))}`);
+      // each step's label written in the language of the request that shows it
+      const en = await api('etapes', { projet: q.id, conformes: false }, 'en');
+      verifier(e.etapes[0].etiquette === 'modification de x (r2)' && en.etapes[0].etiquette === 'edit of x (r2)' && en.etapes[1].etiquette === 'variable xy = x * y',
+        `étiquettes : ${e.etapes[0].etiquette} ; ${en.etapes.map((x) => x.etiquette).join(' | ')}`);
       fs.writeFileSync(releves, ['y,nom,x,zone', ...lignes(8).map((l) => [l[3], l[0], l[2], l[1]].join(','))].join('\n'));
       e = await api('etapes', { projet: q.id });
       verifier(e.source.modifie === true && e.source.actuel.taille !== e.source.taille, `le fichier changé : ${JSON.stringify(e.source)}`);
