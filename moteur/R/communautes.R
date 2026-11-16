@@ -1290,7 +1290,8 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
       marges = tx("de chaque terme après tous les autres (effets marginaux)", "of each term after all the others (marginal effects)"),
       modele = tx("du modèle entier", "of the whole model"))
     p1 <- sprintf(tx("Une analyse de variance multivariée par permutation (PERMANOVA ; Anderson, 2001 ; McArdle et Anderson, 2001) a testé l'effet de %s sur %s. %s",
-                     "A permutational multivariate analysis of variance (PERMANOVA; Anderson, 2001; McArdle & Anderson, 2001) tested the effect of %s on %s. %s"), court(termes), tableau, donnees)
+                     "A permutational multivariate analysis of variance (PERMANOVA; Anderson, 2001; McArdle & Anderson, 2001) tested the effect of %s on %s. %s"),
+                  court(vapply(termes, guillemets_texte, "", fr = fr)), tableau, donnees)  # (les termes entre guillemets, comme les autres textes : l'effet de « habitat »)
     t <- k$table[seq_len(nrow(k$table) - 2), , drop = FALSE]
     resultats <- paste(sprintf("%s : R² = %s, pseudo-F = %s, %s", t$terme, nombre(t$R2, 3), nombre(t$F, 2), vapply(t$p, valeur_p, "")), collapse = tx(" ; ", "; "))
     if (!fr) resultats <- gsub(" : ", ": ", resultats, fixed = TRUE)
