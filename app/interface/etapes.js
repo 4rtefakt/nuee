@@ -175,14 +175,15 @@ async function versionsActives(p) {
 function boiteVersion(p, description) {
   const zone = el('div', { class: 'version-maj' });
   const st = { actif: false, garder: true };
-  versionsActives(p).then((oui) => {
+  const lue = versionsActives(p).then((oui) => {
     st.actif = oui;
     if (oui) {
       remplir(zone, el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: true, onchange: (e) => { st.garder = e.target.checked; } }), t('etapes_maj_version')),
         el('p', { class: 'note' }, t('etapes_maj_version_note', { description })));
     }
   });
-  return { zone, voulue: () => st.actif && st.garder };
+  // (once History has answered: a button pressed before it did still keeps the version, ticked by default)
+  return { zone, voulue: async () => { await lue; return st.actif && st.garder; } };
 }
 
 // The preview of a change the engine makes from the project's source (`demande`: mettre_a_jour or
@@ -298,7 +299,7 @@ async function dialogueMiseAJour(app, pid) {
     majBouton();
     const quand = new Date();
     d.fermer();
-    await executer(app, pid, { demande: 'mettre_a_jour', textes: LIBELLES.mettre_a_jour, quand, version: version.voulue() ? descriptionVersion(quand) : null,
+    await executer(app, pid, { demande: 'mettre_a_jour', textes: LIBELLES.mettre_a_jour, quand, version: (await version.voulue()) ? descriptionVersion(quand) : null,
       parametres: { chemin: st.quel === 'autre' ? st.autre : undefined, table: apercu.table(), sans_nouvelles: apercu.sansNouvelles() } });
   };
   const d = dialogue({ titre: `${t('etapes_maj_titre')} — ${p.nom}`, large: true,
@@ -337,7 +338,7 @@ async function dialogueRetrait(app, pid, etape, quitterEtapes = () => {}) {
     d.fermer();
     quitterEtapes();
     await executer(app, pid, { demande: 'retirer_etape', textes: LIBELLES.retirer_etape, quand, etape: etape.n,
-      version: version.voulue() ? t('etapes_version_retrait', { n: etape.n, date: dateDescription(quand) }) : null,
+      version: (await version.voulue()) ? t('etapes_version_retrait', { n: etape.n, date: dateDescription(quand) }) : null,
       parametres: { n: etape.n, table: apercu.table() } });
   };
   const d = dialogue({ titre: `${t('etapes_retrait_dialogue', { n: etape.n })} — ${p.nom}`, large: true,
