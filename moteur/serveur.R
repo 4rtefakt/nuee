@@ -966,6 +966,7 @@ DEMANDES <- list(
   # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
   projets_modifies = function(q) list(noms = I(unname(vapply(Filter(function(p) isTRUE(p$modifie), etat$projets), function(p) p$nom, "")))),
   fermer_projet = function(q) {
+    projet(q$projet)  # (un projet inconnu : refusé, plutôt que fermé sans rien dire)
     etat$modeles <- Filter(function(e) !identical(e$projet, q$projet), etat$modeles)
     etat$projets[[q$projet]] <- NULL
     list(ferme = q$projet)
@@ -1010,13 +1011,15 @@ DEMANDES <- list(
   },
   # Crée (sans q$id) ou change un document : ses champs donnés (titre, langue, texte, bib : les
   # références BibTeX gardées dans le document, style : celui de ses citations) ; le projet n'est
-  # marqué modifié que si l'un d'eux change.
+  # marqué modifié que si l'un d'eux change. Un q$id que le projet n'a pas est refusé (il en
+  # ferait un nouveau, sous un autre numéro).
   document_enregistrer = function(q) {
     p <- projet(q$projet)
     docs <- p$documents %||% list()
     id <- as.character(q$id %||% "")[1]
     k <- which(vapply(docs, function(d) identical(d$id, id), TRUE))
-    if (!nzchar(id) || !length(k)) {
+    if (nzchar(id) && !length(k)) stop(traduire("Document introuvable : ", "Document not found: "), id, call. = FALSE)
+    if (!nzchar(id)) {
       numeros <- suppressWarnings(as.numeric(sub("^D", "", vapply(docs, function(d) as.character(d$id), ""))))
       id <- paste0("D", max(c(0, numeros), na.rm = TRUE) + 1)
       docs[[length(docs) + 1]] <- list(id = id, titre = "", langue = "fr", texte = "", cree = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
@@ -1037,6 +1040,7 @@ DEMANDES <- list(
   },
   document_supprimer = function(q) {
     p <- projet(q$projet)
+    if (is.null(Find(function(d) identical(d$id, q$id), p$documents %||% list()))) stop(traduire("Document introuvable : ", "Document not found: "), q$id, call. = FALSE)
     p$documents <- Filter(function(d) !identical(d$id, q$id), p$documents %||% list())
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
@@ -1053,13 +1057,14 @@ DEMANDES <- list(
     f
   },
   # Crée (sans q$id) ou change une figure : son titre, son contenu ; le projet n'est marqué
-  # modifié que si l'un d'eux change.
+  # modifié que si l'un d'eux change. Un q$id que le projet n'a pas est refusé.
   figure_enregistrer = function(q) {
     p <- projet(q$projet)
     figures <- p$figures %||% list()
     id <- as.character(q$id %||% "")[1]
     k <- which(vapply(figures, function(f) identical(f$id, id), TRUE))
-    if (!nzchar(id) || !length(k)) {
+    if (nzchar(id) && !length(k)) stop(traduire("Figure introuvable : ", "Figure not found: "), id, call. = FALSE)
+    if (!nzchar(id)) {
       numeros <- suppressWarnings(as.numeric(sub("^F", "", vapply(figures, function(f) as.character(f$id), ""))))
       id <- paste0("F", max(c(0, numeros), na.rm = TRUE) + 1)
       figures[[length(figures) + 1]] <- list(id = id, titre = "", contenu = "{}", cree = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"))
@@ -1081,6 +1086,7 @@ DEMANDES <- list(
   },
   figure_supprimer = function(q) {
     p <- projet(q$projet)
+    if (is.null(Find(function(f) identical(f$id, q$id), p$figures %||% list()))) stop(traduire("Figure introuvable : ", "Figure not found: "), q$id, call. = FALSE)
     p$figures <- Filter(function(f) !identical(f$id, q$id), p$figures %||% list())
     p$modifie <- TRUE
     etat$projets[[p$id]] <- p
@@ -1375,6 +1381,7 @@ DEMANDES <- list(
   # les tests du rapport de vraisemblance entre les régressions emboîtées de q$modeles
   # (regression_diagnostics.R), pour Comparer les modèles
   rapports_vraisemblance = function(q) {
+    for (id in as.character(unlist(q$modeles))) modele(id)  # (un modèle inconnu : refusé, comme coefficients_modeles)
     ids <- Filter(function(id) !is.null(etat$modeles[[id]]) && est_regression(etat$modeles[[id]]$definition), as.character(unlist(q$modeles)))
     rapports_vraisemblance(stats::setNames(lapply(ids, function(id) etat$modeles[[id]]$modele), ids))
   },

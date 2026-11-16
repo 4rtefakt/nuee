@@ -274,8 +274,15 @@ local({
   assign("quit", quitter, console)
 })
 
-# m et p : le modèle et le projet affichés dans l'application.
+# m et p : le modèle et le projet affichés dans l'application ; un modèle ou un projet que la
+# séance n'a pas est refusé (m ou p seraient sinon ceux d'avant, sans rien dire).
 lier_m_p <- function(modele = NULL, projet = NULL) {
+  if (length(modele) && nzchar(as.character(modele)[1]) && is.null(etat$modeles[[as.character(modele)[1]]])) {
+    stop(traduire("Modèle inconnu : ", "Unknown model: "), modele, call. = FALSE)
+  }
+  if (length(projet) && nzchar(as.character(projet)[1]) && is.null(etat$projets[[as.character(projet)[1]]])) {
+    stop(traduire("Projet inconnu : ", "Unknown project: "), projet, call. = FALSE)
+  }
   lier_objets()
   if (!is.null(modele) && !is.null(etat$modeles[[modele]])) {
     assign("m", etat$modeles[[modele]]$modele, envir = console)
