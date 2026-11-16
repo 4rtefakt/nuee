@@ -314,11 +314,12 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
     const n = await piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie: () => sortie, dossier, programme });
     await n.attendre("document.querySelectorAll('.menu-haut').length > 3 && !!document.querySelector('#dock .arbre, #dock .accueil-explorateur')", 120000);
     await n.outils();
-    // the first start of this version shows What's new: closed as a person would
+    // a first start opens on the start page alone (What's new comes once after an update): once
+    // the start has noted the version seen, no dialog is open
     if (premierLancement) {
-      await n.attendre(`__n.titreDialogue() === __n.t('quoi_de_neuf')`, 30000);
-      await n.bouton('fermer');
-      await n.attendre('!__n.dialogue()');
+      await n.attendre("localStorage.getItem('version_vue') !== null", 30000);
+      const titre = await n.evaluer('__n.dialogue() ? __n.titreDialogue() || "(untitled)" : ""');
+      if (titre) throw new Error(`a dialog opened on the first start: ${titre}`);
     }
     journal(`started in ${((Date.now() - debut) / 1000).toFixed(1)} s`);
     return n;
