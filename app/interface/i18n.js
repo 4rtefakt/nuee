@@ -1416,7 +1416,7 @@ const RESULTATS = {
 };
 const PREFIXES_RESULTATS = [['probabilité ', 'probability '], ['distance au centre (', 'distance to centre (']];
 const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (OOB)', 'predicted (OOB)'],
-  ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
+  ['prédit (lien)', 'predicted (link)'], ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
   const dico = RESULTATS[langue] || RESULTATS.fr;
   if (cle in dico) return dico[cle];
