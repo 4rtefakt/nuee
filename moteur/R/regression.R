@@ -1391,6 +1391,20 @@ refuser_valeurs_extremes <- function(cadre, noms) {
   }
 }
 
+# Une erreur-type nulle, ou qui n'est pas un nombre : mgcv a perdu la précision de son calcul, les
+# termes ayant des tailles trop éloignées (l'un vers 1e12 et l'ordonnée à l'origine vers 1 ; 1e8 et
+# 1e-8 pour deux termes d'une régression logistique). Il met alors le coefficient ou son erreur-type à
+# 0 : un t de 0 / 0 ou infini, une valeur p nulle. Refusée, en disant quoi faire (`co` : la table des
+# coefficients, son terme et son erreur-type).
+refuser_precision_perdue <- function(co) {
+  perdu <- !is.finite(co$erreur_type) | co$erreur_type <= 0
+  if (any(perdu)) {
+    stop(sprintf(traduire("L'erreur-type de « %s » ne se calcule pas : les valeurs des termes du modèle ont des tailles trop éloignées (des milliards de fois), le calcul y a perdu sa précision. Ramenez-les près de 1 par une puissance de 10 (Édition › Nouvelle variable), ou mettez-les à l'échelle (UV).",
+                          "The standard error of “%s” can't be computed: the values of the model's terms are too far apart in size (billions of times), and the computation lost its precision. Bring them near 1 by a power of 10 (Edit › New variable), or scale them (UV)."),
+                 paste(co$terme[perdu], collapse = traduire(" », « ", "”, “"))), call. = FALSE)
+  }
+}
+
 # Une réponse que la loi accepte : des comptages (Poisson, binomiale négative, Poisson à excès de
 # zéros, qui demande aussi des zéros), 0 ou 1 (binomiale), strictement positive (gamma), positive ou
 # nulle (Tweedie), strictement entre 0 et 1 (bêta : mgcv ramènerait un 0 ou un 1 à eps du bord, ce
@@ -1618,6 +1632,7 @@ resultat_mgcv <- function(donnees, termes, noms, lisses, niveaux, famille, decal
   co <- data.frame(terme = c("(Intercept)", noms[match(rownames(pt)[-1], termes)]), estimation = pt[, 1], erreur_type = pt[, 2],
                    ddl = if (echelle) estime$df.residual else NA_real_, t = pt[, 3], p = pt[, 4],
                    bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2], row.names = NULL, stringsAsFactors = FALSE)
+  refuser_precision_perdue(co)
   courbes <- if (length(lis)) tableau_courbes(estime, lis, termes, noms, donnees, par, facteurs)
   if (!is.null(spatial)) courbes <- ligne_spatiale(estime, spatial, courbes)
   variances <- singularites <- NULL
@@ -1744,6 +1759,7 @@ resultat_gamm <- function(donnees, termes, noms, lisses, niveaux, k_demandes = N
   co <- data.frame(terme = c("(Intercept)", noms[match(rownames(pt)[-1], termes)]), estimation = pt[, 1], erreur_type = pt[, 2],
                    ddl = g$df.residual, t = pt[, 3], p = pt[, 4], bas = pt[, 1] - q * pt[, 2], haut = pt[, 1] + q * pt[, 2],
                    row.names = NULL, stringsAsFactors = FALSE)
+  refuser_precision_perdue(co)
   courbes <- if (length(lis)) tableau_courbes(g, lis, termes, noms, donnees, par, facteurs)
   if (!is.null(spatial)) courbes <- ligne_spatiale(g, spatial, courbes)
   # la variance de chaque effet aléatoire (nlme : σ² fois sa matrice relative), puis la résiduelle
