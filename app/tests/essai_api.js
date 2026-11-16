@@ -2128,6 +2128,11 @@ async function principal() {
         && /^R2 OOB .* arbres$/.test(foret.chiffres) && [].concat(foret.vues_defaut).join() === 'ens_importance,ens_obspred'
         && foret.observations['densite prédit (OOB)'].length === 65 && [].concat(foret.importance.variable).length === 4 && foret.courbe.arbres.length === 200
         && foret.exclues_manquantes === 7 && foret.reglages.options.arbres === 200 && typeof foret.comparaison.Q2 === 'number', `forêt : ${foret.chiffres}, N = ${foret.N}`);
+      // (the console shows a forest by its key results, not the whole object with its data and trees)
+      const affiche = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'resultat').pop();
+      const lignesForet = affiche ? String(affiche.texte).split('\n') : [];
+      verifier(lignesForet.length > 1 && lignesForet.length <= 25 && /Forêt \(FOREST\)/.test(lignesForet[0]) && /Q/.test(affiche.texte),
+        `la console résume la forêt : ${lignesForet.length} ligne(s), ${lignesForet.slice(0, 3).join(' | ')}`);
       const dp = await api('dependance_partielle', { modele: foret.id, variables: ['gel'] });
       const d0 = [].concat(dp.dependance)[0];
       verifier(d0.variable === 'gel' && d0.x.length === 25 && d0.y.length === 25 && d0.tapis.length > 1, `dépendance partielle : ${d0.x.length} points`);

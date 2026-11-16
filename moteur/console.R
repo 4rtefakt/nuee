@@ -195,8 +195,22 @@ journaliser <- function(nom, q, r) {
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
   if (nom %in% c("ajuster", "reajuster", "baci_modele")) {
     id <- if (nom == "baci_modele") r$modele$id else r$id
-    if (!is.null(etat$modeles[[id]])) noter("resultat", utils::capture.output(print(etat$modeles[[id]]$modele)))
+    if (!is.null(etat$modeles[[id]])) noter("resultat", affichage_console(etat$modeles[[id]]))
   }
+}
+
+# Ce que la console affiche d'un modèle ajusté. Une analyse sans méthode print (une forêt, des arbres
+# boostés, un arbre, une LDA, des k-moyennes) est une liste qui garde ses données et ses arbres :
+# affichée telle quelle, elle prenait de 4 à 8 secondes et des pages ; ses résultats clés à la place
+# (resultats_cles.R : resume_resultats), ceux de l'ajustement et des tests.
+affichage_console <- function(e) {
+  m <- e$modele
+  if (!is.null(oldClass(m))) return(utils::capture.output(print(m)))
+  titre <- sprintf("%s (%s)", e$definition$name %||% "", m$type %||% e$definition$type %||% "")
+  E <- tryCatch(resume_resultats(projet(e$projet), e), error = function(err) NULL)
+  E <- Filter(function(x) x$groupe %in% c("ajustement", "tests"), E %||% list())
+  valeur <- function(x) if (!is.null(x$valeur)) format(x$valeur, digits = 4) else as.character(x$classe_texte %||% x$classe %||% "")
+  c(titre, vapply(utils::head(E, 20), function(x) sprintf("  %s : %s", x$libelle, valeur(x)), ""))
 }
 
 # ---------------------------------------------------------------- la console
