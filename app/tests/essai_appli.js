@@ -3,14 +3,15 @@
 // a PLS model's views, the R console shows each fit's printout, a plot is saved as an image,
 // Export to R offers all the session's models only with those a session script holds, a
 // .nuee project given on the command line (what a double-click does) opens in the running
-// window, then Nuée quits, R stops and its temporary folder goes.
+// window, then Nuée quits, R stops and its temporary folder goes (on Windows, in a temporary
+// folder whose path isn't ASCII, with a read-only file in it; an earlier run's goes at the start).
 //   node tests/essai_appli.js <program> [screenshot.png] [program options...]
 // On Linux the program starts as from the desktop menu: no LANG and a short PATH (/usr/bin:/bin),
 // which once left the engine unable to read its own files. On a server, run it under xvfb-run.
 // macOS, as from the Finder (no LANG either): <program> is Nuée.app/Contents/MacOS/Nuée, and the
 // engine must run on the R in Nuée.app; a .nuee given to the Finder (open) opens in the window.
 // Needs Node 22 or later (fetch, WebSocket). Exits with 1 when a check fails.
-const { spawn, execFileSync } = require('child_process');
+const { spawn, spawnSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
@@ -25,11 +26,14 @@ const windows = process.platform === 'win32';
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-essai-'));
 const profil = path.join(dossier, 'profil');
+// (Windows: the program's temporary folder in a path that isn't ASCII, as a user named Clément has)
+const temp = path.join(dossier, 'Temp de Clément');
+if (windows) fs.mkdirSync(temp);
 
 const mac = process.platform === 'darwin';
 // (TMPDIR: macOS gives each user their own)
 const garder = ['HOME', 'DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'APPIMAGE_EXTRACT_AND_RUN', 'TMPDIR'];
-const env = windows ? process.env
+const env = windows ? { ...process.env, TEMP: temp, TMP: temp }
   : { ...Object.fromEntries(garder.filter((k) => process.env[k]).map((k) => [k, process.env[k]])), PATH: '/usr/bin:/bin' };
 
 function portLibre() {
@@ -125,6 +129,15 @@ async function brancher(cible) {
   fs.mkdirSync(secours, { recursive: true });
   fs.writeFileSync(copieAncienne, '{}');
   fs.writeFileSync(path.join(secours, 'index.json'), JSON.stringify([{ fichier: copieAncienne, projet: 'P1', nom: 'arret precedent', date: new Date().toISOString() }]));
+  // (Windows) R's folder of an earlier run whose process has ended, with a read-only file and
+  // folder in it: the start removes it (main.js: nettoyerTemporairesR, supprimer)
+  const ancienR = windows ? path.join(temp, `nuee-r-${spawnSync(process.execPath, ['-e', '']).pid}`) : null;
+  if (ancienR) {
+    fs.mkdirSync(path.join(ancienR, 'Rtmp', 'figé'), { recursive: true });
+    fs.writeFileSync(path.join(ancienR, 'Rtmp', 'lecture seule.txt'), 'x');
+    fs.chmodSync(path.join(ancienR, 'Rtmp', 'lecture seule.txt'), 0o444);
+    fs.chmodSync(path.join(ancienR, 'Rtmp', 'figé'), 0o555);
+  }
   const port = await portLibre();
   const proc = lancer(port);
   let sortie = '';
@@ -148,7 +161,12 @@ async function brancher(cible) {
     res.R = `${v.R} (${v.systeme})`;
     const sorties = (r) => [].concat(r.journal || []).filter((e) => e.type === 'sortie').map((e) => e.texte).join('').trim();
     const pidR = Number(sorties(await p.api('console', { code: 'cat(Sys.getpid())' })));
-    const temporaire = sorties(await p.api('console', { code: 'cat(dirname(tempdir()))' }));  // the folder of this run
+    // the folder of this run (by its long name: R on Windows gives the short one of a path with spaces)
+    let temporaire = sorties(await p.api('console', { code: 'cat(dirname(tempdir()))' }));
+    try { temporaire = fs.realpathSync.native(temporaire); } catch { /* checked below */ }
+    verifier('ancienDossierRSupprime', !ancienR || !fs.existsSync(ancienR), ancienR);
+    // (a read-only file in it, as a file copied there from a read-only folder: quitting removes it too)
+    await p.api('console', { code: 'f <- file.path(tempdir(), "lecture seule.txt"); writeLines("x", f); Sys.chmod(f, "444")' });
     res.localeR = sorties(await p.api('console', { code: 'cat(Sys.getlocale("LC_CTYPE"))' }));
     verifier('accentsLus', sorties(await p.api('console', { code: 'cat(nchar("Modèle"))' })) === '6');
     if (mac) {  // (not one CRAN's installer put in /Library/Frameworks)
@@ -289,7 +307,8 @@ async function brancher(cible) {
     if (echecs.length) res.sortieProgramme = sortie.slice(-3000);
     console.log(JSON.stringify(res, null, 1));
     console.log(echecs.length ? `Échecs : ${echecs.join(', ')}` : 'Toutes les vérifications sont passées.');
-    fs.rmSync(dossier, { recursive: true, force: true });
+    // (fs.rmSync of Node 24.12 leaves a path that isn't ASCII in place without an error)
+    await fs.promises.rm(dossier, { recursive: true, force: true }).catch(() => {});
     process.exit(echecs.length ? 1 : 0);
   }
 })();

@@ -137,8 +137,22 @@ function nettoyerTemporairesR() {
     const pid = Number(n.slice(prefixeR.length).split('-')[0]);
     let vivant = pid === process.pid;
     if (!vivant) try { process.kill(pid, 0); vivant = true; } catch (e) { vivant = e.code === 'EPERM'; }  // (EPERM: running, someone else's)
-    if (!vivant) try { fs.rmSync(path.join(app.getPath('temp'), n), { recursive: true, force: true }); } catch { /* still held: next time */ }
+    if (!vivant) supprimer(path.join(app.getPath('temp'), n));
   }
+}
+
+// A folder removed with all it holds (R's, where R and the R console write what they like). On
+// Windows fs.rmSync gives up at a read-only file or folder (EPERM), and Node 24.12's left a path
+// that isn't ASCII in place without an error: what is still there is made writable (by this user
+// only) and removed one by one. (A file still held by a program stays: next time.)
+function supprimer(chemin) {
+  try { fs.rmSync(chemin, { recursive: true, force: true }); } catch { /* one by one below */ }
+  const un = (c) => {
+    const s = fs.lstatSync(c);
+    if (!s.isSymbolicLink()) fs.chmodSync(c, s.isDirectory() ? 0o700 : 0o600);
+    if (s.isDirectory()) { for (const n of fs.readdirSync(c)) un(path.join(c, n)); fs.rmdirSync(c); } else fs.unlinkSync(c);
+  };
+  try { if (fs.existsSync(chemin)) un(chemin); } catch { /* still held: next time */ }
 }
 
 // The folder made for this run, readable by this user only. On Linux, someone else could
@@ -786,5 +800,5 @@ app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => {
   arreterR();
-  try { fs.rmSync(temporaireR, { recursive: true, force: true }); } catch { /* a file still held: next start */ }
+  supprimer(temporaireR);  // (a file still held: next start)
 });
