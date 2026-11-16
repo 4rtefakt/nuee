@@ -97,6 +97,19 @@ verifications_regression <- function(projet, m) {
                       if (trop) (if (fr) " : un excès de zéros, qu'un modèle à zéros en excès ou la binomiale négative prendrait peut-être en compte" else ": an excess of zeros, which a zero-inflated model or the negative binomial may account for") else ""))
     }
   }
+  # --- la séparation d'une présence-absence : des probabilités ajustées de 0 ou 1, à moins de 1e-8 du
+  # bord (glm() le dit par « fitted probabilities numerically 0 or 1 », mgcv ne le dit pas). Les
+  # coefficients des termes qui séparent les présences des absences, tout à fait ou pour une catégorie,
+  # croissent sans fin et leurs erreurs-types plus encore : leurs tests (p près de 1) ne disent rien de
+  # leur effet (Albert et Anderson, 1984)
+  if (famille == "binomiale" && length(r$ajuste)) {
+    bords <- sum(r$ajuste < 1e-8 | r$ajuste > 1 - 1e-8, na.rm = TRUE)
+    if (bords) {
+      ajouter("separation", "attention", sprintf(if (fr) "%d des %d observations %s une probabilité ajustée de 0 ou 1 : des termes séparent les présences des absences (une catégorie sans présence, ou un seuil d'un X au-delà duquel il n'y a que des présences). Leurs coefficients croissent sans fin, et leurs tests (p près de 1) ne disent rien de leur effet : retirez le terme qui sépare, ou regroupez ses catégories."
+                                                 else "%d of the %d observations %s a fitted probability of 0 or 1: some terms separate the presences from the absences (a category without presences, or a threshold of an X beyond which there are only presences). Their coefficients grow without bound, and their tests (p near 1) say nothing of their effect: remove the term that separates, or merge its categories.",
+                                                 bords, n, if (fr) (if (bords > 1) "ont" else "a") else (if (bords > 1) "have" else "has")))
+    }
+  }
   # --- colinéarité des termes quantitatifs (VIF : la diagonale de l'inverse de leur matrice de corrélation)
   q <- intersect(m$quantitatifs, m$utiles)
   q <- q[vapply(q, function(t) stats::sd(m$donnees[[t]]) > 0, TRUE)]
