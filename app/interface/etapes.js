@@ -147,7 +147,8 @@ async function dialogueEtapes(app, pid) {
       avisConformes(r),
       el('h3', {}, t('etapes_liste', { n: etapes.length })),
       etapes.length ? el('div', { class: 'defile-etapes' }, el('table', { class: 'tableau compact liste-etapes' },
-        el('thead', {}, el('tr', {}, ['', t('etapes_col_etape'), t('etapes_col_date'), t('etapes_col_fichiers'), ''].map((h) => el('th', {}, h)))),
+        el('thead', {}, el('tr', {}, [el('span', { class: 'lecteur-seul' }, t('etapes_col_n')), t('etapes_col_etape'), t('etapes_col_date'), t('etapes_col_fichiers'),
+          el('span', { class: 'lecteur-seul' }, t('retirer'))].map((h) => el('th', {}, h)))),
         el('tbody', {}, etapes.map((e) => el('tr', {},
           el('td', { class: 'num doux' }, String(e.n)),
           // (the kind of step on its icon, for the mouse and screen readers)
