@@ -1331,13 +1331,32 @@ async function principal() {
       const m2 = await api('ajuster', { projet: q.id, numero: def.numero });
       verifier(!termes(m2).includes('habitat(lande)') && termes(m2).includes('habitat(prairie)') && termes(m2).includes('habitat(forêt)'), `référence après : ${termes(m2).join()}`);
       // a new order only: the model of the session is mapped to it, and refits
+      const lda = await api('ajuster', { projet: q.id, type: 'LDA', x: [v.altitude, v.densite], classe: v.habitat, echelle: 'UV', nom: 'LDAhab' });
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
       const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
       verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
+      // an LDA of the habitat fitted before that order: its script, written with the categories in the
+      // order it saw (its classes, probabilities and coefficients follow it), gives its results
+      const sl = await api('script_r', { modele: lda.id, chemin: path.join(dossier, 'lda_ordre.R'), version: 'essai' });
+      verifier(!sl.ecart, `le script d’une LDA ajustée avant un nouvel ordre de ses classes : ${sl.ecart}`);
+      // the R console's log of that export (moteur/console.R): the same call, which gives that script again
+      const jl = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.includes('lda_ordre.R')).pop();
+      const rejoue = jl ? await api('console', { code: `cat(is.null(${jl.texte}$ecart))` }) : { journal: [] };
+      verifier(jl && jl.texte.startsWith('ecrire_script(projet_tel_ajuste(') && rejoue.journal.some((e) => e.type === 'sortie' && e.texte.trim() === 'TRUE'),
+        `journal de l’export : ${jl && jl.texte} → ${JSON.stringify(rejoue.journal)}`);
+      // and so in a reproducible document citing its scores: R redraws them (document_reproductible)
+      const dl = await api('document_reproductible', { projet: q.id, langue: 'fr', version: 'essai', nom: 'Ordre', dossier: path.join(dossier, 'ordre'), modeles: [lda.id],
+        references: JSON.stringify([{ modele: lda.id, chemin: ['lda_scores'], genre: 'figure', vue: 'lda_scores', variante: {} }]) });
+      verifier(!dl.modeles[0].erreur && [].concat(dl.references[0].lignes || []).length > 0,
+        `un document reproductible cite cette LDA : ${dl.modeles[0].erreur || JSON.stringify(dl.references[0]).slice(0, 300)}`);
       // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
       // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
       const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['forêt', 'pré', 'lande'], ordre: ['forêt', 'pré', 'lande'] });
+      // (one of its classes renamed: the LDA is to be fitted again, as a model whose X category was)
+      refus = '';
+      try { await api('script_r', { modele: lda.id, chemin: path.join(dossier, 'lda_renommee.R'), version: 'essai' }); } catch (e) { refus = e.message; }
+      verifier(/ont changé depuis l'ajustement de LDAhab/.test(refus), `le script d’une LDA dont une classe a changé de nom : « ${refus} »`);
       const mc2 = await api('reajuster', { modele: mc.id, exclues: [] });
       await api('annuler', { projet: q.id });
       const mc3 = await api('reajuster', { modele: mc.id, exclues: [] });

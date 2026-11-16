@@ -793,10 +793,12 @@ const app = {
       + (modeles.length ? t('modeles_a_reajuster', { modeles: modeles.join(', ') }) : ''));
   },
   // One model, or all the models of its project's session (the latest fit of each, as Ctrl+S
-  // saves them) in one .R script.
+  // saves them) in one .R script: PCA, PLS, OPLS and regressions only. Another analysis is
+  // exported on its own (serveur.R: script_demande leaves it out of a session's script), so its
+  // dialog doesn't offer the session, and the session's list doesn't name it.
   async exporterScript(id) {
     const m = etat.modeles[id];
-    const seance = modelesSeance(m.projet);
+    const seance = modelesSeance(m.projet).filter((x) => !x.analyse);
     const choix = await choisirScript(m.nom, seance.length > 1 && seance.some((x) => x.id === id) ? { modeles: seance, nom: etat.projets[m.projet].nom } : null);
     if (!choix) return;
     const qui = choix.seance ? { modeles: seance.map((x) => x.id) } : { modele: id };
@@ -1235,7 +1237,8 @@ async function apresOuverture(res, session = null) {
 // (main.js deletes the others): those of this launch, named after it so that they never
 // replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
 // set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
-// One main window writes them: the first one open (several main windows share the projects).
+// One main window writes them: the first one open, then, once it is closed, the next one
+// (several main windows share the projects; each counts the two minutes).
 const LANCEMENT = Date.now().toString(36);
 let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
 let secoursEnAttente = [];
@@ -1245,6 +1248,9 @@ async function sauvegarderSecours() {
   try {
     const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
     if (principales.length && !principales[0].actuelle) return;
+    // (a window taking over from the first one: the copies that one kept waiting are those the
+    // index marks so, proposerRecuperation)
+    if (ID_FENETRE !== 'principale') secoursEnAttente = [].concat(await bureau.secoursListe()).filter((e) => e && e.attente);
     const dossier = await bureau.secoursDossier();
     const entrees = [];
     for (const p of Object.values(etat.projets)) {
@@ -1274,6 +1280,7 @@ async function proposerRecuperation() {
   try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
   if (!entrees.length) return;
   secoursEnAttente = entrees;
+  bureau.secoursIndex(entrees.map((e) => ({ ...e, attente: true }))).catch(() => {});  // (marked at once, for another main window: sauvegarderSecours)
   const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   dialogue({ titre: t('recuperation'),
     contenu: el('div', {}, el('p', {}, t('recuperation_question')), el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}`)))),
@@ -2131,6 +2138,10 @@ document.addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------ start
 
+// Before Nuée closes (main.js asks every window): what this window's documents and figures still
+// hold, sent after a pause in typing, goes to the engine now, so that it knows it is unsaved.
+const viderEditions = () => Promise.all([app.viderDocuments && app.viderDocuments(), app.viderFigures && app.viderFigures()]);
+
 async function demarrerVue() {
   document.body.classList.add('seul');
   const id = params.get('modele');
@@ -2152,6 +2163,7 @@ async function demarrerVue() {
   etat.panneaux.set('seul', entree);
   rendrePanneau(entree);
   if (bureau && bureau.surEnregistrerTout) bureau.surEnregistrerTout(() => app.enregistrerTout());  // if it is the last window
+  if (bureau && bureau.surVider) bureau.surVider(viderEditions);
   tete.querySelector('.titre-seul').textContent = document.title;
   majEtat();
 }
@@ -2177,11 +2189,12 @@ async function demarrerPrincipal() {
   accueil();
   await synchroniser();
   if (bureau && bureau.surEnregistrerTout) bureau.surEnregistrerTout(() => app.enregistrerTout());
+  if (bureau && bureau.surVider) bureau.surVider(viderEditions);
   if (ID_FENETRE === 'principale') {
     quoiDeNeuf();
     proposerRecuperation();
-    if (bureau) setInterval(sauvegarderSecours, 120000);
   }
+  if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
   if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();

@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('bureau', {
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
   // closing with "Save and close": the window saves its projects, then answers
+  // before closing (main.js: viderFenetres): what the page still holds goes to the engine first
+  surVider: (f) => ipcRenderer.on('vider', async () => {
+    try { await f(); } catch { /* sent as it could be */ }
+    ipcRenderer.send('vide');
+  }),
   surEnregistrerTout: (f) => ipcRenderer.on('enregistrer-tout', async () => {
     let ok = false;
     try { ok = await f(); } catch { ok = false; }
@@ -101,7 +106,12 @@ contextBridge.exposeInMainWorld('bureau', {
   surProgressionMaj: (f) => ipcRenderer.on('maj-progression', (_, x) => f(x)),
   langue: (l) => ipcRenderer.invoke('langue', l),
   ouvrirGuide: () => ipcRenderer.invoke('ouvrir-guide'),
-  // a file dropped on the window: its path; a file Windows asks Nuée to open (double-click)
+  // a file dropped on the window: its path; a file Windows asks Nuée to open (double-click),
+  // kept by main.js until asked for: also those that came before the page was ready
   cheminFichier: (f) => webUtils.getPathForFile(f),
-  surOuvrirFichier: (f) => ipcRenderer.on('ouvrir-fichier', (_, chemin) => f(chemin)),
+  surOuvrirFichier: (f) => {
+    const prendre = async () => { for (const chemin of await ipcRenderer.invoke('fichiers-a-ouvrir')) f(chemin); };
+    ipcRenderer.on('ouvrir-fichier', prendre);
+    prendre();
+  },
 });

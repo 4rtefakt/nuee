@@ -2153,7 +2153,9 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
                    poisson_zi = "zero-inflated Poisson", beta = "beta")
     lis <- m$noms_termes[match(m$lisses, m$termes)]
     courbes <- if (!length(lis)) "" else if (!length(m$par)) {
-      sprintf(if (fr) ", dont %s par des courbes (splines de régression en plaques minces)" else ", %s of them through curves (thin plate regression splines)", liste(lis))
+      # (« dont sucre par une courbe », "of which sugar through a curve" : les termes nommés)
+      sprintf(if (fr) ", dont %s par %s (splines de régression en plaques minces)" else ", of which %s through %s (thin plate regression splines)", liste(lis),
+              if (fr) (if (length(lis) > 1) "des courbes" else "une courbe") else (if (length(lis) > 1) "curves" else "a curve"))
     } else {
       # (une courbe par catégorie d'une variable qualitative : s(x, by = f), chacune centrée)
       seules <- m$noms_termes[match(setdiff(m$lisses, names(m$par)), m$termes)]

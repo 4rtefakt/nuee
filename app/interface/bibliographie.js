@@ -423,6 +423,102 @@ export function memeOeuvre(a, b) {
   return !!titre(a) && titre(a) === titre(b) && String(a.annee || '') === String(b.annee || '') && auteur(a) === auteur(b);
 }
 
+// ------------------------------------------------------------ the references of a Methods text
+
+// A reference as the engine writes those of a Methods text (moteur/R/methodes.R and each analysis's
+// texte_methodes_<type>), in APA style: an article "Wold, S., Sjöström, M., & Eriksson, L. (2001).
+// Title. Journal, 58(2), 109–130. https://doi.org/…", a book "… (2nd ed.). Springer. https://…",
+// software "R Core Team (2026). R: …. R Foundation for Statistical Computing, Vienna, Austria.
+// https://www.R-project.org/". Read as an entry (lireBibtex's form), so that it takes its place in
+// the document's list, in the document's style; null when it doesn't read as one.
+export function lireReferenceTexte(texte) {
+  const s = String(texte ?? '').trim();
+  const m = /^(.+?)\s*\((\d{4})[a-z]?\)\.\s+([\s\S]+)$/.exec(s);
+  if (!m) return null;
+  const [, tete, annee, suite] = m;
+  // the authors: "Name, I. I." pairs, a group's name alone ("R Core Team"), "et al."
+  const morceaux = tete.replace(/,?\s+&\s+/g, ', ').split(/,\s*/).map((x) => x.trim()).filter(Boolean);
+  const auteurs = [];
+  for (let i = 0; i < morceaux.length; i += 1) {
+    const x = morceaux[i];
+    if (/^et al\.?$/i.test(x)) { auteurs.push({ autres: true }); continue; }
+    if (i + 1 < morceaux.length && /^(\p{Lu}\.(-\p{Lu}\.)?\s*)+$/u.test(morceaux[i + 1])) {
+      const mots = x.split(/\s+/);
+      let k = 0;
+      while (k < mots.length - 1 && /^\p{Ll}/u.test(mots[k])) k += 1;
+      auteurs.push({ nom: mots.slice(k).join(' '), prenom: morceaux[i + 1], particule: mots.slice(0, k).join(' '), suffixe: '' });
+      i += 1;
+    } else auteurs.push({ litteral: x });
+  }
+  // the title: up to its period (or ? or !) before a space, outside brackets
+  let profondeur = 0;
+  let fin = suite.length;
+  for (let i = 0; i < suite.length; i += 1) {
+    if ('([{'.includes(suite[i])) profondeur += 1;
+    else if (')]}'.includes(suite[i])) profondeur = Math.max(0, profondeur - 1);
+    else if (!profondeur && /[.?!]/.test(suite[i]) && (i + 1 === suite.length || /\s/.test(suite[i + 1]))) { fin = i; break; }
+  }
+  let titre = suite.slice(0, suite[fin] === '.' ? fin : fin + 1).trim();
+  let reste = suite.slice(fin + 1).trim();
+  let doi = '';
+  let url = '';
+  const lien = /(^|\s)(https?:\/\/\S+)$/.exec(reste);
+  if (lien) {
+    reste = reste.slice(0, lien.index).trim();
+    const d = /^https?:\/\/(?:dx\.)?doi\.org\/(.+)$/i.exec(lien[2]);
+    if (d) doi = d[1]; else url = lien[2];
+  }
+  let edition = '';
+  const ed = /\s*\((\d+)(?:st|nd|rd|th) ed\.\)$/.exec(titre);
+  if (ed) { edition = ed[1]; titre = titre.slice(0, ed.index); }
+  const e = { cle: '', type: 'misc', source: 'methodes', texte: s, auteurs, editeurs: [], annee, titre, revue: '', livre: '', volume: '', numero: '', pages: '',
+    editeur: '', lieu: '', edition, institution: '', ecole: '', doi, url, note: '', publication: '', rapport: '', serie: '', consulte: '', these: '' };
+  // a journal ("Journal, 58(2), 109–130."), else a publisher (a book; software or a manuscript: misc)
+  const article = /^([^.]+?),\s*(\d+)(?:\(([^)]+)\))?(?:,\s*([^,]+?))?\.$/.exec(reste);
+  if (article) Object.assign(e, { type: 'article', revue: article[1], volume: article[2], numero: article[3] || '', pages: article[4] || '' });
+  else if (reste) Object.assign(e, { type: /\[Computer software\]|R package|Unpublished/i.test(`${titre} ${reste}`) ? 'misc' : 'book', editeur: reste.replace(/\.$/, '') });
+  return e;
+}
+
+// Whether a reference of a Methods text and one of the document are the same work: the same DOI
+// when both have one, else the same title and year (accents, case and punctuation aside; one title
+// may be the other's beginning, of three words at least: "Canonical community ordination" and its
+// ". Part I: …").
+export function memeReference(a, b) {
+  const doi = (e) => String(e.doi || '').trim().toLowerCase();
+  if (doi(a) && doi(b)) return doi(a) === doi(b);
+  const titre = (e) => plier(String(e.titre || '').replace(/[]/g, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const [ta, tb] = [titre(a), titre(b)];
+  if (!ta || !tb || String(a.annee || '').slice(0, 4) !== String(b.annee || '').slice(0, 4)) return false;
+  const [court, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  return court === long || (court.split(' ').length >= 3 && long.startsWith(`${court} `));
+}
+
+// The references of the Methods texts a document cites (their texts), joined to the document's own
+// (`entrees`, Map key -> entry): each one the document's entry for the same work when it has one
+// (memeReference: its key, its form), else read from its text under a key of its own (nuee:wold2001).
+// Returns { entrees: the Map with them, ajoutees: their keys, in order, once each }: the list of
+// references holds them, cited or not (formaterCitations), one list.
+export function joindreReferences(entrees, textes) {
+  const toutes = new Map(entrees);
+  const ajoutees = [];
+  for (const texte of textes) {
+    const e = lireReferenceTexte(texte);
+    if (!e) continue;
+    const meme = [...toutes.values()].find((x) => memeReference(x, e));
+    let cle = meme && meme.cle;
+    if (!cle) {
+      const n = e.auteurs.find((x) => !x.autres);
+      const base = `nuee:${plier(n ? n.litteral || n.nom : e.titre).replace(/[^a-z0-9]+/g, '')}${e.annee}`;
+      cle = base;
+      for (let k = 0; toutes.has(cle); k += 1) cle = `${base}${String.fromCharCode(97 + (k % 26))}${k >= 26 ? Math.floor(k / 26) : ''}`;
+      toutes.set(cle, { ...e, cle });
+    }
+    if (!ajoutees.includes(cle)) ajoutees.push(cle);
+  }
+  return { entrees: toutes, ajoutees };
+}
+
 // Where a reference added from Zotero goes among the document's (`entrees`: Map key -> entry, those
 // of its files with their `origine`): { cle: the key it is cited under, nouvelle: added under that
 // key, remplace: the one kept there replaced by it (the same Zotero item, up to date), renommee: the
@@ -612,11 +708,15 @@ function referenceEnSegments(e, langue, annee) {
 // sansAuteur }], narratif }] in the document's order, `entrees` Map(key -> entry). Returns
 // { textes: [the text of each group], titres: [its references in full, for a tooltip],
 // liste: [{ cle, segments, numero }] (the references cited, in the list's order),
-// inconnues: [the keys not found] }.
-export function formaterCitations(groupes, entrees, { style = 'auteur-annee', langue = 'fr' } = {}) {
+// inconnues: [the keys not found], nonCitees: [the keys of `ajoutees` the text doesn't cite] }.
+// `ajoutees`: keys listed though the text doesn't cite them (the references of the Methods texts
+// it cites: joindreReferences), after those it cites when numbered.
+export function formaterCitations(groupes, entrees, { style = 'auteur-annee', langue = 'fr', ajoutees = [] } = {}) {
   const t = TEXTES[langue] || TEXTES.fr;
   const cites = [];  // the keys cited, in order
   for (const g of groupes) for (const c of g.cites) if (entrees.has(c.cle) && !cites.includes(c.cle)) cites.push(c.cle);
+  const nonCitees = ajoutees.filter((k, i) => entrees.has(k) && !cites.includes(k) && ajoutees.indexOf(k) === i);
+  cites.push(...nonCitees);
   const inconnues = [...new Set(groupes.flatMap((g) => g.cites.map((c) => c.cle)).filter((k) => !entrees.has(k)))];
   // the year, with a letter when two references have the same authors and year (2001a, 2001b)
   const annees = new Map();
@@ -671,7 +771,7 @@ export function formaterCitations(groupes, entrees, { style = 'auteur-annee', la
     });
   }
   const titres = groupes.map((g) => g.cites.map((c) => (entrees.has(c.cle) ? texteSeul(referenceEnSegments(entrees.get(c.cle), langue, annee(c.cle))) : `@${c.cle} : ${t.introuvable}`)).join('\n'));
-  return { textes, titres, liste, inconnues, style };
+  return { textes, titres, liste, inconnues, style, nonCitees };
 }
 
 // 1, 2, 3, 5 -> "1–3, 5"

@@ -32,7 +32,7 @@ famille_reproductible <- function(d) {
 # l'image de Nuée.
 GRAPHIQUES_REPRODUCTIBLES <- list(
   composantes = c(scores = "scores", loadings = "loadings", vip = "vip", obspred = "observe-ajuste", t2 = "t2-dmodx", dmodx = "t2-dmodx"),
-  regression = c(obspred = "observe-ajuste", residus = "residus", puissance = "puissance", moyennes = "moyennes-ajustees"),
+  regression = c(obspred = "observe-ajuste", residus = "residus", puissance = "puissance", moyennes = "moyennes-ajustees", effets = "effet"),
   PCOA = c(ordination_dist = "ordination", valeurs_propres_pcoa = "valeurs-propres"),
   NMDS = c(ordination_dist = "ordination", shepard = "shepard"),
   PERMANOVA = c(permanova = "permanova", dispersion = "dispersion"),
@@ -273,9 +273,18 @@ graphique_reproductible <- function(famille, d, m, vue, variante, graphiques, ob
   if (is.null(nom)) return(NULL)
   if (identical(vue, "residus") && identical(variante$residus, "quantiles")) nom <- "residus-quantiles"
   if (identical(vue, "dispersion") && length(m$dispersions) != 1) return(NULL)
-  # (une vue à variantes dont le script dessine tout d'un coup : seulement sans variante choisie)
-  if (length(chemin) > 1 && !identical(vue, "residus")) return(NULL)
-  g <- Find(function(x) identical(x$nom, nom), graphiques %||% list())
+  # (une vue à variantes dont le script dessine tout d'un coup : seulement sans variante choisie ; les
+  # effets d'une régression, un graphique par terme : celui de la variante ; les seuils d'une courbe,
+  # que le script dessine toutes ensemble : quand le modèle n'en a qu'une)
+  if (length(chemin) > 1 && !vue %in% c("residus", "effets")) return(NULL)
+  seuils <- identical(vue, "effets") && isTRUE(variante$seuils)
+  if (seuils) {
+    v <- tryCatch(variantes_seuils(m), error = function(e) NULL)
+    if (!isTRUE(nrow(v) == 1) || !identical(v$terme, as.character(variante$terme))) return(NULL)
+  }
+  g <- if (seuils) Find(function(x) identical(x$nom, "seuils"), graphiques %||% list())
+       else if (identical(vue, "effets")) Find(function(x) startsWith(x$nom, paste0(nom, "-")) && identical(x$terme, as.character(variante$terme)), graphiques %||% list())
+       else Find(function(x) identical(x$nom, nom), graphiques %||% list())
   if (is.null(g)) return(NULL)
   list(lignes = c(sprintf("nuee_dans(%s, {", objet), paste0("  ", g$code), "})"), largeur = g$largeur, hauteur = g$hauteur)
 }
@@ -300,7 +309,9 @@ tableau_reproductible <- function(famille, d, m, cle, objet, langue) {
 # Le document reproductible : les scripts des modèles cités et nuee.R écrits dans `dossier`/<nom>_R,
 # puis ce que le .qmd en écrit.
 #   modeles     une liste nommée par l'identifiant de chaque modèle cité : list(definition, modele,
-#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas) ;
+#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas ; et projet, celui
+#               sur lequel écrire son script quand ce n'est pas `projet` : le projet tel qu'il l'a vu,
+#               ses catégories dans l'ordre d'alors, atelier.R : projet_tel_ajuste) ;
 #   references  les références du document, dans l'ordre (NULL : celles que le document ne résout
 #               pas) : list(modele, chemin, genre = "valeur" | "figure" | "tableau" | "texte", et pour
 #               une valeur forme (references.js : formeReference) et texte (ce que Nuée en écrit),
@@ -337,7 +348,7 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
     info <- list(id = id, nom = noms[[id]], objet = objets[[id]], script = paste(sous, paste0(base, ".R"), sep = "/"), famille = famille_reproductible(d))
     raison <- modeles[[id]]$erreur %||% raison_sans_export(d, tx)
     if (is.null(raison)) {
-      r <- tryCatch(ecrire_script(projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
+      r <- tryCatch(ecrire_script(modeles[[id]]$projet %||% projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
       if (inherits(r, "error")) raison <- conditionMessage(r)
       else {
         fichiers <- c(fichiers, r$chemins)

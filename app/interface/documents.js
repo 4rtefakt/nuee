@@ -9,7 +9,7 @@
 // names (bibliography:), from Zotero on this computer (zotero.js: My Library or a group library), or
 // kept in the document itself (its `bib`: the references added from Zotero, with where they are in
 // it, or pasted, and a copy of those cited from files).
-import { t, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
+import { t, tDans, dansLangue, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
@@ -17,9 +17,9 @@ import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
 import { zip } from './zip.js';
 import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS,
-  referencesDansTexte } from './rendu_document.js';
+  referencesDansTexte, nomFichierQuarto } from './rendu_document.js';
 import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES,
-  elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO } from './bibliographie.js';
+  elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO, joindreReferences } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
 
 let md = null;              // markdown-it, once loaded
@@ -477,11 +477,13 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
   const parties = partiesModele(m);
   const partie = (cle, quoi) => parties.find((x) => x.cle === cle && x[quoi]);
   const erreur = (cle) => ({ erreur: t(cle, { chemin: `${m.nom}.${chemin.join('.')}` }) });
-  if (chemin[0] === 'methodes' && chemin.length <= 2) {
+  // (the Methods text's references join the document's list of references, one list: citer();
+  // {{M1.methodes.references}} adds them without the text)
+  if (chemin[0] === 'methodes' && (chemin.length === 1 || (chemin.length === 2 && chemin[1] === 'references'))) {
     const cle = `${m.id}|${s.langue}`;
     if (!s.methodes.has(cle) && !attendre) return null;
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('methodes', { modele: m.id, langue: s.langue, version: VERSION }));
-    return { genre: 'texte', paragraphes: [].concat(chemin[1] === 'references' ? r.references : r.paragraphes).filter(Boolean) };
+    return { genre: 'texte', paragraphes: chemin[1] === 'references' ? [] : [].concat(r.paragraphes).filter(Boolean), references: [].concat(r.references || []).filter(Boolean) };
   }
   if (chemin[0] === 'resultats' && chemin.length === 1) {
     const cle = `${m.id}|${s.langue}|resultats`;
@@ -489,13 +491,14 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('resultats_texte', { modele: m.id, langue: s.langue }));
     return { genre: 'texte', paragraphes: [].concat(r.paragraphes).filter(Boolean) };
   }
+  // (tables and plots in the document's language, its words and its numbers: dansLangue)
   if (chemin[0] === 'table') {
     const x = partie(chemin[1], 'tableau');
     if (!x || chemin.length !== 2) return erreur('ref_tableau_inconnu');
-    const cle = `${m.id}|${x.cle}`;
+    const cle = `${m.id}|${x.cle}|${s.langue}`;
     if (!s.tableaux.has(cle) && !attendre) return null;
-    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await x.tableau(m));
-    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle), cle: x.cle };
+    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await dansLangue(s.langue, () => x.tableau(m)));
+    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: tDans(s.langue, x.cle), cle: x.cle };
   }
   const x = partie(chemin[0], 'vue');
   if (x && (chemin.length === 1 || x.variantes)) {
@@ -509,11 +512,11 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
         || v.find((y) => suite.every((c) => Object.values(y).map(String).includes(c)));
       if (!variante) return erreur('ref_variante_inconnue');
     }
-    const cle = `${m.id}|${x.vue}|${JSON.stringify(variante)}|${JSON.stringify(app.locVue(x.vue, m.id) || {})}`;
+    const cle = `${m.id}|${x.vue}|${JSON.stringify(variante)}|${JSON.stringify(app.locVue(x.vue, m.id) || {})}|${s.langue}`;
     if (!s.images.has(cle) && !attendre) return null;
-    const image = s.images.get(cle) || garder(s.images, cle, await imageVue(app, x.vue, m, variante), 40);
+    const image = s.images.get(cle) || garder(s.images, cle, await dansLangue(s.langue, () => imageVue(app, x.vue, m, variante)), 40);
     if (!image) return erreur('ref_graphique_absent');
-    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle), vue: x.vue, variante };
+    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: tDans(s.langue, x.cle), vue: x.vue, variante };
   }
   const f = formeReference(m, chemin, ref);
   return f.erreur ? erreur(`ref_${f.erreur}`) : { genre: 'valeur', texte: texteForme(f, s.langue), forme: f };
@@ -559,12 +562,16 @@ async function mettreAJour(app, s) {
   const generation = ++s.generation;
   const texte = s.vue.state.doc.toString();
   const analyse = analyser(md, texte);
-  const [premiers, citations] = await Promise.all([resoudre(app, s, analyse, false), citer(app, s, analyse).catch(() => null)]);
+  const [premiers, sansMethodes] = await Promise.all([resoudre(app, s, analyse, false), citer(app, s, analyse).catch(() => null)]);
   let resolus = premiers;
+  // (the references of the Methods texts cited join the list once those texts are there)
+  const avecMethodes = () => (resolus.some((r) => r && r.references && r.references.length) ? citer(app, s, analyse, resolus).catch(() => sansMethodes) : sansMethodes);
+  let citations = await avecMethodes();
   if (generation !== s.generation || s.ferme) return;
   dessinerApercu(s, analyse, resolus, texte, citations);
   if (resolus.some((r) => !r)) {
     resolus = await resoudre(app, s, analyse, true);
+    citations = await avecMethodes();
     if (generation !== s.generation || s.ferme) return;
     dessinerApercu(s, analyse, resolus, texte, citations);
   }
@@ -618,6 +625,8 @@ function urlApercu(s, image) {
 
 const GENRES_COMPLETION = { valeur: 'variable', tableau: 'type', graphique: 'function', texte: 'text' };
 const VALEURS_COURANTES = ['Q2', 'R2X', 'R2Y', 'N', 'A', 'gain', 'Q2_vide', 'RMSEcv'];
+// the texts a model offers, and what the completion says of each
+const TEXTES_COMPLETION = { methodes: 'document_methodes', 'methodes.references': 'document_methodes_references', resultats: 'document_resultats' };
 
 // What follows {{ : the models of the project, then what each offers (with its value now), or the
 // labels of figures and tables after "ref:".
@@ -653,10 +662,10 @@ function completion(app, s) {
     if (m) {
       const parties = partiesModele(m);
       offre = offreModele(m, { vues: parties.filter((x) => x.vue).map((x) => x.cle), tableaux: parties.filter((x) => x.tableau).map((x) => x.cle), langue: s.langue })
-        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t(o.chemin === 'resultats' ? 'document_resultats' : 'document_methodes') : o.detail }));
+        .map((o) => ({ ...o, detail: o.type === 'graphique' || o.type === 'tableau' ? t(o.detail) : o.type === 'texte' ? t(TEXTES_COMPLETION[o.chemin]) : o.detail }));
     } else {
       offre = [...VALEURS_COURANTES.map((c) => ({ chemin: c, type: 'valeur', detail: t('document_non_calcule') })),
-        { chemin: 'methodes', type: 'texte', detail: t('document_methodes') }, { chemin: 'resultats', type: 'texte', detail: t('document_resultats') }];
+        ...Object.entries(TEXTES_COMPLETION).map(([chemin, cle]) => ({ chemin, type: 'texte', detail: t(cle) }))];
     }
     // (in the order given: the model's main values first, then by variable, tables, plots;
     // boost keeps it among the options that match as well)
@@ -724,19 +733,22 @@ async function bibliotheque(app, s, { forcer = false } = {}) {
 }
 
 // The document's citations written in its style (formaterCitations), with the entries they came
-// from; null when it cites nothing. A key not found has the files read again (a reference just
-// added to Zotero, which Better BibTeX exports to the .bib), at most every 5 seconds.
-async function citer(app, s, analyse) {
-  if (!analyse.citations.length) return null;
+// from; null when it cites nothing. The references of the Methods texts it cites (`resolus`, those
+// resolved: resoudreUne) join its list, the same work once (joindreReferences: the document's entry
+// for it when it has one). A key not found has the files read again (a reference just added to
+// Zotero, which Better BibTeX exports to the .bib), at most every 5 seconds.
+async function citer(app, s, analyse, resolus = []) {
+  const methodes = [...new Set(resolus.flatMap((r) => (r && !r.erreur && r.references) || []))];
+  if (!analyse.citations.length && !methodes.length) return null;
   const groupes = analyse.citations.map((tok) => tok.meta);
-  let entrees = await bibliotheque(app, s);
-  let c = formaterCitations(groupes, entrees, { style: s.style, langue: s.langue });
-  if (c.inconnues.length && s.biblio.fichiers.length && Date.now() - s.biblio.date > 5000) {
-    entrees = await bibliotheque(app, s, { forcer: true });
-    c = formaterCitations(groupes, entrees, { style: s.style, langue: s.langue });
-  }
-  garderCitees(s, c, entrees);
-  return { ...c, entrees };
+  const formater = (entrees) => {
+    const j = joindreReferences(entrees, methodes);
+    return { ...formaterCitations(groupes, j.entrees, { style: s.style, langue: s.langue, ajoutees: j.ajoutees }), entrees: j.entrees };
+  };
+  let c = formater(await bibliotheque(app, s));
+  if (c.inconnues.length && s.biblio.fichiers.length && Date.now() - s.biblio.date > 5000) c = formater(await bibliotheque(app, s, { forcer: true }));
+  garderCitees(s, c, c.entrees);
+  return c;
 }
 
 // The references cited from files, kept in the document too, as BibTeX (a project sent to someone
@@ -1165,7 +1177,6 @@ function inserer(s, cible, bloc) {
 // From the explorer: into the document last written in (of that project), else its first,
 // opened; a new one when the project has none.
 async function insererDepuisExplorateur(app, pid, cible, bloc) {
-  if (bloc && !cible.includes('|')) cible = `${cible} | ${t(cible.split('.').pop())}`;  // (a plot: its name as caption)
   let s = dernier && dernier.pid === pid && !dernier.ferme ? dernier : [...ouverts].find((x) => x.pid === pid);
   if (!s) {
     const docs = [].concat((app.projet(pid) || {}).documents || []);
@@ -1177,6 +1188,7 @@ async function insererDepuisExplorateur(app, pid, cible, bloc) {
     }
     if (!s) return;
   } else app.ouvrirDocument(pid, s.id);
+  if (bloc && !cible.includes('|')) cible = `${cible} | ${tDans(s.langue, cible.split('.').pop())}`;  // (a plot: its name as caption, in the document's language)
   inserer(s, cible, bloc);
 }
 
@@ -1200,9 +1212,9 @@ function menuInserer(app, s) {
         ...[['vip', 'VIP'], ['coef', t('coefficients')]].filter(([x]) => parVariable(x).length)
           .map(([x, n]) => ({ libelle: n, sous: parVariable(x).map((o) => ({ libelle: `${o.chemin.slice(x.length + 1)} = ${o.detail}`, action: ref(o.chemin) })) })),
         '-',
-        ...parties.filter((x) => x.vue).map((x) => ({ libelle: t(x.cle), icone: 'chart-scatter', action: ref(`${x.cle} | ${t(x.cle)}`, true) })),
+        ...parties.filter((x) => x.vue).map((x) => ({ libelle: t(x.cle), icone: 'chart-scatter', action: ref(`${x.cle} | ${tDans(s.langue, x.cle)}`, true) })),
         '-',
-        ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${t(x.cle)}`, true) })),
+        ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${tDans(s.langue, x.cle)}`, true) })),
         '-',
         { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
         { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }]);
@@ -1276,7 +1288,8 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
   const r = await app.occupe(async () => {
     const texte = s.vue.state.doc.toString();
     const analyse = analyser(md, texte);
-    return { texte, analyse, resolus: await resoudre(app, s, analyse, true), citations: await citer(app, s, analyse) };
+    const resolus = await resoudre(app, s, analyse, true);
+    return { texte, analyse, resolus, citations: await citer(app, s, analyse, resolus) };
   });
   const erreurs = r.resolus.filter((x) => x.erreur).length + (r.citations ? r.citations.inconnues.length : 0);
   if (erreurs && !window.confirm(t('document_compiler_erreurs', { n: erreurs }))) return;
@@ -1302,7 +1315,8 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
       // the .qmd, its figures in a folder beside it (<name>_figures), then Quarto if asked
       const fichier = chemin ? chemin.split(/[\\/]/).pop() : `${base}.qmd`;
       const nom = fichier.replace(/\.qmd$/i, '');
-      const dossier = `${nom}_figures`;
+      // (its figures' folder without # nor % in its name: their address is a URL, nomFichierQuarto)
+      const dossier = `${nomFichierQuarto(nom)}_figures`;
       // the references cited, in <name>.bib beside it; the header's CSL style copied there too
       const cites = r.citations ? r.citations.liste.map((x) => r.citations.entrees.get(x.cle)).filter(Boolean) : [];
       const bib = cites.length ? `${nom}.bib` : null;
@@ -1325,7 +1339,7 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
           ...referencesReproductibles(r.resolus) });
       }
       const q = versQmd(r.texte, r.analyse, r.resolus, { fichierFigure: (x) => `${dossier}/figure-${x.numero}.png`, langue: s.langue, titre: s.titre || base,
-        bibliographie: bib, csl, libelles: lib, reproductible: rep });
+        bibliographie: bib, csl, libelles: lib, reproductible: rep, nonCitees: r.citations ? r.citations.nonCitees : [] });
       const texteBib = bib ? `${cites.map((e) => versBibtex(e, SANS_ZOTERO)).join('\n\n')}\n` : null;
       const png = (x) => { const b = atob(x.image.split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
       const figures = q.images.filter((x) => x.numero);
@@ -1455,10 +1469,11 @@ function gabarit(app, p, st, choisis) {
     let liste = m ? partiesModele(m).filter((x) => x.vue && !x.variantes && (!toutes || x.defaut)).map((x) => x.cle) : [];
     if (!toutes) liste = liste.slice(0, 1);
     if (!m) liste = [PREMIERE[d.type] || (AUTRES_ANALYSES.includes(d.type) ? null : 'scores')].filter(Boolean);
-    return liste.map((v) => `{{${d.nom}.${v} #fig-${etiquette(d.nom)}-${v} | ${t(v)}}}`);
+    return liste.map((v) => `{{${d.nom}.${v} #fig-${etiquette(d.nom)}-${v} | ${tDans(st.langue, v)}}}`);
   };
   const resume = (d) => (!calcule(d) || partiesModele(calcule(d)).some((x) => x.cle === 'resume' && x.tableau) ? [`{{${d.nom}.table.resume | ${w.resume}}}`] : []);
-  const entete = `---\ntitle: "${(st.titre || t('document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
+  // (the title as a YAML string, its backslashes and quotes escaped: Quarto refuses "a\b")
+  const entete = `---\ntitle: ${JSON.stringify(st.titre || tDans(st.langue, 'document_sans_titre'))}\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
   if (st.gabarit === 'article') {
     return entete + [`# ${w.introduction}`, '', `# ${w.methodes}`, ...choisis.map((d) => `{{${d.nom}.methodes}}`),
       `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), `{{${d.nom}.resultats}}`, ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');
@@ -1554,7 +1569,7 @@ ajouterTextes({
   document_compiler: 'Compiler', document_compiler_aide: 'Écrire le document en Word, PDF, HTML ou Quarto, les références remplacées par leurs résultats',
   document_apercu_aide: 'Montrer ou cacher l’aperçu', document_aide: 'Écrire un document', document_modifie: 'modifié…',
   document_non_enregistre: 'non gardé : le moteur ne répond pas', document_mots: '{n} mots', document_refs: '{n} références',
-  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes', document_resultats: 'Texte des résultats',
+  document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes', document_methodes_references: 'Références du texte des méthodes, dans la liste du document', document_resultats: 'Texte des résultats',
   document_renvoi: 'le numéro d’une figure ou d’un tableau étiqueté (#…)',
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
@@ -1614,7 +1629,7 @@ ajouterTextes({
     + 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne, avec une étiquette (#…) et une légende (après |) ; ils sont numérotés dans l’ordre, et {{ref:étiquette}} donne leur numéro :\n'
     + '`{{M1.scores #fig-scores | Scores des observations}}   {{M1.table.resume | R² et Q²}}   {{M1.methodes}}   voir {{ref:fig-scores}}`\n'
     + 'Tapez {{ pour voir les modèles et ce que chacun offre, avec sa valeur. Les graphiques sont dessinés comme dans leur fenêtre quand elle est ouverte. La langue du document règle l’écriture des nombres et le texte des méthodes.\n'
-    + 'Les citations s’écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 3 ; @eriksson2006], @wold2001 dans la phrase, [-@wold2001] sans l’auteur ; tapez @ pour les références du document et de Zotero. La liste des références vient à la fin, ou là où le document met {{bibliographie}} :\n'
+    + 'Les citations s’écrivent comme dans Quarto : [@wold2001], [voir @wold2001, p. 3 ; @eriksson2006], @wold2001 dans la phrase, [-@wold2001] sans l’auteur ; tapez @ pour les références du document et de Zotero. La liste des références vient à la fin, ou là où le document met {{bibliographie}} ; elle compte aussi celles des textes des méthodes cités, une fois chacune, et {{M1.methodes.references}} y met celles de M1 sans son texte :\n'
     + '`---\ntitle: Mon article\nbibliography: references.bib\n---\nLa PLS [@wold2001] et la validation croisée (@eriksson2006, p. 92).`\n'
     + 'Citer › Lier un fichier : un fichier BibTeX ou CSL-JSON (exporté de Zotero, Mendeley, JabRef… ; Better BibTeX le tient à jour), nommé dans l’en-tête. Zotero ouvert sur cet ordinateur : ses références se cherchent depuis Nuée (Zotero 7, en cochant « Autoriser les autres applications de cet ordinateur à communiquer avec Zotero »), dans Ma bibliothèque ou la bibliothèque d’un groupe, choisie dans Citer › Insérer une citation. Une référence dont la clé est déjà celle d’une autre du document (la même clé dans deux bibliothèques) y est citée avec une lettre en plus : @bechet2019a.\n'
     + 'Compiler : Word, PDF ou HTML directement ; ou un fichier Quarto (.qmd) avec ses figures et ses références (.bib), et, si Quarto est installé, compilé par lui (style CSL d’une revue : csl: dans l’en-tête, renvois, modèles de revues). {{< pagebreak >}} seul sur sa ligne commence une nouvelle page.\n'
@@ -1636,7 +1651,7 @@ ajouterTextes({
   document_compiler: 'Compile', document_compiler_aide: 'Write the document as Word, PDF, HTML or Quarto, its references replaced by their results',
   document_apercu_aide: 'Show or hide the preview', document_aide: 'Writing a document', document_modifie: 'changed…',
   document_non_enregistre: 'not kept: the engine doesn’t answer', document_mots: '{n} words', document_refs: '{n} references',
-  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text', document_resultats: 'Results text',
+  document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text', document_methodes_references: 'The Methods text’s references, in the document’s list', document_resultats: 'Results text',
   document_renvoi: 'the number of a labelled figure or table (#…)',
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',
@@ -1696,7 +1711,7 @@ ajouterTextes({
     + 'A plot, a table or the Methods text goes alone on its line, with a label (#…) and a caption (after |); they are numbered in order, and {{ref:label}} gives their number:\n'
     + '`{{M1.scores #fig-scores | Scores of the observations}}   {{M1.table.resume | R² and Q²}}   {{M1.methodes}}   see {{ref:fig-scores}}`\n'
     + 'Type {{ to see the models and what each offers, with its value. Plots are drawn as in their window when it is open. The document’s language sets how numbers are written and the Methods text.\n'
-    + 'Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 3; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; type @ for the references of the document and of Zotero. The list of references comes at the end, or where the document puts {{bibliographie}}:\n'
+    + 'Citations are written as in Quarto: [@wold2001], [see @wold2001, p. 3; @eriksson2006], @wold2001 in the sentence, [-@wold2001] without the author; type @ for the references of the document and of Zotero. The list of references comes at the end, or where the document puts {{bibliographie}}; it also holds those of the Methods texts cited, once each, and {{M1.methodes.references}} puts M1’s there without its text:\n'
     + '`---\ntitle: My paper\nbibliography: references.bib\n---\nPLS [@wold2001] and cross-validation (@eriksson2006, p. 92).`\n'
     + 'Cite › Link a file: a BibTeX or CSL-JSON file (exported from Zotero, Mendeley, JabRef…; Better BibTeX keeps it up to date), named in the header. With Zotero open on this computer, its references are searched from Nuée (Zotero 7, ticking “Allow other applications on this computer to communicate with Zotero”), in My Library or a group’s library, chosen in Cite › Insert a citation. A reference whose key another one of the document already has (the same key in two libraries) is cited with a letter added: @bechet2019a.\n'
     + 'Compile: Word, PDF or HTML directly; or a Quarto file (.qmd) with its figures and references (.bib), compiled by Quarto when it is installed (a journal’s CSL style: csl: in the header, cross-references, journal templates). {{< pagebreak >}} alone on its line starts a new page.\n'

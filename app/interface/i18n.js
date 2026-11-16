@@ -1527,9 +1527,29 @@ if (langue !== 'fr' && langue !== 'en') {
   ecrire('langue', langue);
 }
 
+// A document in another language than the interface's (documents.js): the tables and plots it
+// cites are built in its language. While dansLangue() runs f, t(), libelleResultat() and the
+// numbers (nombres.js, Plotly's separators, the engine's messages) take that language; one at a
+// time, the others waiting their turn.
+let langueDocument = null;
+let tour = Promise.resolve();
+export function dansLangue(l, f) {
+  const suite = tour.then(async () => {
+    langueDocument = l === 'en' ? 'en' : 'fr';
+    try { return await f(); } finally { langueDocument = null; }
+  });
+  tour = suite.catch(() => {});
+  return suite;
+}
+
 export function t(cle, valeurs) {
-  // (a string missing in the interface's language: the English one, else the French one)
-  let s = (TEXTES[langue] && TEXTES[langue][cle]) || TEXTES.en[cle] || TEXTES.fr[cle] || cle;
+  return tDans(langueDocument || langue, cle, valeurs);
+}
+
+// A string in the language `l` (a document's), whatever the interface's.
+export function tDans(l, cle, valeurs) {
+  // (a string missing in that language: the English one, else the French one)
+  let s = (TEXTES[l] && TEXTES[l][cle]) || TEXTES.en[cle] || TEXTES.fr[cle] || cle;
   // (every occurrence of a placeholder: a message may name its term twice)
   if (valeurs) for (const [k, v] of Object.entries(valeurs)) s = s.split(`{${k}}`).join(v);
   return s;
@@ -1559,15 +1579,16 @@ const PREFIXES_RESULTATS = [['probabilité ', 'probability '], ['distance au cen
 const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (OOB)', 'predicted (OOB)'],
   ['prédit (lien)', 'predicted (link)'], ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
-  const dico = RESULTATS[langue] || RESULTATS.fr;
+  const l = langueDocument || langue;
+  const dico = RESULTATS[l] || RESULTATS.fr;
   if (cle in dico) return dico[cle];
-  if (langue !== 'en') return cle;
+  if (l !== 'en') return cle;
   for (const [fr, en] of PREFIXES_RESULTATS) if (cle.startsWith(fr)) return `${en}${cle.slice(fr.length)}`;
   for (const [fr, en] of SUFFIXES_RESULTATS) if (cle.endsWith(` ${fr}`)) return `${cle.slice(0, -fr.length)}${en}`;
   return cle;
 }
 
-export function langueActuelle() { return langue; }
+export function langueActuelle() { return langueDocument || langue; }
 
 // The interface's typography: a space before a colon or a percent sign in French only
 // ("Erreur : …", "5 %"; "Error: …", "5%")
