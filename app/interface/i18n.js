@@ -1604,29 +1604,20 @@ export function ecrire(k, v) {
 // the choice was kept only when changed: a profile that has shown an earlier version's What's new
 // (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
 // profile's What's new doesn't turn it French at its next start.
-let langue = lire('langue');
+// (the hidden page that draws a document's tables and plots in the other language, app.js:
+// ?vue=hors_ecran&langue=…: that language, its own, never kept as the person's choice. A global
+// language held across the awaits of a drawing would switch the window's menus, dialogs, status bar
+// and the engine's messages to it meanwhile: documents.js, dansSaLangue.)
+const page = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
+const langueDePage = page && page.get('vue') === 'hors_ecran' ? page.get('langue') : null;
+let langue = langueDePage === 'fr' || langueDePage === 'en' ? langueDePage : lire('langue');
 if (langue !== 'fr' && langue !== 'en') {
   langue = lire('version_vue') ? 'fr' : 'en';
   ecrire('langue', langue);
 }
 
-// A document in another language than the interface's (documents.js): the tables and plots it
-// cites are built in its language. While dansLangue() runs f, t(), libelleResultat() and the
-// numbers (nombres.js, Plotly's separators, the engine's messages) take that language; one at a
-// time, the others waiting their turn.
-let langueDocument = null;
-let tour = Promise.resolve();
-export function dansLangue(l, f) {
-  const suite = tour.then(async () => {
-    langueDocument = l === 'en' ? 'en' : 'fr';
-    try { return await f(); } finally { langueDocument = null; }
-  });
-  tour = suite.catch(() => {});
-  return suite;
-}
-
 export function t(cle, valeurs) {
-  return tDans(langueDocument || langue, cle, valeurs);
+  return tDans(langue, cle, valeurs);
 }
 
 // A string in the language `l` (a document's), whatever the interface's.
@@ -1662,7 +1653,7 @@ const PREFIXES_RESULTATS = [['probabilité ', 'probability '], ['distance au cen
 const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (OOB)', 'predicted (OOB)'],
   ['prédit (lien)', 'predicted (link)'], ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
-  const l = langueDocument || langue;
+  const l = langue;
   const dico = RESULTATS[l] || RESULTATS.fr;
   if (cle in dico) return dico[cle];
   if (l !== 'en') return cle;
@@ -1671,14 +1662,14 @@ export function libelleResultat(cle) {
   return cle;
 }
 
-export function langueActuelle() { return langueDocument || langue; }
+export function langueActuelle() { return langue; }
 
-// The interface's typography: a space before a colon or a percent sign in French only
-// ("Erreur : …", "5 %"; "Error: …", "5%")
-export const deuxPoints = () => (langue === 'fr' ? ' : ' : ': ');
-export const pourcent = () => (langue === 'fr' ? ' %' : '%');
+// The interface's typography, that of the page's language (a document's in its hidden page): a
+// space before a colon or a percent sign in French only ("Erreur : …", "5 %"; "Error: …", "5%")
+export const deuxPoints = () => (langueActuelle() === 'fr' ? ' : ' : ': ');
+export const pourcent = () => (langueActuelle() === 'fr' ? ' %' : '%');
 // between an interval's bounds, as references.js writes them: "[0,12 ; 0,56]", "[0.12, 0.56]"
-export const separateurIntervalle = () => (langue === 'fr' ? ' ; ' : ', ');
+export const separateurIntervalle = () => (langueActuelle() === 'fr' ? ' ; ' : ', ');
 
 export function changerLangue(l) {
   langue = l;

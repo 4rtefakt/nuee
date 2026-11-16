@@ -9,7 +9,7 @@ import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_V
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
-import { dialogueRapport } from './rapport.js';
+import { dialogueRapport, partiesModele, imageVue } from './rapport.js';
 import { rendreConsole } from './console.js';
 import { NOUVEAUTES, VERSION } from './nouveautes.js';
 import { ECRITURE, filtresOuverture, acceptOuverture, filtresSpectres, acceptSpectres } from './formats.js';
@@ -1058,6 +1058,11 @@ const app = {
   // for the report and the documents: a view's settings in its open panel, and a context to draw it
   // off screen (in the light theme, whatever the window's)
   locVue: (vue, id) => (etat.panneaux.get(`${vue}:${id}`) || {}).loc || null,
+  // (what a model's plots show of this window beside its results: its selection, its highlighted
+  // variables, its VIP choice, its dendrogram's groups; a document's plot in another language takes
+  // them to the page that draws it, documents.js)
+  etatModele: (id) => ({ selection: etat.selection[id] || null, variables: etat.variables[id] || null, choixVIP: etat.choixVIP[id] || null,
+    groupesHCA: etat.groupesHCA[id] || null }),
   contexteHorsEcran: (loc, surGraphe) => ({ ...contexte({ loc }), rafraichir: () => {}, definirGraphe: surGraphe, menuGraphique: () => {}, clair: true }),
   // for a figure (figures.js): the views open in this window that show a plot (in a tab behind
   // another too: dockview takes it out of the page meanwhile), and a view's settings as a
@@ -2683,6 +2688,33 @@ async function demarrerVue() {
   majEtat();
 }
 
+// The hidden page of a document's language (?vue=hors_ecran&langue=…, documents.js: dansLaLangue): a
+// model's table or plot made here, in this page's language, for the window that holds it; the model
+// and its project asked of the engine as they are now, the view's settings and the model's selection
+// given by that window. Nothing else runs here: no menus, no channel (app.js's own above), no hooks.
+function demarrerHorsEcran() {
+  window.addEventListener('message', async (ev) => {
+    if (ev.source !== window.parent || ev.origin !== location.origin || !ev.data || ev.data.type !== 'hors_ecran') return;
+    const { id, demande: q } = ev.data;
+    let resultat = null;
+    let erreur = null;
+    try {
+      const m = await demander('modele', { modele: q.modele });
+      etat.modeles[m.id] = m;
+      etat.projets[m.projet] = await demander('projet', { projet: m.projet });
+      for (const k of ['selection', 'variables', 'choixVIP', 'groupesHCA']) {
+        if (q.etat && q.etat[k]) etat[k][m.id] = q.etat[k]; else delete etat[k][m.id];
+      }
+      if (q.genre === 'tableau') {
+        const x = partiesModele(m).find((p) => p.cle === q.cle);
+        resultat = x && x.tableau ? await x.tableau(m) : null;
+      } else resultat = await imageVue({ ...app, locVue: () => q.loc || null }, q.vue, m, q.variante || {});
+    } catch (e) { erreur = e.message; }
+    window.parent.postMessage({ type: 'hors_ecran_fait', id, resultat, erreur }, location.origin);
+  });
+  window.parent.postMessage({ type: 'hors_ecran_pret' }, location.origin);
+}
+
 async function demarrerPrincipal() {
   try { recents = bureau ? await bureau.recents() : JSON.parse(lire('recents') || '[]'); } catch { recents = []; }
   try { etat.seance.precedente = bureau && bureau.seance ? [].concat(await bureau.seance.precedente()) : []; } catch { etat.seance.precedente = []; }
@@ -2766,4 +2798,4 @@ async function deposerFichiers(fichiers) {
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';
 document.documentElement.lang = langueActuelle();
 document.title = t('titre');
-if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
+if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
