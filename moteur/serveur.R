@@ -145,7 +145,8 @@ annuler_demande <- function(q) {
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
   ranger_copies(q$projet)
-  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, ancien))
+  list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, ancien),
+       reajuster = isTRUE(pile[[1]]$remplace), a_reajuster = modeles_a_reajuster(q$projet))
 }
 
 # Rétablir (Ctrl+Y, Ctrl+Maj+Z) : le changement qu'Annuler a défait, refait tel qu'il était (ses données,
@@ -161,7 +162,27 @@ retablir_demande <- function(q) {
   etat$projets[[q$projet]] <- apres
   reviser(q$projet)
   ranger_copies(q$projet)
-  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, apres))
+  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette, documents = documents_changes(actuel, apres),
+       reajuster = isTRUE(pile[[1]]$remplace), a_reajuster = modeles_a_reajuster(q$projet))
+}
+
+# Ce qu'Annuler et Rétablir disent à l'interface des modèles de la séance (etapes.js : apresAnnulation,
+# qui les ajuste à nouveau) : `reajuster`, l'entrée remplaçait les données (une mise à jour, une étape
+# retirée : remplacer_par_mise_a_jour), tous les modèles sont à ajuster sur les données revenues ;
+# `a_reajuster`, les numéros de ceux que le retour laisse sur des variables qui ne sont plus celles du
+# projet (un nom rendu, une variable ôtée ou retypée : atelier.R, variables_changees ; une catégorie
+# renommée : aligner_categories), que modele(id, TRUE) refuse désormais d'ajuster tels quels.
+modeles_a_reajuster <- function(pid) {
+  p <- etat$projets[[pid]]
+  definis <- vapply(p$models %||% list(), function(d) suppressWarnings(as.numeric(d$number %||% NA)[1]), 0)
+  numeros <- numeric(0)
+  for (id in names(etat$modeles)) {
+    e <- etat$modeles[[id]]
+    n <- suppressWarnings(as.numeric(e$definition$number %||% NA)[1])
+    if (!identical(e$projet, pid) || is.na(n) || !n %in% definis || n %in% numeros) next
+    if (inherits(tryCatch(modele(id, TRUE), error = function(err) err), "error")) numeros <- c(numeros, n)
+  }
+  I(sort(numeros))
 }
 
 # Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
@@ -199,7 +220,8 @@ revenir_a <- function(actuel, e) {
 entree_inverse <- function(actuel, e, apres) {
   c(list(etiquette = e$etiquette, projet = actuel),
     if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)),
-    if (length(e$references)) list(references = carte_inverse(e$references)))
+    if (length(e$references)) list(references = carte_inverse(e$references)),
+    if (isTRUE(e$remplace)) list(remplace = TRUE))  # (une mise à jour des données : remplacer_par_mise_a_jour)
 }
 
 # Les documents dont le texte a changé de `avant` à `apres` (Annuler, Rétablir : l'interface les relit).
@@ -521,7 +543,11 @@ definition_interface <- function(p, q) {
                       validation = q$validation)
   d$app <- TRUE
   d$exclues <- as.numeric(q$exclues %||% numeric(0))
-  d$demande <- q
+  # (le modèle qu'il remplace, un modèle de code R dont le code est modifié : son numéro, que ses
+  # figures, ses documents et sa séance suivent ; sa définition est remplacée, ajuster_et_garder)
+  numero <- suppressWarnings(as.numeric(unlist(q$meme_numero))[1])
+  if (length(numero) && !is.na(numero)) d$number <- numero
+  d$demande <- q[setdiff(names(q), "meme_numero")]
   d
 }
 
@@ -658,8 +684,11 @@ ajuster_et_garder <- function(p, d, m = NULL) {
   if (isTRUE(d$app)) {  # le modèle rejoint le projet (enregistré avec lui)
     d$number <- d$number %||% (max(c(0, vapply(p$models, function(x) as.numeric(x$number %||% 0), 0))) + 1)
     d$fitted <- TRUE
-    ancien <- Find(function(x) identical(x$name, d$name), p$models)
-    p$models <- c(Filter(function(x) !identical(x$name, d$name), p$models), list(d))
+    # (la définition qu'il remplace : celle de son nom, ou de son numéro, un modèle de code R modifié sous
+    # un autre nom : definition_interface, meme_numero)
+    meme <- function(x) identical(x$name, d$name) || identical(suppressWarnings(as.numeric(x$number %||% NA)[1]), as.numeric(d$number)[1])
+    ancien <- Find(meme, p$models)
+    p$models <- c(Filter(Negate(meme), p$models), list(d))
     if (!identical(ancien, d)) p$modifie <- TRUE  # recalculer un modèle enregistré ne change pas le projet
     etat$projets[[p$id]] <- p
   }
@@ -1255,6 +1284,9 @@ etapes_demande <- function(q) {
 # conditions ; leurs catégories, par leurs noms : modele, aligner_categories).
 remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
   memoriser(actuel, etiquette)
+  # (l'entrée dit qu'elle remplace les données : l'annuler ou la rétablir ajuste à nouveau les modèles,
+  # dans quelque fenêtre que ce soit : annuler_demande, reajuster)
+  etat$annulations[[actuel$id]][[1]]$remplace <- TRUE
   n <- r$projet
   suivre_conditions_seance(actuel, n)
   n$modifie <- TRUE
@@ -1458,7 +1490,8 @@ fusionner_finir_demande <- function(q) {
   reviser(actuel$id)
   etat$fusions[[id]] <- NULL
   ranger_copies(actuel$id)
-  resultat <- list(projet = resume_projet(n), etiquette = etiquette)
+  # (documents : ceux dont la fusion a changé le texte, que l'interface relit dans leurs éditeurs ouverts)
+  resultat <- list(projet = resume_projet(n), etiquette = etiquette, documents = documents_changes(actuel, n))
   if (nzchar(premier_texte(q$chemin))) {
     enregistrer_projet(n, premier_texte(q$chemin), premier_texte(q$version), dossier = dossier_projet(n), auteur = q$auteur)
     resultat$chemin <- premier_texte(q$chemin)

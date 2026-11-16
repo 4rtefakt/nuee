@@ -393,6 +393,14 @@ verifier("Ctrl+Y : la mise à jour refaite, ses données, sa source, ses étapes
 e <- demande("annuler", list(projet = id))
 verifier("Ctrl+Z de nouveau : les données, la source et les étapes d'avant", length(projet(id)$observations) == 40 && identical(projet(id)$etapes, avant$etapes) &&
            identical(projet(id)$donnees, avant$donnees) && isTRUE(donnees_conformes(projet(id))))
+verifier("Annuler et Rétablir d'une mise à jour disent qu'elle remplaçait les données (reajuster : l'interface ajuste à nouveau les modèles, quelle que soit sa fenêtre)",
+         isTRUE(e$reajuster) && isTRUE(r$reajuster))
+demande("retablir", list(projet = id))
+demande("variable_calculee", list(projet = id, nom = "x_essai", formule = "x1 * 2"))
+u_v <- demande("annuler", list(projet = id))
+verifier("… un autre changement non : ni Annuler ni Rétablir ne le disent", isFALSE(u_v$reajuster) && isFALSE(demande("retablir", list(projet = id))$reajuster))
+demande("annuler", list(projet = id))
+demande("annuler", list(projet = id))
 
 cat("Une étape qui ne s'applique plus, une colonne qui manque\n")
 df3 <- df2[df2$nom != "S2-2016", setdiff(names(df2), "x2")]
@@ -418,8 +426,9 @@ p <- projet(id)
 verifier("remplacer retiré : les -9999 revenus, 16 étapes, le même fichier source, un seul Ctrl+Z",
          any(valeurs(p, "comptage") == -9999, na.rm = TRUE) && length(p$etapes) == 16 && all(statuts(r) == "ok") &&
            identical(p$source_donnees$chemin, normalizePath(source_csv, winslash = "/")) && grepl("^retrait de l'étape", r$projet$annulable))
-demande("annuler", list(projet = id))
-verifier("annulé : l'étape revenue", length(projet(id)$etapes) == 17 && !any(valeurs(projet(id), "comptage") == -9999, na.rm = TRUE))
+u_retrait <- demande("annuler", list(projet = id))
+verifier("annulé : l'étape revenue (reajuster : les données remplacées)", length(projet(id)$etapes) == 17 && !any(valeurs(projet(id), "comptage") == -9999, na.rm = TRUE) &&
+           isTRUE(u_retrait$reajuster))
 r <- demande("retablir", list(projet = id))
 verifier("rétabli : l'étape de nouveau retirée, les -9999 revenus, les étapes et les données d'accord",
          grepl("^retrait de l'étape", r$etiquette) && length(projet(id)$etapes) == 16 && any(valeurs(projet(id), "comptage") == -9999, na.rm = TRUE) &&
@@ -846,8 +855,11 @@ u_r <- demande("annuler", list(projet = vid))
 verifier("Ctrl+Z du nom : l'ancien nom, sa définition et ses références revenues ; le document dit à relire",
          "mesure" %in% projet(vid)$noms_var && identical(texte_doc(), avant_v$documents[[1]]$texte) && identical(as.character(u_r$documents), doc$id) &&
            identical(texte_condition(definition(projet(vid), "R1")$condition), "mesure > 5") && !length(projet(vid)$etapes))
-demande("retablir", list(projet = vid))
-verifier("Ctrl+Y : le nouveau nom, ses références de nouveau", "mesure (cm)" %in% projet(vid)$noms_var && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE))
+verifier("… R1, ajusté de nouveau sous le nouveau nom, est à ajuster encore (a_reajuster : son numéro), rien d'autre ; pas une mise à jour (reajuster)",
+         identical(as.numeric(u_r$a_reajuster), as.numeric(dr$number)) && isFALSE(u_r$reajuster))
+r_r <- demande("retablir", list(projet = vid))
+verifier("Ctrl+Y : le nouveau nom, ses références de nouveau ; R1 à ajuster encore (son ajustement d'avant, sous l'ancien nom)",
+         "mesure (cm)" %in% projet(vid)$noms_var && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE) && identical(as.numeric(r_r$a_reajuster), as.numeric(dr$number)))
 # (un document écrit depuis le changement de nom : Annuler remet ses références, sans toucher au reste)
 demande("document_enregistrer", list(projet = vid, id = doc$id, texte = paste(texte_doc(), "Ajouté : {{R1.p.mesure (cm)}}.")))
 demande("annuler", list(projet = vid))

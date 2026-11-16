@@ -584,6 +584,7 @@ la <- strsplit(document(pa, "D1")$texte, "\n", fixed = TRUE)[[1]]
 verifier("fusionner_finir : leur modèle, leur conclusion, mon paragraphe et ma cellule ; « fusion avec Bob » à annuler",
          identical(vapply(pa$models, function(d) d$name, ""), c("M1", "M2", "M3")) && identical(la[3], "Mon paragraphe deux.") && identical(la[7], "Conclusion de Bob.") &&
            unname(valeurs(pa, "x1")["S1-2018"]) == 9 && identical(fin$etiquette, "fusion avec Bob") && identical(fin$projet$annulable, "fusion avec Bob") && isTRUE(pa$modifie))
+verifier("… et nomme le document dont elle a changé le texte (documents : l'interface le relit dans son éditeur ouvert)", identical(as.character(fin$documents), "D1"))
 verifier("le projet sait avoir lu leur fichier : fichier_change ne voit plus rien, Enregistrer ne demande rien",
          isFALSE(demande("fichier_change", list(projet = a))$change) && identical(erreur(demande("enregistrer", list(projet = a, chemin = partage))), ""))
 verifier("le fichier enregistré a les changements des deux", { q <- lire_projet(partage); length(q$models) == 3 && unname(valeurs(q, "x1")["S1-2018"]) == 9 })
