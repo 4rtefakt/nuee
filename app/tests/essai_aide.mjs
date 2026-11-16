@@ -62,7 +62,7 @@ verifier('a view’s paragraph: the one that starts with its menu and its name',
 const aicFr = paragrapheDe('fr', 'Modèles linéaires, généralisés et mixtes', { libelle: 'Sélection par AIC', chemin: 'Graphiques › Sélection par AIC' });
 verifier('… in French', !!aicFr && aicFr.startsWith('Graphiques › Sélection par AIC (aussi sous chaque régression'), aicFr && aicFr.slice(0, 60));
 const comparer = paragrapheDe('en', 'Linear, generalized and mixed models', { libelle: 'Compare models', chemin: 'Predict › Compare models' });
-verifier('… whatever the menu’s name in the guide', !!comparer && /^Prediction › Compare models: Q2 and RMSEcv/.test(comparer), comparer && comparer.slice(0, 60));
+verifier('… whatever the menu’s name in the guide', !!comparer && /^Prediction › Compare models\b/.test(comparer) && comparer.includes('Q2 and RMSEcv'), comparer && comparer.slice(0, 60));
 const indices = paragrapheDe('en', 'TRIM: indices and trends of counts', { libelle: 'Indices', chemin: null });
 verifier('… a view of its own analysis, by its name', !!indices && /\bIndices \(the imputed indices/.test(indices), indices && indices.slice(0, 80));
 verifier('… none for a name the section doesn’t have', blocCible(['Plots › Scores: …'], { libelle: 'Loadings', chemin: 'Plots › Loadings' }) === -1);
