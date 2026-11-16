@@ -428,8 +428,8 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
   fond.append(boite);
   // a click beside it closes a dialog that only shows something; one with fields to fill in (New
   // model, Export to R...) stays, so that a click beside it doesn't lose what was chosen (Esc or ×)
-  const champs = () => boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea');
-  fond.addEventListener('mousedown', (e) => { if (e.target === fond && !champs()) fermer(); });
+  const aDesChamps = () => boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea');
+  fond.addEventListener('mousedown', (e) => { if (e.target === fond && !aDesChamps()) fermer(); });
   document.addEventListener('keydown', touche, true);
   document.body.append(fond);
   const corps = boite.querySelector('.corps-dialogue');
