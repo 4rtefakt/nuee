@@ -706,7 +706,7 @@ enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(c
   ecrire <- function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE)
   # (une copie qui ne s'écrit pas, le disque de la séance plein : le fichier s'écrit comme avant, sans elle ;
   # attr(, "copie") dit si elle est là)
-  if (!is.null(copie) && !isTRUE(tryCatch({ ecrire(copie); TRUE }, error = function(e) FALSE))) {
+  if (!is.null(copie) && !isTRUE(tryCatch(suppressWarnings({ ecrire(copie); TRUE }), error = function(e) FALSE))) {
     unlink(copie)
     copie <- NULL
   }

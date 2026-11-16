@@ -135,12 +135,13 @@ base <- fichier("base.nuee")
 demande("enregistrer", list(projet = id, chemin = base))
 demande("fermer_projet", list(projet = id))
 
-# Un côté : la base (ou `depuis`) ouverte dans la séance, changée par `f(id)`, enregistrée sous `nom`.
-cote <- function(nom, f, depuis = base) {
+# Un côté : la base (ou `depuis`) ouverte dans la séance, changée par `f(id)`, enregistrée sous `nom` (avec
+# la séance de la fenêtre `session`).
+cote <- function(nom, f, depuis = base, session = NULL) {
   id <- demande("ouvrir", list(chemin = depuis))$id
   f(id)
   chemin <- fichier(nom)
-  demande("enregistrer", list(projet = id, chemin = chemin))
+  demande("enregistrer", c(list(projet = id, chemin = chemin), if (!is.null(session)) list(session = session)))
   demande("fermer_projet", list(projet = id))
   chemin
 }
@@ -206,15 +207,21 @@ verifier("ce que chaque côté a apporté, en phrases",
            any(grepl("Rapport", r$apports$leur)) && any(grepl("figure", r$apports$leur)))
 verifier("le projet fusionné s'enregistre, se rouvre et chacun de ses modèles se réajuste", reajuste(p, "fusion_a"))
 
-cat("Le même modèle fait des deux côtés ; deux variables calculées dont les numéros se croisent\n")
-mien_b <- cote("mien_b.nuee", function(id) {
+cat("Le même modèle et la même étape faits des deux côtés ; deux documents et deux figures nouveaux ; deux variables calculées dont les numéros se croisent\n")
+mien_b <- cote("mien_b.nuee", session = '{"fenetre":"mienne"}', function(id) {
+  demande("remplacer", list(projet = id, variables = uid(id, "comptage"), chercher = "-9999", remplacer = ""))
   demande("ajuster", list(projet = id, type = "PCA", x = uid(id, c("x1", "x2")), A = 1, nom = "Commun"))
   demande("variable_calculee", list(projet = id, nom = "w", formule = "x1 * 2"))
+  demande("document_enregistrer", list(projet = id, titre = "Notes", texte = "Mes notes"))
+  demande("figure_enregistrer", list(projet = id, titre = "Ma figure", contenu = '{"panneaux":[]}'))
 })
-leur_b <- cote("leur_b.nuee", function(id) {
+leur_b <- cote("leur_b.nuee", session = '{"fenetre":"leur"}', function(id) {
+  demande("remplacer", list(projet = id, variables = uid(id, "comptage"), chercher = "-9999", remplacer = ""))
   demande("ajuster", list(projet = id, type = "PCA", x = uid(id, c("x1", "x2")), A = 1, nom = "Commun"))
   demande("variable_calculee", list(projet = id, nom = "z", formule = "x1 + x2"))
   demande("ajuster", list(projet = id, type = "LM", x = uid(id, "z"), y = uid(id, "y"), nom = "Mz"))
+  demande("document_enregistrer", list(projet = id, titre = "Notes", texte = "Leurs notes"))
+  demande("figure_enregistrer", list(projet = id, titre = "Leur figure", contenu = '{"panneaux":[]}'))
 })
 pm <- lire_projet(mien_b)
 pl <- lire_projet(leur_b)
@@ -222,6 +229,11 @@ r <- fusion(base, mien_b, leur_b)
 p <- r$projet
 verifier("« Commun », le même des deux côtés : une fois, sans conflit ni renommage",
          !length(r$conflits) && sum(vapply(p$models, function(d) identical(d$name, "Commun"), TRUE)) == 1 && !any(grepl("renommé", r$apports$leur)))
+verifier("le même remplacement fait des deux côtés : une seule étape, puis w et z", identical(etiquettes(p), c("remplacement de -9999", "variable w", "variable z")))
+verifier("deux documents nouveaux sous le même identifiant (D2) : les deux, le leur en D3 ; de même les figures (F2, F3)",
+         identical(document(p, "D2")$texte, "Mes notes") && identical(document(p, "D3")$texte, "Leurs notes") &&
+           identical(figure(p, "F2")$titre, "Ma figure") && identical(figure(p, "F3")$titre, "Leur figure"))
+verifier("la séance de la fenêtre est la mienne", identical(p$session, '{"fenetre":"mienne"}'))
 verifier("w et z avaient le même numéro de chaque côté ; z en prend un autre, et Mz le suit",
          uid_p(pm, "w") == uid_p(pl, "z") && uid_p(p, "w") == uid_p(pm, "w") && uid_p(p, "z") != uid_p(pl, "z") &&
            definition(p, "Mz")$x[[1]]$variables == uid_p(p, "z") && isTRUE(all.equal(unname(valeurs(p, "z")), unname(valeurs(pl, "z")))))
@@ -313,6 +325,40 @@ verifier("le leur : leur fichier et leurs étapes, leur ligne S6",
          identical(basename(pl$source_donnees$chemin), "releves_leur.csv") && "S6-2018" %in% names(valeurs(pl, "x1")) && !"S5-2018" %in% names(valeurs(pl, "x1")) &&
            !any(valeurs(pl, "comptage") %in% -9999) && isTRUE(donnees_conformes(pl)))
 
+cat("Un seul côté a mis les données à jour : sa source et ses étapes, l'étape de l'autre rejouée après\n")
+mien_d2 <- cote("mien_d2.nuee", function(id) demande("remplacer", list(projet = id, variables = uid(id, "comptage"), chercher = "-9999", remplacer = "")))
+leur_d2 <- cote("leur_d2.nuee", function(id) demande("mettre_a_jour", list(projet = id, chemin = fichier_l)))
+r <- fusion(base, mien_d2, leur_d2)
+p <- r$projet
+verifier("sans conflit, par les étapes : leur fichier, leur ligne S6, mon remplacement rejoué sur elle aussi",
+         !length(r$conflits) && identical(r$donnees$mode, "etapes") && identical(basename(p$source_donnees$chemin), "releves_leur.csv") &&
+           "S6-2018" %in% names(valeurs(p, "x1")) && !any(valeurs(p, "comptage") %in% -9999) && identical(etiquettes(p), "remplacement de -9999") &&
+           isTRUE(donnees_conformes(p)) && length(definition(p, "M2")$observations) == 33)
+verifier("ce que leur côté a apporté : la mise à jour, une observation", any(grepl("releves_leur.csv", r$apports$leur, fixed = TRUE)) && any(grepl("1 observation(s) ajoutée(s)", r$apports$leur, fixed = TRUE)))
+
+cat("Cellule par cellule quand les étapes ne se rejouent pas : la source introuvable, des données changées hors des étapes\n")
+cache <- paste0(source_csv, ".cache")
+file.rename(source_csv, cache)
+r <- fusion(base, mien_a, leur_a)
+file.rename(cache, source_csv)
+p <- r$projet
+verifier("la source introuvable : par les cellules, la raison dite, les deux nettoyages quand même, la catégorie renommée à sa place",
+         identical(r$donnees$mode, "cellules") && grepl("introuvable", r$donnees$raison) && !length(r$conflits) &&
+           identical(valeurs(p, "comptage"), valeurs(pd, "comptage")) && identical(valeurs(p, "habitat"), valeurs(pd, "habitat")) &&
+           identical(categories_de(p, "habitat"), c("forêt", "lande", "prairie")))
+verifier("les deux étapes gardées, l'empreinte rompue (on ne sait plus que les données sont ce qu'elles donnent)",
+         identical(etiquettes(p), c("remplacement de -9999", "catégories de habitat")) && identical(p$empreinte_donnees, ""))
+leur_hors <- cote("leur_hors.nuee", function(id) {
+  # (comme la console R : une valeur changée sans étape)
+  q <- projet(id)
+  q$donnees[as.character(numeros_observations(q, "S1-2018")), as.character(uid(id, "x1"))] <- 42
+  etat$projets[[id]] <- q
+})
+r <- fusion(base, mien_a, leur_hors)
+verifier("leurs données changées hors des étapes : par les cellules, la raison dite, leur valeur prise",
+         identical(r$donnees$mode, "cellules") && grepl("hors des étapes", r$donnees$raison) && unname(valeurs(r$projet, "x1")["S1-2018"]) == 42 &&
+           !any(valeurs(r$projet, "comptage") %in% -9999))
+
 cat("Une étape de leur côté qui ne s'applique plus après les miennes : la fusion se fait cellule par cellule\n")
 mien_e <- cote("mien_e.nuee", function(id) demande("variable_calculee", list(projet = id, nom = "v", formule = "x1 * 2")))
 leur_e <- cote("leur_e.nuee", function(id) demande("variable_calculee", list(projet = id, nom = "v", formule = "x1 * 3")))
@@ -329,7 +375,9 @@ cat("Cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajou
 base10 <- fichier("base10.nuee")
 j <- jsonlite::fromJSON(base, simplifyVector = FALSE)
 j$source_donnees <- j$etapes <- j$empreinte_donnees <- NULL
-writeLines(as.character(jsonlite::toJSON(j, auto_unbox = TRUE, null = "null", na = "null", digits = NA)), base10, useBytes = TRUE)
+j$prediction_sets <- list(list(name = "Nouveaux", observations = list(1L, 2L)))  # (comme ceux d'un fichier .usp)
+ecrire_json <- function(j, f) writeLines(enc2utf8(as.character(jsonlite::toJSON(j, auto_unbox = TRUE, null = "null", na = "null", digits = NA))), f, useBytes = TRUE)
+ecrire_json(j, base10)
 # (mes lignes : S5 en 2018 et 2019 ; les leurs : la même ligne S5-2018, et S6-2018 ; les deux mises à jour
 # donnent aux lignes nouvelles les mêmes numéros)
 s5 <- tableau(2018:2019, "S5", 4)
@@ -386,6 +434,39 @@ verifier("M2 réajusté : la référence reste « prairie », ses coefficients c
            !"habitat(prairie)" %in% coefs$terme)
 demande("fermer_projet", list(projet = id))
 verifier("le projet fusionné s'enregistre, se rouvre et chacun de ses modèles se réajuste", reajuste(p, "fusion_f2"))
+
+cat("Cellule par cellule : une variable et des observations retirées d'un côté, inchangées ou changées de l'autre ; une unité, un jeu de prédiction\n")
+sans <- fichier("donnees", "sans.csv")
+utils::write.csv(df[!df$nom %in% c("S3-2025", "S4-2025"), setdiff(names(df), "comptage")], sans, row.names = FALSE, na = "")
+mien_h <- cote("mien_h.nuee", depuis = base10, function(id) demande("mettre_a_jour", list(projet = id, chemin = sans)))
+leur_h <- cote("leur_h.nuee", depuis = base10, function(id) {
+  demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "S1-2018"), variable = uid(id, "comptage"), valeur = "11"))
+  demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "S4-2025"), variable = uid(id, "x1"), valeur = "8"))
+  demande("decrire_variables", list(projet = id, descriptions = list(list(variable = uid(id, "x2"), unite = "kg"))))
+})
+r <- fusion(base10, mien_h, leur_h)
+p <- r$projet
+verifier("deux conflits : comptage retirée de mon côté et changée du leur, S4-2025 de même",
+         setequal(ids_conflits(r), c("variable:comptage", "champ:observations:mien")) && identical(conflit(r, "variable:comptage")$mien, "retirée"))
+verifier("le mien : comptage et S4-2025 retirées ; S3-2025, que personne n'a changée de leur côté, retirée sans question ; leur unité de x2 prise",
+         !"comptage" %in% p$noms_var && !any(c("S3-2025", "S4-2025") %in% p$noms_obs) && identical(variable_du_projet(p, uid_p(p, "x2"))$unite, "kg"))
+pl <- fusion(base10, mien_h, leur_h, list(`variable:comptage` = "leur", `champ:observations:mien` = "leur"))$projet
+verifier("le leur : comptage gardée avec leur valeur, S4-2025 aussi ; S3-2025 toujours retirée",
+         unname(valeurs(pl, "comptage")["S1-2018"]) == 11 && unname(valeurs(pl, "x1")["S4-2025"]) == 8 && !"S3-2025" %in% pl$noms_obs)
+verifier("le projet fusionné s'enregistre, se rouvre et chacun de ses modèles se réajuste", reajuste(pl, "fusion_h"))
+prediction <- function(nom, obs) {
+  j <- jsonlite::fromJSON(base10, simplifyVector = FALSE)
+  j$prediction_sets[[1]]$observations <- as.list(as.integer(obs))
+  f <- fichier(nom)
+  ecrire_json(j, f)
+  f
+}
+r <- fusion(base10, prediction("mien_p.nuee", c(1, 2, 3)), base10)
+verifier("un jeu de prédiction changé d'un côté : ce côté", identical(as.numeric(r$projet$prediction_sets[[1]]$observations), c(1, 2, 3)))
+r <- fusion(base10, prediction("mien_p.nuee", c(1, 2, 3)), prediction("leur_p.nuee", c(2, 4)))
+verifier("changé autrement des deux côtés : un conflit, et le leur s'il est choisi",
+         identical(ids_conflits(r), "champ:prediction:Nouveaux") &&
+           identical(as.numeric(fusion(base10, fichier("mien_p.nuee"), fichier("leur_p.nuee"), list(`champ:prediction:Nouveaux` = "leur"))$projet$prediction_sets[[1]]$observations), c(2, 4)))
 
 cat("Les catégories : rangées autrement des deux côtés, renommée d'un côté et rangées de l'autre\n")
 rangees <- function(nom, ordre, noms = c("foret", "lande", "prairie")) cote(nom, depuis = base10, function(id) {

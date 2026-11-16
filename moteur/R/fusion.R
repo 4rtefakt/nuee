@@ -1753,8 +1753,7 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   tF <- tableau_fusion(p)
   cartes <- list(base = carte_fusion(tB, tF, ctx), mien = carte_fusion(tM, tF, ctx), leur = carte_fusion(tL, tF, ctx))
   if (!identical(ctx$mode, "etapes")) p <- avec_champ(p, "coordonnees", fusion_coordonnees(tB, tM, tL, tF, ctx))
-  p <- avec_champ(p, "prediction_sets", fusion_predictions(tB, tM, tL, cartes, ctx))
-  if (is.null(p$prediction_sets) && !is.null(mien$prediction_sets)) p$prediction_sets <- list()
+  if (!is.null(base$prediction_sets) || !is.null(mien$prediction_sets) || !is.null(leur$prediction_sets)) p$prediction_sets <- fusion_predictions(tB, tM, tL, cartes, ctx)
   # (les modèles, dans la numérotation de la fusion, puis les documents et les figures qui les citent)
   definitions <- function(X, carte) {
     ds <- lapply(X$models %||% list(), renumeroter_definition, carte = carte)
@@ -1782,7 +1781,8 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
     if (identical(ctx$mode, "etapes") && identical(f, "collecte")) next
     cote <- cote_fusion(texte_champ(base, f), texte_champ(mien, f), texte_champ(leur, f))
     if (cote == "conflit") cote <- conflit_fusion(ctx, paste0("champ:", f), "champ", f, f, traduire("changé", "changed"), traduire("changé", "changed"))
-    if (cote == "leur") p <- if (f %in% names(leur)) { p[f] <- list(leur[[f]]); p } else avec_champ(p, f, NULL)
+    if (cote != "leur") next
+    if (f %in% names(leur)) p[f] <- list(leur[[f]]) else p[[f]] <- NULL
   }
   # (ce que chaque côté a apporté)
   apports_donnees(base, mien, dM, ctx, "mien")
