@@ -1364,10 +1364,12 @@ observations du modèle (avant leur transformation, comme pour les moyennes ajus
 courbes en ce point ; les variables qualitatives dans leur catégorie de référence, sauf celles
 croisées avec le terme, dont chaque catégorie a sa courbe sur ses propres valeurs (et une courbe
 par catégorie, son niveau) ; les effets aléatoires à 0 (la population, sans l'écart propre à un
-groupe) ; un effort de 1 (des densités) ; le lissage spatial au point moyen des coordonnées. Avec
-le lien identité, ce sont les valeurs prédites de la réponse modélisée (transformée, si elle
-l'est). Exporter vers R les calcule et les dessine de même (valeurs_predites, un graphique par
-terme), et un document les cite par {{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
+groupe) ; un effort de 1 (des densités ; des comptages attendus pour le Poisson à excès de zéros) ;
+le lissage spatial au point moyen des coordonnées. Avec le lien identité, ce sont les valeurs
+prédites de la réponse modélisée (transformée, si elle l'est, et alors nommée par sa formule,
+log10(y + 1), dans la vue, sa note et son axe). Exporter vers R les calcule et les dessine de
+même (valeurs_predites, un graphique par terme), et un document les cite par
+{{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
 (standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,

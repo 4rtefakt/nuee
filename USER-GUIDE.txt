@@ -1247,8 +1247,10 @@ over the model's observations (before their transformation, as for the adjusted 
 curves at that point; the qualitative variables in their reference category, except those
 crossed with the term, each category of which has its curve over its own values (and a curve per
 category its level); the random effects at 0 (the population, no group's own departure); an
-effort of 1 (densities); the spatial smooth at the mean point of the coordinates. With the
-identity link they are the predicted values of the modelled response (transformed, if it is).
+effort of 1 (densities; expected counts for the zero-inflated Poisson); the spatial smooth at the
+mean point of the coordinates. With the identity link they are the predicted values of the
+modelled response (transformed, if it is, and then named by its formula, log10(y + 1), in the
+view, its note and its axis).
 Export to R computes and draws the same (predicted_values, a plot per term), and a document cites
 them as {{M5.valeurs_predites.year}}),
 Observed / predicted, Residuals

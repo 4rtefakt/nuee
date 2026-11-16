@@ -818,6 +818,9 @@ r <- essayer_regression("lm_puissance_en", pr, definir_modele(pr, "LM", x = ur("
                         puissance = list(tendance = -4, simuler = TRUE, simulation = list(n = 20)))
 verifier("puissance pour une tendance en anglais : simulate_power(), ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
            any(grepl("^simulate_power <- function", lignes_script(r))) && any(grepl("slope <- log(1 + (-4) / 100)", lignes_script(r), fixed = TRUE)))
+verifier("une réponse transformée (ln(masse)) : ses valeurs prédites nommées sur son échelle, dans le commentaire et sur l'axe de leur graphique",
+         grepl("the value of ln(“masse”) the model predicts", commentaires_script(r), fixed = TRUE) &&
+           any(grepl("ylab = \"Predicted ln(masse)\"", lignes_script(r), fixed = TRUE)) && !any(grepl("Predicted masse", lignes_script(r), fixed = TRUE)))
 # Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
 # x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
 dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",

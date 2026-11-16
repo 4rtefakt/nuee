@@ -698,12 +698,14 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
 #     courbe, sur les valeurs de la variable dans la catégorie, comme sur l'échelle du lien ; une courbe
 #     par catégorie (s(x, by = f)), avec l'effet principal de sa variable qualitative ;
 #   - les effets aléatoires à 0 (la population : aucun écart propre à un groupe), l'effort à 1 (des
-#     densités), le lissage spatial au point moyen des coordonnées.
+#     densités, sauf les comptages attendus du Poisson à excès de zéros), le lissage spatial au point
+#     moyen des coordonnées.
 # La bande : celle du prédicteur linéaire, ± 1,96 erreur-type (√(L V Lᵀ), V la covariance des
 # coefficients ; comme la vue sur l'échelle du lien), ramenée sur l'échelle de la réponse par l'inverse
 # du lien : exp (log), le logit inverse (logit), la valeur attendue d'un comptage pour le Poisson à
 # excès de zéros (esperance_zip, θ₁ et θ₂ tenus pour connus) ; avec le lien identité, la réponse
-# modélisée elle-même (transformée s'il y a lieu). Chaque terme dit aussi ce qui reste fixe pour lui
+# modélisée elle-même (transformée s'il y a lieu, `forme_y` nommant son échelle : les valeurs prédites
+# de log10(compte + 1), pas du comptage). Chaque terme dit aussi ce qui reste fixe pour lui
 # (`fixes` : ses autres variables quantitatives et leur moyenne, ses autres variables qualitatives et
 # leur catégorie de référence), et le résultat ce qui l'est pour tous (`commun` : les effets
 # aléatoires, l'effort, le lissage spatial) ; chaque ligne, sa grille (`grille`, pour l'export vers R).
@@ -790,8 +792,13 @@ effets_reponse <- function(projet, m, d) {
     c(list(terme = nom, courbe = courbe), ligne(t, tous), list(fixes = fixes(t)))
   })
   # (`famille` : l'effort à 1 ne donne pas des densités au Poisson à excès de zéros, dont la valeur
-  # attendue d'un comptage n'est pas proportionnelle à l'effort)
+  # attendue d'un comptage n'est pas proportionnelle à l'effort ; `forme_y` : une réponse transformée,
+  # l'échelle des valeurs prédites, log10(compte + 1), comme celle des moyennes ajustées, et `log_y`
+  # quand c'est un logarithme)
+  tr_y <- d$y[[1]]$transform
   list(effets = effets, lien = lien, famille = m$famille,
+       forme_y = if (!is.null(tr_y) && !identite(tr_y)) formule_transformation(tr_y, m$y$noms, !identical(getOption("nuee.langue"), "en")),
+       log_y = isTRUE(as.character(tr_y$type) %in% c("log10", "ln")),
        commun = list(aleatoires = I(as.character(m$niveaux)), decalage = m$decalage,
                      spatial = if (!is.null(m$spatial)) list(nom = m$spatial$nom, x = mean(dn$sx), y = mean(dn$sy))))
 }

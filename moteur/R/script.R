@@ -1991,8 +1991,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "})",
       sprintf("names(effets) <- %s", code_textes(ef$nom)))
   }
-  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : plan_predictions)
+  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : plan_predictions ; celle d'une
+  # réponse transformée nommée par sa formule, log10(compte + 1), comme dans Nuée)
   pr <- pl$predictions
+  y_predite <- function(x) if (!is.null(pl$y$tr) && !identite(pl$y$tr)) formule_transformation(pl$y$tr, x, langue != "en") else x
   if (!is.null(pr)) {
     ajuste_r <- if (gamm) "m$gam" else "m"
     inverse <- if (identical(pl$famille, "poisson_zi")) "function(eta) esperance_zip(eta, parametre_loi)"
@@ -2008,10 +2010,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     effort_en <- if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", the effort at 1" else ", the effort at 1 (densities)"
     statistiques <- c(statistiques, "",
       commentaire(tx(sprintf("Les valeurs prédites (la vue Effets de Nuée, Valeurs prédites) : pour chaque terme quantitatif, %s quand sa variable parcourt 80 valeurs de son étendue (dans chaque catégorie des variables qualitatives croisées avec lui, sur ses valeurs dans la catégorie), les autres variables quantitatives à leur moyenne sur les observations du modèle (avant leur transformation), les variables qualitatives dans leur catégorie de référence%s%s%s ; la bande à 95 %% du prédicteur linéaire (± 1,96 erreur-type), ramenée sur l'échelle de la réponse par l'inverse du lien. `lignes_predites` : chaque ligne, son terme, sa catégorie, l'étendue de la variable et la valeur de chaque terme simple sur la grille (`S` ; NA : le terme lui-même, et les termes croisés, que colonnes_grille() calcule).",
-                             sprintf("la valeur de %s que prédit le modèle", guillemets(pl$y$nom)), if (mixte) ", les effets aléatoires à 0 (la population)" else "",
+                             sprintf("la valeur de %s que prédit le modèle", y_predite(guillemets(pl$y$nom))), if (mixte) ", les effets aléatoires à 0 (la population)" else "",
                              effort_fr, if (spatial) ", le lissage spatial au point moyen des coordonnées" else ""),
                      sprintf("The predicted values (Nuée's Effects view, Predicted values): for each quantitative term, the value of %s the model predicts as its variable runs over 80 values of its range (within each category of the qualitative variables crossed with it, over its values in the category), the other quantitative variables at their mean over the model's observations (before their transformation), the qualitative variables in their reference category%s%s%s; the 95%% band of the linear predictor (±1.96 standard errors), brought back to the response scale by the inverse of the link. `predicted_lines`: each line, its term, its category, the variable's range and the value of each simple term on the grid (`S`; NA: the term itself, and the cross terms, which grid_columns() computes).",
-                             guillemets(pl$y$nom), if (mixte) ", the random effects at 0 (the population)" else "",
+                             y_predite(guillemets(pl$y$nom)), if (mixte) ", the random effects at 0 (the population)" else "",
                              effort_en, if (spatial) ", the spatial smooth at the mean point of the coordinates" else ""))),
       code_valeurs(vapply(pr$facteurs, function(fs) if (length(fs)) sprintf("c(%s)", paste0(fs, "L", collapse = ", ")) else "integer(0)", ""), "facteurs_grille <- list(", ")", ouvrir = ""),
       code_valeurs(vapply(pr$lignes, ligne_s, ""), "lignes_predites <- list(", ")", ouvrir = ""),
@@ -2289,7 +2291,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # (les valeurs prédites : un graphique par terme, une courbe et sa bande par catégorie)
   if (!is.null(pr)) graphiques <- c(graphiques, lapply(seq_along(pr$termes), function(k) {
     j <- match(pr$termes[k], pl$termes)
-    ylab_p <- sprintf(tx("%s, valeurs prédites", "Predicted %s"), pl$y$nom)
+    ylab_p <- sprintf(tx("%s, valeurs prédites", "Predicted %s"), y_predite(pl$y$nom))
     list(nom = sprintf("prediction-%d", k), terme = pr$noms[k], largeur = 6, hauteur = 4.5, code = c(
       sprintf("v <- valeurs_predites[[%d]]", k),
       "niveaux_v <- unique(v$niveau)",
