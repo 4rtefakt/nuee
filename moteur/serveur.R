@@ -71,6 +71,7 @@ etat$modeles <- list()
 etat$predictions <- list()  # dernière prédiction de chaque modèle (pour l'export Excel)
 etat$compteur <- 0
 etat$annulations <- list()  # par projet : les états précédents, pour « Annuler » (Ctrl+Z)
+etat$retablissements <- list()  # par projet : les états que « Annuler » a quittés, pour « Rétablir » (Ctrl+Y)
 etat$revisions <- list()  # par projet : le nombre de changements de ses données (resume_projet)
 etat$paires <- list()  # les tableaux de toutes les paires des tests appariés (memo_paires)
 etat$copies <- list()  # par projet : les copies de son fichier tel qu'il a été lu ou enregistré (copie_fichier_lu)
@@ -107,10 +108,14 @@ convertir_usp <- function(chemin) {
 # Garde l'état actuel d'un projet avant de le changer, pour pouvoir revenir en arrière
 # (20 changements au plus par projet). `fusion` : pour une fusion (fusionner_finir), les documents,
 # les figures et l'état du fichier que le projet fusionné a pris, qu'Annuler lui retire s'ils n'ont pas
-# changé depuis (annuler_demande).
-memoriser <- function(p, etiquette, fusion = NULL) {
-  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion))), etat$annulations[[p$id]] %||% list())
+# changé depuis (annuler_demande). `references` : les références des documents qu'un nom de variable
+# changé a suivies (renommer_variable_demande), qu'Annuler remet, même dans un document écrit depuis.
+# Un nouveau changement vide ce que Rétablir pouvait refaire.
+memoriser <- function(p, etiquette, fusion = NULL, references = NULL) {
+  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion), if (!is.null(references)) list(references = references))),
+            etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
+  etat$retablissements[[p$id]] <- NULL
 }
 # Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
 # une révision du projet : les vues qui gardent des calculs sur ses données les refont.
@@ -131,22 +136,56 @@ annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
-  ancien <- pile[[1]]$projet
+  ancien <- revenir_a(actuel, pile[[1]])
   etat$annulations[[q$projet]] <- pile[-1]
-  ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
-  # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
-  # ceux d'avant, s'ils n'ont pas changé depuis ; son fichier, changé par l'autre, se fusionne alors de
-  # nouveau. Ce qu'on a écrit ou enregistré depuis reste, comme après tout autre changement)
-  f <- pile[[1]]$fusion
-  if (is.null(f) || !identical(actuel$fichier_lu, f$fichier_lu)) ancien$fichier_lu <- actuel$fichier_lu
-  if (is.null(f) || !identical(actuel$documents, f$documents)) ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
-  if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
-  ancien$modifie <- TRUE
-  suivre_conditions_seance(actuel, ancien)
+  etat$retablissements[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], ancien)), etat$retablissements[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- ancien
   reviser(q$projet)
   ranger_copies(q$projet)
   list(projet = resume_projet(ancien), etiquette = pile[[1]]$etiquette)
+}
+
+# Rétablir (Ctrl+Y, Ctrl+Maj+Z) : le changement qu'Annuler a défait, refait tel qu'il était (ses données,
+# sa source et ses étapes comprises), et de nouveau annulable ; tout nouveau changement vide sa pile
+# (memoriser).
+retablir_demande <- function(q) {
+  pile <- etat$retablissements[[q$projet]]
+  if (!length(pile)) stop(traduire("Rien à rétablir", "Nothing to redo"))
+  actuel <- projet(q$projet)
+  apres <- revenir_a(actuel, pile[[1]])
+  etat$retablissements[[q$projet]] <- pile[-1]
+  etat$annulations[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], apres)), etat$annulations[[q$projet]] %||% list()), 20)
+  etat$projets[[q$projet]] <- apres
+  reviser(q$projet)
+  ranger_copies(q$projet)
+  list(projet = resume_projet(apres), etiquette = pile[[1]]$etiquette)
+}
+
+# Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
+# Annuler prend la plus récente des annulations, Rétablir celle des rétablissements.
+revenir_a <- function(actuel, e) {
+  ancien <- e$projet
+  ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
+  # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
+  # ceux d'avant, s'ils n'ont pas changé depuis ; son fichier, changé par l'autre, se fusionne alors de
+  # nouveau. Ce qu'on a écrit ou enregistré depuis reste, comme après tout autre changement ; rétablie,
+  # elle les reprend de même, s'ils sont encore ceux qu'Annuler a rendus)
+  f <- e$fusion
+  # (l'empreinte que fichier_change ajoute à l'état du fichier ne le change pas)
+  sans_empreinte <- function(x) x[setdiff(names(x), "sha256")]
+  if (is.null(f) || !identical(sans_empreinte(actuel$fichier_lu), sans_empreinte(f$fichier_lu))) ancien$fichier_lu <- actuel$fichier_lu
+  if (is.null(f) || !identical(actuel$documents, f$documents)) ancien$documents <- actuel$documents  # (les documents ne passent pas par l'annulation : ce qu'on y a écrit reste)
+  if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
+  ancien$modifie <- TRUE
+  suivre_conditions_seance(actuel, ancien)
+  ancien
+}
+
+# L'entrée de l'autre pile qui ramène à `actuel`, quitté pour l'entrée `e` : son étiquette et, pour une
+# fusion, les documents, les figures et l'état du fichier que ce retour a donnés au projet (`apres`).
+entree_inverse <- function(actuel, e, apres) {
+  c(list(etiquette = e$etiquette, projet = actuel),
+    if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)))
 }
 
 # Les modèles de la séance du projet `p` dont la condition d'observations était celle de leur
@@ -290,11 +329,12 @@ copie_fichier_lu <- function(chemin = NULL) {
 garder_copie <- function(id, copie) if (!is.null(copie)) etat$copies[[id]] <- c(etat$copies[[id]], copie)
 
 # Les copies d'un projet (copie_fichier_lu) que plus rien n'utilise, effacées : ni le projet, ni l'état
-# d'avant une fusion qu'Annuler peut lui rendre (les autres retours en arrière gardent le fichier tel
-# qu'il est su maintenant : annuler_demande), ni une fusion préparée. Une par enregistrement s'accumulerait.
+# d'avant une fusion qu'Annuler peut lui rendre, ou d'après elle, que Rétablir peut lui rendre (les autres
+# retours en arrière gardent le fichier tel qu'il est su maintenant : revenir_a), ni une fusion préparée.
+# Une par enregistrement s'accumulerait.
 ranger_copies <- function(id) {
   utilisees <- c(etat$projets[[id]]$fichier_lu$copie,
-                 unlist(lapply(Filter(function(e) !is.null(e$fusion), etat$annulations[[id]]), function(e) e$projet$fichier_lu$copie)),
+                 unlist(lapply(Filter(function(e) !is.null(e$fusion), c(etat$annulations[[id]], etat$retablissements[[id]])), function(e) e$projet$fichier_lu$copie)),
                  unlist(lapply(Filter(function(f) identical(f$projet, id), etat$fusions), function(f) f$copie_leur)))
   copies <- etat$copies[[id]]
   unlink(setdiff(copies, utilisees))
@@ -350,9 +390,11 @@ resume_projet <- function(p) {
     unite = as.character(v$unite %||% ""), description = as.character(v$description %||% "")))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
   pile <- etat$annulations[[p$id]]
+  refaire <- etat$retablissements[[p$id]]
   list(id = p$id, nom = p$nom, source = p$source %||% "", modifie = isTRUE(p$modifie), chemin = p$chemin %||% NULL,
        table = p$table %||% NULL, brut = isTRUE(p$brut),
-       annulable = if (length(pile)) pile[[1]]$etiquette, revision = etat$revisions[[p$id]] %||% 0,
+       annulable = if (length(pile)) pile[[1]]$etiquette, retablissable = if (length(refaire)) refaire[[1]]$etiquette,
+       revision = etat$revisions[[p$id]] %||% 0,
        chemin_enregistrement = p$chemin_enregistrement %||% (if (json) p$chemin),
        observations = list(uid = as.numeric(names(p$noms_obs)), nom = unname(p$noms_obs)),
        identifiants = identifiants_secondaires(p),
@@ -1357,6 +1399,7 @@ DEMANDES <- list(
     etat$fusions <- Filter(function(f) !identical(f$projet, q$projet), etat$fusions)
     unlink(etat$copies[[q$projet]])
     etat$copies[[q$projet]] <- NULL
+    etat$retablissements[[q$projet]] <- NULL
     list(ferme = q$projet)
   },
   # Retire un modèle calculé ; avec definition = TRUE, sa définition quitte aussi le projet
@@ -1969,6 +2012,8 @@ DEMANDES <- list(
   # L'interface réajuste ensuite les modèles. Un fichier de plusieurs tableaux sans q$table : `choisir`.
   mettre_a_jour = mettre_a_jour_demande,
   annuler = annuler_demande,
+  # Rétablir : le dernier changement annulé, refait ; `etiquette` comme pour Annuler
+  retablir = retablir_demande,
   # Les spectres d'un modèle (variables X quantitatives, dans leur ordre), avant et après leur
   # prétraitement : q$quoi, ceux que la vue dessine ("bruts" ou "pretraites" ; "noms" pour aucun,
   # seulement leurs variables ; sans lui, les deux). Arrondis à 6 chiffres significatifs : la vue ne

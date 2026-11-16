@@ -160,7 +160,10 @@ lancement suivant de les récupérer. Fermer cette question sans répondre garde
 la fois suivante ; seul « Ignorer » les efface.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
-jusqu'à 20 en arrière.
+jusqu'à 20 en arrière. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
+qu'Annuler a défait : une mise à jour des données avec sa source et ses étapes, les modèles
+ajustés à nouveau sur ses données. Les deux disent le changement qu'ils visent ; tout nouveau
+changement vide Rétablir.
 Notes : le résumé de chaque modèle a une zone de notes, enregistrée avec le projet et reprise
 dans le rapport ; un crayon le signale dans l'explorateur.
 Retirer un modèle (Modèle › Supprimer le modèle) demande confirmation. Sa définition reste
@@ -227,6 +230,7 @@ Menus et barre d'outils
 Fichier, Édition, Modèle, Graphiques, Prédiction, Fenêtre, Affichage, Aide. Raccourcis :
   Ctrl+O ouvrir            Ctrl+S enregistrer         Ctrl+E exporter les résultats
   Ctrl+V coller un tableau Ctrl+Z annuler             Ctrl+H chercher et remplacer
+  Ctrl+Y (ou Ctrl+Maj+Z) rétablir
   Ctrl+K rechercher une commande    Ctrl+J console R  Ctrl+C copier le tableau
   Ctrl+N nouveau modèle    Ctrl+M modifier le modèle  Ctrl+= / Ctrl+- composantes
   Échap  effacer la sélection    Ctrl+Suppr exclure la sélection et réajuster

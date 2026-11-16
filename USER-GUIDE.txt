@@ -144,7 +144,10 @@ also keeps a recovery copy of unsaved projects: if it stops without being closed
 power cut), it offers to recover them at the next start. Closing that question without an
 answer keeps the copies for next time; only "Ignore" deletes them.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
-variable, class, scores as variables, deleted definition...), up to 20 steps back.
+variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo
+(Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with
+its source and steps, the models fitted again on its data. Both menu items name the change they
+act on; any new change empties Redo.
 Notes: each model's summary has a notes area, saved with the project and included in the
 report; a pencil marks it in the explorer.
 Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
@@ -204,6 +207,7 @@ Menus and toolbar
 File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+O open              Ctrl+S save                Ctrl+E export the results
   Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+  Ctrl+Y (or Ctrl+Shift+Z) redo
   Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
   Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
   Esc    clear the selection       Ctrl+Del exclude the selection and refit

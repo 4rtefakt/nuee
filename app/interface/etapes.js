@@ -25,7 +25,7 @@ export function installerEtapes(app) {
     miseAJourDonnees: (pid) => dialogueMiseAJour(app, pid),
     verifierSource: (pid) => verifierSource(app, pid),
     avisDonnees: () => avisDonnees(app),
-    apresAnnulation: (pid, r) => apresAnnulation(app, pid, r),
+    apresAnnulation: (pid, r, retabli) => apresAnnulation(app, pid, r, retabli),
   });
   // (a file changed by another program while Nuée was behind it: seen when it comes back)
   if (!VUE_SEULE) window.addEventListener('focus', () => verifierSources(app));
@@ -480,19 +480,20 @@ function noterRemplacement(pid, r) {
   remplacements.get(pid).add(etiquette);
 }
 
-// One of them undone (app.js: annulerAction, `r` the engine's answer): the data, the source, the
-// steps and the models' definitions are back, but the session's fits are those of the changed
-// data; every model is fitted again, as the change did (its progress, Stop), and the status bar
-// says so.
-async function apresAnnulation(app, pid, r) {
+// One of them undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
+// retablirAction): the data, the source, the steps and the models' definitions are back, but the
+// session's fits are those of the other data; every model is fitted again, as the change did (its
+// progress, Stop), and the status bar says so.
+async function apresAnnulation(app, pid, r, retabli = false) {
   const faits = remplacements.get(pid);
   if (!faits || !faits.has(r.etiquette) || !app.projet(pid)) return;
   const modeles = modelesAReajuster(r.projet);
   if (!modeles.length) return;
-  const pr = progression(t('etapes_annulation_titre', { quoi: r.etiquette, nom: app.projet(pid).nom }));
+  const cle = retabli ? 'etapes_retablissement' : 'etapes_annulation';
+  const pr = progression(t(`${cle}_titre`, { quoi: r.etiquette, nom: app.projet(pid).nom }));
   let refaits = new Map();
   try { refaits = await reajusterTout(app, pid, pr, modeles); } finally { pr.fermer(); }
   const restes = modeles.filter((m) => !(refaits.get(m.numero) || {}).id);
-  app.statut(restes.length ? t('etapes_annulation_fini_sauf', { quoi: r.etiquette, n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
-    : t('etapes_annulation_fini', { quoi: r.etiquette, n: modeles.length }), restes.length > 0);
+  app.statut(restes.length ? t(`${cle}_fini_sauf`, { quoi: r.etiquette, n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
+    : t(`${cle}_fini`, { quoi: r.etiquette, n: modeles.length }), restes.length > 0);
 }

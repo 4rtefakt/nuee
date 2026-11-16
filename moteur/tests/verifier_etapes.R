@@ -11,7 +11,8 @@
 #     modèle mixte BACI celles de ses unités seulement), celles qu'ils avaient laissées de côté le
 #     restent, une condition et un jeu de test gardent les leurs ; les catégories d'avant et les
 #     nouvelles ; une variable calculée refaite ; une étape qui ne s'applique plus, sautée ;
-#     Ctrl+Z, la source et les étapes comprises ;
+#     Ctrl+Z, puis Ctrl+Y (Rétablir) et Ctrl+Z de nouveau, la source et les étapes comprises ; un
+#     nouveau changement qui vide Rétablir ;
 #   - une colonne qui manque : les étapes et les modèles qui en dépendent, nommés ;
 #   - une étape retirée, refusée sans le fichier source ;
 #   - le projet enregistré et rouvert (sa source et ses étapes telles quelles), puis son dossier
@@ -355,9 +356,23 @@ refait <- demande("ajuster", list(projet = id, numero = dp("Tous")$number))
 verifier("Tous réajusté sur les 44 observations", refait$N == 44)
 garde <- modele(m_garde_id, TRUE)
 verifier("un modèle de la séance garde ses résultats, rapporté aux catégories d'aujourd'hui", garde$modele$N == 40)
+apres_maj <- projet(id)
+verifier("rien à rétablir avant d'avoir annulé", is.null(resume_projet(apres_maj)$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = id))))
 e <- demande("annuler", list(projet = id))
 verifier("Ctrl+Z : la mise à jour annulée, la source et les étapes comprises", e$etiquette == "mise à jour des données" && length(projet(id)$observations) == 40 &&
            identical(projet(id)$source_donnees, avant$source_donnees) && identical(projet(id)$etapes, avant$etapes) && identical(projet(id)$models, avant$models))
+verifier("Rétablir est proposé, nommé comme Annuler l'était", identical(e$projet$retablissable, "mise à jour des données"))
+# (Rétablir : la mise à jour refaite telle qu'elle était, ses données, sa source et ses étapes, et de nouveau annulable)
+r <- demande("retablir", list(projet = id))
+pr <- projet(id)
+verifier("Ctrl+Y : la mise à jour refaite, ses données, sa source, ses étapes et l'empreinte de ses données ; de nouveau annulable, plus rien à rétablir",
+         identical(r$etiquette, "mise à jour des données") && length(pr$observations) == 44 && identical(pr$donnees, apres_maj$donnees) &&
+           identical(pr$variables, apres_maj$variables) && identical(pr$source_donnees, apres_maj$source_donnees) && identical(pr$etapes, apres_maj$etapes) &&
+           identical(pr$models, apres_maj$models) && isTRUE(donnees_conformes(pr)) && identical(r$projet$annulable, "mise à jour des données") &&
+           is.null(r$projet$retablissable) && isTRUE(pr$modifie))
+e <- demande("annuler", list(projet = id))
+verifier("Ctrl+Z de nouveau : les données, la source et les étapes d'avant", length(projet(id)$observations) == 40 && identical(projet(id)$etapes, avant$etapes) &&
+           identical(projet(id)$donnees, avant$donnees) && isTRUE(donnees_conformes(projet(id))))
 
 cat("Une étape qui ne s'applique plus, une colonne qui manque\n")
 df3 <- df2[df2$nom != "S2-2016", setdiff(names(df2), "x2")]
@@ -385,6 +400,18 @@ verifier("remplacer retiré : les -9999 revenus, 16 étapes, le même fichier so
            identical(p$source_donnees$chemin, normalizePath(source_csv, winslash = "/")) && grepl("^retrait de l'étape", r$projet$annulable))
 demande("annuler", list(projet = id))
 verifier("annulé : l'étape revenue", length(projet(id)$etapes) == 17 && !any(valeurs(projet(id), "comptage") == -9999, na.rm = TRUE))
+r <- demande("retablir", list(projet = id))
+verifier("rétabli : l'étape de nouveau retirée, les -9999 revenus, les étapes et les données d'accord",
+         grepl("^retrait de l'étape", r$etiquette) && length(projet(id)$etapes) == 16 && any(valeurs(projet(id), "comptage") == -9999, na.rm = TRUE) &&
+           isTRUE(donnees_conformes(projet(id))))
+demande("annuler", list(projet = id))
+# (un nouveau changement : plus rien à rétablir)
+avant_nouveau <- projet(id)
+demande("modifier_valeur", list(projet = id, observation = o("S1-2019"), variable = u("x1"), valeur = "3"))
+verifier("un nouveau changement vide Rétablir", is.null(resume_projet(projet(id))$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = id))))
+demande("annuler", list(projet = id))
+verifier("annulé : 17 étapes, l'étape du changement partie, les données d'avant", length(projet(id)$etapes) == 17 &&
+           identical(projet(id)$donnees, avant_nouveau$donnees) && isTRUE(donnees_conformes(projet(id))))
 cache <- paste0(source_csv, ".parti")
 invisible(file.rename(source_csv, cache))
 verifier("refusé sans le fichier source", grepl("introuvable", refus("retirer_etape", list(projet = id, n = 1))) &&

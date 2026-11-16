@@ -587,6 +587,15 @@ const app = {
     // (an update of the data or a step removed, undone: the models fitted again on the data back, etapes.js)
     if (app.apresAnnulation) await app.apresAnnulation(pid, r);
   },
+  // Edit › Redo (Ctrl+Y, Ctrl+Shift+Z): the change Undo took back, made again as it was (its data,
+  // source and steps); an update of the data redone fits the models again, as its undo did
+  async retablirAction(pid) {
+    const r = await occupe(() => demander('retablir', { projet: pid }));
+    projetChange(r.projet);
+    statut(t('retabli', { quoi: r.etiquette }));
+    if (app.verifierSource) app.verifierSource(pid);
+    if (app.apresAnnulation) await app.apresAnnulation(pid, r, true);
+  },
   async noterModele(id, note) {
     let r;
     try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')}${deuxPoints()}${e.message}`, true); return; }
@@ -2184,9 +2193,10 @@ document.addEventListener('keydown', (e) => {
   // (in the Data view, Ctrl+V pastes a block of cells from the cell chosen: panneaux.js, collerCellules)
   const cellules = combo === 'Ctrl+V' && !saisie && e.target.closest && e.target.closest('[data-coller-cellules]');
   if (cellules && cellules._collerCellules) { e.preventDefault(); cellules._collerCellules(); return; }
-  const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
+  const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
   if (saisie && !/^(Shift\+)?F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
-  const c = Object.values(C).find((x) => x.raccourci === combo);
+  // (a command may have a second shortcut: Redo, Ctrl+Y and Ctrl+Shift+Z)
+  const c = Object.values(C).find((x) => x.raccourci === combo || (x.autres || []).includes(combo));
   if (!c) return;
   if (c.actif && !c.actif()) return;
   e.preventDefault();

@@ -233,6 +233,22 @@ async function principal() {
       verifier(refus && apresRefus.revision === apres && !apresRefus.annulable,
         `un changement refusé ne compte ni révision ni retour en arrière (${refus} ; ${apresRefus.annulable})`);
     });
+    await etape('rétablir ce qu’Annuler a défait, vidé par un nouveau changement', async () => {
+      // (the edit of x1 undone above: Redo offers it, named; the refused change left it)
+      let r = await api('projet', { projet: p.id });
+      verifier(/x1/.test(r.retablissable || ''), `à rétablir : ${r.retablissable}`);
+      const avant = r.revision;
+      const re = await api('retablir', { projet: p.id });
+      r = re.projet;
+      const d = await api('donnees', { projet: p.id });
+      verifier(d.valeurs[d.variables.indexOf('x1')][0] === 12.5 && /x1/.test(re.etiquette) && r.annulable && !r.retablissable && r.revision === avant + 1,
+        `rétabli : ${re.etiquette}, révision ${r.revision}`);
+      r = (await api('annuler', { projet: p.id })).projet;
+      verifier(r.retablissable && r.revision === avant + 2, 'de nouveau à rétablir');
+      r = await api('variable_calculee', { projet: p.id, nom: 'x1x2', formule: 'x1 * x2' });
+      verifier(!r.retablissable, `un nouveau changement vide Rétablir (${r.retablissable})`);
+      await api('annuler', { projet: p.id });
+    });
     await etape('indices de diversité en Nouvelle variable (richesse, shannon, simpson, pielou)', async () => {
       // three surveys of four species, the site before them: an ordinary one (10, 5, 0, 1), an empty
       // one, a missing value; the columns by a range in the table's order, a list, or both

@@ -61,6 +61,8 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open map radar layers signpost smartphone
   layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert user-round
   log-in log-out user-plus key-round circle-user-round monitor`.split(/\s+/);
+// (Redo; a column treated as numbers; Stop, in the status bar)
+ICONES.push('redo-2', 'hash', 'circle-stop');
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');
