@@ -25,6 +25,7 @@ export function installerEtapes(app) {
     miseAJourDonnees: (pid) => dialogueMiseAJour(app, pid),
     verifierSource: (pid) => verifierSource(app, pid),
     avisDonnees: () => avisDonnees(app),
+    apresAnnulation: (pid, r) => apresAnnulation(app, pid, r),
   });
   // (a file changed by another program while Nuée was behind it: seen when it comes back)
   if (!VUE_SEULE) window.addEventListener('focus', () => verifierSources(app));
@@ -437,6 +438,7 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     pr.montrer(t(textes.donnees), null, null, { arretable: false });
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
+    noterRemplacement(pid, r);
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
     const refaits = await reajusterTout(app, pid, pr, modeles);
@@ -461,4 +463,33 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     }
     app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true);
   }
+}
+
+// ------------------------------------------------------------ undone
+
+// The label of each change of the data this window made from the source (an update, a step
+// removed), as Undo names it, by project.
+const remplacements = new Map();
+function noterRemplacement(pid, r) {
+  const etiquette = r && r.projet && r.projet.annulable;
+  if (!etiquette) return;
+  if (!remplacements.has(pid)) remplacements.set(pid, new Set());
+  remplacements.get(pid).add(etiquette);
+}
+
+// One of them undone (app.js: annulerAction, `r` the engine's answer): the data, the source, the
+// steps and the models' definitions are back, but the session's fits are those of the changed
+// data; every model is fitted again, as the change did (its progress, Stop), and the status bar
+// says so.
+async function apresAnnulation(app, pid, r) {
+  const faits = remplacements.get(pid);
+  if (!faits || !faits.has(r.etiquette) || !app.projet(pid)) return;
+  const modeles = modelesAReajuster(r.projet);
+  if (!modeles.length) return;
+  const pr = progression(t('etapes_annulation_titre', { quoi: r.etiquette, nom: app.projet(pid).nom }));
+  let refaits = new Map();
+  try { refaits = await reajusterTout(app, pid, pr, modeles); } finally { pr.fermer(); }
+  const restes = modeles.filter((m) => !(refaits.get(m.numero) || {}).id);
+  app.statut(restes.length ? t('etapes_annulation_fini_sauf', { quoi: r.etiquette, n: modeles.length - restes.length, total: modeles.length, noms: noms(restes.map((m) => m.nom)) })
+    : t('etapes_annulation_fini', { quoi: r.etiquette, n: modeles.length }), restes.length > 0);
 }

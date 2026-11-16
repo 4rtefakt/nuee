@@ -543,6 +543,8 @@ const app = {
     projetChange(r.projet);
     statut(t('annule', { quoi: r.etiquette }));
     if (app.verifierSource) app.verifierSource(pid);  // (an update undone: the source read before, which may have changed since)
+    // (an update of the data or a step removed, undone: the models fitted again on the data back, etapes.js)
+    if (app.apresAnnulation) await app.apresAnnulation(pid, r);
   },
   async noterModele(id, note) {
     let r;

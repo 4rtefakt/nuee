@@ -2116,7 +2116,7 @@ modèle dont la catégorie de référence n'a plus d'observation, et comment le 
 (sans colonne qui nomme les observations, elles se retrouvent par leur numéro de ligne). Un
 modèle qui laisse de côté des observations demande s'il prend les nouvelles (coché). Mettre à
 jour remplace les données en un seul changement (Ctrl+Z l'annule, la source et les étapes
-comprises) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
+comprises, et ajuste à nouveau chaque modèle sur les données d'avant) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
 projet est ajusté à nouveau, avec une barre de progression et Arrêter, et Ce qui a changé
 compare leurs résultats clés avant et après. Il montre aussi ce que la mise à jour a fait aux
 données, et les valeurs citées dans les documents qui ont changé, chacune avec sa phrase (un
