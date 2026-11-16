@@ -74,8 +74,9 @@ async function principal() {
   }
   fs.rmSync(copies, { recursive: true, force: true });
   // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
-  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language
-  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs']) {
+  // the figures' layout and their PNG and TIFF files; the interface's numbers in each language; the
+  // words and numbers of Versions and What changed
+  for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_nombres.mjs', 'essai_versions_texte.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
@@ -380,6 +381,40 @@ async function principal() {
       const s2 = await api('ouvrir', { chemin: copie2, secours: true, origine: f, nom: 'repris 2', lu: c2.lu });
       const r = await fetch(`http://127.0.0.1:${port}/api/enregistrer`, { method: 'POST', headers: { Cookie: cookie }, body: JSON.stringify({ projet: s2.id, chemin: f }) });
       verifier(r.status === 409 && JSON.parse(fs.readFileSync(f, 'utf8')).source === 'collègue', `HTTP ${r.status}, écrasé sans demander`);
+    });
+    await etape('une ancienne version (versions.js) : en lecture seule sous son nom, jamais enregistrée sur son fichier ; un projet caché', async () => {
+      // (the main process writes an old version's project file to a temporary file: here, a saved copy)
+      const f = path.join(dossier, 'ancienne-version.nuee');
+      await api('enregistrer', { projet: p.id, chemin: f });
+      const lecture = { source: path.join(dossier, 'projet.nuee'), oid: 'a1b2c3', date: '2026-11-12T14:32:00Z' };
+      const nom = 'essai — version du 12 nov. 2026, 14:32';
+      const v = await api('ouvrir', { chemin: f, nom, lecture_seule: lecture });
+      verifier(v.nom === nom && v.lecture_seule && v.lecture_seule.oid === 'a1b2c3' && v.lecture_seule.source === lecture.source && v.modifie === false,
+        `ouverte : ${JSON.stringify({ nom: v.nom, lecture_seule: v.lecture_seule, modifie: v.modifie })}`);
+      let refus = '';
+      try { await api('enregistrer', { projet: v.id, chemin: f }); } catch (e) { refus = e.message; }
+      verifier(/lecture seule/.test(refus), `enregistrée sur son fichier : « ${refus} »`);
+      // saved elsewhere: a copy under the same name, read-only no more; no file says it is a version
+      const copie = path.join(dossier, 'copie-version.nuee');
+      await api('enregistrer', { projet: v.id, chemin: copie });
+      const c = await api('projet', { projet: v.id });
+      const lu = JSON.parse(fs.readFileSync(copie, 'utf8'));
+      verifier(!c.lecture_seule && c.chemin_enregistrement === copie && c.nom === nom && !('lecture_seule' in lu) && !('cache' in lu),
+        `copie : ${JSON.stringify({ lecture_seule: c.lecture_seule, chemin: c.chemin_enregistrement, nom: c.nom })}`);
+      // a received file that says it is an old version of another project, or hidden, isn't
+      fs.writeFileSync(copie, JSON.stringify({ ...lu, lecture_seule: lecture, cache: true }));
+      const r = await api('ouvrir', { chemin: copie });
+      verifier(!r.lecture_seule && (await api('etat')).projets.some((x) => x.id === r.id), `relue du fichier : ${JSON.stringify(r.lecture_seule)}`);
+      // its recovery copy reopened (the index keeps what it was): still read-only
+      const s = await api('ouvrir', { chemin: f, secours: true, origine: f, nom, lecture_seule: lecture });
+      verifier(s.lecture_seule && s.lecture_seule.oid === 'a1b2c3' && s.modifie === true && s.nom === nom && s.chemin_enregistrement === f, 'copie de secours d’une version');
+      // hidden, the old version compared: out of the session's state, its models too
+      const h = await api('ouvrir', { chemin: f, cache: true });
+      const m = await api('ajuster', { projet: h.id, numero: pls.numero });
+      const e = await api('etat');
+      verifier(!e.projets.some((x) => x.id === h.id) && !e.modeles.some((x) => x.id === m.id) && e.projets.some((x) => x.id === v.id)
+        && (await api('resultats_cles', { modele: m.id })).entrees.length > 0, `cachée : ${e.projets.map((x) => x.id).join(', ')}`);
+      for (const x of [v, r, s, h]) await api('fermer_projet', { projet: x.id });
     });
     await etape('jeu de test : choisi par Kennard–Stone, prédit après l’ajustement', async () => {
       const t = await api('jeu_test', { projet: p.id, x: [uid.x1, uid.x2, uid.x3], methode: 'kennard_stone', part: 0.25 });

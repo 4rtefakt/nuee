@@ -26,8 +26,9 @@ lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,
                           simplifyMatrix = TRUE)
   # L'état de la séance (où Enregistrer écrit, changements...) ne vient jamais du fichier : un
-  # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert.
-  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte")] <- NULL
+  # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert, ni se dire
+  # l'ancienne version d'un autre projet, que Restaurer écraserait (lecture_seule : serveur.R, ouvrir).
+  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte", "lecture_seule", "cache")] <- NULL
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),
