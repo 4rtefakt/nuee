@@ -234,7 +234,10 @@ function htmlCitation(tok, citations) {
   return `<span class="cite${inconnue ? ' erreur' : ''}" title="${echapper(citations.titres[tok.meta.ic])}">${echapper(citations.textes[tok.meta.ic])}</span>`;
 }
 
-const htmlSegment = (x) => (x.lien ? `<a href="${echapper(x.lien)}">${echapper(x.texte)}</a>` : x.italique ? `<i>${echapper(x.texte)}</i>` : echapper(x.texte));
+// (a link only to the web, mail or a place in the document: whatever markdown-it lets through, nothing
+// else, such as javascript:, reaches a window that can write files)
+const lienSur = (u) => /^(https?:|mailto:|#)/i.test(String(u || '').trim());
+const htmlSegment = (x) => (x.lien && lienSur(x.lien) ? `<a href="${echapper(x.lien)}">${echapper(x.texte)}</a>` : x.italique ? `<i>${echapper(x.texte)}</i>` : echapper(x.texte));
 function htmlBibliographie(c) {
   if (!c || !c.liste.length) return '';
   return `<div class="bibliographie">${c.liste.map((r) => `<p class="reference" id="ref-${echapper(r.cle)}">${
@@ -251,7 +254,7 @@ function htmlReference(tok, r, libelles) {
   const legende = (lib) => `<b>${echapper(lib)} ${r.numero}.</b>${r.legende ? ` ${echapper(r.legende)}` : ''}`;
   switch (r.genre) {
     case 'figure':
-      return `<figure class="ref-figure"${id} title="${brut}"><img src="${r.image}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
+      return `<figure class="ref-figure"${id} title="${brut}"><img src="${/^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(String(r.image)) ? r.image : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
     case 'tableau':
       return `<div class="ref-tableau"${id} title="${brut}"><p class="legende">${legende(libelles.tableau)}</p>${r.blocs.map(htmlBloc).join('')}</div>`;
     case 'texte':

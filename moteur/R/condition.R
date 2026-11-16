@@ -14,8 +14,8 @@
 # reçu aussi), une condition ne doit pas pouvoir exécuter autre chose qu'elle-même : avant d'être
 # évaluée, elle est lue (lire_condition), et n'y sont acceptés que les noms des variables et des
 # identifiants du projet, des nombres, du texte et les fonctions de FONCTIONS_CONDITION (formule.R
-# lit de même les formules des régressions sans les exécuter). Une formule de Nouvelle variable,
-# tapée et calculée une fois, n'est pas gardée : elle n'a pas cette limite.
+# lit de même les formules des régressions sans les exécuter ; variables.R : lire_formule_variable, celles
+# de Nouvelle variable, gardées en étapes des données et refaites par Mettre à jour les données).
 
 # Les fonctions qu'une condition peut appeler : les opérateurs, des fonctions de R qui ne lisent ni
 # n'écrivent rien d'autre que leurs arguments, et celles des formules de Nouvelle variable

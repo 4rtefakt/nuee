@@ -210,7 +210,7 @@ verifier("l'empreinte : le SHA-256 du texte canonique (« nuee plugin 1 », chaq
          startsWith(canon, "nuee plugin 1\noccupancy.R\n") && grepl("\nplugin.json\n[0-9]+\n\\{", canon) &&
            identical(g_occ$empreinte, if (is.null(sha)) sha256_r(charToRaw(canon)) else unname(as.character(sha(bytes = charToRaw(canon))))) &&
            identical(g_occ$empreinte, sha256_r(charToRaw(canon))))
-crlf <- lapply(f_occ, function(f) list(chemin = f$chemin, texte = gsub("\n", "\r\n", f$texte)))
+crlf <- lapply(f_occ, function(f) list(chemin = f$chemin, texte = gsub("\r?\n", "\r\n", f$texte)))  # (une copie Windows en est déjà)
 autre_ordre <- rev(f_occ)
 change <- f_occ
 change[[2]]$texte <- sub("reltol = 1e-12", "reltol = 1e-10", change[[2]]$texte)

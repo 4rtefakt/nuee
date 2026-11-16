@@ -56,6 +56,9 @@ module.exports = {
     const familles = await n.attendre(`(() => { const s = __n.tous('select', __n.boite()).find((x) => [...x.options].some((o) => o.value === 'PCA'));
       return s && [...s.querySelectorAll('optgroup')].map((g) => ({ libelle: g.label, types: [...g.querySelectorAll('option')].map((o) => o.value) })); })()`);
     const attendus = await n.evaluer("['multivariees', 'regressions', 'communautes', 'classement', 'suivi', 'autres'].map((k) => __n.t('types_' + k))");
+    // (the plugins' own family, when a scenario before this one installed some: not this check's)
+    const greffons = await n.t('greffons_menu');
+    familles.splice(0, familles.length, ...familles.filter((f) => f.libelle !== greffons));
     const tous = familles.flatMap((f) => f.types);
     verifier('typesParFamille', JSON.stringify(familles.map((f) => f.libelle)) === JSON.stringify(attendus)
       && familles[0].types.join() === 'PCA,PLS,PLS-DA,OPLS,OPLS-DA,CLASSES' && familles[1].types.join() === 'LM,LMM,GLM,GAM'

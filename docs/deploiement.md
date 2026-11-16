@@ -77,7 +77,7 @@ wins) or `HKCU\SOFTWARE\Policies\Nuee` (one user), in the registry's 64-bit view
 | Value | Set to 1 |
 |---|---|
 | `DisableUpdateCheck` | No update check and no one-click update: the update items disappear from *Help* ([Updates](#updates)) |
-| `DisableCustomCode` | R-code models are turned off (from 1.1): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)). Plugins too, except your organisation's ([Plugins](#plugins)): users can't install any, and only those of `PluginsFolder` run |
+| `DisableCustomCode` | R-code models are turned off (from 1.1): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)). Plugins too, except your organisation's ([Plugins](#plugins)): users can't install any, and only those of `PluginsFolder` run. Not covered: the R console, where users type R themselves, and *New variable* formulas, which are checked expressions anyway ([Opening files from elsewhere](#opening-files-from-elsewhere)) |
 
 ```
 reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableCustomCode /t REG_DWORD /d 1 /f /reg:64
@@ -395,8 +395,13 @@ Opening a file never runs code from it:
 - **R files (`.rds`, `.RData`):** must hold tables; anything else is refused.
 - **Spectra and text tables:** read with checks on their size and structure.
 
-R code runs only when a user writes it or approves it: a formula in *Edit › New variable*, the R
-console, or the code of an R-code model typed in *New model* and fitted. A project opened with
+R code runs only when a user writes it or approves it: the R console, or the code of an R-code
+model typed in *New model* and fitted. A formula of *Edit › New variable* isn't free R: it is kept
+in the project and replayed when its data are updated, so, like a model's condition, it is read
+before it is evaluated, and only the project's variables, numbers, text and calculation functions
+(arithmetic, text, dates, distributions, Nuée's group, lag and diversity functions) are
+accepted. Nothing in one can read or write a file, start a program or reach the rest of the R
+session, whoever wrote it. A project opened with
 R code written elsewhere (a colleague's, from a shared folder, a version from GitHub or GitLab)
 doesn't run it: its models stay not fitted, under a bar that offers *Show the code* and *Run it*.
 *Run it* approves that code: Nuée keeps its SHA-256 fingerprint in the user's settings, and code

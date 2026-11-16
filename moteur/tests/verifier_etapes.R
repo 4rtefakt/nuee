@@ -284,6 +284,22 @@ unlink(etude, recursive = TRUE)
 a3 <- demande("mettre_a_jour", list(projet = r3$id, apercu = TRUE))
 verifier("le dossier d'origine parti : la mise à jour lit les fichiers déplacés", all(statuts(a3) == "ok") && a3$observations$cellules == 0 &&
            identical(a3$fichier$chemin, e3$source$trouve))
+# (le projet d'un autre, sa formule de Nouvelle variable changée pour exécuter autre chose qu'elle :
+# l'aperçu de la mise à jour et le retrait d'une étape la lisent avant de l'évaluer, et la refusent ;
+# rien ne s'exécute : variables.R, lire_formule_variable)
+f_piege <- file.path(ailleurs, "etude", "piege.nuee")
+demande("enregistrer", list(projet = r3$id, chemin = f_piege))
+texte_piege <- readChar(f_piege, file.size(f_piege), useBytes = TRUE)
+# (que des noms connus : seule la lecture de la formule l'arrête, pas les colonnes qu'elle nomme)
+texte_piege <- gsub("x1 * x2", "{ assign('TEMOIN_NUEE', TRUE, envir = globalenv()); x1 * x2 }", texte_piege, fixed = TRUE)
+writeBin(charToRaw(texte_piege), f_piege)
+rp <- demande("ouvrir", list(chemin = f_piege))
+ap <- demande("mettre_a_jour", list(projet = rp$id, apercu = TRUE))
+refus_piege <- vapply(ap$etapes, function(e) grepl("n'est pas permis|isn't allowed", e$raison %||% ""), TRUE)
+ar_piege <- tryCatch(demande("retirer_etape", list(projet = rp$id, n = 1, apercu = TRUE)), error = function(e) e)
+verifier("une formule changée dans le fichier pour exécuter autre chose : refusée à l'aperçu de la mise à jour (son étape dit pourquoi) et au retrait d'une étape, sans rien exécuter",
+         sum(refus_piege) == 1 && all(statuts(ap)[refus_piege] != "ok") && !exists("TEMOIN_NUEE"))
+demande("fermer_projet", list(projet = rp$id))
 demande("fermer_projet", list(projet = r2$id))
 id <- r3$id
 etude <- file.path(ailleurs, "etude")

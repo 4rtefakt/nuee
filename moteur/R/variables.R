@@ -405,12 +405,13 @@ variable_calculee <- function(projet, nom, formule) {
   if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
   if (nom %in% projet$noms_var) stop(sprintf(traduire("Une variable s'appelle déjà « %s »", "A variable is already called “%s”"), nom))
   obs <- as.numeric(rownames(projet$donnees))
+  e <- lire_formule_variable(projet, formule)  # (lue avant d'être évaluée : rien d'autre qu'elle ne s'exécute)
   env <- environnement_formule(projet)
   # (l'ordre des colonnes du tableau, celui de la vue Données, pour les plages des indices de
   # diversité : shannon(Ablette:Vandoise))
   attr(env, "colonnes") <- vapply(Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables),
                                   function(v) as.character(v$ids[1]), "")
-  r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
+  r <- tryCatch(eval(e, envir = env), error = function(e) {
     m <- conditionMessage(e)
     absent <- regmatches(m, regexec("^obje?c?t '(.*)' (not found|introuvable)", m))[[1]]
     stop(if (length(absent)) variable_introuvable(absent[2]) else m, call. = FALSE)
@@ -431,6 +432,93 @@ variable_calculee <- function(projet, nom, formule) {
   projet$variables[[k]]$formula <- paste(as.character(formule), collapse = "\n")
   projet$variables[[k]]$origine <- list(type = "formule")
   projet
+}
+
+# Une formule de Nouvelle variable est gardée dans le projet (sa variable, son étape des données) et
+# refaite par Mettre à jour les données, le retrait d'une étape ou une fusion, sur le projet d'un autre
+# aussi : comme une condition (condition.R), elle est lue avant d'être évaluée, et n'y sont acceptés que
+# les noms des variables et des identifiants du projet, des nombres, du texte et les fonctions de
+# FONCTIONS_FORMULE, qui ne lisent ni n'écrivent rien d'autre que leurs arguments (ni fichier, ni
+# programme, ni le reste de la séance de R) ; ni seq() ni rep(), qui pourraient bâtir un objet
+# démesuré à chaque mise à jour. Le reste de R se tape dans la console R.
+FONCTIONS_FORMULE <- unique(c(FONCTIONS_CONDITION,
+  "[", "[[", "factor", "as.factor", "as.integer", "as.double", "as.logical", "levels", "nlevels", "droplevels", "relevel",
+  "is.finite", "is.nan", "is.element", "match", "cut", "findInterval", "rev", "cumsum", "cumprod", "cummax", "cummin",
+  "diff", "rank", "scale", "sd", "var", "length", "seq_along", "gsub", "sub", "grepl", "regexpr",
+  "format", "formatC", "sprintf",
+  "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "expm1", "sign", "any", "all", "prod",
+  "weighted.mean", "rowSums", "rowMeans", "cbind", "choose", "factorial", "gamma", "lgamma", "beta", "lbeta",
+  "qnorm", "pnorm", "dnorm", "plogis", "qlogis", "dbinom", "pbinom", "qbinom", "dpois", "ppois", "qpois",
+  "pt", "qt", "pchisq", "qchisq", "pf", "qf", "as.Date", "months", "weekdays", "julian", "difftime", "ISOdate",
+  "switch", "isTRUE", "isFALSE", "richesse", "richness", "shannon", "simpson", "pielou"))
+# (les indices de diversité lisent leurs arguments sans les évaluer : des colonnes, ou des plages a:b)
+FONCTIONS_DIVERSITE <- c("richesse", "richness", "shannon", "simpson", "pielou")
+# (ni T ni F : une colonne T renommée serait lue TRUE sans rien dire ; TRUE et FALSE s'écrivent en entier)
+CONSTANTES_FORMULE <- c(setdiff(CONSTANTES_CONDITION, c("T", "F")), "LETTERS", "letters", "month.abb", "month.name")
+
+# Une formule de Nouvelle variable lue sans être exécutée : l'expression R, après avoir vérifié qu'elle
+# n'appelle que des fonctions de FONCTIONS_FORMULE, sur des noms de variables ou d'identifiants du
+# projet, des nombres et du texte. Sinon, une erreur qui dit ce qui ne va pas.
+lire_formule_variable <- function(projet, texte) {
+  err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
+  texte <- trimws(paste(as.character(unlist(texte)), collapse = "\n"))
+  if (!nzchar(texte)) err("Écrire une formule.", "Write a formula.")
+  if (nchar(texte) > 20000) err("Cette formule est trop longue.", "This formula is too long.")
+  e <- tryCatch(parse(text = texte, keep.source = FALSE, encoding = "UTF-8"),
+                error = function(x) err("Formule illisible : %s", "Unreadable formula: %s", conditionMessage(x)))
+  if (length(e) != 1) err("Une formule est une seule expression, sans « ; ».", "A formula is a single expression, without \";\".")
+  n <- noms_condition(projet)
+  noms <- c(names(n$variables), n$ids)
+  nom_permis <- function(x) {
+    nom <- as.character(x)
+    if (!nom %in% noms && !nom %in% CONSTANTES_FORMULE) stop(variable_introuvable(nom), call. = FALSE)
+  }
+  voir <- function(x) {
+    if (is.call(x)) {
+      f <- x[[1]]
+      if (!is.name(f) || !as.character(f) %in% FONCTIONS_FORMULE) {
+        quoi <- if (!is.name(f)) paste(deparse(f, width.cutoff = 500L), collapse = " ")
+                else if (identical(make.names(as.character(f)), as.character(f))) paste0(as.character(f), "()") else as.character(f)
+        err("« %s » n'est pas permis dans une formule de Nouvelle variable : des calculs (+, log10(), ifelse()…), du texte (paste(), substr()…), des dates (as.Date()…), et les fonctions de groupe, de décalage et de diversité de Nuée. Le reste de R se tape dans la console R (Affichage › Console R).",
+            "\"%s\" isn't allowed in a New variable formula: arithmetic (+, log10(), ifelse()…), text (paste(), substr()…), dates (as.Date()…), and Nuée's group, lag and diversity functions. For the rest of R, use the R console (View › R console).",
+            quoi)
+      }
+      arguments <- as.list(x)[-1]
+      if (as.character(f) %in% FONCTIONS_DIVERSITE) {
+        # (des colonnes, ou des plages de colonnes a:b, lues sans être évaluées)
+        for (a in arguments) {
+          if (is.name(a)) nom_permis(a)
+          else if (is.call(a) && identical(a[[1]], as.name(":")) && length(a) == 3 && is.name(a[[2]]) && is.name(a[[3]])) { nom_permis(a[[2]]); nom_permis(a[[3]]) }
+          else err("Un indice de diversité prend des colonnes, ou des plages de colonnes (Ablette:Vandoise).",
+                   "A diversity index takes columns, or ranges of columns (Ablette:Vandoise).")
+        }
+        return(invisible())
+      }
+      if (identical(as.character(f), ":")) {
+        bornes <- lapply(arguments, litteral_numerique)
+        if (length(arguments) != 2 || any(vapply(bornes, is.null, TRUE))) {
+          err("Dans une formule, « : » ne va qu'entre deux nombres (1:3), ou entre deux colonnes dans un indice de diversité.",
+              "In a formula, \":\" only goes between two numbers (1:3), or between two columns in a diversity index.")
+        }
+        if (abs(bornes[[2]] - bornes[[1]]) + 1 > MAX_PLAGE_CONDITION) {
+          err("Cette plage « : » est trop longue (plus de %s valeurs).", "This \":\" range is too long (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
+        }
+      }
+      for (i in seq_along(arguments)) {
+        if (identical(arguments[[i]], quote(expr = ))) {
+          if (as.character(f) %in% c("[", "[[")) next  # (x[, 1] : un indice vide)
+          err("Formule incomplète : il y manque un argument.", "Incomplete formula: an argument is missing.")
+        }
+        voir(arguments[[i]])
+      }
+    } else if (is.name(x)) {
+      nom_permis(x)
+    } else if (!is.null(x) && !is.atomic(x)) {
+      err("« %s » n'a pas sa place dans une formule.", "\"%s\" has no place in a formula.", paste(deparse(x, width.cutoff = 500L), collapse = " "))
+    }
+  }
+  voir(e[[1]])
+  e[[1]]
 }
 
 # L'environnement où se calcule une formule de Nouvelle variable (variable_calculee), et une
