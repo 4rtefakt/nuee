@@ -780,7 +780,6 @@ const app = {
   async resumer(pid, q) {
     const res = await occupe(() => demander('resumer_groupes', { projet: pid, ...q }));
     await apresOuverture(res);
-    app.ouvrirVue('donnees', null, null, res.id);
     statut(res.resume.phrase);
   },
   async modifierValeur(pid, observation, variable, valeur) {
@@ -1092,6 +1091,9 @@ async function apresOuverture(res, session = null) {
   majEtat();
   document.title = `${t('titre')} — ${res.nom}`;
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
+  // a table (a project without models): its data open, in front, so that the menus act on it
+  // (New model, Which analysis?, Save) rather than on the model shown before
+  if (dock && ![].concat(res.modeles || []).length) app.ouvrirVue('donnees', null, null, res.id);
 }
 
 // ------------------------------------------------------------ recovery copies (desktop app)
