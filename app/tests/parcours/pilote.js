@@ -77,6 +77,9 @@ const SUBSTITUTS = `(() => {
     E.appels.push({ dialogue: 'ouvrir', plusieurs: (o.properties || []).includes('multiSelections'), reponse: r === undefined ? null : r });
     return r === undefined || r === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [].concat(r) };
   };
+  // an error box (the R engine couldn't start...) written to the output instead of shown: it
+  // would wait for a click that never comes, and the run would only time out, saying nothing
+  dialog.showErrorBox = (titre, contenu) => { E.appels.push({ dialogue: 'erreur', titre, contenu }); console.error('[error box] ' + titre + ': ' + contenu); };
   dialog.showSaveDialog = async (a, b) => {
     const o = sans(a, b) || {};
     const r = E.enregistrer.shift();
