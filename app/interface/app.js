@@ -1267,6 +1267,9 @@ function apresExport(r) {
 }
 
 async function apresOuverture(res, session = null) {
+  // (the explorer follows: the other projects' fitted models folded, a line each without their views,
+  // and the project opened brought into view, explorateur.js)
+  for (const m of Object.values(etat.modeles)) if (m.projet !== res.id) etat.replies.add(`${m.projet}/m/${m.id}`);
   projetRecu(res);
   etat.noeud = res.id;
   diffuser('modeles');

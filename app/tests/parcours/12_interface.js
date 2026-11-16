@@ -63,6 +63,14 @@ module.exports = {
     await n.menu('m_fichier', 'ouvrir');
     await n.attendre(n.ligneProjet('skylark_counts.csv'));
     const tendance = await n.nouveauModele({ type: 'LM', y: ['skylarks'], sans: ['site', 'habitat'] });
+    // the explorer follows the work: the example's fitted models folded, the new model's line in view
+    const ids = Object.fromEntries((await n.etat()).projets.map((p) => [p.nom, p.id]));
+    const arbre = await n.attendre(`(() => { const c = document.querySelector('.panneau.explorateur').getBoundingClientRect();
+      const ligne = document.querySelector('[data-cle="${ids['skylark_counts.csv']}/m/${tendance.id}"]'); if (!ligne) return null;
+      const r = ligne.getBoundingClientRect();
+      const plies = [...document.querySelectorAll('.arbre .noeud.n3.calcule')].filter((l) => l.dataset.cle.startsWith('${ids['orchards.json']}/m/')).map((l) => l.getAttribute('aria-expanded'));
+      return { visible: r.top >= c.top - 1 && r.bottom <= c.bottom + 1, plies }; })()`);
+    verifier('explorateurSuitLeTravail', arbre.visible && arbre.plies.length === 2 && arbre.plies.every((x) => x === 'false'), arbre);
     const onglets = await n.attendre(`(() => { const o = __n.tous('.dv-tab').map((e) => __n.norm(e.textContent));
       return o.includes('orchards · M1 · PCA') && o.includes('skylark_counts · M1 · LM') && o.includes('orchards · M5 · LM') ? o : null; })()`);
     verifier('ongletsAvecProjet', tendance.nom === 'M1' && !!onglets, onglets);

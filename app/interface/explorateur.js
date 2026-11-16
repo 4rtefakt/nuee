@@ -223,6 +223,18 @@ export function rendreExplorateur(conteneur, app) {
   const arret = cible || parCle(actif) || lignes[0];
   if (arret) arret.tabIndex = 0;
   if (cible) cible.focus({ preventScroll: true });
+  // the node chosen comes into view when it changes (a project opened, a model fitted), at the top
+  // with what it holds below it, or its nearest shown ancestor when it is folded; the explorer
+  // otherwise stays where it was scrolled
+  if (actif !== conteneur._actifMontre && conteneur.clientHeight) {
+    conteneur._actifMontre = actif;
+    let montre = null;
+    for (let c = actif; c && !montre; c = c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : null) montre = parCle(c);
+    const r = montre && montre.getBoundingClientRect();
+    const cadre = conteneur.getBoundingClientRect();
+    // (the explorer scrolled, not the panels around it: scrollIntoView would move them too)
+    if (montre && (r.top < cadre.top || r.bottom > cadre.bottom)) conteneur.scrollTop += r.top - cadre.top;
+  }
   racine.querySelectorAll('.badge.alerte').forEach((b) => { b.setAttribute('aria-hidden', 'true'); b.after(el('span', { class: 'lecteur-seul' }, ` (${t('modifie')})`)); });
 }
 
