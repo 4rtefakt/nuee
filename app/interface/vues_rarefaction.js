@@ -55,6 +55,9 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
   const groupes = [...proj.variables.filter((v) => v.qualitative).map((v) => ({ valeur: String(v.uid), libelle: v.nom })), ...ids];
   loc.mode ??= 'rarefaction';
   if (loc.groupe && !groupes.some((g) => g.valeur === loc.groupe)) loc.groupe = '';
+  // (opened without species, from the Plots menu: the range the chooser shows, from the table's first
+  // quantitative variable to its last, computed at once rather than waiting for "Take the range")
+  if (loc.especes === undefined) loc.especes = proj.variables.filter((v) => !v.qualitative).map((v) => v.uid);
   // (species chosen that are no longer quantitative variables of the project, columns added then
   // undone by Ctrl+Z: left out, rather than a chooser with none of them to show)
   loc.especes = liste(loc.especes).map(Number).filter((u) => proj.variables.some((v) => v.uid === u && !v.qualitative));
