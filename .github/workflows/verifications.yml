@@ -112,6 +112,10 @@ jobs:
         working-directory: app
         run: node tests/essai_parcours.js ../dist/Nuee/application/Nuee.exe ../dist/windows-parcours
 
+      - name: Accessibilité (axe-core, clavier)
+        working-directory: app
+        run: node tests/essai_accessibilite.js Rscript
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
