@@ -254,9 +254,10 @@ function rendreDensite(conteneur, ctx, p, loc) {
   const lignes = lignesDensite(groupes ? m.densite_groupes : m.densite);
   const graphe = el('div', { class: 'graphe' });
   const bas = el('div', { class: 'bas' });
-  conteneur.replaceChildren(outils(m.groupes ? choix('', [['individus', t('distance_individus')], ['groupes', t('distance_groupes')]], loc.quoi, (v) => { loc.quoi = v; ctx.rafraichir(); }) : null),
+  // (the DOM's replaceChildren writes a null as the text "null": the note without one is left out)
+  conteneur.replaceChildren(...[outils(m.groupes ? choix('', [['individus', t('distance_individus')], ['groupes', t('distance_groupes')]], loc.quoi, (v) => { loc.quoi = v; ctx.rafraichir(); }) : null),
     el('p', { class: 'note' }, t(m.densite_seule ? 'distance_densite_note_seule' : 'distance_densite_note', { u: parAireCourt(m) })),
-    noteDdlTotal(m, groupes ? m.densite_groupes : m.densite) ? el('p', { class: 'note' }, noteDdlTotal(m, groupes ? m.densite_groupes : m.densite)) : null, graphe, bas);
+    noteDdlTotal(m, groupes ? m.densite_groupes : m.densite) ? el('p', { class: 'note' }, noteDdlTotal(m, groupes ? m.densite_groupes : m.densite)) : null, graphe, bas].filter(Boolean));
   const noms = lignes.map((l) => etiquetteStrate(l.strate));
   const couleurs = lignes.map((l) => (l.strate === null ? PALETTE[1] : PALETTE[0]));
   // (an interval of the total far wider than the strata's, with few degrees of freedom: the axis stays
