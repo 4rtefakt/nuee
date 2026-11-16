@@ -71,7 +71,7 @@ autocorrelation_residus <- function(projet, m, temps = NULL, groupe = NULL, type
   d <- m$donnees
   niveaux <- sprintf("g%d", seq_along(m$niveaux))  # (sprintf : aucun nom sans effet aléatoire)
   mgcv_seul <- inherits(a, "gam")  # (mgcv::gamm a sa propre classe)
-  type <- if (mgcv_seul) match.arg(as.character(type)[1], c("pearson", "deviance")) else "pearson"
+  type <- if (mgcv_seul) valeur_parmi(type, c("pearson", "deviance"), traduire("résidus", "residuals")) else "pearson"
   e <- as.vector(if (inherits(a, "gamm")) stats::residuals(a$lme, type = "pearson")
                  else if (mgcv_seul && type == "pearson") residus_pearson_mgcv(a, m$famille) else stats::residuals(a, type = type))
   car1 <- isTRUE(m$car1)

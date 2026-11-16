@@ -33,7 +33,7 @@ definition_pour_reponse <- function(projet, d, uid, nom) {
 # resume, effets). `correction` : celle des valeurs p sur les réponses (CORRECTIONS_REPONSES).
 modeles_par_reponse <- function(projet, d, reponses, correction = "BH") {
   if (!est_regression(d)) stop(traduire("Un modèle par réponse se fait d'après une régression (LM, LMM, GLM ou GAM).", "One model per response is made from a regression (LM, LMM, GLM or GAM)."), call. = FALSE)
-  correction <- match.arg(as.character(correction)[1], CORRECTIONS_REPONSES)
+  correction <- valeur_parmi(correction, CORRECTIONS_REPONSES, traduire("correction des valeurs p", "p-value correction"))
   reponses <- unique(as.numeric(reponses))
   if (!length(reponses)) stop(traduire("Choisissez au moins une réponse.", "Choose at least one response."), call. = FALSE)
   x <- unlist(lapply(d$x, function(t) as.numeric(t$variables)))

@@ -393,7 +393,7 @@ poids_spatiaux <- function(D, methode = "voisins", k = 4, portee = NULL, standar
   n <- nrow(D)
   W <- matrix(0, n, n)
   diag(D) <- Inf
-  methode <- match.arg(methode, c("voisins", "bande", "inverse"))
+  methode <- valeur_parmi(methode, c("voisins", "bande", "inverse"), traduire("voisinage", "neighbourhood"))
   if (methode == "voisins") {
     k <- max(1L, min(as.integer(k), n - 1L))
     for (i in seq_len(n)) W[i, order(D[i, ])[seq_len(k)]] <- 1

@@ -9,6 +9,8 @@ JEU_AJOUTE <- "Variables ajoutées"
 # `observations`. effacer = TRUE vide d'abord la colonne (scores : seules les observations
 # du modèle en ont) ; FALSE garde les autres valeurs (classes ajoutées petit à petit).
 ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NULL, effacer = TRUE) {
+  inconnues <- setdiff(nom_numero(observations), rownames(projet$donnees))
+  if (length(inconnues)) stop(traduire("Observation inconnue : ", "Unknown observation: "), paste(utils::head(inconnues, 5), collapse = ", "), call. = FALSE)
   i <- which(vapply(projet$variables, function(v) identical(as.character(v$ids[1]), nom), TRUE))
   if (length(i)) {
     i <- i[1]
@@ -93,6 +95,7 @@ numeros_observations <- function(projet, noms = NULL) {
 modifier_valeur <- function(projet, observation, variable, valeur) {
   k <- nom_numero(variable)
   if (!(k %in% colnames(projet$donnees))) stop(traduire("Variable sans données : ", "Variable without data: "), variable)
+  if (!isTRUE(nom_numero(observation) %in% rownames(projet$donnees))) stop(traduire("Observation inconnue : ", "Unknown observation: "), observation, call. = FALSE)
   i <- which(vapply(projet$variables, function(v) identical(as.numeric(v$uid), as.numeric(variable)), TRUE))[1]
   texte <- trimws(as.character(valeur %||% ""))
   cats <- as.character(projet$variables[[i]]$categories %||% character(0))

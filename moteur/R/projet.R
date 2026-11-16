@@ -82,6 +82,16 @@ nom_numero <- function(x) {
   n
 }
 
+# Une valeur d'une demande parmi `choix` (le premier sans elle), ou l'erreur qui le dit dans la langue
+# de l'interface, `quoi` nommant le réglage : match.arg() dit en anglais « 'arg' should be one of ».
+valeur_parmi <- function(x, choix, quoi) {
+  x <- as.character(unlist(x) %||% choix[1])[1]
+  if (!isTRUE(x %in% choix)) {
+    stop(sprintf(traduire("« %s » n'est pas un choix de %s : %s.", "\"%s\" isn't a choice of %s: %s."), x, quoi, paste(choix, collapse = ", ")), call. = FALSE)
+  }
+  x
+}
+
 # Valeurs brutes d'une variable pour des observations (NA si absentes).
 colonne <- function(projet, variable, observations) {
   k <- match(nom_numero(variable), colnames(projet$donnees))

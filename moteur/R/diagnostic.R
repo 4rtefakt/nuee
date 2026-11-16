@@ -11,7 +11,10 @@
 #   type = "T2"    : idem avec le poids de toutes les composantes à la fois (racine de la somme
 #                    des carrés des poids), pour une observation qui sort de l'ellipse.
 contributions <- function(m, observations, type = c("DModX", "score", "T2"), composante = 1, ponderee = TRUE) {
-  type <- match.arg(type)
+  type <- valeur_parmi(type, c("DModX", "score", "T2"), traduire("contributions", "contributions"))
+  if (type == "score" && !isTRUE(composante >= 1 && composante <= ncol(m$T))) {
+    stop(sprintf(traduire("Composante %s : le modèle en a %d.", "Component %s: the model has %d."), paste(composante, collapse = " "), ncol(m$T)), call. = FALSE)
+  }
   i <- match(as.numeric(observations), m$observations)
   i <- i[!is.na(i)]
   if (!length(i)) stop(traduire("Aucune des observations choisies n'est dans le modèle", "None of the chosen observations is in the model"))

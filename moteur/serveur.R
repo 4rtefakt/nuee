@@ -322,13 +322,19 @@ donnees_projet <- function(p, colonnes = NULL) {
 
 # ---------------------------------------------------------------- modèles
 
-projet <- function(id) etat$projets[[id]] %||% stop(traduire("Projet inconnu : ", "Unknown project: "), id)
+# (un numéro donné sans son texte, 1 pour "P1", prendrait le premier projet par sa place : il est lu
+# comme un nom, et refusé ; sans identifiant, la demande le dit)
+projet <- function(id) {
+  if (!length(id) || is.na(id[1]) || !nzchar(as.character(id[1]))) stop(traduire("Quel projet ? La demande n'en désigne pas (projet).", "Which project? The request names none (projet)."), call. = FALSE)
+  etat$projets[[as.character(id)[1]]] %||% stop(traduire("Projet inconnu : ", "Unknown project: "), id)
+}
 # Un modèle de la séance, sa définition rapportée aux catégories du projet d'aujourd'hui (atelier.R :
 # aligner_categories ; elles ont pu changer depuis qu'il a été ajusté). `a_jour` : pour le réajuster,
 # prédire ou refaire un calcul sur les données, refusé quand une catégorie qu'il a vue a changé de
 # nom ou disparu ; ses résultats, eux, se montrent toujours.
 modele <- function(id, a_jour = FALSE) {
-  e <- etat$modeles[[id]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
+  if (!length(id) || is.na(id[1]) || !nzchar(as.character(id[1]))) stop(traduire("Quel modèle ? La demande n'en désigne pas (modele).", "Which model? The request names none (modele)."), call. = FALSE)
+  e <- etat$modeles[[as.character(id)[1]]] %||% stop(traduire("Modèle inconnu : ", "Unknown model: "), id)
   p <- etat$projets[[e$projet]]
   if (length(e$categories) && !is.null(p)) {
     d <- aligner_categories(p, e$definition, e$categories)
@@ -369,6 +375,7 @@ definition_interface <- function(p, q) {
 # chacune ajoutée au projet comme un modèle de l'application.
 modeles_classe_demande <- function(q) {
   p <- projet(q$projet)
+  if (!length(q$classe)) stop(traduire("Les modèles de classe demandent une variable de classe (rôle Classe).", "Class models need a class variable (Class role)."), call. = FALSE)
   d <- definition_interface(p, utils::modifyList(q, list(type = "PCA", classe = NULL)))
   ds <- modeles_classe(p, d, as.numeric(q$classe))
   if (!length(ds)) stop(traduire("Aucune classe n'a assez d'observations (3 au moins)", "No class has enough observations (3 or more)"))
@@ -444,6 +451,7 @@ reajuster_demande <- function(q) {
       vapply(seq_along(t$variables), function(j) paste(t$variables[j], categorie(t, j)), "")))
     cle <- vapply(d$x, function(t) paste(t$variables[1], categorie(t)), "")
     simple <- vapply(d$x, function(t) length(t$variables) == 1, TRUE)
+    if (!any(noms %in% q$garder)) stop(traduire("Aucun des termes à garder n'est un terme X du modèle.", "None of the terms to keep is an X term of the model."), call. = FALSE)
     d$x <- d$x[noms %in% q$garder | (simple & cle %in% facteurs)]
     d$solution <- NULL
     d$reference <- list(ynames = d[["reference"]][["ynames"]], note = d[["reference"]][["note"]])
@@ -627,7 +635,10 @@ resultat_modele <- function(id) {
 predire_demande <- function(q) {
   e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
-  obs <- if (!is.null(q$jeu)) p$prediction_sets[[q$jeu]]$observations
+  if (!is.null(q$jeu) && !isTRUE(as.numeric(q$jeu)[1] %in% seq_along(p$prediction_sets))) {
+    stop(sprintf(traduire("Jeu de prédiction inconnu : %s (le projet en a %d).", "Unknown prediction set: %s (the project has %d)."), paste(q$jeu, collapse = " "), length(p$prediction_sets)), call. = FALSE)
+  }
+  obs <- if (!is.null(q$jeu)) p$prediction_sets[[as.numeric(q$jeu)[1]]]$observations
          else vapply(p$observations, function(o) as.numeric(o$uid), 0)
   out <- predire(p, e$modele, e$definition, obs)
   out$uid <- obs
@@ -640,8 +651,13 @@ predire_demande <- function(q) {
 hca_demande <- function(q) {
   e <- modele(q$modele)
   p <- projet(e$projet)
-  arbre <- classification(e$modele, q$composantes %||% e$modele$A)
-  k <- q$groupes %||% 3
+  a <- q$composantes %||% e$modele$A
+  if (!isTRUE(a >= 1 && a <= e$modele$A)) {
+    stop(sprintf(traduire("Le dendrogramme se fait sur 1 à %d composantes (celles du modèle) : %s.", "The dendrogram is made on 1 to %d components (the model's): %s."), e$modele$A, paste(a, collapse = " ")), call. = FALSE)
+  }
+  arbre <- classification(e$modele, a)
+  # (au plus autant de groupes que d'observations : un modèle de deux observations en a deux)
+  k <- min(q$groupes %||% 3, length(arbre$labels))
   list(modele = q$modele, composantes = arbre$composantes, merge = arbre$merge,
        hauteurs = arbre$hauteur_ward, ordre = arbre$order,
        noms = unname(p$noms_obs[arbre$labels]), uid = as.numeric(arbre$labels),
@@ -654,6 +670,7 @@ hca_demande <- function(q) {
 predire_fichier_demande <- function(q) {
   e <- modele(q$modele, TRUE)
   p <- projet(e$projet)
+  if (!length(q$chemin) || !file.exists(as.character(q$chemin)[1])) stop(traduire("Fichier introuvable : ", "File not found: "), q$chemin, call. = FALSE)
   base <- function(nom_modele) {
     ids <- Filter(function(id) identical(etat$modeles[[id]]$projet, p$id) &&
                     identical(etat$modeles[[id]]$definition$name, nom_modele), names(etat$modeles))
@@ -745,6 +762,9 @@ script_demande <- function(q) {
   nom <- gsub("[^[:alnum:]_ -]", "_", if (seance) as.character(projet(e$projet)$source %||% "seance") else e$definition$name %||% "modele")
   format <- if (!seance && isTRUE(q$format %in% c("Rmd", "qmd"))) q$format else "R"
   chemin <- q$chemin %||% file.path(tempdir(), nouvel_id("script"), paste0(nom, ".", format))
+  if (!tolower(tools::file_ext(chemin)) %in% c("r", "rmd", "qmd")) {
+    stop(traduire("L'export vers R écrit un fichier .R, .Rmd ou .qmd : ", "The export to R writes a .R, .Rmd or .qmd file: "), basename(chemin), call. = FALSE)
+  }
   dir.create(dirname(chemin), showWarnings = FALSE, recursive = TRUE)
   options <- list(donnees = if (identical(q$donnees, "csv")) "csv" else "script", renv = isTRUE(q$renv),
                   rdata = isTRUE(q$rdata), rproj = isTRUE(q$rproj), version = as.character(q$version %||% ""),
@@ -1149,6 +1169,7 @@ DEMANDES <- list(
   # de son fichier quand il l'a lu ou enregistré, que l'interface garde avec la copie
   sauvegarde_secours = function(q) {
     p <- projet(q$projet)
+    if (!length(q$chemin) || !nzchar(as.character(q$chemin)[1])) stop(traduire("Où écrire la copie de secours ? La demande ne le dit pas (chemin).", "Where to write the recovery copy? The request doesn't say (chemin)."), call. = FALSE)
     if (!is.null(q$session)) p$session <- q$session
     enregistrer_projet(p, q$chemin, as.character(q$version %||% ""))
     list(chemin = q$chemin, lu = p$fichier_lu)
@@ -1198,6 +1219,9 @@ DEMANDES <- list(
   permutations = function(q) {
     e <- modele(q$modele, TRUE)
     if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
+    if (!isTRUE((q$y %||% 1) %in% seq_len(ncol(e$modele$Y)))) {
+      stop(sprintf(traduire("Le modèle n'a pas de Y numéro %s : il en a %d.", "The model has no Y number %s: it has %d."), paste(q$y, collapse = " "), ncol(e$modele$Y)), call. = FALSE)
+    }
     r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
     c(list(modele = q$modele), r)
   },
@@ -1539,6 +1563,7 @@ DEMANDES <- list(
     p <- projet(q$projet)
     if (!is.null(q$session)) p$session <- q$session
     chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
+    if (!dir.exists(dirname(chemin))) stop(traduire("Dossier introuvable : ", "Folder not found: "), dirname(chemin), call. = FALSE)
     # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
     lu <- p$fichier_lu
     if (!is.null(q$chemin) && !isTRUE(q$ecraser) && !is.null(lu) && file.exists(chemin) &&

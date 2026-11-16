@@ -353,6 +353,7 @@ completer_console <- function(texte, curseur = nchar(texte), modele = NULL, proj
 # m et p dans la commande. Le texte affiché, les avertissements, les erreurs et les
 # graphiques vont au journal ; renvoie les entrées nouvelles et les projets modifiés.
 evaluer_console <- function(texte, modele = NULL, projet = NULL) {
+  texte <- texte %||% ""  # (parse(text = NULL) lirait l'entrée standard du moteur, et l'attendrait)
   depart <- etat$n_journal
   lier_m_p(modele, projet)
   noter("commande", texte)

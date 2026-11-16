@@ -441,6 +441,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   seuls <- if (regression) setdiff(unique(as.numeric(unlist(croises))), x) else numeric(0)
   facteur_seul <- function(u) lapply(termes(u), function(t) c(t, list(facteur_seul = TRUE)))
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
+  if (!regression && !autre && !length(x)) stop(traduire("Choisissez au moins une variable X.", "Choose at least one X variable."), call. = FALSE)
   if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
     stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
                   "This analysis doesn't predict left-out observations: it takes no test set."), call. = FALSE)

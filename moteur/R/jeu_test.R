@@ -52,7 +52,7 @@ evaluer_test <- function(projet, m, definition) {
 # si `classe` est donnée). Kennard–Stone travaille sur les variables X quantitatives `x`,
 # centrées et réduites (une valeur manquante compte pour la moyenne).
 choisir_test <- function(projet, x, observations, methode = c("hasard", "kennard_stone"), part = 0.25, classe = NULL) {
-  methode <- match.arg(methode)
+  methode <- valeur_parmi(methode, c("hasard", "kennard_stone"), traduire("méthode du jeu de test", "test set method"))
   groupes <- if (is.null(classe)) rep(1, length(observations)) else colonne(projet, classe, observations)
   if (methode == "kennard_stone") {
     quant <- Filter(function(u) !length(variable_du_projet(projet, u)$categories), as.numeric(x))
