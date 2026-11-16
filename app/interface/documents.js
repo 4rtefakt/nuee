@@ -9,7 +9,7 @@
 // names (bibliography:), from Zotero on this computer (zotero.js: My Library or a group library), or
 // kept in the document itself (its `bib`: the references added from Zotero, with where they are in
 // it, or pasted, and a copy of those cited from files).
-import { t, ajouterTextes, langueActuelle, lire, ecrire } from './i18n.js';
+import { t, tDans, dansLangue, ajouterTextes, langueActuelle, lire, ecrire } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
@@ -385,13 +385,14 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
     const r = s.methodes.get(cle) || garder(s.methodes, cle, await demander('resultats_texte', { modele: m.id, langue: s.langue }));
     return { genre: 'texte', paragraphes: [].concat(r.paragraphes).filter(Boolean) };
   }
+  // (tables and plots in the document's language, its words and its numbers: dansLangue)
   if (chemin[0] === 'table') {
     const x = partie(chemin[1], 'tableau');
     if (!x || chemin.length !== 2) return erreur('ref_tableau_inconnu');
-    const cle = `${m.id}|${x.cle}`;
+    const cle = `${m.id}|${x.cle}|${s.langue}`;
     if (!s.tableaux.has(cle) && !attendre) return null;
-    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await x.tableau(m));
-    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: t(x.cle), cle: x.cle };
+    const blocs = s.tableaux.get(cle) || garder(s.tableaux, cle, await dansLangue(s.langue, () => x.tableau(m)));
+    return { genre: 'tableau', blocs: blocs.filter((b) => b.texte !== undefined || b.entetes), nom: tDans(s.langue, x.cle), cle: x.cle };
   }
   const x = partie(chemin[0], 'vue');
   if (x && (chemin.length === 1 || x.variantes)) {
@@ -405,11 +406,11 @@ async function resoudreUne(app, s, m, chemin, ref, attendre) {
         || v.find((y) => suite.every((c) => Object.values(y).map(String).includes(c)));
       if (!variante) return erreur('ref_variante_inconnue');
     }
-    const cle = `${m.id}|${x.vue}|${JSON.stringify(variante)}|${JSON.stringify(app.locVue(x.vue, m.id) || {})}`;
+    const cle = `${m.id}|${x.vue}|${JSON.stringify(variante)}|${JSON.stringify(app.locVue(x.vue, m.id) || {})}|${s.langue}`;
     if (!s.images.has(cle) && !attendre) return null;
-    const image = s.images.get(cle) || garder(s.images, cle, await imageVue(app, x.vue, m, variante), 40);
+    const image = s.images.get(cle) || garder(s.images, cle, await dansLangue(s.langue, () => imageVue(app, x.vue, m, variante)), 40);
     if (!image) return erreur('ref_graphique_absent');
-    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: t(x.cle), vue: x.vue, variante };
+    return { genre: 'figure', image, largeur: LARGEUR, hauteur: HAUTEUR, nom: tDans(s.langue, x.cle), vue: x.vue, variante };
   }
   const f = formeReference(m, chemin, ref);
   return f.erreur ? erreur(`ref_${f.erreur}`) : { genre: 'valeur', texte: texteForme(f, s.langue), forme: f };
@@ -1050,7 +1051,6 @@ function inserer(s, cible, bloc) {
 // From the explorer: into the document last written in (of that project), else its first,
 // opened; a new one when the project has none.
 async function insererDepuisExplorateur(app, pid, cible, bloc) {
-  if (bloc && !cible.includes('|')) cible = `${cible} | ${t(cible.split('.').pop())}`;  // (a plot: its name as caption)
   let s = dernier && dernier.pid === pid && !dernier.ferme ? dernier : [...ouverts].find((x) => x.pid === pid);
   if (!s) {
     const docs = [].concat((app.projet(pid) || {}).documents || []);
@@ -1062,6 +1062,7 @@ async function insererDepuisExplorateur(app, pid, cible, bloc) {
     }
     if (!s) return;
   } else app.ouvrirDocument(pid, s.id);
+  if (bloc && !cible.includes('|')) cible = `${cible} | ${tDans(s.langue, cible.split('.').pop())}`;  // (a plot: its name as caption, in the document's language)
   inserer(s, cible, bloc);
 }
 
@@ -1085,9 +1086,9 @@ function menuInserer(app, s) {
         ...[['vip', 'VIP'], ['coef', t('coefficients')]].filter(([x]) => parVariable(x).length)
           .map(([x, n]) => ({ libelle: n, sous: parVariable(x).map((o) => ({ libelle: `${o.chemin.slice(x.length + 1)} = ${o.detail}`, action: ref(o.chemin) })) })),
         '-',
-        ...parties.filter((x) => x.vue).map((x) => ({ libelle: t(x.cle), icone: 'chart-scatter', action: ref(`${x.cle} | ${t(x.cle)}`, true) })),
+        ...parties.filter((x) => x.vue).map((x) => ({ libelle: t(x.cle), icone: 'chart-scatter', action: ref(`${x.cle} | ${tDans(s.langue, x.cle)}`, true) })),
         '-',
-        ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${t(x.cle)}`, true) })),
+        ...parties.filter((x) => x.tableau).map((x) => ({ libelle: `${t('document_tableau')} · ${t(x.cle)}`, icone: 'table-2', action: ref(`table.${x.cle} | ${tDans(s.langue, x.cle)}`, true) })),
         '-',
         { libelle: t('document_methodes'), icone: 'quote', action: ref('methodes', true) },
         { libelle: t('document_resultats'), icone: 'quote', action: ref('resultats', true) }]);
@@ -1340,10 +1341,10 @@ function gabarit(app, p, st, choisis) {
     let liste = m ? partiesModele(m).filter((x) => x.vue && !x.variantes && (!toutes || x.defaut)).map((x) => x.cle) : [];
     if (!toutes) liste = liste.slice(0, 1);
     if (!m) liste = [PREMIERE[d.type] || (AUTRES_ANALYSES.includes(d.type) ? null : 'scores')].filter(Boolean);
-    return liste.map((v) => `{{${d.nom}.${v} #fig-${etiquette(d.nom)}-${v} | ${t(v)}}}`);
+    return liste.map((v) => `{{${d.nom}.${v} #fig-${etiquette(d.nom)}-${v} | ${tDans(st.langue, v)}}}`);
   };
   const resume = (d) => (!calcule(d) || partiesModele(calcule(d)).some((x) => x.cle === 'resume' && x.tableau) ? [`{{${d.nom}.table.resume | ${w.resume}}}`] : []);
-  const entete = `---\ntitle: "${(st.titre || t('document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
+  const entete = `---\ntitle: "${(st.titre || tDans(st.langue, 'document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
   if (st.gabarit === 'article') {
     return entete + [`# ${w.introduction}`, '', `# ${w.methodes}`, ...choisis.map((d) => `{{${d.nom}.methodes}}`),
       `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), `{{${d.nom}.resultats}}`, ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');

@@ -222,6 +222,20 @@ async function brancher(cible) {
     await p.evaluer("document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove())");
     await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });
 
+    // a document in English, the interface in French: the table it cites is in English, words and
+    // numbers, as its values are (documents.js, i18n.js: dansLangue)
+    await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('fr'))");
+    await p.api('document_enregistrer', { projet: exemple.id, titre: 'Document EN', langue: 'en', texte: 'Q2 = {{M2.Q2}}.\n\n{{M2.table.resume | Summary}}\n' });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");  // (as another window says it: the explorer lists it)
+    await p.attendre("document.querySelector('.arbre').textContent.includes('Document EN')", 20000);
+    await doubleClic('Document EN');
+    const tableDocument = await p.attendre("(() => { const a = document.querySelector('.apercu-document table'); return a && [...a.querySelectorAll('th, td')].map((x) => x.textContent); })()", 60000)
+      .catch(() => null);
+    verifier('documentDansSaLangue', !!tableDocument && tableDocument.includes('Eigenvalue') && tableDocument.some((x) => /^0\.\d{3}$/.test(x)) && !tableDocument.some((x) => /\d,\d/.test(x)),
+      tableDocument && tableDocument.slice(0, 16));
+    await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('en'))");
+    await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });  // (Quit then has nothing to ask)
+
     // a .nuee project given to a second start (a double-click): it opens in this window
     const nom = 'essai-ligne-de-commande';
     const colle = await p.api('coller', { texte: 'nom\ta\tb\no1\t1\t2\no2\t3\t5\no3\t4\t4\n', nom });
