@@ -110,6 +110,14 @@ export function installerDocuments(app) {
     montrerDansDocument: (pid, id, valeur) => montrerDansDocument(app, pid, id, valeur),
     // a document written in another window: shown again here, unless it is being written here too
     surDocument: (msg) => { for (const s of ouverts) if (s.pid === msg.projet && s.id === msg.id && !s.modifie) s.recharger(); },
+    // a project read again from its file (app.js: rechargerProjet, projet_recharge): its documents
+    // open here follow it to its new id; what was typed meanwhile is sent there, else its text shown
+    reattacherDocuments: async (ancien, nouveau) => {
+      for (const s of [...ouverts].filter((x) => x.pid === ancien)) {
+        s.pid = nouveau;
+        if (s.modifie) await s.enregistrer(); else await s.recharger();
+      }
+    },
   });
   window.addEventListener('beforeunload', () => { for (const s of ouverts) s.enregistrer(true); });
 }
@@ -179,7 +187,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   s.construireBarre = () => {
     s.langueUI = langueActuelle();
     s.champTitre = el('input', { class: 'titre-document-champ', value: s.titre, placeholder: t('document_sans_titre'), 'aria-label': t('document_titre'),
-      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre')); } });
+      oninput: (e) => { s.titre = e.target.value; s.programmer(true); app.titrePanneau(cleDocument(s.pid, s.id), s.titre || t('document_sans_titre')); } });
     s.choixLangue = el('select', { title: t('document_langue_aide'), 'aria-label': t('document_langue_aide'),
       onchange: (e) => { s.langue = e.target.value; s.vue.contentDOM.setAttribute('lang', s.langue); s.programmer(true); } },
     [['fr', 'Français'], ['en', 'English']].map(([v, n]) => el('option', { value: v, selected: v === s.langue }, n)));
@@ -204,11 +212,11 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   // (the values an update of the data changed, marked in the preview: how many, and Hide changes)
   s.bandeChangements = el('div', { class: 'changements-document', hidden: true });
   s.majChangements = (n) => {
-    const m = changementsValeurs.get(`${pid}|${s.id}`);
+    const m = changementsValeurs.get(`${s.pid}|${s.id}`);
     s.bandeChangements.hidden = !n || !m;
     if (!n || !m) return;
     s.bandeChangements.replaceChildren(icone('refresh-cw'), el('span', {}, t('document_changements', { n, date: m.date })),
-      el('button', { onclick: () => { changementsValeurs.delete(`${pid}|${s.id}`); s.rafraichir(); } }, t('document_cacher_changements')));
+      el('button', { onclick: () => { changementsValeurs.delete(`${s.pid}|${s.id}`); s.rafraichir(); } }, t('document_cacher_changements')));
   };
   cadre.append(s.bandeChangements, corps);
   s.construireBarre();
@@ -306,7 +314,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     clearTimeout(s.attente);
     if (!s.modifie || s.ferme) return;
     s.modifie = false;
-    const q = { projet: pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() };
+    const q = { projet: s.pid, id: s.id, titre: s.titre, langue: s.langue, texte: s.vue.state.doc.toString() };
     if (s.bib !== s.bibEnvoye) q.bib = s.bib;
     if (s.style !== s.styleEnvoye) q.style = s.style;
     try {
@@ -314,10 +322,10 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       if (q.bib !== undefined) s.bibEnvoye = q.bib;
       if (q.style !== undefined) s.styleEnvoye = q.style;
       if (r.id !== s.id) { s.id = r.id; loc.doc = r.id; }  // (deleted meanwhile, in another window: it comes back)
-      const avant = app.projet(pid) || {};
+      const avant = app.projet(s.pid) || {};
       // (the explorer is drawn again only when what it shows changes: a title, the project now modified)
       if (avant.modifie !== r.projet.modifie || JSON.stringify(avant.documents) !== JSON.stringify(r.projet.documents)) app.majProjet(r.projet);
-      app.diffuser('document', { projet: pid, id: r.id });
+      app.diffuser('document', { projet: s.pid, id: r.id });
       if (!s.modifie) s.etatEnregistrement.textContent = '';
     } catch {
       if (s.ferme) return;
@@ -325,18 +333,20 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       s.etatEnregistrement.textContent = t('document_non_enregistre');
     }
   };
-  // the document as written in another window
+  // the document as written in another window (or changed by the engine: undone, merged), outside
+  // the editor's own undo history (its Ctrl+Z would bring the text before back)
   s.recharger = async () => {
-    const x = await demander('document', { projet: pid, id: s.id }, { silencieux: true }).catch(() => null);
+    const x = await demander('document', { projet: s.pid, id: s.id }, { silencieux: true }).catch(() => null);
     if (!x || s.ferme || s.modifie) return;
     if ((x.texte || '') !== s.vue.state.doc.toString()) {
       s.distant = true;
-      s.vue.dispatch({ changes: { from: 0, to: s.vue.state.doc.length, insert: x.texte || '' } });
+      s.vue.dispatch({ changes: { from: 0, to: s.vue.state.doc.length, insert: x.texte || '' },
+        ...(CM.Transaction ? { annotations: CM.Transaction.addToHistory.of(false) } : {}) });
       s.distant = false;
     }
     s.titre = x.titre || '';
     s.champTitre.value = s.titre;
-    app.titrePanneau(cleDocument(pid, s.id), s.titre || t('document_sans_titre'));
+    app.titrePanneau(cleDocument(s.pid, s.id), s.titre || t('document_sans_titre'));
     if (x.langue && x.langue !== s.langue) { s.langue = x.langue; s.choixLangue.value = x.langue; }
     if ((x.bib || '') !== s.bib) { s.bib = x.bib || ''; s.bibEnvoye = s.bib; s.biblio.cache = null; }
     if (x.style && x.style !== s.style) { s.style = x.style; s.styleEnvoye = x.style; }
@@ -354,8 +364,8 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   };
   s.rafraichir();
   // (opened to show a value that changed: montrerDansDocument)
-  const v = aMontrer.get(`${pid}|${s.id}`);
-  if (v) { aMontrer.delete(`${pid}|${s.id}`); montrerValeur(s, v); }
+  const v = aMontrer.get(`${s.pid}|${s.id}`);
+  if (v) { aMontrer.delete(`${s.pid}|${s.id}`); montrerValeur(s, v); }
   return s;
 }
 

@@ -655,8 +655,13 @@ async function echanges() {
     bob.evenements.length = 0;
     await bob.apresEnregistrement(pB);
     await bob.attendre();
-    verifier('… enregistré (rien de changé) : reçue, en arrière-plan', bob.evenements.some((e) => e.type === 'recu') && contenu(pB) === projetJson({ lignes: 10 })
-      && (await bob.recevoir(pB)).resultat === 'a_jour', bob.evenements);
+    // (the project open in a window: the background never writes its file, it says a version is
+    // ready; the window, once sure nothing is unsaved in any of its windows, gets it)
+    verifier('… enregistré (rien de changé) : prête en arrière-plan, le fichier pas encore écrit', bob.evenements.some((e) => e.type === 'pret' && e.version && e.version.auteur.nom === 'Alice Martin')
+      && !bob.evenements.some((e) => e.type === 'recu') && contenu(pB) === contenu(fusion), bob.evenements);
+    const prise = await bob.recevoir(pB);
+    verifier('… la fenêtre d’accord : reçue, le fichier écrit', prise.resultat === 'recu' && contenu(pB) === projetJson({ lignes: 10 })
+      && (await bob.recevoir(pB)).resultat === 'a_jour', prise);
     // ---- the background: after a version, when Nuée comes back to the front (every five minutes
     // at most), a conflict told once, a failure told and tried again
     avancer(6 * MINUTE);
@@ -671,7 +676,8 @@ async function echanges() {
     const avantRetour = bob.evenements.length;
     bob.auPremierPlan();
     await bob.attendre();
-    verifier('Bob revenu au premier plan : ce que le dépôt a, reçu, dit', bob.evenements.length > avantRetour && bob.evenements.some((e) => e.type === 'recu'), bob.evenements);
+    verifier('Bob revenu au premier plan : ce que le dépôt a, prêt, dit', bob.evenements.length > avantRetour && bob.evenements.some((e) => e.type === 'pret'), bob.evenements);
+    await bob.recevoir(pB);
     ecrire(pA, projetJson({ lignes: 11, modeles: { M1: 3 } }));
     await alice.marquer(pA, '');
     await alice.attendre();
@@ -683,9 +689,22 @@ async function echanges() {
     avancer(6 * MINUTE);
     bob.auPremierPlan();
     await bob.attendre();
-    const reçu = bob.evenements.find((e) => e.type === 'recu');
-    verifier('… cinq minutes après : reçue en arrière-plan, dite', reçu && egal(reçu.chemin, pB) && reçu.version.auteur.nom === 'Alice Martin'
-      && contenu(pB) === projetJson({ lignes: 11, modeles: { M1: 3 } }), bob.evenements);
+    const pret = bob.evenements.find((e) => e.type === 'pret');
+    verifier('… cinq minutes après : prête en arrière-plan, dite (qui, quand), le fichier tel qu’il était', pret && egal(pret.chemin, pB) && pret.version.auteur.nom === 'Alice Martin'
+      && contenu(pB) === projetJson({ lignes: 11 }), bob.evenements);
+    await bob.recevoir(pB);
+    verifier('… reçue quand la fenêtre la prend', contenu(pB) === projetJson({ lignes: 11, modeles: { M1: 3 } }));
+    // (a project no window has open, closed since: the background writes its file itself)
+    await bob.aLaFermeture(pB);
+    ecrire(pA, projetJson({ lignes: 11, modeles: { M1: 4 } }));
+    await alice.marquer(pA, '');
+    await alice.attendre();
+    bob.evenements.length = 0;
+    await bob.apresEnregistrement(pB);
+    await bob.attendre();
+    verifier('un projet fermé : reçu en arrière-plan, son fichier écrit', bob.evenements.some((e) => e.type === 'recu') && contenu(pB) === projetJson({ lignes: 11, modeles: { M1: 4 } }), bob.evenements);
+    await bob.ouvert(pB);
+    await bob.attendre();
     ecrire(pA, projetJson({ lignes: 12 }));
     await alice.marquer(pA, '');
     await alice.attendre();

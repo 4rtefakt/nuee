@@ -20,6 +20,7 @@
 //   n.fichierAOuvrir(chemin)             the answer of the next Open dialog (n.fichierAEnregistrer: Save)
 //   n.nouveauModele({ type, y, sans })   Model › New model filled in, then fitted
 //   n.api('etat')                        a request to the engine, as the interface makes it
+//   n.fenetre('vue=scores')              another window (a view's own), by a piece of its address
 // and the helpers below (graphe, plotlyPret, cliquerPoint, modele, lireClasseur, ...).
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -387,7 +388,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
     // the page was already loading: once more now, then the interface's own load
     await page.envoyer('Runtime.evaluate', { expression: `window.__essai || ${ESPION}` });
 
-    const n = await piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie: () => sortie, dossier, programme });
+    const n = await piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie: () => sortie, dossier, programme, portPage, lister });
     await n.attendre("document.querySelectorAll('.menu-haut').length > 3 && !!document.querySelector('#dock .arbre, #dock .accueil-explorateur')", 120000);
     await n.outils();
     // a first start opens on the start page alone (What's new comes once after an update): once
@@ -406,9 +407,69 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
 }
 
 // The object scenarios use (see the top of this file).
-async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie, dossier, programme }) {
+async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie, dossier, programme, portPage, lister }) {
   const envoyer = page.envoyer;
+  // Another window of the program (a view moved to a window of its own, ?vue=…), by a piece of its
+  // address: its page with evaluer, attendre, a click (the pointer's events at an element's middle),
+  // keys and typing, as the main window's; its page errors count with the main window's. Its
+  // address as it is now: adresse().
+  const fenetre = async (motif, ms = ATTENTE) => {
+    const fin = Date.now() + ms;
+    let cible = null;
+    while (!cible) {
+      cible = ((await lister(portPage)) || []).find((c) => c.type === 'page' && c.url.includes(motif)) || null;
+      if (cible) break;
+      if (!vivant()) throw new Error(`the program stopped while waiting for a window with ${motif}`);
+      if (Date.now() > fin) throw new Error(`no window whose address has ${motif} within ${ms / 1000} s`);
+      await attente(200);
+    }
+    const s = await session(cible.webSocketDebuggerUrl);
+    s.ecouter((j) => {
+      if (j.method === 'Runtime.exceptionThrown') erreurs.push(`(${motif}) ${j.params.exceptionDetails.exception?.description || j.params.exceptionDetails.text}`);
+      if (j.method === 'Runtime.consoleAPICalled' && j.params.type === 'error') erreurs.push(`(${motif}) ${j.params.args.map((a) => a.value ?? a.description ?? '').join(' ')}`);
+    });
+    await s.envoyer('Runtime.enable');
+    await s.envoyer('Emulation.setFocusEmulationEnabled', { enabled: true });
+    const f = {
+      async evaluer(expression) {
+        const r = await s.envoyer('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+        if (r.exceptionDetails) throw new Error(`${r.exceptionDetails.exception?.description || r.exceptionDetails.text}\n  in (${motif}): ${expression.slice(0, 300)}`);
+        return r.result.value;
+      },
+      async attendre(expression, delai = ATTENTE) {
+        const limite = Date.now() + delai;
+        let derniere = null;
+        for (;;) {
+          let v;
+          try { v = await f.evaluer(expression); derniere = null; } catch (e) { v = false; derniere = e.message; }
+          if (v) return v;
+          if (!vivant()) throw new Error(`the program stopped while waiting (${motif}) for: ${expression.slice(0, 200)}`);
+          if (Date.now() > limite) throw new Error(`waited ${delai / 1000} s (${motif}) for: ${expression.slice(0, 300)}${derniere ? `\n  (${derniere.split('\n')[0]})` : ''}`);
+          await attente(100);
+        }
+      },
+      adresse: () => f.evaluer('location.href'),
+      async cliquer(expression) {
+        const { x, y } = await f.attendre(`(() => { const e = ${expression}; if (!e || !e.getClientRects().length) return null; e.scrollIntoView({ block: 'nearest' });
+          const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+        await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await s.envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+        await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      },
+      taper: (texte) => s.envoyer('Input.insertText', { text: texte }),
+      // a key with Ctrl (Ctrl+Z: 'z', 'KeyZ', 90)
+      async ctrl(key, code, vk) {
+        for (const type of ['rawKeyDown', 'keyUp']) await s.envoyer('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
+      },
+      fermer: () => s.fermer(),
+    };
+    await f.attendre("document.readyState === 'complete'");
+    await f.evaluer(`window.__essai || ${ESPION}`);
+    await f.evaluer(OUTILS);
+    return f;
+  };
   const n = {
+    fenetre,
     dossier, programme, proc, erreurs, sortie, arreter, vivant,
     async evaluer(expression) {
       const r = await envoyer('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });

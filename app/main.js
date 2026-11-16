@@ -817,6 +817,10 @@ function ipc() {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
   recevoir('arreter-calcul', () => arreterCalcul());
+  // what every window still holds (a document's last words, a figure's last change) sent to the
+  // engine now, before a window decides on a project's unsaved changes (interface/versions.js: a
+  // version received, restored or merged)
+  recevoir('vider-fenetres', () => viderFenetres());
   // File › Settings…, the R the engine runs on (interface/reglages.js, r-installes.js): what is set
   // and in use, the Rs of this computer, one of them checked, its missing packages installed (one
   // installation at a time; what R says meanwhile sent to the window that asked), the choice kept

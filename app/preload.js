@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld('bureau', {
     try { await f(); } catch { /* sent as it could be */ }
     ipcRenderer.send('vide');
   }),
+  // the same asked by a window: every window's page sends what it still holds, then this answers
+  viderFenetres: () => ipcRenderer.invoke('vider-fenetres'),
   surEnregistrerTout: (f) => ipcRenderer.on('enregistrer-tout', async () => {
     let ok = false;
     try { ok = await f(); } catch { ok = false; }

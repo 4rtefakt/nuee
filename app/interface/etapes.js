@@ -448,7 +448,6 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
     change = true;
-    noterRemplacement(pid, r);
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
     const refaits = await reajusterTout(app, pid, pr, modeles);
@@ -479,24 +478,17 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
 
 // ------------------------------------------------------------ undone
 
-// The label of each change of the data this window made from the source (an update, a step
-// removed), as Undo names it, by project.
-const remplacements = new Map();
-function noterRemplacement(pid, r) {
-  const etiquette = r && r.projet && r.projet.annulable;
-  if (!etiquette) return;
-  if (!remplacements.has(pid)) remplacements.set(pid, new Set());
-  remplacements.get(pid).add(etiquette);
-}
-
-// One of them undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
-// retablirAction): the data, the source, the steps and the models' definitions are back, but the
-// session's fits are those of the other data; every model is fitted again, as the change did (its
-// progress, Stop), and the status bar says so.
+// A change undone (app.js: annulerAction, `r` the engine's answer), or redone (`retabli`:
+// retablirAction), in whichever window it was made. One that replaced the data (an update, a step
+// removed: r.reajuster) brings the data, the source, the steps and the models' definitions back, but
+// the session's fits are those of the other data: every model is fitted again, as the change did.
+// Another may leave fits on variables the project no longer has (a column's rename undone after
+// its models were fitted again under the new name: r.a_reajuster, their numbers): those are. Its
+// progress, Stop, and the status bar says so.
 async function apresAnnulation(app, pid, r, retabli = false) {
-  const faits = remplacements.get(pid);
-  if (!faits || !faits.has(r.etiquette) || !app.projet(pid)) return;
-  const modeles = modelesAReajuster(r.projet);
+  if (!app.projet(pid)) return;
+  const numeros = new Set(liste(r.a_reajuster).map(Number));
+  const modeles = modelesAReajuster(r.projet).filter((m) => r.reajuster || numeros.has(Number(m.numero)));
   if (!modeles.length) return;
   const cle = retabli ? 'etapes_retablissement' : 'etapes_annulation';
   const pr = progression(t(`${cle}_titre`, { quoi: r.etiquette, nom: app.projet(pid).nom }));

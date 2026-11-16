@@ -101,11 +101,12 @@ export function installerVersions(app) {
 
 // ------------------------------------------------------------ the hooks
 
-// A project's summary received (app.js: projetRecu): the main process told the first time it opens,
-// and each time its unsaved state flips (a background receive never writes over unsaved changes)
+// A project's summary received (app.js: projetRecu, and synchroniser, every window's own and the
+// others' changes alike): the main process told the first time it opens, and each time its unsaved
+// state flips (a background receive never writes over a project open in a window: recuPret)
 function suivreProjet(app, p) {
   const c = couche();
-  if (!c || !p || VUE_SEULE) return;
+  if (!c || !p) return;
   const chemin = fichierProjet(p);
   const avant = suivis.get(p.id);
   if (!chemin) { if (avant) suivis.delete(p.id); return; }
@@ -165,7 +166,8 @@ async function evenement(app, e) {
   else if (e.type === 'conflit') vus.set(chemin, { type: 'conflit', mien: e.mien, leur: e.leur, fichiers: e.fichiers });
   const p = projetDuFichier(app, chemin);
   if (p && (await fenetreQuiAgit())) {
-    if (e.type === 'recu') await recuEnArrierePlan(app, p, e.version);
+    if (e.type === 'pret') await recuPret(app, p, e.version);
+    else if (e.type === 'recu') await recuEnArrierePlan(app, p, e.version);
     else if (e.type === 'conflit') {
       montrerAvis(app, t('versions_conflit_avis', { nom: sansExtension(p.nom) }), [{ libelle: t('versions_choisir'), action: () => resoudreConflit(app, p.id) }]);
     } else if (e.type === 'attente') {
@@ -176,18 +178,85 @@ async function evenement(app, e) {
   lireEtat(chemin).then(() => app.majStatut(), () => app.majStatut());
 }
 
-// A version written to an open project's file by the background: the project read again, when it
-// has no unsaved change, and said so, with What changed against the version it had
+// A version the background has for an open project ('pret': it never writes the file of a project
+// open in a window by itself): what every window still holds sent first, then the project's unsaved
+// state asked of the engine, whichever window made the changes. Unsaved changes: the version waits,
+// said, with Save and get; none: the main process told so, then the version received (recevoir),
+// the project read again, with What changed (apresEchange).
+async function recuPret(app, p, version) {
+  const chemin = fichierProjet(p);
+  if (!chemin) return;
+  await vider(app, p.id);
+  const q = app.projet(p.id);
+  if (!q) return;
+  const hote = hoteDe(chemin);
+  if (q.modifie) {
+    vus.set(chemin, { type: 'attente' });
+    montrerAvis(app, t('versions_attente', { nom: sansExtension(q.nom), hote }), [{ libelle: t('versions_enregistrer_recevoir'), action: () => recevoirMaintenant(app, q.id) }]);
+    return;
+  }
+  const avant = dernieres.get(chemin) || null;
+  ecritures += 1;
+  try {
+    await direNonModifie(q.id, chemin);
+    const r = await echangeDemande(app, chemin, () => couche().recevoir(chemin));
+    if (!r) { apresAction(app, q.id); return; }
+    if (r.resultat === 'recu' && !r.version && version) r.version = version;
+    await apresEchange(app, q.id, chemin, r, avant, hote);
+  } finally { ecritures -= 1; }
+}
+
+// A version written by the background to the file of a project the main process didn't know open:
+// the project read again unless it has unsaved changes (the engine's word, every window's sent
+// first), with What changed against the version it had; else said, with Reload (which asks).
 async function recuEnArrierePlan(app, p, version) {
   const chemin = fichierProjet(p);
   const avant = dernieres.get(chemin) || null;
   if (version && version.oid) dernieres.set(chemin, version.oid);
+  await vider(app, p.id);
+  const pid = app.projet(p.id) ? await app.rechargerProjet(p.id) : null;
+  if (pid) annoncerRecu(app, pid, version, avant);
+  else if (app.projet(p.id)) nonRecharge(app, p.id, 'versions_recu_non_recharge');
+}
+
+// The project kept as it is, with its unsaved changes, while its file holds another version (a
+// version received, restored or chosen): said, with Reload the project, which asks first.
+function nonRecharge(app, pid, cle) {
+  const p = app.projet(pid);
+  if (!p) return;
+  montrerAvis(app, t(cle, { nom: sansExtension(p.nom) }), [{ libelle: t('versions_recharger'), action: () => rechargerAvecAccord(app, pid) }]);
+}
+
+// Reload the project: read again from its file; with unsaved changes (every window's, as the
+// engine has them), only once the user agrees to let them go.
+async function rechargerAvecAccord(app, pid) {
+  await vider(app, pid);
+  const p = app.projet(pid);
+  if (!p) return null;
   if (p.modifie) {
-    montrerAvis(app, t('versions_recu_non_recharge', { nom: sansExtension(p.nom) }), [{ libelle: t('versions_recharger'), action: () => app.rechargerProjet(p.id) }]);
-    return;
+    const oui = await demanderChoix({ titre: t('versions_recharger_titre', { nom: sansExtension(p.nom) }), texte: t('versions_recharger_texte'),
+      boutons: [{ libelle: t('versions_recharger_perdre'), principal: true, valeur: true }] });
+    if (!oui) { nonRecharge(app, pid, 'versions_fichier_non_recharge'); return null; }
   }
-  const pid = await app.rechargerProjet(p.id);
-  annoncerRecu(app, pid, version, avant);
+  ecritures += 1;
+  try {
+    const nouveau = await app.rechargerProjet(pid, { perdre: true });
+    if (nouveau) app.statut(t('versions_recharge', { nom: sansExtension((app.projet(nouveau) || p).nom) }));
+    return nouveau;
+  } finally { ecritures -= 1; }
+}
+
+// The main process told the project has nothing unsaved, as the engine has just said (vider): it
+// writes a version into the file only then, whatever another window said before
+async function direNonModifie(pid, chemin) {
+  suivis.set(pid, { chemin, modifie: false });
+  await couche().ouvert(chemin, { modifie: false }).catch(() => {});
+}
+
+// The server's name of a shared project's file, as the main process said it last
+function hoteDe(chemin) {
+  const e = (memo.get(chemin) || {}).etat;
+  return nomHote(e && e.partage && e.partage.hote) || (e && e.partage && e.partage.url) || 'GitHub';
 }
 
 function annoncerRecu(app, pid, version, avant) {
@@ -456,11 +525,15 @@ async function dialogueReglages(app, pid) {
 
 // ------------------------------------------------------------ the actions
 
-// What was just typed in the project's documents and figures goes into it first (it may then
-// have changes to save)
+// What was just typed in the project's documents and figures goes into it first, in every window
+// (it may then have changes to save), then its summary is read again from the engine: its unsaved
+// state is the engine's, whichever window made the changes (a document of a window of its own, a
+// second main window).
 async function vider(app, pid) {
   if (app.viderDocuments) await app.viderDocuments(pid);
   if (app.viderFigures) await app.viderFigures(pid);
+  if (bureau && bureau.viderFenetres) await bureau.viderFenetres().catch(() => {});
+  if (app.relireProjet && app.projet(pid)) await app.relireProjet(pid).catch(() => {});
 }
 
 // The project's state, or null with its message in the status bar
@@ -473,10 +546,12 @@ async function etatPour(app, pid) {
 // (app.occupe shows a refusal's message in the status bar; false then)
 const essayer = (app, f) => app.occupe(f).then((r) => r ?? true, () => false);
 
-// Unsaved changes saved first, when the user agrees; true when there are none left
+// Unsaved changes saved first, when the user agrees; true when there are none left (the main
+// process told so)
 async function enregistrerDabord(app, pid, texte, bouton) {
   await vider(app, pid);
-  if (!app.projet(pid).modifie) return true;
+  const chemin = fichierProjet(app.projet(pid));
+  if (!app.projet(pid).modifie) { if (chemin) await direNonModifie(pid, chemin); return true; }
   const oui = await demanderChoix({ titre: t('versions_avant_titre'), texte, boutons: [{ libelle: bouton, principal: true, valeur: true }] });
   return !!oui && app.enregistrer(pid, false);
 }
@@ -601,18 +676,25 @@ async function restaurerVersion(app, pid, v) {
     texte: [el('p', {}, el('b', {}, titreDeVersion(v))), t('versions_restaurer_texte', { longue: dateLongue(v.date, { style: 'long' }) })],
     boutons: [{ libelle: t('versions_bouton_restaurer'), principal: true, valeur: true }] });
   if (!oui) return false;
+  // (what was typed meanwhile, in any window, counts too)
+  await vider(app, pid);
+  let laisser = false;
   if (app.projet(pid).modifie) {
     const choix = await demanderChoix({ titre: t('versions_avant_titre'), texte: t('versions_avant_texte'),
       boutons: [{ libelle: t('versions_sans_garder'), valeur: 'laisser' }, { libelle: t('versions_enregistrer_restaurer'), principal: true, valeur: 'enregistrer' }] });
     if (!choix) return false;
     if (choix === 'enregistrer' && !(await app.enregistrer(pid, false))) return false;
+    laisser = choix === 'laisser';
   }
   ecritures += 1;
+  let nouveau;
   try {
     if (!(await essayer(app, () => couche().restaurer(chemin, v.oid)))) { apresAction(app, pid); return false; }
     oublier(chemin);
-    await app.rechargerProjet(pid);
+    // (the changes let go: read again whatever they are; saved, something typed since is kept)
+    nouveau = await app.rechargerProjet(pid, { perdre: laisser });
   } finally { ecritures -= 1; }
+  if (!nouveau) { nonRecharge(app, pid, 'versions_fichier_non_recharge'); return false; }
   app.statut(t('versions_restauree', { date }));
   return true;
 }
@@ -968,8 +1050,10 @@ async function apresEchange(app, pid, chemin, r, avant, hote) {
   if (r.resultat === 'recu') {
     if (r.version && r.version.oid) dernieres.set(chemin, r.version.oid);
     oublier(chemin);
+    // (something typed since, in any window: kept, the version in the file only; Reload asks)
     const nouveau = await app.rechargerProjet(pid);
-    annoncerRecu(app, nouveau, r.version, avant);
+    if (nouveau) annoncerRecu(app, nouveau, r.version, avant);
+    else nonRecharge(app, pid, 'versions_recu_non_recharge');
     return;
   }
   if (r.resultat === 'conflit') {
@@ -1014,7 +1098,7 @@ async function envoyerMaintenant(app, pid) {
   if (!x || !x.e.partage) return;
   const hote = nomHote(x.e.partage.hote) || x.e.partage.url;
   await vider(app, pid);
-  if (app.projet(pid).modifie && !(await app.enregistrer(pid, false))) return;
+  if (app.projet(pid).modifie) { if (!(await app.enregistrer(pid, false))) return; } else await direNonModifie(pid, x.chemin);
   const avant = dernieres.get(x.chemin) || (x.e.derniere && x.e.derniere.oid) || null;
   vus.set(x.chemin, { type: 'envoi' });
   app.majStatut();
@@ -1090,7 +1174,10 @@ async function resoudreConflit(app, pid) {
   const chemin = fichierProjet(app.projet(pid));
   if (!chemin) return;
   const v = vus.get(chemin);
-  if (v && v.type === 'conflit' && v.fichiers) { await dialogueConflit(app, pid, v); return; }
+  // (unsaved changes: saved first, and the versions asked again, Get now: a merge prepared from the
+  // versions before the save would be refused once the save makes one more)
+  await vider(app, pid);
+  if (v && v.type === 'conflit' && v.fichiers && !app.projet(pid).modifie) { await dialogueConflit(app, pid, v); return; }
   await recevoirMaintenant(app, pid);
 }
 
@@ -1168,16 +1255,21 @@ async function choisirCote(app, pid, cote, fichier, hote, description = null) {
   await vider(app, pid);
   const chemin = fichierProjet(app.projet(pid));
   if (!chemin) return false;
-  if (cote !== 'mien' && app.projet(pid).modifie && !(await app.enregistrer(pid, false))) return false;
+  if (cote !== 'mien') {
+    if (app.projet(pid).modifie) { if (!(await app.enregistrer(pid, false))) return false; } else await direNonModifie(pid, chemin);
+  }
   ecritures += 1;
+  let recharge = true;
   try {
     const ok = await essayer(app, () => couche().choisir(chemin, cote, fichier, description));
     if (!ok) { apresAction(app, pid); return false; }
     vus.delete(chemin);
     oublier(chemin);
-    if (cote !== 'mien') await app.rechargerProjet(pid);
+    // (something typed since, in any window: kept, the file holds the version chosen; Reload asks)
+    if (cote !== 'mien') recharge = !!(await app.rechargerProjet(pid));
     else apresAction(app, pid);
   } finally { ecritures -= 1; }
+  if (!recharge) nonRecharge(app, pid, 'versions_fichier_non_recharge');
   app.statut(t(cote === 'mien' ? 'versions_gardees_miennes' : cote === 'leur' ? 'versions_prises_leurs' : 'versions_fusion_faite', { hote }));
   return true;
 }
@@ -1202,6 +1294,9 @@ function nomAuteur() {
 // null; 'repli' when the engine refuses to prepare it (no copy of the file as it was read, as after
 // a restart).
 async function dialogueFusionFichier(app, pid, { titre, texte, boutons, qui: quiConnu = null }) {
+  // (what was just typed, in any window, goes in first: sent while the dialog is open, it would make
+  // the project another than the one the merge was prepared from, which fusionner_finir refuses)
+  await vider(app, pid);
   let r;
   try { r = await demander('fusionner', { projet: pid }); } catch { return 'repli'; }
   const qui = quiConnu || quiDuFichier(r.qui);
@@ -1210,7 +1305,11 @@ async function dialogueFusionFichier(app, pid, { titre, texte, boutons, qui: qui
     let fait = false;
     const finir = async () => {
       const auteur = await nomAuteur();
-      try { await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix, ...(auteur ? { auteur } : {}) }); } catch { return; }
+      let fin;
+      try { fin = await app.changerDonnees('fusionner_finir', pid, { fusion: r.fusion, choix, ...(auteur ? { auteur } : {}) }); } catch { return; }
+      // (the documents whose text the merge changed, read again in their open editors, here and in
+      // the other windows: their next keystroke would otherwise save their text before over it)
+      app.relireDocuments(pid, [].concat((fin && fin.documents) || []));
       fait = true;
       d.fermer();
       resolve('fusion');
@@ -1242,7 +1341,15 @@ let surveillance = true;
 const proposes = new Map();
 // (the versions written to a project's file by this window, until the project is read again: not someone else's)
 let ecritures = 0;
+// (one look at a time: during a long computation the engine answers the looks queued behind it all
+// at once, and each would open its own dialog)
+let enSurveillance = false;
 async function surveillerDossiers(app) {
+  if (enSurveillance) return;
+  enSurveillance = true;
+  try { await surveiller(app); } finally { enSurveillance = false; }
+}
+async function surveiller(app) {
   if (!surveillance || ecritures || document.querySelector('.fond-dialogue') || !(await fenetreQuiAgit())) return;
   for (const p of app.projets()) {
     const chemin = fichierProjet(p);
