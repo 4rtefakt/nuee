@@ -416,6 +416,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   test <- unique(as.numeric(test))
   obs <- setdiff(obs, test)
+  exiger_observations(obs)  # (condition.R : avant les vérifications des groupes et des classes, qui en diraient une autre raison)
   x <- unique(as.numeric(x))
   y <- unique(as.numeric(y))
   spectres <- etapes_spectres(spectres)

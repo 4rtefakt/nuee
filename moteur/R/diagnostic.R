@@ -34,6 +34,7 @@ contributions <- function(m, observations, type = c("DModX", "score", "T2"), com
 # avec plus de 50 % de valeurs manquantes, et variables sans variance (constantes).
 # Renvoie une ligne par variable concernée (avec ses termes) et par observation concernée.
 verifier_donnees <- function(projet, definition, limite = 0.5) {
+  exiger_observations(definition$observations)  # (condition.R ; sans observation, des parts manquantes de 0 sur 0)
   f <- if (est_autre_analyse(definition)) fonction_analyse("verifier_", definition$type)  # (analyses.R : une analyse qui vérifie elle-même ses données)
   if (!is.null(f)) return(f(projet, definition))
   obs <- definition$observations

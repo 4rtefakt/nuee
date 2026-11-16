@@ -167,6 +167,7 @@ valeurs_condition <- function(projet, condition) {
 # Les observations de `observations` (des numéros) où la condition est vraie, dans leur ordre ;
 # une erreur quand il n'y en a aucune.
 observations_condition <- function(projet, condition, observations) {
+  exiger_observations(observations)
   vraie <- valeurs_condition(projet, condition)
   garde <- vraie[match(nom_numero(observations), rownames(projet$donnees))]
   garde[is.na(garde)] <- FALSE
@@ -177,11 +178,24 @@ observations_condition <- function(projet, condition, observations) {
   as.numeric(observations)[garde]
 }
 
+# Un modèle sans aucune observation (toutes décochées, ou toutes dans le jeu de test) est refusé
+# avant tout calcul : chaque analyse en donnerait une autre raison, fausse (pas de variation, un
+# seul groupe de validation croisée, pas de classe).
+exiger_observations <- function(observations) {
+  if (!length(observations)) {
+    stop(traduire("Aucune observation n'est cochée pour ce modèle : cochez-en dans l'onglet Observations (celles du jeu de test n'en font pas partie).",
+                  "No observation is ticked for this model: tick some in the Observations tab (those of the test set aren't part of it)."), call. = FALSE)
+  }
+}
+
 # La définition `d` avec les observations de sa condition d'après les données du moment : celles
 # de d$cochees où elle est vraie ; telle quelle sans condition. Chaque ajustement passe par là
 # (modele.R : ajuster ; serveur.R : ajuster_et_garder), pour tous les types de modèles.
 resoudre_observations <- function(projet, d) {
-  if (!avec_condition(d)) return(d)
+  if (!avec_condition(d)) {
+    exiger_observations(d$observations)
+    return(d)
+  }
   d$condition <- texte_condition(d$condition)
   d$cochees <- as.numeric(unlist(d$cochees %||% d$observations))
   d$observations <- observations_condition(projet, d$condition, d$cochees)
