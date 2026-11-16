@@ -49,10 +49,13 @@ module.exports = {
     verifier('excelValeurs', variable(xl, 'treatment').qualitative && rendement.join(',') === '4.2,5.1,3.9,5.6,4.4,5.3' && hauteur[2] === null,
       `${rendement.join(',')} / ${hauteur.join(',')}`);
 
-    // ---- back to the CSV's project: Edit › Find and replace, the whole cell "Granny"
+    // ---- back to the CSV's project, chosen in the explorer while the workbook's data (opened with
+    // it) is in front: Edit › Find and replace acts on the CSV, the whole cell "Granny"
     await n.cliquer(`(${n.ligneProjet('orchards.csv')}).querySelector('.libelle')`);
     await n.menu('m_edition', 'atelier_remplacer');
     await n.dialogue('atelier_remplacer');
+    const pour = await n.evaluer('__n.titreDialogue()');
+    verifier('remplacerDansLeCsv', pour.endsWith('orchards.csv'), pour);
     await n.ecrire("__n.boite().querySelector('.grille-champs input')", 'Granny', { quitter: false });
     await n.ecrire("__n.boite().querySelectorAll('.grille-champs > input')[0]", 'Granny Smith', { quitter: false });
     // the preview says what will change before anything does
@@ -64,7 +67,8 @@ module.exports = {
     verifier('remplace', !!remplace, remplace);
     let p = (await n.etat()).projets.find((x) => x.id === csv.id);
     verifier('varietes', [].concat(variable(p, 'variety').categories).join(',') === 'Gala,Golden,Granny Smith,Reinette', [].concat(variable(p, 'variety').categories));
-    // (the Data view is drawn again from the new data)
+    // (the Data view is drawn again from the new data: the CSV's, brought back to the front by its tab)
+    await n.cliquer(`__n.onglet(${JSON.stringify(`orchards.csv · ${await n.t('donnees')}`)})`);
     verifier('vueDonneesRemplacee', !!(await n.attendre("__n.tous('.dv-content-container .tableau tbody td').some((c) => __n.norm(c.textContent) === 'Granny Smith')")));
 
     // ---- Edit › Categories: orchards B and C ticked and merged
