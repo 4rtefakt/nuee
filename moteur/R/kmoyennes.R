@@ -152,6 +152,7 @@ resultat_kmeans <- function(id) {
   m <- e$modele
   d <- e$definition
   sil <- if (!is.null(m$silhouette)) mean(m$silhouette$largeur) else NA_real_
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "KMEANS", analyse = TRUE, prediction = TRUE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(character(0)), k = m$k, observations = observations_kmeans(p, m),
        tailles = tailles_kmeans(m), centres = centres_tableau(m$centres), centres_unites = centres_tableau(m$centres_unites),
@@ -162,7 +163,7 @@ resultat_kmeans <- function(id) {
        reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "", test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number),
        vues_defaut = I(c("km_plan", if (!is.null(m$silhouette)) "km_silhouette" else "km_centres")),
-       chiffres = sprintf("k = %d · R2 %.2f%s", m$k, m$r2, if (is.na(sil)) "" else sprintf(" · %s %.2f", traduire("silhouette", "silhouette"), sil)))
+       chiffres = sprintf("k = %d · R2 %s%s", m$k, nombre_texte(m$r2, 2, fr), if (is.na(sil)) "" else sprintf(" · %s %s", traduire("silhouette", "silhouette"), nombre_texte(sil, 2, fr))))
 }
 
 predire_kmeans <- function(projet, m, d, observations) {

@@ -843,10 +843,12 @@ resultat_rda <- function(id) {
   f2 <- fleches_rda(m, s2)
   noms_obs <- unname(p$noms_obs[as.character(m$observations)])
   vp <- table_valeurs_propres(s2$valeurs_propres, k$totale, k$contraint$rang)
-  chiffre_r2 <- if (is.na(m$r2_ajuste)) sprintf("R2 %s", formatC(m$r2, format = "f", digits = 2)) else sprintf("R2aj %s", formatC(m$r2_ajuste, format = "f", digits = 2))
+  # (la ligne de l'explorateur dans la langue de l'interface : sa virgule décimale, R2aj ou R2adj)
+  fr <- !identical(getOption("nuee.langue"), "en")
+  chiffre_r2 <- if (is.na(m$r2_ajuste)) sprintf("R2 %s", nombre_texte(m$r2, 2, fr)) else sprintf("%s %s", traduire("R2aj", "R2adj"), nombre_texte(m$r2_ajuste, 2, fr))
   list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = m$type, analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = ncol(m$donnees$X), noms_y = I(m$Y$noms),
-       chiffres = sprintf("%s · p %s", chiffre_r2, if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
+       chiffres = sprintf("%s · p %s", chiffre_r2, p_explorateur(m$test$p, fr)),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
        variables = cbind(data.frame(terme = rownames(f2), stringsAsFactors = FALSE), colonnes_axes(f2)),
@@ -877,6 +879,7 @@ resultat_ca <- function(id) {
   s2 <- echelles[[2]]
   ctr <- m$contributions
   noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   parts <- function(cote, noms, masses) {
     c_ <- colonnes_axes(100 * cote$contribution)
     q_ <- colonnes_axes(cote$cos2)
@@ -886,8 +889,7 @@ resultat_ca <- function(id) {
   }
   list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = "CA", analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = length(m$colonnes), noms_y = I(character(0)),
-       chiffres = sprintf("%s %s · CA1 %s", traduire("inertie", "inertia"), formatC(k$totale, format = "f", digits = 3),
-                          paste0(formatC(100 * k$eig[1] / k$totale, format = "f", digits = 1), " %")),
+       chiffres = sprintf("%s %s · CA1 %s", traduire("inertie", "inertia"), nombre_texte(k$totale, 3, fr), pourcent_texte(k$eig[1] / k$totale, fr)),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
        variables = cbind(data.frame(terme = m$colonnes, stringsAsFactors = FALSE), colonnes_axes(s2$reponses)), variables_y = NULL,

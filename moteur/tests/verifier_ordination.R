@@ -434,6 +434,10 @@ verifier("RDA : analyse sans prédiction, chiffres, vues, scores en échelles 1 
          isTRUE(r$analyse) && identical(r$prediction, FALSE) && grepl("^R2aj ", r$chiffres) && identical(as.character(r$vues_defaut), c("ordination", "valeurs_propres")) &&
            nrow(r$observations) == 39 && identical(names(r$observations)[1:3], c("uid", "nom", "RDA1")) && ncol(r$ordination$`1`$sites) == 10 &&
            identical(as.character(r$ordination$`2`$noms_biplot), c("temp", "ph")) && nrow(r$ordination$`2`$centroides) == 3 && inherits(json(r), "json"))
+langue_avant <- options(nuee.langue = "en")
+verifier("RDA : sa ligne de l'explorateur dans la langue de l'interface (R2aj 0,35, R2adj 0.35)",
+         grepl("^R2aj [0-9]+,[0-9]{2} · p ", r$chiffres) && grepl("^R2adj [0-9]+\\.[0-9]{2} · p ", resultat("M1")$chiffres))
+options(langue_avant)
 verifier("RDA : ses réglages pour Modifier le modèle (options, Z)", identical(r$reglages$options$transformation, "hellinger") &&
            identical(as.numeric(resultat(garder("M2", dz, mz))$reglages$options$z), u("pente")))
 rt <- demande_analyse_rda_tests(list(modele = "M1"))

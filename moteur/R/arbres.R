@@ -159,6 +159,8 @@ groupes_texte <- function(vc_par, G, fr) {
 
 # Un pourcentage pour la ligne d'un modèle dans l'explorateur.
 fmt_pourcent <- function(x) if (is.na(x)) "—" else sprintf("%.0f %%", 100 * x)
+# Une valeur p pour cette ligne, à deux chiffres significatifs (virgule décimale en français).
+p_explorateur <- function(p, fr = TRUE) if (is.na(p)) "—" else sub(".", if (fr) "," else ".", format(signif(p, 2)), fixed = TRUE)
 
 # ---------------------------------------------------------------- les arbres
 
@@ -520,9 +522,10 @@ resultat_tree <- function(id) {
   qualite <- if (m$classement) list(bien_classes = m$classification$ajuste$global, bien_classes_vc = m$classification$vc$global)
              else list(r2 = m$r2, Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, RMSEE = rmsee)
   feuilles <- nrow(regles)
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   chiffres <- if (m$classement) sprintf("%s %s · %d %s", fmt_pourcent(m$classification$vc$global), traduire("bien classées (VC)", "correct (CV)"),
                                         feuilles, traduire("feuilles", "leaves"))
-              else sprintf("R2 %.2f · Q2 %.2f · %d %s", m$r2, m$vc$Q2, feuilles, traduire("feuilles", "leaves"))
+              else sprintf("R2 %s · Q2 %s · %d %s", nombre_texte(m$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), feuilles, traduire("feuilles", "leaves"))
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "TREE", analyse = TRUE, prediction = TRUE,
        classement = m$classement, regression = FALSE, opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(y),
        transformation_y = nom_transformation(m$y$transform) %||% "", observations = observations_arbre(p, m),
