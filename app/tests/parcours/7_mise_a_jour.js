@@ -3,8 +3,8 @@
 // that cites its Q2, the project saved (History keeps its first version). Then next season's ten
 // fruits added to the file: Edit › Update the data… previews what it brings, Update fits the PLS
 // again on 130 fruits and opens What changed (the data's report, the PLS's key results compared,
-// the document's cited Q2); File › History… › Save a version… keeps the updated project as a
-// second version; Edit › Undo brings the 120 fruits back and fits the PLS again, as it was.
+// the document's cited Q2); File › History… › Save a version… keeps the updated project as one
+// more version; Edit › Undo brings the 120 fruits back and fits the PLS again, as it was.
 const fs = require('fs');
 const path = require('path');
 
@@ -80,9 +80,10 @@ module.exports = {
     verifier('changementsModele', changements.modeles.length === 1 && changements.modeles[0].startsWith(pls.nom), changements.modeles);
     verifier('changementsDocument', changements.documents.includes('Season report') && changements.documents.includes('Q2'), changements.documents);
 
-    // ---- File › History…: the first save's version; Save a version… keeps the updated project
+    // ---- File › History…: the first save's version (and one kept before the update, when anything
+    // changed since); Save a version… keeps the updated project as one more
     await n.menu('m_fichier', 'versions');
-    await n.attendre("__n.tous('.liste-versions .version').length === 1");
+    const gardees = await n.attendre("(() => { const v = __n.tous('.liste-versions .version').length; return v ? v : null; })()");
     await n.cliquer("__n.tous('.versions .outils button').find((b) => __n.norm(b.textContent) === __n.norm(__n.t('versions_maintenant')))");
     await n.attendre("__n.titreDialogue().startsWith(__n.t('versions_description_titre').split('{nom}')[0])");
     const description = 'With next season’s fruits';
@@ -90,8 +91,8 @@ module.exports = {
     await n.bouton('versions_bouton_enregistrer');
     const gardee = await n.attendre(`__n.statut() === __n.t('versions_enregistree', { description: ${JSON.stringify(description)} }) && __n.statut()`);
     verifier('versionGardee', !!gardee, gardee);
-    const versions = await n.attendre("(() => { const v = __n.tous('.liste-versions .version'); return v.length === 2 ? v.map((x) => __n.norm(x.querySelector('.version-tete').textContent)) : null; })()");
-    verifier('deuxVersions', versions.some((v) => v.includes(description)), versions);
+    const versions = await n.attendre(`(() => { const v = __n.tous('.liste-versions .version'); return v.length === ${gardees + 1} ? v.map((x) => __n.norm(x.querySelector('.version-tete').textContent)) : null; })()`);
+    verifier('versionDecrite', gardees <= 2 && versions[0].includes(description), versions);
 
     // ---- Edit › Undo: the update undone, the PLS fitted again on the 120 fruits, as it was
     await n.menu('m_edition', 'annuler_action');
