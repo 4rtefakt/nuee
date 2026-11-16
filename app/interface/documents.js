@@ -1293,7 +1293,7 @@ function dialogueNouveau(app, pid, apres = null) {
     choixModeles,
     el('p', { class: 'note' }, t('document_nouveau_note')));
   majModeles();
-  dialogue({ titre: t('nouveau_document').replace(/…$/, ''), contenu, boutons: [
+  dialogue({ titre: `${t('nouveau_document').replace(/…$/, '')} — ${p.nom}`, contenu, boutons: [
     { libelle: t('annuler'), action: () => true },
     { libelle: t('creer_document'), principal: true, action: () => {
       const choisis = ajustes.filter((d) => st.modeles.has(d.nom));
