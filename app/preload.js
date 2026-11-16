@@ -7,6 +7,11 @@ const version = (nom, ...args) => ipcRenderer.invoke(`versions-${nom}`, ...args)
   if ('erreur' in r) throw new Error(r.erreur);
   return r.valeur;
 });
+// signing in to GitHub and GitLab (comptes.js, through main.js): the same, the error's `code` too
+const compte = (nom, ...args) => ipcRenderer.invoke(`comptes-${nom}`, ...args).then((r) => {
+  if ('erreur' in r) throw Object.assign(new Error(r.erreur), r.code ? { code: r.code } : {});
+  return r.valeur;
+});
 
 contextBridge.exposeInMainWorld('bureau', {
   versions: {
@@ -28,6 +33,22 @@ contextBridge.exposeInMainWorld('bureau', {
     envoyer: (chemin) => version('envoyer', chemin),
     recevoir: (chemin) => version('recevoir', chemin),
     choisir: (chemin, cote) => version('choisir', chemin, cote),
+  },
+  // signing in to a server (github.com, gitlab.com, a self-hosted GitLab), given by its name; no
+  // function hands a token back
+  comptes: {
+    serveur: (hote) => compte('serveur', hote),
+    reglerServeur: (hote, id) => compte('reglerServeur', hote, id),
+    commencerConnexion: (hote) => compte('commencerConnexion', hote),
+    ouvrirPage: (hote) => compte('ouvrirPage', hote),
+    attendreConnexion: (hote) => compte('attendreConnexion', hote),
+    annulerConnexion: (hote) => compte('annulerConnexion', hote),
+    compteGit: (hote) => compte('compteGit', hote),
+    utiliserJeton: (hote, jeton) => compte('utiliserJeton', hote, jeton),
+    compte: (hote) => compte('compte', hote),
+    creerDepot: (hote, nom, options) => compte('creerDepot', hote, nom, options || {}),
+    inviter: (hote, url, utilisateur) => compte('inviter', hote, url, utilisateur),
+    deconnecter: (hote) => compte('deconnecter', hote),
   },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
   choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
