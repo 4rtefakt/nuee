@@ -1288,6 +1288,11 @@ async function principal() {
       // order it saw (its classes, probabilities and coefficients follow it), gives its results
       const sl = await api('script_r', { modele: lda.id, chemin: path.join(dossier, 'lda_ordre.R'), version: 'essai' });
       verifier(!sl.ecart, `le script d’une LDA ajustée avant un nouvel ordre de ses classes : ${sl.ecart}`);
+      // the R console's log of that export (moteur/console.R): the same call, which gives that script again
+      const jl = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.includes('lda_ordre.R')).pop();
+      const rejoue = jl ? await api('console', { code: `cat(is.null(${jl.texte}$ecart))` }) : { journal: [] };
+      verifier(jl && jl.texte.startsWith('ecrire_script(projet_tel_ajuste(') && rejoue.journal.some((e) => e.type === 'sortie' && e.texte.trim() === 'TRUE'),
+        `journal de l’export : ${jl && jl.texte} → ${JSON.stringify(rejoue.journal)}`);
       // a model whose condition names categories (not a term of it): a renamed category, then Ctrl+Z,
       // and it is refitted from its own definition each time (serveur.R: suivre_conditions_seance)
       const mc = await api('ajuster', { projet: q.id, type: 'LM', x: [v.altitude], y: [v.densite], echelle: 'none', nom: 'LMcond', condition: 'habitat %in% c("prairie", "lande")' });

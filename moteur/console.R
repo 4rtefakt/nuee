@@ -176,14 +176,28 @@ journaliser <- function(nom, q, r) {
       if (length(q$voisinage)) paste("voisinage =", code_r(q$voisinage)), if (isTRUE(q$par_lieu)) "par_lieu = TRUE"), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
+    # (comme script_demande l'écrit, serveur.R : un modèle sur le projet tel qu'il l'a vu, quand ses
+    # catégories ont changé d'ordre depuis (atelier.R : projet_tel_ajuste) ; les modèles d'une séance
+    # avec leur définition rapportée aux catégories d'aujourd'hui, quand elle l'est (modele) ; la langue)
     script_r = if (length(q$modeles) > 1) {
       ids <- as.character(unlist(q$modeles))
-      sprintf("ecrire_script_seance(%s, lapply(%s, definition), list(%s), %s, dossier_moteur(), donnees = %s%s)", pm(ids[1]), code_r(ids),
+      rapportees <- !all(vapply(ids, function(id) identical(modele(id)$definition, etat$modeles[[id]]$definition), TRUE))
+      sprintf("ecrire_script_seance(%s, lapply(%s, %s), list(%s), %s, dossier_moteur(), donnees = %s%s%s)", pm(ids[1]), code_r(ids),
+              if (rapportees) "function(id) modele(id, TRUE)$definition" else "definition",
               paste(ids, collapse = ", "), code_r(r$script), code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
-              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""))
-    } else sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
-                   code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
-                   paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
+              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""),
+              if (identical(q$langue, "en")) ", langue = \"en\"" else "")
+    } else {
+      vu <- etat$modeles[[q$modele]]
+      p_r <- pm(q$modele)
+      if (length(vu$ordres) && !identical(projet_tel_ajuste(projet(vu$projet), vu$ordres), projet(vu$projet))) {
+        p_r <- sprintf("projet_tel_ajuste(%s, etat$modeles[[%s]]$ordres)", p_r, code_r(q$modele))
+      }
+      sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s%s)", p_r, code_r(q$modele),
+              code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
+              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""),
+              if (identical(q$langue, "en")) ", langue = \"en\"" else "")
+    },
     NULL)
   if (length(lignes)) noter("appel", lignes)
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
