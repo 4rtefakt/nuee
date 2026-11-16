@@ -55,6 +55,9 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
   const groupes = [...proj.variables.filter((v) => v.qualitative).map((v) => ({ valeur: String(v.uid), libelle: v.nom })), ...ids];
   loc.mode ??= 'rarefaction';
   if (loc.groupe && !groupes.some((g) => g.valeur === loc.groupe)) loc.groupe = '';
+  // (opened without species, from the Plots menu: the range the chooser shows, from the table's first
+  // quantitative variable to its last, computed at once rather than waiting for "Take the range")
+  if (loc.especes === undefined) loc.especes = proj.variables.filter((v) => !v.qualitative).map((v) => v.uid);
   // (species chosen that are no longer quantitative variables of the project, columns added then
   // undone by Ctrl+Z: left out, rather than a chooser with none of them to show)
   loc.especes = liste(loc.especes).map(Number).filter((u) => proj.variables.some((v) => v.uid === u && !v.qualitative));
@@ -131,13 +134,20 @@ async function rendreRarefaction(conteneur, ctx, p, loc) {
     const premier = !vus.has(nom);
     vus.add(nom);
     const choisie = sel.has(uid);
+    // (legendrank: the groups in the legend in their order, as the accumulation's, not in that of
+    // their first observation in the table)
     return { type: 'scatter', mode: 'lines', name: nom, legendgroup: nom, showlegend: niveaux.length > 0 && premier,
+      ...(niveaux.length ? { legendrank: 1000 + niveaux.indexOf(g) } : {}),
       x: pts.map((x) => x.taille), y: pts.map((x) => x.S), customdata: pts.map(() => uid), text: pts.map((x) => x.se),
       line: { color: niveaux.length ? couleur(g) : PALETTE[0], width: choisie ? 3 : 1.3 }, opacity: sel.size && !choisie ? 0.35 : 0.9,
       hovertemplate: `<b>${nomDe.get(uid)}</b><br>${t('rar_individus')} %{x}<br>${t('rar_richesse')} %{y:.2f} ± %{text:.2f}<extra>${niveaux.length ? g : ''}</extra>` };
   });
   const shapes = r.entiers && r.taille ? [{ type: 'line', xref: 'x', yref: 'paper', x0: r.taille, x1: r.taille, y0: 0, y1: 1, line: { dash: 'dash', color: c.doux, width: 1 } }] : [];
-  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, `${notes}${r.entiers ? ` ${t('rar_rarefaction_note', { m: r.taille, points: r.pas === 1 ? t('rar_point_chacun') : t('rar_point_tous', { pas: r.pas }) })}` : ''}${r.petites ? ` ${t('rar_petites', { n: r.petites, m: r.taille })}` : ''}`),
+  // (an observation whose rare species were all seen once: their coverage is 0 and ACE doesn't exist,
+  // moteur/R/rarefaction.R; said, rather than a blank cell)
+  const sansAce = r.entiers ? obs.filter((o) => o.S > 0 && (o.ace === null || o.ace === undefined)).map((o) => o.nom) : [];
+  const noteAce = sansAce.length ? ` ${t('rar_sans_ace', { noms: sansAce.slice(0, 5).join(', ') + (sansAce.length > 5 ? '…' : '') })}` : '';
+  conteneur.replaceChildren(barre, cases, el('p', { class: 'note' }, `${notes}${r.entiers ? ` ${t('rar_rarefaction_note', { m: r.taille, points: r.pas === 1 ? t('rar_point_chacun') : t('rar_point_tous', { pas: r.pas }) })}` : ''}${r.petites ? ` ${t('rar_petites', { n: r.petites, m: r.taille })}` : ''}${noteAce}`),
     graphe, bas);
   if (r.entiers) {
     tracer(ctx, graphe, traces, { title: { text: `${proj.nom || ''} · ${t('rar_mode_rarefaction')}` }, shapes, dragmode: 'select',
@@ -169,6 +179,7 @@ ajouterTextes({
   rar_non_entiers: 'Ces données ne sont pas des effectifs entiers : la raréfaction, Chao1 et ACE demandent des comptages d’individus. L’accumulation et les estimateurs fondés sur les présences (Chao2, jackknife, bootstrap) restent possibles.',
   rar_rarefaction_note: 'La richesse attendue dans m individus tirés sans remise (Hurlbert 1971), ±σ (Heck et al. 1975), comme vegan::rarefy ; en pointillés, la taille commune ({m}) ; {points}. Chao1 (corrigé du biais) et ACE estiment la richesse de chaque observation (vegan::estimateR).',
   rar_petites: '{n} observations ont moins de {m} individus : sans richesse raréfiée.',
+  rar_sans_ace: 'Pas d’ACE pour {noms} : toutes les espèces rares (10 individus au plus) n’y sont vues qu’une fois, leur couverture est nulle et ACE n’existe pas.',
   rar_accumulation_note: 'La richesse attendue dans k observations tirées parmi toutes (méthode exacte, Ugland et al. 2003, comme vegan::specaccum), ±2 écarts-types. Sous le graphique, les estimateurs de la richesse totale d’après les présences (vegan::specpool).',
   rar_toutes: 'toutes', rar_nombre_obs: 'Nombre d’observations', rar_richesse: 'Richesse', rar_individus: 'Individus', rar_s_obs: 'S observée',
   rar_s_rarefiee: 'S à {m}', rar_estimateurs: 'Estimateurs',
@@ -184,6 +195,7 @@ ajouterTextes({
   rar_non_entiers: 'These data aren’t integer counts: rarefaction, Chao1 and ACE need counts of individuals. The accumulation and the incidence-based estimators (Chao2, jackknife, bootstrap) remain possible.',
   rar_rarefaction_note: 'The richness expected in m individuals drawn without replacement (Hurlbert 1971), ±σ (Heck et al. 1975), as vegan::rarefy; dashed, the common size ({m}); {points}. Chao1 (bias-corrected) and ACE estimate each observation’s richness (vegan::estimateR).',
   rar_petites: '{n} observations have fewer than {m} individuals: no rarefied richness.',
+  rar_sans_ace: 'No ACE for {noms}: every rare species there (10 individuals or fewer) was seen once, so their coverage is 0 and ACE doesn’t exist.',
   rar_accumulation_note: 'The richness expected in k observations drawn among all (exact method, Ugland et al. 2003, as vegan::specaccum), ±2 standard deviations. Under the plot, the estimators of the total richness from the presences (vegan::specpool).',
   rar_toutes: 'all', rar_nombre_obs: 'Number of observations', rar_richesse: 'Richness', rar_individus: 'Individuals', rar_s_obs: 'Observed S',
   rar_s_rarefiee: 'S at {m}', rar_estimateurs: 'Estimators',

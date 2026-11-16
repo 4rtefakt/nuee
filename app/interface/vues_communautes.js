@@ -94,9 +94,12 @@ function rendreOrdinationDist(conteneur, ctx, p, loc) {
   if (loc.especes && nomsE.length) {
     const xe = col(m.especes, a);
     const ye = y(col(m.especes, b));
+    // (the species in the theme's grey: a palette colour would be one of the sites' categories, the
+    // second's red)
+    const gris = couleursTheme(ctx).doux;
     traces.push({ type: 'scatter', mode: nomsE.length <= ETIQUETTES_MAX ? 'markers+text' : 'markers', name: t('com_especes'), x: xe, y: ye, text: nomsE,
-      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: PALETTE[1] },
-      marker: { color: PALETTE[1], symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
+      meta: 'variables', customdata: nomsE, textposition: 'top center', textfont: { size: 10, color: gris },
+      marker: { color: gris, symbol: 'diamond', size: 8 }, hovertemplate: `<b>%{text}</b><br>%{x:.3f}${entreNombres()}%{y:.3f}<extra></extra>` });
     etendue[0].push(...xe.filter(Number.isFinite)); etendue[1].push(...ye.filter(Number.isFinite));
   }
   const nomsC = liste(aj && aj.centroides && aj.centroides.terme);
@@ -194,7 +197,7 @@ function rendreShepard(conteneur, ctx, p, loc) {
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     n: liste(d.depart).length, nom: 'Starts', choisie: (i) => liste(d.depart)[i] === m.meilleur,
-    avant: [el('span', { class: 'infos' }, m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
+    avant: [el('span', { class: 'infos' }, m.retrouvee > 0 ? t(m.retrouvee === 1 ? 'com_retrouvee_une' : 'com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
       : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart'))],
     colonnes: [{ cle: 'depart', titre: t('com_depart') }, { cle: 'stress', titre: 'stress', num: true, decimales: 4 }],
     valeur: (i, k) => (k === 'depart' ? departTexte(liste(d.depart)[i]) : liste(d[k])[i]),
@@ -532,7 +535,7 @@ const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre')
   lignes: lignesDe(m.valeurs_propres, ['axe', 'valeur_propre', 'part', 'cumul']).slice(0, 10).map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2), fmt(100 * l[3], 2)]) }]
   .concat(m.negatives && m.negatives.n ? [{ texte: t('com_vp_negatives', { n: m.negatives.n, part: fmt(100 * m.negatives.part, 1) }) }] : []);
 const blocsShepard = (m) => [{ texte: t('com_shepard_note', { stress: fmt(m.stress, 3), r2: fmt(1 - m.stress * m.stress, 3) }) },
-  { texte: m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) }) : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart') }];
+  { texte: m.retrouvee > 0 ? t(m.retrouvee === 1 ? 'com_retrouvee_une' : 'com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) }) : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart') }];
 const blocsAjustement = (m) => {
   const aj = m.ajustement;
   if (!aj) return [{ texte: t('com_sans_x') }];
@@ -649,6 +652,7 @@ ajouterTextes({
   com_shepard_extrait: 'Le graphique montre {n} des {total} paires, prises régulièrement dans l’ordre des dissimilarités.',
   com_paires: 'Paires', com_paires_mot: 'paires', com_monotone: 'Régression monotone', com_dissimilarite: 'Dissimilarité', com_distance_ordination: 'Distance dans l’ordination',
   com_retrouvee: 'La meilleure solution ({meilleur}) a été retrouvée {n} fois (Procrustes : erreur quadratique < 0,005, plus grand résidu < 0,01).',
+  com_retrouvee_une: 'La meilleure solution ({meilleur}) a été retrouvée une fois (Procrustes : erreur quadratique < 0,005, plus grand résidu < 0,01).',
   com_pas_retrouvee: 'La meilleure solution ({meilleur}) n’a été retrouvée par aucun autre départ : ce peut être un minimum local (augmentez les départs).',
   com_sans_depart: 'Un seul ajustement, depuis la configuration de la PCoA.', com_depart: 'Départ', com_depart_pcoa: 'PCoA', com_depart_hasard: 'hasard',
   com_departs: 'Départs', com_retrouvee_mot: 'Retrouvée', com_nuls: '{n} dissimilarités nulles ont été remplacées par la moitié de la plus petite non nulle (isoMDS les refuse).',
@@ -721,6 +725,7 @@ ajouterTextes({
   com_shepard_extrait: 'The plot shows {n} of the {total} pairs, taken regularly in the order of the dissimilarities.',
   com_paires: 'Pairs', com_paires_mot: 'pairs', com_monotone: 'Monotone regression', com_dissimilarite: 'Dissimilarity', com_distance_ordination: 'Distance in the ordination',
   com_retrouvee: 'The best solution ({meilleur}) was found again {n} times (Procrustes: root mean square error < 0.005, largest residual < 0.01).',
+  com_retrouvee_une: 'The best solution ({meilleur}) was found again once (Procrustes: root mean square error < 0.005, largest residual < 0.01).',
   com_pas_retrouvee: 'The best solution ({meilleur}) was not found again by any other start: it may be a local minimum (raise the starts).',
   com_sans_depart: 'A single fit, from the PCoA configuration.', com_depart: 'Start', com_depart_pcoa: 'PCoA', com_depart_hasard: 'random',
   com_departs: 'Starts', com_retrouvee_mot: 'Found again', com_nuls: '{n} zero dissimilarities were replaced by half the smallest non-zero one (isoMDS refuses them).',

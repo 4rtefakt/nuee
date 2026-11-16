@@ -459,6 +459,9 @@ verifier("ce que montre le dialogue : système, cellules, méthode, noms, observ
            identical(infos[[2]]$systeme$code, 4326L) && identical(infos[[2]]$methode, "cellule") && grepl("″|°", infos[[2]]$resolution) &&
            identical(as.character(infos[[1]]$noms), "mnt_ouest") && infos[[2]]$dedans == 38 && infos[[1]]$observations == 39 && infos[[1]]$total == 40)
 verifier("… un fichier refusé dit pourquoi, sans empêcher les autres", grepl("JPEG", infos[[3]]$erreur) && is.null(infos[[1]]$erreur))
+verifier("… l'organisation du fichier : des tuiles, ou des blocs de lignes (pas des « bandes », le mot des bandes du raster)",
+         identical(infos[[1]]$organisation, traduire("tuiles de 32 × 32", "32 × 32 tiles")) &&
+           identical(infos[[2]]$organisation, traduire("blocs de 60 lignes", "strips of 60 rows")))
 q <- ajouter_valeurs_rasters(p, list(list(chemin = f("mnt_ouest.tif"), methode = "bilineaire", noms = "altitude"),
                                      list(chemin = f("mnt_est.tif"), methode = "bilineaire", noms = "altitude"),
                                      list(chemin = f("habitat.tif"), methode = "cellule", noms = "habitat"),

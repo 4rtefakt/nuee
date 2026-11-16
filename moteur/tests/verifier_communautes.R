@@ -483,6 +483,8 @@ for (langue in c("fr", "en")) {
              any(grepl("adonis2", t$PERMANOVA$paragraphes)) && any(grepl("betadisper", t$PERMANOVA$paragraphes)) && any(grepl("Anderson, M. J. (2006)", t$PERMANOVA$references, fixed = TRUE)) &&
              any(grepl(if (fr) "partiel" else "partial", t$MANTEL$paragraphes)) && any(grepl("Holm", t$MANTEL$references)) && any(grepl("Oksanen", t$MANTEL$references)) &&
              all(vapply(t, function(x) any(grepl(if (fr) "laissées? de côté" else "left out", x$paragraphes)), TRUE)))
+  verifier(sprintf("texte des méthodes (%s) : les termes de la PERMANOVA entre guillemets, comme les autres noms (l'effet de « temp »)", langue),
+           any(grepl(if (fr) "a testé l'effet de « temp »" else "tested the effect of “temp”", t$PERMANOVA$paragraphes, fixed = TRUE)))
 }
 tc <- texte_methodes(p, dp, mp, "fr")$paragraphes
 verifier("texte : la distance, les valeurs propres négatives", grepl("Bray-Curtis", tc[1]) && grepl("valeurs propres sont négatives", tc[2]))

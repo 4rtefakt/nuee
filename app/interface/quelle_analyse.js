@@ -45,6 +45,8 @@ function faitsTexte(f) {
   else if (f.min === null) return t('qa_faits_inconnus');
   else {
     morceaux.push(t('qa_faits_bornes', { min: nombre(f.min), max: nombre(f.max) }), t(f.entiers ? 'qa_faits_entiers' : 'qa_faits_decimales'));
+    // (whole numbers that their unit or name says are a measurement, not counts: choix_analyse.js, genre)
+    if (f.entiers && f.min >= 0 && f.max > 1 && genre(f) === 'mesure') morceaux.push(t('qa_faits_mesure_arrondie'));
     if (f.zeros > 0) {
       const poisson = genre(f) === 'comptage' ? zerosPoisson(f) : null;
       morceaux.push(t('qa_faits_zeros', { p: pourcent(f.zeros) }) + (poisson !== null ? ` (${t('qa_faits_poisson', { q: pourcent(poisson) })})` : ''));
@@ -166,7 +168,7 @@ export async function dialogueQuelleAnalyse(app, projet) {
         const options = [...(numeriques ? quantitatives() : []), ...(f.reponses.includes('classe') ? qualitatives() : [])]
           .map((v) => [v.uid, v.qualitative ? `${v.nom} (${liste(v.categories).length})` : v.nom]);
         reponse.push(el('div', { class: 'ligne' }, el('label', {}, uneSeule ? t(`qa_r_${f.reponses[0]}`) : t('qa_reponse_variable')),
-          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v)); ajusterReponse(); maj(true); },
+          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v), p()); ajusterReponse(); maj(true); },
             f.facultative ? t('qa_reponse_facultative') : t('qa_choisir'))));
       }
       if (!uneSeule) {

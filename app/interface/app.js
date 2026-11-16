@@ -1458,6 +1458,9 @@ async function garder(res) {
   etat.noeud = `${res.projet}/m/${res.id}`;
   etat.replies.delete(`${res.projet}/calcules`);
   await rafraichirProjet(res.projet);
+  // (the project's views that list its models, the map's Colour and Size and Compare models, drawn
+  // again: a model fitted after they were opened shows in them at once)
+  rafraichirModele(res.projet);
   diffuser('modeles');
   majEtat();
 }
