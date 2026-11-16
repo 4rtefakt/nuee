@@ -600,6 +600,7 @@ const blocR = (options, lignes) => ['```{r}', ...Object.entries(options).map(([k
 export function referencesReproductibles(resolus) {
   const refs = resolus.map((x) => {
     if (!x || x.erreur || !x.modele || !['valeur', 'figure', 'tableau', 'texte'].includes(x.genre)) return null;
+    if (x.genre === 'texte' && !(x.paragraphes || []).length) return null;  // ({{M1.methodes.references}}: nothing where it stands)
     const r = { modele: x.modele, chemin: x.chemin, genre: x.genre };
     if (x.genre === 'valeur') {
       const { forme, decimales, significatifs, quoi } = x.forme || {};
@@ -622,7 +623,9 @@ export function referencesReproductibles(resolus) {
 // an inline R expression), `lignes` (a plot, with its `largeur` and `hauteur` in inches, or a
 // table: the code of its chunk) or `raison` (why it stays written in, as Nuée shows it). A block
 // becomes a chunk only at the start of its line (not in a list or a quote).
-export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {}, reproductible = null }) {
+// `nonCitees`: the keys of the references listed though the text doesn't cite them (those of the
+// Methods texts it cites: documents.js, formaterCitations), for citeproc's nocite.
+export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {}, reproductible = null, nonCitees = [] }) {
   const { corps, brut } = lireEntete(texteDocument);
   const refs = referencesDansTexte(corps, analyse);
   const etiquettes = new Map();  // a document's label -> the Quarto label of its figure or table
@@ -639,8 +642,10 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
     const rr = (reproductible && reproductible.references && reproductible.references[ref.i]) || {};
     const enTete = ref.debut === 0 || corps[ref.debut - 1] === '\n';
     const legende = JSON.stringify(r.legende || r.nom || '');
-    // (a block left as Nuée shows it: why, in a comment the output doesn't show)
-    if (rr.raison && BLOCS.includes(r.genre) && enTete) sortie += `<!-- Nuée${langue === 'en' ? ':' : ' :'} ${rr.raison.replace(/--/g, '—')} -->\n\n`;
+    // (a block left as Nuée shows it: why, in a comment the output doesn't show; not for one that
+    // shows nothing, {{M1.methodes.references}}, whose references go to the list)
+    const vide = r.genre === 'texte' && !r.paragraphes.length;
+    if (rr.raison && BLOCS.includes(r.genre) && enTete && !vide) sortie += `<!-- Nuée${langue === 'en' ? ':' : ' :'} ${rr.raison.replace(/--/g, '—')} -->\n\n`;
     if (r.genre === 'valeur') sortie += rr.code && !/[`|\n]/.test(rr.code) ? `\`r ${rr.code}\`` : r.texte;
     else if (r.genre === 'renvoi') sortie += etiquettes.has(r.cible) ? `@${etiquettes.get(r.cible)}` : r.texte;
     else if (r.genre === 'figure' && rr.lignes && enTete) {
@@ -664,12 +669,20 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
   // (`bibliographie`) and the style (`csl`); the list goes where {{bibliographie}} stands, else at
   // the end, under a heading of its own unless the document ends with one
   sortie = sortie.replace(/^[ \t]*\{\{\s*(bibliographie|bibliography|r[ée]f[ée]rences)\s*\}\}[ \t]*$/gim, '::: {#refs}\n:::');
-  if (analyse.citations.length && !analyse.biblio && !analyse.titreReferences) {
+  // (the references of the Methods texts are listed too: nocite, below)
+  const sansCitation = bibliographie ? [].concat(nonCitees || []) : [];
+  if ((analyse.citations.length || sansCitation.length) && !analyse.biblio && !analyse.titreReferences) {
     sortie = `${sortie.replace(/\s+$/, '')}\n\n${'#'.repeat(analyse.niveauTitres)} ${libelles.references || 'Références'} {.unnumbered}\n`;
   }
   let tete = brut || `---\ntitle: ${JSON.stringify(String(titre))}\n---\n\n`;
   tete = fixerEntete(tete, 'lang', langue, true);
   if (bibliographie) tete = fixerEntete(tete, 'bibliography', bibliographie);
+  if (sansCitation.length) {
+    // (added to the header's own nocite when it is written on its line)
+    const avant = lireEntete(`${tete.replace(/\n*$/, '')}\n`).entete.nocite;
+    const garde = typeof avant === 'string' && avant && !/^[|>]/.test(avant) ? `${avant}, ` : '';
+    if (avant === undefined || garde) tete = fixerEntete(tete, 'nocite', `${garde}${sansCitation.map((k) => `@${k}`).join(', ')}`);
+  }
   if (csl) tete = fixerEntete(tete, 'csl', csl);
   // (citeproc for every format: Quarto's PDF through Typst would use Typst's own, in another
   // style, with a heading of its own and the LaTeX of the titles left as it is)

@@ -223,9 +223,10 @@ async function brancher(cible) {
     await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });
 
     // a document in English, the interface in French: the table it cites is in English, words and
-    // numbers, as its values are (documents.js, i18n.js: dansLangue)
+    // numbers, as its values are (documents.js, i18n.js: dansLangue); the references of the Methods
+    // text it cites are in its list of references (bibliographie.js: joindreReferences)
     await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('fr'))");
-    await p.api('document_enregistrer', { projet: exemple.id, titre: 'Document EN', langue: 'en', texte: 'Q2 = {{M2.Q2}}.\n\n{{M2.table.resume | Summary}}\n' });
+    await p.api('document_enregistrer', { projet: exemple.id, titre: 'Document EN', langue: 'en', texte: 'Q2 = {{M2.Q2}}.\n\n{{M2.table.resume | Summary}}\n\n{{M2.methodes}}\n' });
     await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");  // (as another window says it: the explorer lists it)
     await p.attendre("document.querySelector('.arbre').textContent.includes('Document EN')", 20000);
     await doubleClic('Document EN');
@@ -233,6 +234,10 @@ async function brancher(cible) {
       .catch(() => null);
     verifier('documentDansSaLangue', !!tableDocument && tableDocument.includes('Eigenvalue') && tableDocument.some((x) => /^0\.\d{3}$/.test(x)) && !tableDocument.some((x) => /\d,\d/.test(x)),
       tableDocument && tableDocument.slice(0, 16));
+    const listeDocument = await p.attendre("(() => { const l = [...document.querySelectorAll('.apercu-document .bibliographie p')].map((x) => x.textContent); return l.length && l; })()", 30000)
+      .catch(() => null);
+    verifier('documentReferencesDesMethodes', !!listeDocument && listeDocument.some((x) => x.startsWith('Wold, S., Sjöström, M., & Eriksson, L. (2001). PLS-regression'))
+      && listeDocument.some((x) => x.startsWith('R Core Team (')), listeDocument);
     await p.evaluer("import('/i18n.js').then((m) => m.changerLangue('en'))");
     await p.api('enregistrer', { projet: exemple.id, chemin: path.join(dossier, 'exemple.nuee') });  // (Quit then has nothing to ask)
 

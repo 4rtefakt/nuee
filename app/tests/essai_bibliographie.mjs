@@ -6,7 +6,8 @@
 //   node tests/essai_bibliographie.mjs
 import fs from 'fs';
 import { decoderLatex, lireBibtex, lireNoms, lireCslJson, lireBibliographie, versBibtex, lireGroupeCitations, formaterCitations,
-  segments, texteSeul, resume, correspond, DEBUT_ITALIQUE, FIN_ITALIQUE, elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO } from '../interface/bibliographie.js';
+  segments, texteSeul, resume, correspond, DEBUT_ITALIQUE, FIN_ITALIQUE, elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO,
+  lireReferenceTexte, memeReference, joindreReferences } from '../interface/bibliographie.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -178,6 +179,59 @@ const deuxBechet = formaterCitations([{ cites: [{ cle: 'bechetPopulationDynamics
   new Map([...d2.entries()]), { langue: 'en' });
 egal('les deux citées, dans leur ordre : deux références', [deuxBechet.textes[0], deuxBechet.liste.map((x) => x.cle), deuxBechet.inconnues],
   ['(Béchet & Johnson, 2019; Béchet & Germain, 2019)', ['bechetPopulationDynamicsGreater2019a', 'bechetPopulationDynamicsGreater2019'], []]);
+
+// The references of a Methods text (moteur/R/methodes.R…: APA texts) join the document's list: read
+// as entries, written again in the document's style as the engine writes them, the same work once
+// (the document's entry for it: by DOI, else by title and year), listed though not cited by key.
+console.log('Les références d’un texte des méthodes');
+const METHODES = ['Wold, S., Sjöström, M., & Eriksson, L. (2001). PLS-regression: a basic tool of chemometrics. Chemometrics and Intelligent Laboratory Systems, 58(2), 109–130. https://doi.org/10.1016/S0169-7439(01)00155-1',
+  'Wood, S. N. (2017). Generalized additive models: An introduction with R (2nd ed.). Chapman and Hall/CRC. https://doi.org/10.1201/9781315370279',
+  'R Core Team (2026). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/',
+  'Boutin, C. (2026). Nuée (version 1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014',
+  'Pinheiro, J., Bates, D., & R Core Team (2026). nlme: Linear and nonlinear mixed effects models (R package version 3.1-168). https://CRAN.R-project.org/package=nlme',
+  'van den Berg, R. A., Hoefsloot, H. C. J., Westerhuis, J. A., Smilde, A. K., & van der Werf, M. J. (2006). Centering, scaling, and transformations: improving the biological information content of metabolomics data. BMC Genomics, 7, 142. https://doi.org/10.1186/1471-2164-7-142',
+  'Oksanen, J., Simpson, G. L., Blanchet, F. G., Kindt, R., Legendre, P., Minchin, P. R., et al. (2025). vegan: Community ecology package (R package). https://CRAN.R-project.org/package=vegan',
+  'Stewart-Oaten, A., Murdoch, W. W., & Parker, K. R. (1986). Environmental impact assessment: "Pseudoreplication" in time? Ecology, 67(4), 929–940. https://doi.org/10.2307/1939815',
+  'Liang, K.-Y., & Zeger, S. L. (1986). Longitudinal data analysis using generalized linear models. Biometrika, 73(1), 13–22. https://doi.org/10.1093/biomet/73.1.13',
+  'Kruskal, J. B. (1964a). Multidimensional scaling by optimizing goodness of fit to a nonmetric hypothesis. Psychometrika, 29(1), 1–27. https://doi.org/10.1007/BF02289565',
+  'Kruskal, J. B. (1964b). Nonmetric multidimensional scaling: A numerical method. Psychometrika, 29(2), 115–129. https://doi.org/10.1007/BF02289694',
+  'ter Braak, C. J. F. (1994). Canonical community ordination. Part I: Basic theory and linear methods. Écoscience, 1(2), 127–140.',
+  'Tukey, J. W. (1953). The problem of multiple comparisons. Unpublished manuscript, Princeton University. Reprinted in H. I. Braun (Ed.), The collected works of John W. Tukey: Vol. VIII. Multiple comparisons: 1948–1983 (pp. 1–300). Chapman & Hall, 1994.'];
+const wold = lireReferenceTexte(METHODES[0]);
+egal('un article lu', [wold.type, wold.auteurs.map((n) => `${n.nom}, ${n.prenom}`), wold.annee, wold.titre, wold.revue, wold.volume, wold.numero, wold.pages, wold.doi],
+  ['article', ['Wold, S.', 'Sjöström, M.', 'Eriksson, L.'], '2001', 'PLS-regression: a basic tool of chemometrics', 'Chemometrics and Intelligent Laboratory Systems', '58', '2', '109–130', '10.1016/S0169-7439(01)00155-1']);
+const lus = METHODES.map(lireReferenceTexte);
+egal('un livre et son édition, un logiciel, un auteur collectif, une particule, et al.', [lus[1].type, lus[1].edition, lus[1].editeur, lus[2].auteurs, lus[3].type, lus[4].auteurs[2],
+  lus[5].auteurs[0], lus[6].auteurs[6]], ['book', '2', 'Chapman and Hall/CRC', [{ litteral: 'R Core Team' }], 'misc', { litteral: 'R Core Team' },
+  { nom: 'Berg', prenom: 'R. A.', particule: 'van den', suffixe: '' }, { autres: true }]);
+const enListe = (textes, options = {}) => {
+  const j = joindreReferences(options.entrees || new Map(), textes);
+  const c = formaterCitations(options.groupes || [], j.entrees, { style: 'auteur-annee', langue: 'en', ajoutees: j.ajoutees, ...options });
+  return { j, c, liste: c.liste.map((x) => texteSeul(x.segments)) };
+};
+const tous = enListe(METHODES);
+egal('écrites dans le style du document, comme le moteur les écrit (sauf l’ordre)', [...tous.liste].sort(), [...METHODES].sort());
+verifier('les deux Kruskal de 1964 gardent leurs lettres, la liste dans l’ordre des auteurs (van den Berg à B, comme le document trie ses noms)',
+  tous.liste.indexOf(METHODES[9]) >= 0 && tous.liste.indexOf(METHODES[9]) + 1 === tous.liste.indexOf(METHODES[10]) && /^van den Berg/.test(tous.liste[0]) && /^Boutin/.test(tous.liste[1]) && /^Wood/.test(tous.liste[tous.liste.length - 1]), tous.liste.join(' | '));
+egal('leurs clés, et non citées par le texte', [tous.j.ajoutees.slice(0, 4), tous.c.nonCitees.length], [['nuee:wold2001', 'nuee:wood2017', 'nuee:rcoreteam2026', 'nuee:boutin2026'], METHODES.length]);
+egal('en BibTeX', versBibtex({ ...lus[0], cle: 'nuee:wold2001' }),
+  '@article{nuee:wold2001,\n  author = {Wold, S. and Sjöström, M. and Eriksson, L.},\n  title = {PLS-regression: a basic tool of chemometrics},\n  journal = {Chemometrics and Intelligent Laboratory Systems},\n  year = {2001},\n  volume = {58},\n  number = {2},\n  pages = {109--130},\n  doi = {10.1016/S0169-7439(01)00155-1}\n}');
+// the document's own references: Wood 2017 from its .bib (another title's case, its DOI), R from
+// Zotero without a DOI (the same title and year), Wold 2001 cited by the text: once each
+const bibDoc = lireBibtex(`@book{wood2017, author = {Wood, Simon N.}, title = {Generalized Additive Models: An Introduction with {R}}, edition = {2}, publisher = {Chapman and Hall/CRC}, year = {2017}, doi = {10.1201/9781315370279}}
+@manual{rcore, author = {{R Core Team}}, title = {{R}: A Language and Environment for Statistical Computing}, organization = {R Foundation for Statistical Computing}, year = {2026}}
+@article{wold2001, author = {Wold, Svante and Sjöström, Michael and Eriksson, Lennart}, title = {{PLS}-regression: a basic tool of chemometrics}, journal = {Chemometrics and Intelligent Laboratory Systems}, year = {2001}}
+@book{wood2006, author = {Wood, Simon N.}, title = {Generalized Additive Models: An Introduction with {R}}, publisher = {Chapman and Hall/CRC}, year = {2006}}`).entrees;
+const avecDoc = enListe(METHODES.slice(0, 4), { entrees: new Map(bibDoc.map((e) => [e.cle, e])), groupes: [{ cites: [{ cle: 'wold2001', prefixe: '', suffixe: '', sansAuteur: false }], narratif: false }] });
+egal('la même œuvre une fois : celle du document (par le DOI, ou par le titre et l’année), une autre édition à part', [avecDoc.c.liste.map((x) => x.cle).sort(), avecDoc.c.nonCitees],
+  [['nuee:boutin2026', 'rcore', 'wold2001', 'wood2017'], ['wood2017', 'rcore', 'nuee:boutin2026']]);
+egal('le texte cite toujours la sienne', avecDoc.c.textes, ['(Wold et al., 2001)']);
+verifier('memeReference : le DOI d’abord, puis le titre et l’année, le début d’un titre de trois mots au moins', memeReference(lus[1], { titre: 'Autre', annee: '2017', doi: '10.1201/9781315370279' })
+  && !memeReference(lus[1], { titre: lus[1].titre, annee: '2017', doi: '10.1/autre' }) && memeReference(lus[11], { titre: 'Canonical community ordination. Part I: basic theory and linear methods', annee: '1994' })
+  && !memeReference(lus[11], { titre: 'Canonical community ordination', annee: '1995' }) && !memeReference({ titre: 'Random forests', annee: '2001' }, { titre: 'Random forests in ecology', annee: '2001' }));
+const numerique = enListe(METHODES.slice(0, 2), { style: 'numerique', groupes: [{ cites: [{ cle: 'x', prefixe: '', suffixe: '', sansAuteur: false }], narratif: false }],
+  entrees: new Map([['x', lireBibtex('@article{x, author = {Zed, A.}, title = {A cited work}, journal = {J}, year = {2020}}').entrees[0]]]) });
+egal('numérotées après celles que le texte cite', [numerique.c.textes, numerique.c.liste.map((x) => [x.cle, x.numero])], [['[1]'], [['x', 1], ['nuee:wold2001', 2], ['nuee:wood2017', 3]]]);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);

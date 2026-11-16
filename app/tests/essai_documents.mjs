@@ -4,7 +4,7 @@
 //   node tests/essai_documents.mjs
 import markdownit from 'markdown-it';
 import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte, fixerEntete, listeEntete, referencesReproductibles } from '../interface/rendu_document.js';
-import { lireBibtex, formaterCitations } from '../interface/bibliographie.js';
+import { lireBibtex, formaterCitations, joindreReferences } from '../interface/bibliographie.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -225,6 +225,30 @@ verifier('Quarto : l’ancienne liste de fichiers remplacée', !/refs\.bib|autre
 egal('{{bibliographie}} devient la place de Quarto', versQmd('Texte [@wold2001].\n\n{{bibliographie}}\n', analyser(md, 'Texte [@wold2001].\n\n{{bibliographie}}\n'), [], { fichierFigure: () => '' }).texte.split('\n').slice(-3), ['::: {#refs}', ':::', '']);
 egal('en-tête : une clé ajoutée, remplacée, ou une liste', [fixerEntete('---\ntitle: x\n---\n', 'csl', 'a b.csl'), fixerEntete('---\nbibliography:\n  - a.bib\n  - b.bib\ntitle: x\n---\n', 'bibliography', ['c.bib'])],
   ['---\ntitle: x\ncsl: "a b.csl"\n---\n', '---\nbibliography:\n  - c.bib\ntitle: x\n---\n']);
+
+// The references of a Methods text cited join the document's list (documents.js: citer; the
+// references cited from the .bib once): one list, the text's {{M1.methodes.references}} showing
+// nothing where it stands; in Quarto, in the .bib with nocite, under the list's heading.
+console.log('Les références du texte des méthodes dans la liste du document');
+const docMethodes = '# Méthodes\n\nLa PLS [@wold2001].\n\n{{M1.methodes}}\n\n# Logiciels\n\n{{M1.methodes.references}}\n';
+const am = analyser(md, docMethodes);
+const refsMethodes = ['Wold, S., Sjöström, M., & Eriksson, L. (2001). PLS-regression: a basic tool of chemometrics. Chemometrics and Intelligent Laboratory Systems, 58(2), 109–130. https://doi.org/10.1016/S0169-7439(01)00155-1',
+  'R Core Team (2026). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/'];
+const resM = [{ genre: 'texte', paragraphes: ['La PLS (Wold et al., 2001) a été faite avec R (R Core Team, 2026).'], references: refsMethodes },
+  { genre: 'texte', paragraphes: [], references: refsMethodes }];
+const jm = joindreReferences(bib, refsMethodes);
+const cm = formaterCitations(am.citations.map((t) => t.meta), jm.entrees, { langue: 'fr', ajoutees: jm.ajoutees });
+const hm = versHTML(md, am, resM, { ...libelles, references: 'Références' }, cm);
+egal('une seule liste : wold2001 du .bib, R du texte des méthodes', [(hm.match(/class="bibliographie"/g) || []).length, cm.liste.map((x) => x.cle), cm.nonCitees], [1, ['rcoreteam2026'.replace(/^/, 'nuee:'), 'wold2001'], ['nuee:rcoreteam2026']]);
+verifier('{{M1.methodes.references}} ne montre rien là où il est', /<h1>Logiciels<\/h1>\s*<div class="ref-texte"[^>]*><\/div>\s*<h1>Références<\/h1><div class="bibliographie">/.test(hm), hm.slice(-900));
+const qm = versQmd(docMethodes, am, resM, { fichierFigure: () => '', langue: 'fr', titre: 'Essai', bibliographie: 'essai.bib', libelles: { references: 'Références' }, nonCitees: cm.nonCitees });
+contient('Quarto : nocite pour celles que le texte ne cite pas, la liste sous son titre', qm.texte, ['nocite: "@nuee:rcoreteam2026"', 'bibliography: essai.bib', '# Références {.unnumbered}']);
+verifier('Quarto : rien à la place de {{M1.methodes.references}}', !/methodes\.references|Nuée :/.test(qm.texte) && /# Logiciels\n\n# Références/.test(qm.texte), qm.texte);
+const seulesMethodes = analyser(md, '{{M1.methodes}}\n');
+const qs = versQmd('{{M1.methodes}}\n', seulesMethodes, [resM[0]], { fichierFigure: () => '', bibliographie: 'essai.bib', libelles: { references: 'References' }, nonCitees: jm.ajoutees });
+contient('sans citation dans le texte, la liste vient quand même', qs.texte, ['nocite: "@wold2001, @nuee:rcoreteam2026"', '# References {.unnumbered}']);
+egal('le nocite du document gardé, les leurs ajoutés', versQmd('---\nnocite: "@x"\n---\n{{M1.methodes}}\n', analyser(md, '---\nnocite: "@x"\n---\n{{M1.methodes}}\n'), [resM[0]],
+  { fichierFigure: () => '', bibliographie: 'essai.bib', nonCitees: ['nuee:r'] }).texte.match(/^nocite:.*$/gm), ['nocite: "@x, @nuee:r"']);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);
