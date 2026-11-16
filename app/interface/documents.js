@@ -10,7 +10,7 @@
 // kept in the document itself (its `bib`: the references added from Zotero, with where they are in
 // it, or pasted, and a copy of those cited from files).
 import { t, tDans, dansLangue, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
-import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
+import { el, icone, dialogue, ouvrirMenuSous, inscrireEditeur } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
@@ -267,6 +267,7 @@ function creerEditeur(app, conteneur, pid, d, loc) {
       ],
     }),
   });
+  inscrireEditeur(s.vue);  // (the keyboard given back to it keeps its cursor: ui.js, rendreFocus)
   dernier = s;
   s.vue.dispatch({ scrollIntoView: true });
   // links in the preview: web addresses in the browser, the document's own anchors in place

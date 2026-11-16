@@ -71,6 +71,17 @@ const ITEMS = ':scope > [role^="menuitem"]';
 const premierItem = (m) => m.querySelector(ITEMS) || m;
 const retirerMenu = (m) => { if (!m) return; retirerMenu(m._sous); m._sous = null; m.remove(); };
 
+// The text editors (CodeMirror: a document's text) by their content element. The keyboard given
+// back to one, after a menu or a dialog, goes through the editor's own focus(), which keeps its
+// cursor where it was: the element's focus() alone puts it at the start of the text, where the
+// next key would then go.
+const EDITEURS = new WeakMap();
+export const inscrireEditeur = (vue) => { EDITEURS.set(vue.contentDOM, vue); };
+export function rendreFocus(x, options) {
+  const vue = EDITEURS.get(x);
+  if (vue) vue.focus(); else x.focus(options);
+}
+
 // rendre: the keyboard goes back where it was before the menu (not when another menu takes its place)
 export function fermerMenus(rendre = true) {
   const dedans = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.menu'));
@@ -81,7 +92,7 @@ export function fermerMenus(rendre = true) {
   ouvreur = null;
   document.querySelectorAll('.menu-haut.ouvert').forEach((b) => b.classList.remove('ouvert'));
   if (rendre) document.querySelectorAll('#menus.clavier').forEach((n) => n.classList.remove('clavier'));  // (the menu bar's letters: until a command runs)
-  if (rendre && dedans && retour && retour.isConnected) retour.focus({ preventScroll: true });
+  if (rendre && dedans && retour && retour.isConnected) rendreFocus(retour, { preventScroll: true });
 }
 
 // items: [{ libelle, raccourci, action, actif, coche, sous: [...] } | '-']
@@ -294,7 +305,7 @@ function installerBarre(nav) {
     nav.classList.remove('clavier');
     const a = B.avant;
     B.avant = null;
-    if (a && a.isConnected) a.focus(); else if (nav.contains(document.activeElement)) document.activeElement.blur();
+    if (a && a.isConnected) rendreFocus(a); else if (nav.contains(document.activeElement)) document.activeElement.blur();
   };
   B.basculer = () => { if (nav.contains(document.activeElement) || (barre && menuOuvert)) B.sortir(); else B.entrer(); };
   B.parCle = (touche) => {
@@ -398,7 +409,7 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
     majInert();  // (now: what had the keyboard can have it again)
     document.removeEventListener('keydown', touche, true);
     const dessus = [...document.querySelectorAll('.fond-dialogue')].pop();
-    if (avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) avant.focus();
+    if (avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) rendreFocus(avant);
     if (surFermeture) surFermeture();
   };
   // Esc closes the dialog on top only (another may be open under it; a menu over it, or a table

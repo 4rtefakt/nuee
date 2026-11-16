@@ -1,5 +1,6 @@
 // Documents: the example project (Help › Example project, its PCA M1 fitted), File › New document,
-// a sentence typed in its editor that cites {{M1.Q2}} and a line that shows the PCA's scores; the
+// a sentence typed in its editor that cites {{M1.Q2}} and a line that shows the PCA's scores (a
+// dialog opened and closed meanwhile gives the keyboard back to the text where it was); the
 // preview gives the engine's Q2 and the plot; then Compile › HTML, Word and PDF, each written where
 // the system's dialog says and read back. All three are written by Nuée itself (Electron prints the
 // PDF): only Compile › Quarto needs other software, Quarto, and isn't run here.
@@ -31,6 +32,16 @@ module.exports = {
     await n.touche('Enter');
     await n.taper('{{M1.scores | The scores of the PCA}}');
     await n.touche('Escape');
+    // a dialog from the menu bar, closed with Esc: the keyboard comes back to the text where it was,
+    // so the next key goes on from the end (a key typed and taken back)
+    await n.menu('m_edition', 'atelier_remplacer');
+    await n.dialogue('atelier_remplacer');
+    await n.touche('Escape');
+    await n.attendre('!__n.dialogue()');
+    await n.taper('§');
+    const fin = await n.evaluer("__n.norm(document.querySelector('.document .cm-content').textContent)");
+    verifier('curseurGardeApresDialogue', fin.endsWith('The scores of the PCA}}§'), fin.slice(-60));
+    await n.touche('Backspace');
     // the preview: the engine's Q2, the plot drawn, two references and none in error
     const apercu = await n.attendre(`(() => { const a = document.querySelector('.document .apercu-document'); const i = a && a.querySelector('img');
       return a && i && i.complete && i.naturalWidth > 0 && !document.querySelector('.document .etat-document .erreur') ? __n.norm(a.textContent) : null; })()`);
