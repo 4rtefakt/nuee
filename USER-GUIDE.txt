@@ -143,6 +143,11 @@ Closing the application with unsaved changes offers "Save and close". Every two 
 also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
 power cut), it offers to recover them at the next start. Closing that question without an
 answer keeps the copies for next time; only "Ignore" deletes them.
+File › Settings... › At start-up, "Reopen the projects that were open when Nuée was closed":
+at the next start, the saved projects (.nuee) open when Nuée closed come back, with their
+models and views; a file moved or deleted since is named in the status bar. Without it, the
+start page offers Reopen last session. After an unexpected stop, the recovery copies are
+offered instead.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
 variable, class, scores as variables, deleted definition...), up to 20 steps back.
 Notes: each model's summary has a notes area, saved with the project and included in the

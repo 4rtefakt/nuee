@@ -106,6 +106,11 @@ function rVoulu() {
 }
 let rUtilise = null;        // the R the engine runs on now (rVoulu's, with `repli` when Nuée's own took over)
 let rRepliASignaler = null;  // that fallback, until a window tells it (once: 'r-repli')
+// The projects of the last session: the files of the saved projects open when Nuée last closed, as
+// the main windows tell them while they change (reglages.seance; interface/app.js: noterSeance),
+// read at start-up before this session writes its own; reopened at start when File › Settings… says so
+// (reglages.rouvrirSeance), or from the start page's Reopen last session.
+let seancePrecedente = [];
 
 // Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
 // brings along; null otherwise (documents.js then compiles by itself).
@@ -652,6 +657,18 @@ function ipc() {
     return r.canceled ? null : r.filePath;
   });
   recevoir('recents', () => reglages.recents);
+  // (the last session's projects: each file, and whether it is still there; this session's, as told)
+  recevoir('seance-precedente', () => seancePrecedente.map((chemin) => ({ chemin, existe: fs.existsSync(chemin) })));
+  recevoir('seance-noter', (_, chemins) => {
+    const liste = [...new Set([].concat(chemins || []).filter((c) => typeof c === 'string' && c))].slice(0, 50);
+    if (JSON.stringify(liste) === JSON.stringify(reglages.seance || [])) return;
+    reglages.seance = liste;
+    ecrireReglages();
+  });
+  recevoir('seance-rouvrir', (_, oui) => {
+    if (oui !== undefined) { reglages.rouvrirSeance = !!oui; ecrireReglages(); }
+    return reglages.rouvrirSeance === true;
+  });
   recevoir('ajouter-recent', (_, chemin) => {
     reglages.recents = [chemin, ...reglages.recents.filter((r) => r !== chemin)].slice(0, 10);
     ecrireReglages();
@@ -999,6 +1016,7 @@ function enregistrerProgramme() {
 
 async function demarrer() {
   lireReglages();
+  seancePrecedente = [].concat(reglages.seance || []).filter((c) => typeof c === 'string' && c);
   // A new version (an update): Chromium's HTTP cache may still hold the interface of the version
   // before, which the engine served up to 0.9.5 without Cache-Control; Chromium kept it fresh for
   // a tenth of its age and showed it again without asking, the new Nuée with the old interface.

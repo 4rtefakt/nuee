@@ -158,6 +158,11 @@ fermer ». Toutes les deux minutes, elle garde aussi une copie de secours des pr
 enregistrés : si elle s'arrête sans avoir été fermée (panne, coupure), elle propose au
 lancement suivant de les récupérer. Fermer cette question sans répondre garde les copies pour
 la fois suivante ; seul « Ignorer » les efface.
+Fichier › Réglages... › Au démarrage, « Rouvrir les projets ouverts quand Nuée a été fermée » :
+au lancement suivant, les projets enregistrés (.nuee) ouverts quand Nuée a été fermée
+reviennent, avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé
+dans la barre d'état. Sans cette case, la page d'accueil propose Rouvrir la dernière séance.
+Après un arrêt inattendu, ce sont les copies de secours qui sont proposées.
 Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
 (valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
 jusqu'à 20 en arrière.

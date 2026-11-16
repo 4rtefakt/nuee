@@ -48,7 +48,9 @@ const canal = new BroadcastChannel('nuee');
 const DV = window['dockview-core'];
 
 const etat = { projets: {}, modeles: {}, selection: {}, variables: {}, groupesHCA: {}, choixVIP: {}, locInitial: {}, panneaux: new Map(), noeud: null,
-  replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0' };
+  replies: new Set(), occupe: 0, message: '', erreur: false, selectionLiee: lire('selection_liee') !== '0',
+  // the last session's projects (main.js: their files, still there or not), reopened once; this session's, as told to main.js
+  seance: { precedente: [], rouverte: false, notee: null } };
 // The window's panels. `dock` holds the explorer and, in one central group of tabs, a page per
 // model and the project views (data, statistics...). A model's page is a dock of its own
 // (`pages`) holding that model's views: summary, scores and loadings first, then the others.
@@ -434,6 +436,26 @@ const app = {
   majStatut: () => majEtat(),
 
   quitter: () => bureau && bureau.quitter(),
+
+  // The last session's projects (File › Settings… › At start-up, or the start page's Reopen last
+  // session): the files of the saved projects open when Nuée last closed, opened again with their
+  // sessions, once; a file moved or deleted since, or one that doesn't open, is named.
+  async rouvrirSeance() {
+    const s = etat.seance;
+    if (s.rouverte || !s.precedente.length) return;
+    s.rouverte = true;
+    app.rafraichirExplorateur();  // (the start page's button goes)
+    const absents = [];
+    const illisibles = [];
+    let n = 0;
+    for (const { chemin, existe } of s.precedente) {
+      if (!existe) { absents.push(chemin); continue; }
+      try { await app.ouvrirChemin(chemin); n += 1; } catch { illisibles.push(chemin); }
+    }
+    const noms = (l) => l.map((c) => c.split(/[\\/]/).pop()).join(', ');
+    statut([t(n === 1 ? 'seance_rouverte_un' : 'seance_rouverte', { n }), absents.length ? t('seance_absents', { noms: noms(absents) }) : '',
+      illisibles.length ? t('seance_illisibles', { noms: noms(illisibles) }) : ''].filter(Boolean).join(' '), illisibles.length > 0);
+  },
 
   // ---- models
   async calculer(pid, numero) {
@@ -2125,9 +2147,22 @@ function majTitre() {
   if (document.title !== titre) document.title = titre;
 }
 
+// The files of the saved projects open now, told to main.js as they change: the last session's
+// projects at the next start (rouvrirSeance). A window that has had none yet tells nothing, so that
+// a start where nothing opens keeps the session before.
+function noterSeance() {
+  if (!bureau || !bureau.seance) return;
+  const chemins = Object.values(etat.projets).filter((p) => p.chemin_enregistrement && !p.lecture_seule).map((p) => p.chemin_enregistrement);
+  const cle = JSON.stringify(chemins);
+  if (cle === etat.seance.notee || (!chemins.length && etat.seance.notee === null)) return;
+  etat.seance.notee = cle;
+  bureau.seance.noter(chemins).catch(() => {});
+}
+
 function majEtat() {
   if (!VUE_SEULE) majBarreOutils();
   if (!VUE_SEULE) majTitre();
+  if (!VUE_SEULE) noterSeance();
   if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown
@@ -2163,6 +2198,9 @@ function rendreAccueil(conteneur) {
     el('div', { class: 'accueil-tete' }, el('img', { class: 'logo', src: 'nuee.svg', alt: '' }), el('h1', {}, t('titre')), el('p', {}, t('sous_titre'))),
     el('div', { class: 'accueil-actions' },
       el('button', { class: 'principal', onclick: () => app.ouvrir() }, icone('folder-open'), t('ouvrir')),
+      // (the projects open when Nuée last closed: rouvrirSeance)
+      etat.seance.precedente.length && !etat.seance.rouverte ? el('button', { onclick: () => app.rouvrirSeance(),
+        title: etat.seance.precedente.map((x) => x.chemin).join('\n') }, icone('rotate-ccw'), t('seance_bouton')) : null,
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
       el('button', { onclick: () => app.ouvrirExemple(), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple')),
@@ -2273,6 +2311,7 @@ async function demarrerVue() {
 
 async function demarrerPrincipal() {
   try { recents = bureau ? await bureau.recents() : JSON.parse(lire('recents') || '[]'); } catch { recents = []; }
+  try { etat.seance.precedente = bureau && bureau.seance ? [].concat(await bureau.seance.precedente()) : []; } catch { etat.seance.precedente = []; }
   rendreMenus();
   rendreBarreOutils();
   dock = DV.createDockview(document.getElementById('dock'), optionsDock());
@@ -2306,6 +2345,10 @@ async function demarrerPrincipal() {
     bureau.nouvelleVersion().then((v) => { etat.nouvelleVersion = v; majEtat(); }).catch(() => {});
     if (bureau.surProgressionMaj) bureau.surProgressionMaj((f) => statut(t('maj_telechargement', { v: etat.nouvelleVersion.version, p: Math.round(100 * f) })));
   }
+  // the last session's projects, when File › Settings… says so (not after an unexpected stop: its
+  // recovery copies are offered instead, proposerRecuperation), before a file given at start
+  if (ID_FENETRE === 'principale' && bureau && bureau.seance && etat.seance.precedente.length && !Object.keys(etat.projets).length
+    && await bureau.seance.rouvrir().catch(() => false) && !(await bureau.secoursListe().catch(() => [])).length) await app.rouvrirSeance();
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
   if (!VUE_SEULE) {
     document.addEventListener('dragover', (e) => {
