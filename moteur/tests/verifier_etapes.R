@@ -48,7 +48,10 @@
 #   - une colonne renommée par le fichier suivant (T) qu'une formule lisait : l'étape sautée, la variable
 #     absente nommée ; un TRIM pondéré, ses poids une de ses variables (suppression refusée, la mise à jour
 #     dit qu'il ne se réajuste plus sans eux) ; le numéro d'une variable partie ne revient jamais à une
-#     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler.
+#     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler ;
+#   - Annuler et Rétablir, et les modèles ajustés depuis : un modèle ajusté après un changement reste quand
+#     on l'annule (refusé quand il lit une variable que l'annulation retirerait) ; un modèle ajusté après
+#     Annuler ne laisse plus Rétablir ; les modèles réajustés par leur numéro, si.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -1016,6 +1019,40 @@ demande("annuler", list(projet = rid))
 demande("variable_calculee", list(projet = rid, nom = "c", formule = "T * 4"))
 verifier("une variable supprimée, le projet enregistré et rouvert : une nouvelle ne prend pas son numéro ; ni après Annuler de la dernière",
          !un(rid, "a") %in% pluie_uid && !un(rid, "c") %in% c(pluie_uid, b_uid, un(rid, "a")))
+
+cat("Annuler, Rétablir, et les modèles ajustés depuis\n")
+# (Ajuster ne passe pas par Annuler : un modèle ajusté après un changement reste quand on l'annule, et un
+# modèle ajusté après Annuler ne laisse plus Rétablir remettre les définitions d'avant)
+und_csv <- fichier("annuler.csv")
+set.seed(1)
+utils::write.csv(data.frame(nom = paste0("O", 1:20), x = round(rnorm(20), 3), z = round(rnorm(20), 3), y = round(rnorm(20), 3)), und_csv, row.names = FALSE)
+aid <- demande("ouvrir", list(chemin = und_csv))$id
+ua <- function(nom) uid_de(projet(aid), nom)
+noms_modeles <- function() vapply(projet(aid)$models, function(d) d$name, "")
+dans_seance <- function(nom) any(vapply(etat$modeles, function(e) identical(e$projet, aid) && identical(e$definition$name, nom), TRUE))
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O1"), variable = ua("x"), valeur = "5"))
+demande("annuler", list(projet = aid))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("z")), y = ua("y"), nom = "M1"))
+verifier("un modèle ajusté après Annuler : Rétablir n'est plus proposé (il retirerait sa définition du projet)",
+         identical(noms_modeles(), "M1") && is.null(resume_projet(projet(aid))$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = aid))))
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O2"), variable = ua("x"), valeur = "6"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x")), y = ua("y"), nom = "M2"))
+demande("annuler", list(projet = aid))
+verifier("un changement, un modèle ajusté, Annuler : le changement défait, le modèle reste dans le projet comme dans la séance",
+         setequal(noms_modeles(), c("M1", "M2")) && dans_seance("M2") && unname(valeurs(projet(aid), "x")["O2"]) != 6)
+demande("retablir", list(projet = aid))
+verifier("puis Rétablir : le changement refait, les deux modèles gardés", setequal(noms_modeles(), c("M1", "M2")) && unname(valeurs(projet(aid), "x")["O2"]) == 6)
+# (l'interface réajuste chaque modèle après Annuler une mise à jour : leurs définitions ne changent pas, et
+# Rétablir reste proposé)
+demande("annuler", list(projet = aid))
+for (d in projet(aid)$models) demande("ajuster", list(projet = aid, numero = d$number))
+verifier("Annuler, puis chaque modèle réajusté par son numéro : Rétablir reste proposé", identical(resume_projet(projet(aid))$retablissable, "modification de x"))
+demande("retablir", list(projet = aid))
+demande("variable_calculee", list(projet = aid, nom = "w", formule = "x * 2"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("w")), y = ua("y"), nom = "M3"))
+avant_refus <- projet(aid)
+verifier("un modèle ajusté sur une variable qu'Annuler retirerait : Annuler refusé, en disant de supprimer d'abord le modèle",
+         grepl("M3", refus("annuler", list(projet = aid))) && grepl("« w »", refus("annuler", list(projet = aid))) && identical(projet(aid), avant_refus))
 
 cat("En anglais\n")
 options(nuee.langue = "en")

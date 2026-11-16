@@ -34,7 +34,8 @@
 #     puis fusionner_finir (un seul Ctrl+Z, l'enregistrement qui passe ensuite sans question), les refus
 #     (des choix qui manquent, un projet changé depuis, une ancienne version, sans base), fichier_change
 #     demandé pendant une fusion préparée ; une fusion de trois fichiers écrite dans un fichier ; annuler une
-#     fusion ; les copies effacées à la fermeture ;
+#     fusion (le modèle qu'elle a apporté part avec elle, celui ajusté depuis reste) ; les copies effacées à
+#     la fermeture ;
 #   - un projet que personne ne fusionne : le même fichier écrit, le même projet lu, aussi quand sa copie
 #     dans la séance ne s'écrit pas ;
 #   - les phrases en anglais.
@@ -743,6 +744,21 @@ invisible(demande("fichier_change", list(projet = a)))  # (l'interface le demand
 verifier("fichier_change pendant une fusion préparée ne l'empêche pas de finir",
          identical(erreur(demande("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))), "") &&
            identical(figure(projet(a), "F1")$titre, "Figure de Bob, 2"))
+# (Bob ajoute un modèle, que la fusion apporte ; un modèle que j'ajuste après la fusion : Annuler emporte le
+# sien avec elle, et garde le mien)
+b <- demande("ouvrir", list(chemin = partage))$id
+demande("ajuster", list(projet = b, type = "PCA", x = uid(b, c("x1", "y")), A = 1, nom = "De Bob"))
+Sys.sleep(1.1)
+demande("enregistrer", list(projet = b, chemin = partage, auteur = "Bob"))
+demande("fermer_projet", list(projet = b))
+fu <- demande("fusionner", list(projet = a))
+demande("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))
+demande("ajuster", list(projet = a, type = "PCA", x = uid(a, c("x2", "y")), A = 1, nom = "Le mien"))
+modeles_a <- function() vapply(projet(a)$models, function(d) d$name, "")
+avant_annuler <- modeles_a()
+demande("annuler", list(projet = a))
+verifier("une fusion annulée : le modèle qu'elle a apporté part avec elle, celui ajusté depuis reste",
+         all(c("De Bob", "Le mien") %in% avant_annuler) && !"De Bob" %in% modeles_a() && "Le mien" %in% modeles_a())
 fc <- fusion(base, mien_c, leur_c)
 ft <- demande("fusionner", list(base = base, mien = mien_c, leur = leur_c, dossier = etude))
 verifier("trois fichiers : les mêmes conflits que fusionner_projets", setequal(vapply(ft$conflits, function(x) x$id, ""), ids_conflits(fc)) && isFALSE(ft$auto))

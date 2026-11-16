@@ -174,7 +174,10 @@ garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
   for (i in seq_along(p$models)) {
     if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]][[cle]], valeur)) {
       p$models[[i]][[cle]] <- valeur
-      if (modifie) p$modifie <- TRUE
+      if (modifie) {
+        p$modifie <- TRUE
+        etat$retablissements[[p$id]] <- NULL  # (Rétablir remettrait la définition d'avant : serveur.R, definitions_changees)
+      }
     }
   }
   etat$projets[[p$id]] <- p

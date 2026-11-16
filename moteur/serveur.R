@@ -113,12 +113,23 @@ convertir_usp <- function(chemin) {
 # les figures et l'état du fichier que le projet fusionné a pris, qu'Annuler lui retire s'ils n'ont pas
 # changé depuis (annuler_demande). `references` : les références des documents qu'un nom de variable
 # changé a suivies (renommer_variable_demande), qu'Annuler remet, même dans un document écrit depuis.
-# Un nouveau changement vide ce que Rétablir pouvait refaire.
-memoriser <- function(p, etiquette, fusion = NULL, references = NULL) {
-  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion), if (!is.null(references)) list(references = references))),
+# `modeles` : les noms des modèles que le changement lui-même ajoute au projet (le modèle mixte BACI avec
+# ses variables, ceux de l'autre côté d'une fusion, ceux de la console), qu'Annuler retire avec lui ; un
+# modèle ajusté depuis, lui, reste (revenir_a). Un nouveau changement vide ce que Rétablir pouvait
+# refaire, comme une définition de modèle ajoutée ou changée (definitions_changees).
+memoriser <- function(p, etiquette, fusion = NULL, references = NULL, modeles = NULL) {
+  pile <- c(list(c(list(etiquette = etiquette, projet = p), if (!is.null(fusion)) list(fusion = fusion), if (!is.null(references)) list(references = references),
+                   if (length(modeles)) list(modeles = as.character(modeles)))),
             etat$annulations[[p$id]] %||% list())
   etat$annulations[[p$id]] <- utils::head(pile, 20)
   etat$retablissements[[p$id]] <- NULL
+}
+# Une définition de modèle du projet ajoutée ou changée (un modèle ajusté, sa note, les réglages d'un calcul
+# gardés avec lui) : Rétablir, qui remettrait les définitions d'avant Annuler, ne refait plus rien.
+definitions_changees <- function(id) etat$retablissements[[id]] <- NULL
+# Les noms des modèles de `apres` que `avant` n'a pas.
+modeles_ajoutes <- function(avant, apres) {
+  setdiff(vapply(apres$models %||% list(), function(d) premier_texte(d$name), ""), vapply(avant$models %||% list(), function(d) premier_texte(d$name), ""))
 }
 # Chaque changement des données d'un projet, une fois fait, et chaque retour en arrière comptent
 # une révision du projet : les vues qui gardent des calculs sur ses données les refont.
@@ -139,7 +150,7 @@ annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
-  ancien <- revenir_a(actuel, pile[[1]])
+  ancien <- revenir_a(actuel, pile[[1]], retablir = FALSE)
   etat$annulations[[q$projet]] <- pile[-1]
   etat$retablissements[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], ancien)), etat$retablissements[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- ancien
@@ -155,7 +166,7 @@ retablir_demande <- function(q) {
   pile <- etat$retablissements[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à rétablir", "Nothing to redo"))
   actuel <- projet(q$projet)
-  apres <- revenir_a(actuel, pile[[1]])
+  apres <- revenir_a(actuel, pile[[1]], retablir = TRUE)
   etat$retablissements[[q$projet]] <- pile[-1]
   etat$annulations[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], apres)), etat$annulations[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- apres
@@ -165,8 +176,10 @@ retablir_demande <- function(q) {
 }
 
 # Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
-# Annuler prend la plus récente des annulations, Rétablir celle des rétablissements.
-revenir_a <- function(actuel, e) {
+# Annuler prend la plus récente des annulations, Rétablir (`retablir`) celle des rétablissements. Les
+# modèles ajustés depuis (Ajuster ne passe pas par Annuler) restent, comme les documents et les figures
+# (modeles_venus).
+revenir_a <- function(actuel, e, retablir = FALSE) {
   ancien <- e$projet
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
   # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
@@ -188,6 +201,7 @@ revenir_a <- function(actuel, e) {
     }
   }
   if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
+  ancien$models <- c(ancien$models, numeros_venus(ancien, modeles_venus(ancien, actuel, e, retablir), actuel$id))
   # (le numéro d'une variable qu'Annuler retire ne reviendra pas à une autre : variables.R)
   ancien <- numero_variable_garde(ancien, dernier_numero_variable(actuel))
   ancien$modifie <- TRUE
@@ -195,13 +209,73 @@ revenir_a <- function(actuel, e) {
   ancien
 }
 
+# Les définitions des modèles du projet `actuel` ajoutées depuis l'état `ancien` d'une entrée `e`
+# d'une des piles (un modèle ajusté depuis, qui n'est pas passé par Annuler ; pas ceux que le changement
+# lui-même a ajoutés, e$modeles), rapportées aux données d'`ancien` : leurs observations qu'elles n'ont
+# pas en partent (etapes.R : definition_suivie), leurs catégories prennent leurs numéros par leur nom
+# (atelier.R : aligner_categories). Un modèle qui lit une variable, ou une catégorie, qu'`ancien` n'a
+# pas : le retour est refusé, et dit de supprimer d'abord ce modèle.
+modeles_venus <- function(ancien, actuel, e, retablir = FALSE) {
+  noms <- vapply(ancien$models %||% list(), function(d) premier_texte(d$name), "")
+  venus <- Filter(function(d) !premier_texte(d$name) %in% c(noms, as.character(unlist(e$modeles))), actuel$models %||% list())
+  if (!length(venus)) return(list())
+  fr <- !identical(getOption("nuee.langue"), "en")
+  quoi <- if (retablir) traduire("Rétablir", "Redo") else traduire("Annuler", "Undo")
+  obs <- numeros_observations(ancien)
+  lapply(venus, function(d) {
+    nom <- premier_texte(d$name)
+    manquent <- Filter(function(u) !nom_numero(u) %in% colnames(ancien$donnees), variables_definition(d))
+    if (length(manquent)) {
+      v <- tryCatch(variable_du_projet(actuel, manquent[1]), error = function(err) NULL)
+      stop(sprintf(traduire("%s retirerait %s, qu'utilise %s, ajusté depuis : supprimez d'abord ce modèle (ou gardez le changement).",
+                            "%s would remove %s, which %s, fitted since, uses: delete that model first (or keep the change)."),
+                   quoi, guillemets_texte(if (is.null(v)) nom_numero(manquent[1]) else as.character(v$ids[1]), fr), nom), call. = FALSE)
+    }
+    a <- aligner_categories(ancien, d, categories_definition(actuel, d))
+    if (!is.null(attr(a, "perimee"))) {
+      vues <- categories_definition(actuel, d)
+      change <- Filter(function(u) !identical(as.character(unlist(vues[[u]])), as.character(unlist(tryCatch(variable_du_projet(ancien, as.numeric(u))$categories, error = function(err) NULL)))), names(vues))
+      v <- tryCatch(variable_du_projet(actuel, as.numeric(change[1])), error = function(err) NULL)
+      stop(sprintf(traduire("%s changerait les catégories de %s, qu'utilise %s, ajusté depuis : supprimez d'abord ce modèle (ou gardez le changement).",
+                            "%s would change the categories of %s, which %s, fitted since, uses: delete that model first (or keep the change)."),
+                   quoi, guillemets_texte(if (is.null(v)) change[1] else as.character(v$ids[1]), fr), nom), call. = FALSE)
+    }
+    vues <- as.numeric(unlist(a[c("observations", "cochees", "test", "exclues")]))
+    definition_suivie(a, ancien, numeric(0), setdiff(vues, obs), prend = FALSE)
+  })
+}
+
+# Les définitions `venus` (modeles_venus) avec chacune un numéro qu'aucun modèle de `ancien` n'a : un modèle
+# ajusté après la suppression de celui du plus grand numéro a pris le sien, que le retour rend. Les
+# ajustements de la séance d'un modèle renuméroté le suivent.
+numeros_venus <- function(ancien, venus, id) {
+  pris <- as.numeric(unlist(lapply(ancien$models %||% list(), function(d) d$number)))
+  for (i in seq_along(venus)) {
+    n <- suppressWarnings(as.numeric(premier_texte(venus[[i]]$number, NA)))
+    if (!is.na(n) && !n %in% pris) {
+      pris <- c(pris, n)
+      next
+    }
+    n <- max(c(0, pris, as.numeric(unlist(lapply(venus, function(d) d$number)))), na.rm = TRUE) + 1
+    venus[[i]]$number <- n
+    pris <- c(pris, n)
+    for (m in names(etat$modeles)) {
+      if (identical(etat$modeles[[m]]$projet, id) && identical(premier_texte(etat$modeles[[m]]$definition$name), premier_texte(venus[[i]]$name))) {
+        etat$modeles[[m]]$definition$number <- n
+      }
+    }
+  }
+  venus
+}
+
 # L'entrée de l'autre pile qui ramène à `actuel`, quitté pour l'entrée `e` : son étiquette et, pour une
 # fusion, les documents, les figures et l'état du fichier que ce retour a donnés au projet (`apres`) ;
-# les références d'un nom de variable changé, dans l'autre sens.
+# les références d'un nom de variable changé, dans l'autre sens ; les modèles que le changement a ajoutés.
 entree_inverse <- function(actuel, e, apres) {
   c(list(etiquette = e$etiquette, projet = actuel),
     if (!is.null(e$fusion)) list(fusion = list(fichier_lu = apres$fichier_lu, documents = apres$documents, figures = apres$figures)),
-    if (length(e$references)) list(references = carte_inverse(e$references)))
+    if (length(e$references)) list(references = carte_inverse(e$references)),
+    if (length(e$modeles)) list(modeles = e$modeles))
 }
 
 # Les documents dont le texte a changé de `avant` à `apres` (Annuler, Rétablir : l'interface les relit).
@@ -662,7 +736,12 @@ ajuster_et_garder <- function(p, d, m = NULL) {
     d$fitted <- TRUE
     ancien <- Find(function(x) identical(x$name, d$name), p$models)
     p$models <- c(Filter(function(x) !identical(x$name, d$name), p$models), list(d))
-    if (!identical(ancien, d)) p$modifie <- TRUE  # recalculer un modèle enregistré ne change pas le projet
+    # (recalculer un modèle enregistré ne change pas le projet ; un modèle ajouté ou changé, si, et Rétablir
+    # ne le défera pas : definitions_changees)
+    if (!identical(ancien, d)) {
+      p$modifie <- TRUE
+      definitions_changees(p$id)
+    }
     etat$projets[[p$id]] <- p
   }
   # (les catégories de ses variables qualitatives, telles qu'il les a vues : modele(), atelier.R ;
@@ -717,7 +796,7 @@ baci_modele_demande <- function(q) {
   if (length(b$nouvelles)) {
     etiquette <- sprintf(if (length(b$nouvelles) > 1) "variables %s" else "variable %s", paste(b$nouvelles, collapse = ", "))
     b$projet <- noter_etape(p, b$projet, "baci_modele", q, etiquette)
-    memoriser(p, etiquette)
+    memoriser(p, etiquette, modeles = d$name)  # (Annuler retire ses variables, et le modèle fait avec elles)
     b$projet$modifie <- TRUE
     etat$projets[[p$id]] <- b$projet
     reviser(p$id)
@@ -1466,7 +1545,7 @@ fusionner_finir_demande <- function(q) {
   if (!is.null(f$fiche)) n$fichier_lu <- f$fiche
   n$modifie <- TRUE
   etiquette <- sprintf(traduire("fusion avec %s", "merge with %s"), f$qui)
-  memoriser(actuel, etiquette, fusion = list(fichier_lu = n$fichier_lu, documents = n$documents, figures = n$figures))
+  memoriser(actuel, etiquette, fusion = list(fichier_lu = n$fichier_lu, documents = n$documents, figures = n$figures), modeles = modeles_ajoutes(actuel, n))
   suivre_conditions_seance(actuel, n)
   etat$projets[[actuel$id]] <- n
   reviser(actuel$id)
@@ -1533,6 +1612,7 @@ DEMANDES <- list(
       if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]]$note %||% "", note)) {
         p$models[[i]]$note <- note
         p$modifie <- TRUE
+        definitions_changees(p$id)
       }
     }
     etat$projets[[p$id]] <- p
