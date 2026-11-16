@@ -244,6 +244,10 @@ function htmlBibliographie(c) {
     c.style === 'numerique' ? `<span class="numero">[${r.numero}]</span> ` : ''}${r.segments.map(htmlSegment).join('')}</p>`).join('')}</div>`;
 }
 
+// A figure's source: an engine-made PNG (data:image), or the preview's own copy of one (documents.js:
+// urlApercu, a blob: URL of this page); nothing else reaches an img's src (defence in depth)
+const imageSure = (x) => /^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(String(x)) || /^blob:https?:\/\/[\w.:[\]-]+\/[0-9a-f-]+$/i.test(String(x));
+
 function htmlReference(tok, r, libelles) {
   const brut = echapper(tok.meta.brut);
   if (!r) return `<span class="ref attente">${brut}</span>`;
@@ -254,7 +258,7 @@ function htmlReference(tok, r, libelles) {
   const legende = (lib) => `<b>${echapper(lib)} ${r.numero}.</b>${r.legende ? ` ${echapper(r.legende)}` : ''}`;
   switch (r.genre) {
     case 'figure':
-      return `<figure class="ref-figure"${id} title="${brut}"><img src="${/^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(String(r.image)) ? r.image : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
+      return `<figure class="ref-figure"${id} title="${brut}"><img src="${imageSure(r.image) ? r.image : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
     case 'tableau':
       return `<div class="ref-tableau"${id} title="${brut}"><p class="legende">${legende(libelles.tableau)}</p>${r.blocs.map(htmlBloc).join('')}</div>`;
     case 'texte':
