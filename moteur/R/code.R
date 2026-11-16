@@ -1,4 +1,4 @@
-# Les modèles écrits en code R par l'utilisateur (type CODE, 1.2) : tout modèle que R sait ajuster
+# Les modèles écrits en code R par l'utilisateur (type CODE, 1.1) : tout modèle que R sait ajuster
 # (lm, glm, nls, mgcv, nlme, glmmTMB, unmarked, brms…), avec les paquets du R que Nuée utilise. Le
 # code est dans d$options$code ; ses observations sont celles des autres modèles (toutes, cochées,
 # choisies par une condition). Il voit `donnees`, un data.frame des observations du modèle avec les

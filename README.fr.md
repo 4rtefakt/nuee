@@ -410,6 +410,12 @@ et chaque pull request.
 Nuée est un logiciel libre sous la [Licence publique générale GNU v3.0](LICENSE) ou
 ultérieure.
 
+Ce que Nuée écrit pour vous est à vous : les scripts et rapports d'Exporter vers R (avec les
+parties du moteur qu'ils recopient), les documents reproductibles et les paquets de
+reproductibilité peuvent être utilisés et partagés sous toutes conditions, par une permission
+supplémentaire au titre de l'article 7 de la GPL ([LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md)).
+Chacun dit comment citer Nuée : merci de le faire.
+
 L'installateur Windows et l'application macOS incluent R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
 jsonlite, openxlsx, haven, readxl et leurs dépendances, Electron (MIT), Plotly.js (MIT),
 dockview (MIT), les icônes Lucide (ISC), CodeMirror et markdown-it (MIT) pour les documents, et

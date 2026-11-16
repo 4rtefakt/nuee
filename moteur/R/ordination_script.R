@@ -877,7 +877,8 @@ ecrire_script_ordination <- function(projet, d, chemin_script, m, donnees = "scr
   }
   objets <- vapply(c("m", "r2", "echelle_1", "echelle_2", "echelle_3", "inertie", "valeurs_propres", "test", "permutations", "contributions",
                      "tests_axes", "tests_termes", "tests_sequentiels", "selection", "partition", "Y", "X", "Z", "Ybar"), nom_ordination, "", langue = langue)
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), if (format != "R") c("knitr", "rmarkdown"))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), if (format != "R") c("knitr", "rmarkdown"),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }

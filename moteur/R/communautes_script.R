@@ -893,7 +893,8 @@ ecrire_script_communaute <- function(projet, d, chemin_script, m, donnees = "scr
   objets <- nom_communautes(c("Y", "W", "D", "corr", "pcoa", "nmds", "valeurs_propres", "especes", "Xq", "facteurs", "ajustement", "centroides", "variables_ajustees",
                               "facteurs_ajustes", "X", "termes_x", "Z", "coordonnees", "permutations", "G", "permanova", "dispersions", "Dx", "Dz", "mantel",
                               "correlogramme", "groupe", "C", "statistiques", "meilleures", "p", "p_ajuste", "absentes"), langue)
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), c(if (nmds) "MASS", if (format != "R") c("knitr", "rmarkdown")))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), c(if (nmds) "MASS", if (format != "R") c("knitr", "rmarkdown")),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }

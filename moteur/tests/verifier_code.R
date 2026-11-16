@@ -355,7 +355,7 @@ cat("Un projet enregistré, puis son code changé ailleurs\n")
 chemin <- fichier("projet.nuee")
 demande("enregistrer", list(projet = pid, chemin = chemin))
 j <- jsonlite::fromJSON(chemin, simplifyVector = FALSE)
-verifier("le fichier : le format 4, le code et les colonnes du modèle", identical(j$nuee$format, 4L) &&
+verifier("le fichier : le format de la 1.1 (3), le code et les colonnes du modèle", identical(j$nuee$format, 3L) &&
            any(vapply(j$models, function(d) identical(d$type, "CODE") && identical(d$options$code, code_lm), TRUE)))
 autre <- "fit <- lm(y ~ x + g, data = donnees)\nfit  # (changé par un collègue)"
 for (k in seq_along(j$models)) if (identical(j$models[[k]]$name, "R1")) j$models[[k]]$options$code <- autre
