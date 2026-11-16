@@ -39,6 +39,9 @@ code_sortie_code <- function(m, langue) {
     if (identical(source, "summary")) ligne_sortie(sprintf("print(coef(summary(%s)))", mod), tx("les coefficients", "the coefficients")),
     if (identical(source, "vcov")) ligne_sortie(sprintf("print(cbind(%s = coef(%s), %s = sqrt(diag(vcov(%s)))))", tx("estimation", "estimate"), mod, tx("erreur_type", "se"), mod),
                                                 tx("les coefficients et leurs erreurs-types", "the coefficients and their standard errors")),
+    # (des coefficients en tableau, une ligne par catégorie de la réponse : dans l'ordre de vcov())
+    if (identical(source, "vcov_matrice")) ligne_sortie(sprintf("print(cbind(%s = c(t(coef(%s))), %s = sqrt(diag(vcov(%s)))))", tx("estimation", "estimate"), mod, tx("erreur_type", "se"), mod),
+                                                        tx("les coefficients (une ligne par catégorie de la réponse) et leurs erreurs-types", "the coefficients (a row per category of the response) and their standard errors")),
     if (length(stats)) ligne_sortie(sprintf("print(c(%s))", paste(stats, collapse = ", ")), tx("observations, vraisemblance, AIC, BIC", "observations, likelihood, AIC, BIC")),
     if (length(m$valeurs)) ligne_sortie(sprintf("print(%s)", tx("valeurs", "values")), tx("les valeurs du code", "the code's values")),
     if (length(m$tableaux)) ligne_sortie(sprintf("print(%s)", tx("tableaux", "tables")), tx("les tableaux du code", "the code's tables")))

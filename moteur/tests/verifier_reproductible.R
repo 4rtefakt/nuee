@@ -294,12 +294,26 @@ d_dist <- definir_modele(pd, "DISTANCE", x = NULL, y = ud("distance"), echelle =
                                         ajustements = "aic", monotonie = "stricte", echelle_ajustements = "largeur", unites = list(distance = "m", effort = "km", aire = "km2")))
 m_dist <- ajuster(pd, d_dist)
 tot <- m_dist$densite[nrow(m_dist$densite), ]
+# (les mêmes transects en deux strates, nord et sud, de 60 km² : la densité de chacune, son intervalle et son CV)
+tr2 <- utils::read.csv("docs/site/donnees/skylark_transects.csv", stringsAsFactors = FALSE)
+tr2$Region.Label <- ifelse(tr2$Sample.Label <= "T12", "nord", "sud")
+tr2$Area <- 60
+pd2 <- projet_depuis_tableau(cbind(nom = sprintf("d%03d", seq_len(nrow(tr2))), tr2, stringsAsFactors = FALSE), "transects_strates")
+ud2 <- function(x) numeros(pd2, x)
+d_dist2 <- definir_modele(pd2, "DISTANCE", x = NULL, y = ud2("distance"), echelle = "none", nom = "D2",
+                          options = list(transect = "ligne", echantillon = list(by = "variable", variable = ud2("Sample.Label")), strate = list(by = "variable", variable = ud2("Region.Label")),
+                                         effort = ud2("Effort"), aire = ud2("Area"), taille = ud2("size"), troncature = list(type = "aucune"), gauche = 0, cle = "hn", serie = "cos",
+                                         ajustements = "aic", monotonie = "stricte", echelle_ajustements = "largeur", unites = list(distance = "m", effort = "km", aire = "km2")))
+m_dist2 <- ajuster(pd2, d_dist2)
+st_nord <- m_dist2$densite[m_dist2$densite$strate %in% "nord", ]
+st_sud <- m_dist2$densite[m_dist2$densite$strate %in% "sud", ]
 d_rda <- definir_modele(p, "RDA", x = u("temp", "ph", "habitat"), y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "R1",
                         options = list(transformation = "hellinger", permutations = 99, graine = 3))
 m_rda <- ajuster(p, d_rda)
 d_nmds <- definir_modele(p, "NMDS", x = NULL, y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "N1", options = list(distance = "bray", k = 2, departs = 5, graine = 5))
 m_nmds <- ajuster(p, d_nmds)
 ia <- list(t1 = list(definition = d_trim, modele = m_trim, projet = pa), d1 = list(definition = d_dist, modele = m_dist, projet = pd),
+           d2 = list(definition = d_dist2, modele = m_dist2, projet = pd2),
            r1 = list(definition = d_rda, modele = m_rda), n1 = list(definition = d_nmds, modele = m_nmds), m3 = modeles$m3)
 pc <- function(d = 1) list(forme = "pourcentage", decimales = d)
 pv <- list(forme = "p", decimales = 3)
@@ -319,6 +333,10 @@ CLES <- list(
   valeur("d1", "abondance", nb(sig3(tot$N)), function(f) f$nuee_nombre(tot$N, sig3(tot$N))),
   valeur("d1", "p", nb(sig3(m_dist$p)), function(f) f$nuee_nombre(m_dist$p, sig3(m_dist$p))),
   valeur("d1", "ESW", nb(sig3(m_dist$effectif$valeur)), function(f) f$nuee_nombre(m_dist$effectif$valeur, sig3(m_dist$effectif$valeur))),
+  # (la densité d'une strate, {{D2.D.nord}}, son intervalle et son CV : la strate par son nom, avant une partie de la densité totale)
+  valeur("d2", c("D", "nord"), nb(sig3(st_nord$D)), function(f) f$nuee_nombre(st_nord$D, sig3(st_nord$D))),
+  valeur("d2", c("D", "nord", "ic"), ic_f(sig3(st_nord$D)), function(f) f$nuee_ic(st_nord$bas_D, st_nord$haut_D, sig3(st_nord$D))),
+  valeur("d2", c("D", "sud", "cv"), pc(1), function(f) f$nuee_pourcentage(st_sud$cv, 1)),
   valeur("r1", "R2_ajuste", nb(sig3(m_rda$r2_ajuste)), function(f) f$nuee_nombre(m_rda$r2_ajuste, sig3(m_rda$r2_ajuste))),
   valeur("r1", c("test", "modele", "p"), pv, function(f) f$nuee_p(m_rda$test$p)),
   valeur("n1", "stress", nb(sig3(m_nmds$noyau$stress)), function(f) f$nuee_nombre(m_nmds$noyau$stress, sig3(m_nmds$noyau$stress))),
@@ -333,7 +351,7 @@ for (langue in c("fr", "en")) {
   rc <- ecrire_document_reproductible(p, ia, refs_c, ici, "Suivi", langue, "essai")
   codes <- vapply(rc$references, function(z) z$code %||% NA_character_, "")
   manquent <- which(is.na(codes))
-  verifier(sprintf("en %s : chaque résultat clé cité (pente de TRIM et sa classe, densité et CV, R² ajusté, stress, PERMANOVA) est une expression du script qui redonne le texte de Nuée (%d)%s",
+  verifier(sprintf("en %s : chaque résultat clé cité (pente de TRIM et sa classe, densité totale et d'une strate, et leur CV, R² ajusté, stress, PERMANOVA) est une expression du script qui redonne le texte de Nuée (%d)%s",
                    langue, length(CLES), if (length(manquent)) sprintf(" ; EN DUR : %s", paste(sprintf("%s (%s)", vapply(CLES[manquent], function(v) paste(unlist(v$chemin), collapse = "."), ""),
                                                                                                           vapply(rc$references[manquent], function(z) z$raison %||% "?", "")), collapse = " | ")) else ""),
            !length(manquent) && all(vapply(rc$modeles, function(x) is.null(x$erreur), TRUE)))

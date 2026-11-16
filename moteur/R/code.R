@@ -399,20 +399,31 @@ resume_code <- function(fit) {
 
 # Les coefficients d'une matrice de coef(summary(fit)) (une partie : cond, zi… de glmmTMB) : ses
 # colonnes reconnues par leur nom (Estimate, Std. Error, t value, Pr(>|t|) ; Value, Std.Error, DF,
-# t-value, p-value de nlme…) ; l'intervalle à 95 % de la loi t à leurs degrés de liberté (la colonne DF,
-# sinon ceux des résidus) quand le test est un t, sinon de la loi normale.
+# t-value, p-value de nlme ; coef, exp(coef), se(coef), robust se, z, Pr(>|z|) de survival…), la
+# première étant l'estimation ; NULL quand aucune n'est une erreur-type (une autre colonne n'en tient
+# pas lieu : exp(coef) de coxph ; les coefficients de multinom, en tableau, une colonne par terme).
+# L'erreur-type robuste d'abord (coxph(robust = TRUE) teste avec elle) ; la statistique n'est jamais
+# une colonne au nom d'un terme ou d'une variable du modèle (une variable z ou t). L'intervalle à 95 % :
+# de la loi t à leurs degrés de liberté quand le test est un t (la colonne DF, sinon ceux des résidus),
+# sinon de la loi normale (une colonne DF y est celle d'un χ² : coxph avec frailty()).
 coefficients_matrice <- function(M, partie, fit, prefixer) {
   noms <- colnames(M) %||% character(ncol(M))
-  colonne <- function(motif) { k <- grep(motif, noms, ignore.case = TRUE); if (length(k)) k[1] }
-  k_se <- colonne("std\\.? ?err|^se$|^s\\.e\\.?$") %||% (if (ncol(M) >= 2) 2L)
-  k_stat <- colonne("^(t|z)([ .-]?(value|ratio|stat))?$|wald")
+  termes <- c(rownames(M), names(essai_code(stats::coef(fit))), essai_code(all.vars(stats::formula(fit))))
+  colonne <- function(motif, exclues = character(0)) {
+    k <- setdiff(grep(motif, noms, ignore.case = TRUE), which(noms %in% exclues))
+    if (length(k)) k[1]
+  }
+  k_se <- colonne("^robust[ .]?se$") %||% colonne("std\\.? ?err|^se$|^s\\.e\\.?$|^se\\(coef\\)$")
+  if (is.null(k_se)) return(NULL)
+  k_stat <- colonne("^(t|z)([ .-]?(value|ratio|stat))?$|wald", termes)
   k_p <- colonne("^pr\\(|p[ .-]?val|^p$")
   k_ddl <- colonne("^df$|^ddl$|^d\\.f\\.?$")
   val <- function(k) if (!is.null(k)) unname(as.numeric(M[, k])) else rep(NA_real_, nrow(M))
   est <- val(1L)
   se <- val(k_se)
-  ddl <- val(k_ddl)
-  if (all(is.na(ddl)) && !is.null(k_stat) && grepl("^t", noms[k_stat], ignore.case = TRUE)) ddl <- rep(nombre_code(essai_code(stats::df.residual(fit))) %||% NA_real_, nrow(M))
+  t_test <- !is.null(k_stat) && grepl("^t", noms[k_stat], ignore.case = TRUE)
+  ddl <- if (t_test) val(k_ddl) else rep(NA_real_, nrow(M))
+  if (t_test && all(is.na(ddl))) ddl <- rep(ddl_residus_code(fit), nrow(M))
   q <- ifelse(is.finite(ddl) & ddl > 0, stats::qt(0.975, pmax(ddl, 1e-8)), stats::qnorm(0.975))
   terme <- rownames(M) %||% paste0("b", seq_len(nrow(M)))
   if (prefixer && nzchar(partie)) terme <- paste0(partie, ".", terme)
@@ -420,9 +431,20 @@ coefficients_matrice <- function(M, partie, fit, prefixer) {
              bas = est - q * se, haut = est + q * se, stringsAsFactors = FALSE)
 }
 
+# Les degrés de liberté des résidus d'un modèle dont le test est un t : df.residual(), sinon N − p
+# d'un gls ou d'un gnls de nlme (df.residual() n'en dit rien ; leurs valeurs p et intervals() les
+# prennent) ; NA sans.
+ddl_residus_code <- function(fit) {
+  ddl <- nombre_code(essai_code(stats::df.residual(fit)))
+  if (is.null(ddl) && inherits(fit, "gls") && is.list(fit$dims)) ddl <- nombre_code(fit$dims$N - fit$dims$p)
+  ddl %||% NA_real_
+}
+
 # Les coefficients du modèle : coef(summary(fit)) quand c'est une matrice de nombres ou une liste de
-# matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie), sinon coef(fit) avec les
-# erreurs-types de vcov(fit) et l'intervalle de la loi normale. NULL quand l'objet n'en a pas.
+# matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie) dont chacune a une colonne
+# d'erreurs-types (coefficients_matrice), sinon coef(fit) avec les erreurs-types de vcov(fit) et
+# l'intervalle de la loi normale ; des coefficients en tableau, une ligne par catégorie de la réponse
+# (multinom), dans l'ordre de vcov(), « catégorie:terme ». NULL quand l'objet n'en a pas.
 coefficients_code <- function(fit) {
   if (is.null(fit)) return(NULL)
   cs <- essai_code(stats::coef(summary(fit)))
@@ -433,17 +455,24 @@ coefficients_code <- function(fit) {
   if (!is.null(parties)) {
     noms <- names(parties) %||% rep("", length(parties))
     noms[is.na(noms)] <- ""
-    t <- do.call(rbind, lapply(seq_along(parties), function(k) coefficients_matrice(parties[[k]], noms[k], fit, length(parties) > 1)))
-    if (!is.null(t) && nrow(t)) return(structure(t, source = "summary"))  # (d'où ils viennent : l'export vers R refait le même appel)
+    tables <- lapply(seq_along(parties), function(k) coefficients_matrice(parties[[k]], noms[k], fit, length(parties) > 1))
+    if (!any(vapply(tables, is.null, TRUE))) {
+      t <- do.call(rbind, tables)
+      if (nrow(t)) return(structure(t, source = "summary"))  # (d'où ils viennent : l'export vers R refait le même appel)
+    }
   }
   b <- essai_code(stats::coef(fit))
+  matrice_b <- is.matrix(b) && is.numeric(b) && length(rownames(b)) && length(colnames(b))
+  if (matrice_b) b <- stats::setNames(as.vector(t(b)), paste(rep(rownames(b), each = ncol(b)), rep(colnames(b), nrow(b)), sep = ":"))
   if (!is.numeric(b) || !length(b) || is.matrix(b)) return(NULL)
   V <- essai_code(stats::vcov(fit))
+  if (is.matrix(V) && length(names(b)) && all(names(b) %in% rownames(V)) && all(names(b) %in% colnames(V))) V <- V[names(b), names(b), drop = FALSE]
+  else if (matrice_b) V <- NULL  # (sans les noms de vcov(), l'ordre de ses lignes n'est pas sûr)
   se <- if (is.matrix(V) && nrow(V) == length(b) && ncol(V) == length(b)) sqrt(pmax(0, diag(V))) else rep(NA_real_, length(b))
   z <- stats::qnorm(0.975)
   structure(data.frame(partie = "", terme = names(b) %||% paste0("b", seq_along(b)), estimation = unname(b), erreur_type = unname(se), statistique = NA_real_,
                        ddl = NA_real_, p = NA_real_, bas = unname(b) - z * unname(se), haut = unname(b) + z * unname(se), stringsAsFactors = FALSE),
-            source = "vcov")
+            source = if (matrice_b) "vcov_matrice" else "vcov")
 }
 
 # Le nombre d'observations, la log-vraisemblance et ses degrés de liberté, l'AIC et le BIC : chacun
@@ -461,23 +490,85 @@ reponse_code <- function(fit) {
   if (inherits(f, "formula") && length(f) == 3 && is.name(f[[2]])) as.character(f[[2]])
 }
 
+# Les lignes de `donnees` que des noms désignent, quand ce sont leurs numéros (donnees_code numérote
+# ses `n` lignes de 1 à n), chacune une fois ; NULL sinon.
+lignes_noms_code <- function(noms, n) {
+  noms <- as.character(noms)
+  k <- suppressWarnings(as.integer(noms))
+  if (length(k) && !anyNA(k) && identical(as.character(k), noms) && all(k >= 1 & k <= n) && !anyDuplicated(k)) k
+}
+
+# Les lignes de `donnees` des valeurs ajustées `f` (fitted()) et des résidus `e` (residuals()) du
+# modèle, dans leur ordre (`lignes`) : leurs noms (lm, glm, gls… gardent ceux des lignes de leurs
+# données, même quand le code réordonne `donnees` ou que na.action en retire), sinon ceux des lignes
+# du cadre que le modèle garde (fit$model : un gam de mgcv) ; d'un greffon qui ne les nomme pas, leur
+# place (le contrat des greffons : dans l'ordre des données, sans les lignes que na.action() dit omises,
+# par leur place). NULL quand ce ne sont pas ces numéros (lme les nomme par ses groupes, nls ne les
+# nomme pas) : chaque valeur n'est pas rapportée à une observation, plutôt qu'à une autre. `autres` :
+# la réponse `y` du modèle (une colonne de `donnees`) n'a pas, à ces lignes, les valeurs de `donnees`
+# (fitted() + residuals(type = "response")) : le code l'a ajusté sur d'autres données (par site,
+# transformées), et ses lignes ne sont pas des observations.
+lignes_ajustement_code <- function(fit, f, e, donnees, y, greffon = FALSE) {
+  n <- nrow(donnees)
+  nombre <- length(nombres_ou_rien(f))
+  noms <- function(x) if (length(names(x)) == nombre) lignes_noms_code(names(x), n)
+  lignes <- if (nombre) noms(f) %||% noms(e)
+  cadre <- if (is.list(fit) && !isS4(fit)) fit[["model"]]
+  if (is.null(lignes) && is.data.frame(cadre) && nrow(cadre) == nombre) lignes <- lignes_noms_code(rownames(cadre), n)
+  if (is.null(lignes) && greffon && nombre && is.null(names(f))) {
+    omis <- essai_code(stats::na.action(fit))
+    omis <- if (length(omis)) suppressWarnings(as.integer(omis)) else integer(0)
+    gardees <- setdiff(seq_len(n), omis)
+    if (!anyNA(omis) && length(gardees) == nombre) lignes <- gardees
+  }
+  autres <- FALSE
+  if (!is.null(lignes) && !is.null(y) && is.numeric(donnees[[y]])) {
+    r <- nombres_ou_rien(essai_code(stats::residuals(fit, type = "response")))
+    if (length(r) == nombre) {
+      vu <- nombres_ou_rien(f) + r
+      ok <- !is.na(vu)
+      autres <- !isTRUE(all.equal(vu[ok], donnees[[y]][lignes][ok], tolerance = 1e-6, check.attributes = FALSE))
+    }
+  }
+  list(lignes = if (!autres) lignes, autres = autres)
+}
+
 # Les observations que l'ajustement a prises (des numéros), parmi `obs` (celles que le code a reçues,
-# `N` celles que nobs() compte) : toutes, ou celles que na.action() ne dit pas omises ; NULL quand on
-# ne le sait pas.
-observations_utilisees_code <- function(fit, obs, N) {
+# `N` celles que nobs() compte ; `lg` : lignes_ajustement_code des valeurs ajustées `ajustees`) : celles
+# des lignes de ses valeurs ajustées (non manquantes : na.exclude) quand elles sont N, toutes quand il
+# les a toutes prises, sinon toutes sauf celles que na.action() dit omises, par leurs noms (d'un greffon
+# qui ne les nomme pas, par leur place) ; NULL quand on ne le sait pas, ou que ses données ne sont pas
+# celles de `donnees`.
+observations_utilisees_code <- function(fit, obs, N, lg, ajustees, greffon = FALSE) {
   n <- length(obs)
+  if (isTRUE(lg$autres)) return(NULL)
+  prises <- if (!is.null(lg$lignes) && length(lg$lignes) == length(ajustees)) lg$lignes[!is.na(ajustees)]
+  if (length(prises) && length(prises) == N) return(obs[sort(prises)])
   if (identical(as.numeric(N), as.numeric(n))) return(obs)
-  omis <- essai_code(stats::na.action(fit))
-  omis <- suppressWarnings(as.integer(omis))
-  if (length(omis) && !anyNA(omis) && all(omis >= 1 & omis <= n) && n - length(unique(omis)) == N) return(obs[-unique(omis)])
+  na <- essai_code(stats::na.action(fit))
+  omis <- lignes_noms_code(names(na), n)
+  if (is.null(omis) && greffon && length(na) && is.null(names(na))) {
+    omis <- unique(suppressWarnings(as.integer(na)))
+    if (anyNA(omis) || any(omis < 1 | omis > n)) omis <- NULL
+  }
+  if (length(omis) && n - length(omis) == N) return(obs[-omis])
   NULL
+}
+
+# Les prédictions du modèle pour les données `nd`, sur l'échelle de la réponse : predict(fit, newdata,
+# type = "response") (sans lui, un glm, un gam, glmmTMB… prédisent le prédicteur linéaire : le log
+# d'un comptage), son appel par défaut quand ce type le fait échouer (une classe qui ne le connaît pas).
+predire_reponse_code <- function(fit, nd) {
+  p <- tryCatch(suppressWarnings(stats::predict(fit, newdata = nd, type = "response")), error = function(e) NULL)
+  if (is.null(p)) p <- suppressWarnings(stats::predict(fit, newdata = nd))
+  p
 }
 
 # predict(fit, newdata) marche-t-il sur des données comme celles que Nuée lui donne ?
 prediction_code <- function(fit, donnees) {
   if (is.null(fit) || !nrow(donnees)) return(FALSE)
   nd <- donnees[seq_len(min(nrow(donnees), 5)), , drop = FALSE]
-  p <- essai_code(stats::predict(fit, newdata = nd))
+  p <- essai_code(predire_reponse_code(fit, nd))
   is.numeric(p) && length(p) == nrow(nd)
 }
 
@@ -499,6 +590,10 @@ comparaison_code <- function(projet, m) {
   if (inherits(fit, c("lme", "gls")) && identical(fit$method, "REML")) {
     return(ecarte("Ajusté par REML : sa vraisemblance ne se compare pas à celle d'autres effets fixes (method = \"ML\" pour le comparer par l'AIC).",
                   "Fitted by REML: its likelihood doesn't compare with other fixed effects' (method = \"ML\" to compare it by AIC)."))
+  }
+  if (isTRUE(m$autres_donnees)) {
+    return(ecarte("Le code l'a ajusté sur d'autres données que `donnees` : sa réponse n'y a pas les valeurs des observations (des données agrégées, transformées).",
+                  "The code fitted it on other data than `donnees`: its response doesn't have the observations' values there (aggregated, transformed data)."))
   }
   if (!isTRUE(m$utilisees_connues)) return(ecarte("On ne sait pas quelles observations l'ajustement a prises.", "Which observations the fit used isn't known."))
   y <- m$reponse
@@ -549,16 +644,21 @@ modele_valeur_code <- function(projet, d, ev, donnees, type = "CODE") {
   obs <- as.numeric(unlist(d$observations))
   st <- statistiques_code(fit)
   N <- st$nobs %||% length(obs)
-  utilisees <- observations_utilisees_code(fit, obs, N)
-  ajustees <- nombres_ou_rien(essai_code(stats::fitted(fit)))
-  residus <- nombres_ou_rien(essai_code(stats::residuals(fit)))
+  f <- essai_code(stats::fitted(fit))
+  e <- essai_code(stats::residuals(fit))
+  ajustees <- nombres_ou_rien(f)
+  residus <- nombres_ou_rien(e)
   if (length(ajustees) != length(residus)) ajustees <- residus <- NULL
-  # (chaque valeur ajustée rapportée à son observation : une par observation prise, ou par ligne reçue)
-  uid_ajustees <- if (length(ajustees) && length(ajustees) == length(utilisees)) utilisees else if (length(ajustees) == length(obs)) obs
+  reponse <- reponse_code(fit)
+  # (chaque valeur ajustée rapportée à son observation par le numéro de sa ligne dans `donnees`, quand
+  # on le sait : lignes_ajustement_code)
+  lg <- lignes_ajustement_code(fit, f, e, donnees, reponse, identical(type, "PLUGIN"))
+  utilisees <- observations_utilisees_code(fit, obs, N, lg, ajustees, identical(type, "PLUGIN"))
+  uid_ajustees <- if (length(ajustees) && length(lg$lignes) == length(ajustees)) obs[lg$lignes]
   m <- list(type = type, N = N, n_donnees = length(obs), observations = utilisees %||% obs, recues = obs, utilisees_connues = !is.null(utilisees),
-            ajustement = fit, liste = liste,
+            autres_donnees = isTRUE(lg$autres), ajustement = fit, liste = liste,
             autres = if (liste) setdiff(names(v), c("modele", "valeurs", "tableaux")) else character(0),
-            classe = if (!is.null(fit)) class(fit) else character(0), reponse = reponse_code(fit),
+            classe = if (!is.null(fit)) class(fit) else character(0), reponse = reponse,
             resume = resume_code(fit), coefficients = coefficients_code(fit), statistiques = st,
             ajustees = ajustees, residus = residus, uid_ajustees = uid_ajustees, prediction = prediction_code(fit, donnees),
             valeurs = valeurs, tableaux = tableaux, sortie = ev$sortie, messages = ev$messages, avertissements = ev$avertissements,
@@ -656,10 +756,11 @@ tables_code <- function(projet, m) {
 # ---------------------------------------------------------------- prédire
 
 # Les prédictions de predict(fit, newdata) pour des observations du projet, avec les données que le
-# code voit (donnees_code) ; la réponse observée quand le modèle en a une du projet.
+# code voit (donnees_code), sur l'échelle de la réponse (predire_reponse_code) ; la réponse observée
+# quand le modèle en a une du projet.
 predire_code <- function(projet, m, d, observations) {
   nd <- donnees_code(projet, d, observations)
-  p <- tryCatch(suppressWarnings(as.numeric(stats::predict(m$ajustement, newdata = nd))), error = function(e) {
+  p <- tryCatch(suppressWarnings(as.numeric(predire_reponse_code(m$ajustement, nd))), error = function(e) {
     stop(sprintf(traduire("predict() n'a pas prédit ces observations : %s", "predict() didn't predict these observations: %s"), conditionMessage(e)), call. = FALSE)
   })
   if (length(p) != nrow(nd)) stop(traduire("predict() n'a pas rendu une prédiction par observation.", "predict() didn't give one prediction per observation."), call. = FALSE)

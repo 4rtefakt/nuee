@@ -2,6 +2,8 @@
 # telles que l'interface les envoie (serveur.R : DEMANDES, chaque demande passée par le JSON) :
 #   - lm, glm, nls et un modèle mixte de nlme : les mêmes coefficients, erreurs-types, valeurs p,
 #     vraisemblance, AIC et BIC que ces fonctions appelées ici ; mgcv et MASS quand ils sont là ;
+#   - les colonnes de coef(summary()) prises par leur nom : survival::coxph (se(coef), robust se) et
+#     nnet::multinom (coef() et vcov()) quand ils sont là ; la loi t d'un gls (N − p) ;
 #   - la forme liste : ses valeurs et ses tableaux, ses éléments inconnus ; ce que le code affiche, ses
 #     messages, ses avertissements, un graphique dessiné ;
 #   - une erreur et sa ligne, une erreur de lecture, un paquet qui manque, un code vide, une valeur NULL ;
@@ -14,7 +16,9 @@
 #   - le texte des méthodes, avec R, les paquets, leur version et leur citation ;
 #   - la comparaison par l'AIC : le même ensemble que la régression linéaire de Nuée de la même réponse
 #     sur les mêmes observations ; écarté, avec sa raison, ajusté par REML ;
-#   - les prédictions ; les tableaux exportés ;
+#   - les valeurs ajustées et les résidus rapportés à leurs observations par leurs noms : un code qui
+#     réordonne donnees, lme (rapportés à aucune), un modèle ajusté sur des moyennes par site ;
+#   - les prédictions, sur l'échelle de la réponse (un glm de Poisson : des comptages) ; les tableaux exportés ;
 #   - l'export vers R : le script écrit, lancé seul par Rscript, redonne les mêmes nombres.
 #   Rscript moteur/tests/verifier_code.R
 
@@ -212,6 +216,42 @@ if (requireNamespace("MASS", quietly = TRUE)) {
   verifier("MASS::glm.nb : sa classe (negbin), son paquet, et la mesure discrète de sa vraisemblance pour l'AIC",
            identical(as.character(m_nb$classe)[1], "negbin") && "MASS" %in% m_nb$paquets$nom && grepl(" discrete marginale$", m_nb$comparaison$signature))
 } else cat("  (MASS absent)\n")
+# les colonnes de coef(summary()) reconnues par leur nom, jamais par leur place : survival::coxph
+# (coef, exp(coef), se(coef), robust se…), nnet::multinom (ses coefficients en tableau, une colonne par
+# terme, dont une variable z) ; les degrés de liberté de la loi t d'un gls (N − p, comme intervals())
+if (requireNamespace("survival", quietly = TRUE)) {
+  code_cox <- "survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = donnees)"
+  approuver(code_cox)
+  m_cox <- ajuste_code(code_cox, "S1")
+  a_cox <- survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = dd)
+  code_rob <- "survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = donnees, robust = TRUE)"
+  approuver(code_rob)
+  m_rob <- ajuste_code(code_rob, "S2")
+  a_rob <- survival::coxph(survival::Surv(n + 1, as.integer(x > 3)) ~ y + g, data = dd, robust = TRUE)
+  verifier("survival::coxph : l'erreur-type se(coef), pas exp(coef) ; z, p et l'intervalle de confint() ; avec robust = TRUE, l'erreur-type robuste, celle de son test",
+           proche(m_cox$coefficients$erreur_type, coef(summary(a_cox))[, "se(coef)"]) && proche(m_cox$coefficients$statistique, coef(summary(a_cox))[, "z"]) &&
+             proche(cbind(m_cox$coefficients$bas, m_cox$coefficients$haut), confint(a_cox)) &&
+             proche(m_rob$coefficients$erreur_type, coef(summary(a_rob))[, "robust se"]) && proche(cbind(m_rob$coefficients$bas, m_rob$coefficients$haut), confint(a_rob)))
+} else cat("  (survival absent : pas de coxph)\n")
+if (requireNamespace("nnet", quietly = TRUE)) {
+  code_mn <- "fit <- nnet::multinom(site ~ x + n, data = donnees, trace = FALSE)\nfit"
+  approuver(code_mn)
+  m_mn <- ajuste_code(code_mn, "S3")
+  a_mn <- nnet::multinom(site ~ x + n, data = dd, trace = FALSE)
+  b_mn <- coef(a_mn)
+  s_mn <- demande("script_r", list(modele = m_mn$id, chemin = fichier("S3.R"), langue = "fr"))
+  verifier("nnet::multinom : coef() et les erreurs-types de vcov(), catégorie:terme dans l'ordre de vcov(), pas son tableau de coefficients ; l'export vers R les redonne",
+           identical(m_mn$coefficients$terme, rownames(vcov(a_mn))) && proche(m_mn$coefficients$estimation, c(t(b_mn))) &&
+             proche(m_mn$coefficients$erreur_type, c(t(summary(a_mn)$standard.errors)), 1e-8) && all(m_mn$coefficients$bas < m_mn$coefficients$haut) &&
+             all(is.na(m_mn$coefficients$statistique)) && is.null(s_mn$ecart) && any(grepl("c(t(coef(modele)))", readLines(s_mn$script, encoding = "UTF-8"), fixed = TRUE)))
+} else cat("  (nnet absent : pas de multinom)\n")
+code_gls <- "nlme::gls(y ~ x + g, data = donnees, na.action = na.omit)"
+approuver(code_gls)
+m_gls <- ajuste_code(code_gls, "S4")
+a_gls <- nlme::gls(y ~ x + g, data = dd, na.action = na.omit)
+verifier("nlme::gls : la loi t à N − p degrés de liberté (55), celle de sa valeur p et de intervals() (df.residual() n'en dit rien)",
+         all(m_gls$coefficients$ddl == 55) && proche(m_gls$coefficients$bas, nlme::intervals(a_gls, which = "coef")$coef[, "lower"], 1e-8) &&
+           proche(m_gls$coefficients$haut, nlme::intervals(a_gls, which = "coef")$coef[, "upper"], 1e-8))
 
 # ---------------------------------------------------------------- la forme liste, la sortie, les erreurs
 
@@ -276,6 +316,9 @@ pr <- demande("predire", list(modele = m_lm$id))
 verifier("les prédictions de predict(fit, newdata) sur les observations du projet ; la réponse observée",
          proche(pr$observations[["y prédit"]], predict(attendu, newdata = dd)) && proche(pr$observations[["y observé"]], dd$y))
 verifier("un modèle dont predict() ne marche pas (une liste sans modele) : sans prédiction", identical(demande("modele", list(modele = m_seules$id))$prediction, FALSE))
+pr_glm <- demande("predire", list(modele = m_glm$id))
+verifier("les prédictions d'un glm de Poisson : sur l'échelle de la réponse, des comptages (predict(type = \"response\")), pas leur log",
+         proche(pr_glm$observations[["n prédit"]], predict(a_glm, newdata = dd, type = "response")) && proche(pr_glm$observations[["n observé"]], dd$n))
 cles <- vapply(demande("resultats_cles", list(modele = m_lm$id))$entrees, `[[`, "", "cle")
 verifier("ses résultats clés : N, K, logLik, AIC, BIC, chaque coefficient (coef., se.) ; les valeurs d'un code (valeurs.)",
          all(c("N", "K", "logLik", "AIC", "BIC", "coef.(Intercept)", "coef.x", "coef.gtraité", "se.x") %in% cles) &&
@@ -285,6 +328,29 @@ verifier("ses résultats clés : N, K, logLik, AIC, BIC, chaque coefficient (coe
 r_lm_nuee <- demande("ajuster", list(projet = pid, type = "LM", x = as.numeric(numeros(p(), c("x", "g"))), y = as.numeric(numeros(p(), "y")), echelle = "none", nom = "LM1"))
 verifier("comparé par l'AIC à la régression linéaire de Nuée de la même réponse sur les mêmes observations : le même ensemble, le même AIC",
          identical(m_lm$comparaison$signature, r_lm_nuee$signature) && proche(m_lm$comparaison$AIC, r_lm_nuee$qualite$AIC, 1e-8))
+
+# les valeurs ajustées, les résidus et les observations prises, rapportés aux observations par les noms
+# de fitted(), residuals() et na.action() (les numéros des lignes de donnees), pas par leur place : un
+# code qui réordonne donnees ; lme, qui les nomme par ses groupes, et un modèle ajusté sur d'autres
+# données (par site) : rapportés à aucune observation, plutôt qu'à une autre
+code_ordre <- "donnees <- donnees[order(donnees$x), ]\nlm(y ~ x + g, data = donnees)"
+approuver(code_ordre)
+m_ordre <- ajuste_code(code_ordre, "O1")
+par_obs <- function(r) stats::setNames(as.numeric(r$ajustees$residu), as.character(r$ajustees$uid))
+lignes_dd <- as.integer(names(residuals(attendu)))
+verifier("donnees réordonné par le code : le résidu de chaque observation est le sien (celui de lm() sur les données du projet) ; les observations prises sans o07 et o44 ; comparé par l'AIC à la régression de Nuée, le même ensemble",
+         length(m_ordre$ajustees$uid) == 58 && proche(par_obs(m_ordre)[as.character(numeros_observations(p())[lignes_dd])], residuals(attendu), 1e-8) &&
+           setequal(e_de(m_ordre)$modele$observations, numeros_observations(p())[-c(7, 44)]) && identical(m_ordre$comparaison$signature, r_lm_nuee$signature))
+code_lme_ordre <- "donnees <- donnees[order(donnees$x), ]\nnlme::lme(y ~ x + g, random = ~ 1 | site, data = donnees, method = \"ML\", na.action = na.omit)"
+approuver(code_lme_ordre)
+m_lme_ordre <- ajuste_code(code_lme_ordre, "O2")
+code_agg <- "par_site <- aggregate(y ~ site, donnees, mean)\nlm(y ~ 1, data = par_site)"
+approuver(code_agg)
+m_agg <- ajuste_code(code_agg, "O3")
+verifier("lme (ses valeurs nommées par ses groupes) sur donnees réordonné : ses résidus rapportés à aucune observation ; les observations prises par les noms de na.action(), sans o07 et o44",
+         length(m_lme_ordre$ajustees$residu) == 58 && !length(m_lme_ordre$ajustees$uid) && setequal(e_de(m_lme_ordre)$modele$observations, numeros_observations(p())[-c(7, 44)]))
+verifier("un modèle ajusté par le code sur des moyennes par site : ses 6 résidus rapportés à aucune observation, hors de la comparaison par l'AIC (d'autres données)",
+         length(m_agg$ajustees$residu) == 6 && !length(m_agg$ajustees$uid) && is.null(m_agg$comparaison$signature) && grepl("autres données", m_agg$comparaison$raison))
 
 # ---------------------------------------------------------------- l'export vers R
 

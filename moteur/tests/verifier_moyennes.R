@@ -458,9 +458,19 @@ for (k in 1:2) ndZx[[mZ$termes[match(sprintf("habitat(H%d)", k), mZ$noms_termes)
 LZx <- stats::predict(aZ, ndZx, type = "lpmatrix")
 etaZx <- drop(LZx %*% stats::coef(aZ))
 seZx <- sqrt(rowSums((LZx %*% stats::vcov(aZ)) * LZx))
-verifier("ziP : les comptages attendus à un effort de 1 (h(η) de mgcv), l'intervalle h(η ± 1,96 se), « H3 » de référence ; l'effort dit",
+verifier("ziP : les comptages attendus à un effort de 1 (h(η) de mgcv), l'intervalle h(η ± 1,96 se), « H3 » de référence ; l'effort dit, et la loi (la note n'y dit pas « des densités »)",
          proche(eZ$effet, stats::predict(aZ, ndZx, type = "response"), 1e-8) && proche(eZ$bas, hZ(etaZx - 1.96 * seZx), 1e-8) && proche(eZ$haut, hZ(etaZx + 1.96 * seZx), 1e-8) &&
-           identical(eZ$fixes$qualitatives$categorie, "H3") && identical(pZ$commun$decalage, "effort"))
+           identical(eZ$fixes$qualitatives$categorie, "H3") && identical(pZ$commun$decalage, "effort") && identical(pZ$famille, "poisson_zi"))
+# une réponse transformée, ln(densite + 1) : les valeurs prédites restent sur son échelle, que forme_y
+# nomme (la vue, sa note, son axe), pas sous le nom de la variable
+dLa <- definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = "none", transformations = stats::setNames("ln:1:1", uq("densite")))
+mLa <- ajuster(pq, dLa)
+pLa <- effets_reponse(pq, mLa, dLa)
+aLa <- terme_pr(pLa, "annee")
+lLa <- lm(log(densite + 1) ~ annee + secteur, data = tq)
+verifier("une réponse transformée : les valeurs prédites de ln(densite + 1) (= predict(lm(log(densite + 1) ~ annee + secteur))), leur échelle nommée par sa formule, un logarithme",
+         comme_r(aLa, lLa, data.frame(annee = aLa$x, secteur = aLa$fixes$qualitatives$categorie), tol = 1e-8) && identical(pLa$forme_y, "ln(densite + 1)") &&
+           isTRUE(pLa$log_y) && is.null(pA$forme_y) && !isTRUE(pA$log_y))
 # le GLMM binomial négatif du tutoriel de suivi : les alouettes par année dans chaque habitat, le site à 0
 ta <- utils::read.csv("docs/site/donnees/skylark_counts.csv", stringsAsFactors = FALSE)
 pa <- projet_depuis_tableau(ta, "alouettes")

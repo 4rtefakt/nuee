@@ -304,7 +304,7 @@ verifier("la sélection par AIC le garde dans chaque modèle", nrow(selection_ai
 # session R neuve, et ses objets comparés au modèle par ecart_regression : coefficients, AIC et
 # vraisemblance, R², variances, courbes et la ligne du lissage (edf, test, concurvité), validation
 # croisée, valeurs ajustées et résidus, résidus quantiles, jeu de test, sélection par l'AIC, effets de
-# la vue Effets.
+# la vue Effets et leurs valeurs prédites (le lissage au point moyen des coordonnées).
 cat("Export vers R d'un modèle additif à lissage spatial, en français et en anglais, et en rapport R Markdown\n")
 dossier_s <- tempfile("lissage_script")
 dir.create(dossier_s)
@@ -329,7 +329,10 @@ essayer_spatial <- function(nom, d, langue, selection = FALSE) {
   m <- ajuster(psi, d)
   if (selection) m$selection_aic <- selection_aic(m, d)
   r <- ecrire_script(psi, d, file.path(dossier_s, paste0(nom, ".R")), "moteur", m = m, version = "essai", langue = langue)
-  objets <- nom_script(c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection", "effets"), langue)
+  # (tout ce que ecart_regression compare, les valeurs prédites de la vue Effets comprises : un objet
+  # que la session lancée seule ne rend pas compte comme un écart infini)
+  objets <- nom_script(c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection", "effets",
+                         "valeurs_predites"), langue)
   s <- lancer(r$script, objets)
   pl <- plan_modele(psi, d, m, tableau_script(psi, ids_script(list(d), psi)))
   difference <- if (length(s)) ecart_regression(pl, m, list2env(s), langue) else paste(utils::tail(attr(s, "messages"), 3), collapse = " / ")

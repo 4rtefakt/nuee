@@ -1991,8 +1991,10 @@ code_regression <- function(pl, b, langue, seance = NULL) {
       "})",
       sprintf("names(effets) <- %s", code_textes(ef$nom)))
   }
-  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : plan_predictions)
+  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : plan_predictions ; celle d'une
+  # réponse transformée nommée par sa formule, log10(compte + 1), comme dans Nuée)
   pr <- pl$predictions
+  y_predite <- function(x) if (!is.null(pl$y$tr) && !identite(pl$y$tr)) formule_transformation(pl$y$tr, x, langue != "en") else x
   if (!is.null(pr)) {
     ajuste_r <- if (gamm) "m$gam" else "m"
     inverse <- if (identical(pl$famille, "poisson_zi")) "function(eta) esperance_zip(eta, parametre_loi)"
@@ -2003,13 +2005,16 @@ code_regression <- function(pl, b, langue, seance = NULL) {
     ligne_s <- function(l) sprintf("list(terme = %s, niveau = %s, x_min = %s, x_max = %s, S = c(%s))", code_texte(l$terme), code_texte(l$niveau),
                                    texte_exact(l$de), texte_exact(l$a), paste(sprintf("%s = %s", vapply(names(l$S), code_texte, ""), texte_exact(unname(l$S))), collapse = ", "))
     exclusion <- mgcv && mixte && !gamm
+    # (l'effort à 1 : des densités, sauf les comptages attendus du Poisson à excès de zéros)
+    effort_fr <- if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", l'effort à 1" else ", l'effort à 1 (des densités)"
+    effort_en <- if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", the effort at 1" else ", the effort at 1 (densities)"
     statistiques <- c(statistiques, "",
       commentaire(tx(sprintf("Les valeurs prédites (la vue Effets de Nuée, Valeurs prédites) : pour chaque terme quantitatif, %s quand sa variable parcourt 80 valeurs de son étendue (dans chaque catégorie des variables qualitatives croisées avec lui, sur ses valeurs dans la catégorie), les autres variables quantitatives à leur moyenne sur les observations du modèle (avant leur transformation), les variables qualitatives dans leur catégorie de référence%s%s%s ; la bande à 95 %% du prédicteur linéaire (± 1,96 erreur-type), ramenée sur l'échelle de la réponse par l'inverse du lien. `lignes_predites` : chaque ligne, son terme, sa catégorie, l'étendue de la variable et la valeur de chaque terme simple sur la grille (`S` ; NA : le terme lui-même, et les termes croisés, que colonnes_grille() calcule).",
-                             sprintf("la valeur de %s que prédit le modèle", guillemets(pl$y$nom)), if (mixte) ", les effets aléatoires à 0 (la population)" else "",
-                             if (!is.null(pl$effort)) ", l'effort à 1 (des densités)" else "", if (spatial) ", le lissage spatial au point moyen des coordonnées" else ""),
+                             sprintf("la valeur de %s que prédit le modèle", y_predite(guillemets(pl$y$nom))), if (mixte) ", les effets aléatoires à 0 (la population)" else "",
+                             effort_fr, if (spatial) ", le lissage spatial au point moyen des coordonnées" else ""),
                      sprintf("The predicted values (Nuée's Effects view, Predicted values): for each quantitative term, the value of %s the model predicts as its variable runs over 80 values of its range (within each category of the qualitative variables crossed with it, over its values in the category), the other quantitative variables at their mean over the model's observations (before their transformation), the qualitative variables in their reference category%s%s%s; the 95%% band of the linear predictor (±1.96 standard errors), brought back to the response scale by the inverse of the link. `predicted_lines`: each line, its term, its category, the variable's range and the value of each simple term on the grid (`S`; NA: the term itself, and the cross terms, which grid_columns() computes).",
-                             guillemets(pl$y$nom), if (mixte) ", the random effects at 0 (the population)" else "",
-                             if (!is.null(pl$effort)) ", the effort at 1 (densities)" else "", if (spatial) ", the spatial smooth at the mean point of the coordinates" else ""))),
+                             y_predite(guillemets(pl$y$nom)), if (mixte) ", the random effects at 0 (the population)" else "",
+                             effort_en, if (spatial) ", the spatial smooth at the mean point of the coordinates" else ""))),
       code_valeurs(vapply(pr$facteurs, function(fs) if (length(fs)) sprintf("c(%s)", paste0(fs, "L", collapse = ", ")) else "integer(0)", ""), "facteurs_grille <- list(", ")", ouvrir = ""),
       code_valeurs(vapply(pr$lignes, ligne_s, ""), "lignes_predites <- list(", ")", ouvrir = ""),
       "predire_lignes <- function(S) {",
@@ -2286,7 +2291,7 @@ code_regression <- function(pl, b, langue, seance = NULL) {
   # (les valeurs prédites : un graphique par terme, une courbe et sa bande par catégorie)
   if (!is.null(pr)) graphiques <- c(graphiques, lapply(seq_along(pr$termes), function(k) {
     j <- match(pr$termes[k], pl$termes)
-    ylab_p <- sprintf(tx("%s, valeurs prédites", "Predicted %s"), pl$y$nom)
+    ylab_p <- sprintf(tx("%s, valeurs prédites", "Predicted %s"), y_predite(pl$y$nom))
     list(nom = sprintf("prediction-%d", k), terme = pr$noms[k], largeur = 6, hauteur = 4.5, code = c(
       sprintf("v <- valeurs_predites[[%d]]", k),
       "niveaux_v <- unique(v$niveau)",
@@ -2392,9 +2397,9 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
                        holm = tx("ajustées par la méthode de Holm (leurs intervalles par celle de Bonferroni)", "adjusted by Holm's method (their intervals by Bonferroni's)"),
                        tx("sans ajustement", "unadjusted"))
   c(commentaire(tx(sprintf("Les moyennes ajustées faites dans Nuée (Graphiques › Moyennes ajustées), comme les calcule le paquet emmeans : %s, d'après les prédictions du modèle sur une grille de référence, chaque combinaison des catégories observées de %s, chaque variable quantitative à sa moyenne sur les observations du modèle (avant sa transformation), en moyenne à poids égaux sur les catégories des autres variables qualitatives%s ; les paires de catégories, %s.",
-                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", l'effort à 1 (des densités)" else "", ajustement),
+                           quoi, liste(guillemets(noms_q)), if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", l'effort à 1" else ", l'effort à 1 (des densités)", ajustement),
                    sprintf("The adjusted means done in Nuée (Plots › Adjusted means), as the emmeans package computes them: %s, from the model's predictions on a reference grid, each combination of the observed categories of %s, each quantitative variable at its mean over the model's observations (before its transformation), averaged with equal weights over the categories of the other qualitative variables%s; the pairs of categories, %s.",
-                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", the effort at 1 (densities)" else "", ajustement))),
+                           quoi, liste(guillemets(noms_q)), if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", the effort at 1" else ", the effort at 1 (densities)", ajustement))),
     grille,
     if (length(cov)) code_valeurs(sprintf("%s = %s", vapply(names(cov), code_texte, ""), texte_exact(unname(cov))), "moyennes_x <- c(", ")", ouvrir = "") else "moyennes_x <- numeric(0)",
     commentaire(tx("Les termes simples à chaque ligne de la grille (une catégorie : 0 ou 1 ; une variable quantitative : sa valeur `v`, transformée) ; les termes croisés en découlent (facteurs_grille : les rangs de leurs facteurs).",

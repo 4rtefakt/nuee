@@ -774,6 +774,11 @@ verifier("ziP : ziP() de mgcv, ses valeurs ajustées par predict(), ses θ, ses 
            any(grepl("parametre_loi <- setNames(m$family$getTheta(TRUE), c(\"theta1\", \"theta2\"))", lignes_script(r), fixed = TRUE)) &&
            any(grepl("residus_quantiles(cadre[[1]], repartition_zip(m$linear.predictors, m$family$getTheta(TRUE)))", lignes_script(r), fixed = TRUE)) &&
            any(grepl("^esperance_zip <- function", lignes_script(r))) && any(grepl("theta_zip = parametre_loi", lignes_script(r), fixed = TRUE)))
+# (ses commentaires, mis bout à bout : leurs lignes coupent les phrases)
+commentaires_script <- function(r) paste(sub("^\\s*# ?", "", grep("^\\s*#", lignes_script(r), value = TRUE)), collapse = " ")
+verifier("ziP avec un effort : ses valeurs prédites et ses moyennes ajustées à un effort de 1, des comptages attendus, pas des densités",
+         grepl("l'effort à 1 ; la bande à 95 %", commentaires_script(r), fixed = TRUE) && grepl("l'effort à 1 ; les paires de catégories", commentaires_script(r), fixed = TRUE) &&
+           !grepl("densités", commentaires_script(r), fixed = TRUE))
 r <- essayer_regression("glm_beta_profil", pzf, definir_modele(pzf, "GLM", x = uz("x1", "x2", "habitat"), y = uz("prop"), famille = "beta", echelle = "none"))
 verifier("bêta sans terme pénalisé : betar(), et le profil de φ quand mgcv s'arrête en ML (profil_loi) ; ses résidus quantiles de pbeta, sans tirage",
          any(grepl("famille <- function() betar(link = \"logit\")", lignes_script(r), fixed = TRUE)) && any(grepl("^profil_loi <- function", lignes_script(r))) &&
@@ -813,6 +818,9 @@ r <- essayer_regression("lm_puissance_en", pr, definir_modele(pr, "LM", x = ur("
                         puissance = list(tendance = -4, simuler = TRUE, simulation = list(n = 20)))
 verifier("puissance pour une tendance en anglais : simulate_power(), ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
            any(grepl("^simulate_power <- function", lignes_script(r))) && any(grepl("slope <- log(1 + (-4) / 100)", lignes_script(r), fixed = TRUE)))
+verifier("une réponse transformée (ln(masse)) : ses valeurs prédites nommées sur son échelle, dans le commentaire et sur l'axe de leur graphique",
+         grepl("the value of ln(“masse”) the model predicts", commentaires_script(r), fixed = TRUE) &&
+           any(grepl("ylab = \"Predicted ln(masse)\"", lignes_script(r), fixed = TRUE)) && !any(grepl("Predicted masse", lignes_script(r), fixed = TRUE)))
 # Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
 # x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
 dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",

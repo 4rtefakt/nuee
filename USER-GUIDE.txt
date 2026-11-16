@@ -1247,8 +1247,10 @@ over the model's observations (before their transformation, as for the adjusted 
 curves at that point; the qualitative variables in their reference category, except those
 crossed with the term, each category of which has its curve over its own values (and a curve per
 category its level); the random effects at 0 (the population, no group's own departure); an
-effort of 1 (densities); the spatial smooth at the mean point of the coordinates. With the
-identity link they are the predicted values of the modelled response (transformed, if it is).
+effort of 1 (densities; expected counts for the zero-inflated Poisson); the spatial smooth at the
+mean point of the coordinates. With the identity link they are the predicted values of the
+modelled response (transformed, if it is, and then named by its formula, log10(y + 1), in the
+view, its note and its axis).
 Export to R computes and draws the same (predicted_values, a plot per term), and a document cites
 them as {{M5.valeurs_predites.year}}),
 Observed / predicted, Residuals
@@ -1962,10 +1964,15 @@ code its data, takes from the model what it can, and treats it like its other mo
     line (the editor goes there); a package that isn't installed is named, with how to install
     it; the model stays in the dialog, not fitted.
 From the model, each part when the object allows it: print(summary()); the coefficients
-(coef(summary()) when it is a table of numbers, or several, as glmmTMB's cond, zi and disp; else
-coef() with the standard errors of vcov()) and their 95% interval (the t distribution at their
-degrees of freedom when their test is a t, else the normal); nobs(), logLik() and its degrees of
-freedom, AIC(), BIC(); fitted() and residuals(); predict(fit, newdata) when it works.
+(coef(summary()) when it is a table of numbers with a column of standard errors, found by its
+name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; else coef() with the
+standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom
+when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(),
+BIC(); fitted() and residuals(), each value matched to its observation by its name, the number
+of its row in donnees (lm, glm, gls… keep them, even when the code reorders donnees), or to none
+when the names aren't those numbers (lme, nls) or the code fitted the model on other data;
+predict(fit, newdata) when it works, on the response scale (type = "response", when the model
+knows it: a GLM's counts, not their log).
 
 Views: Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the
 warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table),

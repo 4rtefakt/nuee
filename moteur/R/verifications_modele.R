@@ -100,17 +100,38 @@ verifications_regression <- function(projet, m, d = NULL) {
                       if (trop) (if (fr) " : un excès de zéros, qu'un modèle à zéros en excès ou la binomiale négative prendrait peut-être en compte" else ": an excess of zeros, which a zero-inflated model or the negative binomial may account for") else ""))
     }
   }
-  # --- la séparation d'une présence-absence : des probabilités ajustées de 0 ou 1, à moins de 1e-8 du
-  # bord (glm() le dit par « fitted probabilities numerically 0 or 1 », mgcv ne le dit pas). Les
-  # coefficients des termes qui séparent les présences des absences, tout à fait ou pour une catégorie,
-  # croissent sans fin et leurs erreurs-types plus encore : leurs tests (p près de 1) ne disent rien de
-  # leur effet (Albert et Anderson, 1984)
-  if (famille == "binomiale" && length(r$ajuste)) {
-    bords <- sum(r$ajuste < 1e-8 | r$ajuste > 1 - 1e-8, na.rm = TRUE)
-    if (bords) {
-      ajouter("separation", "attention", sprintf(if (fr) "%d des %d observations %s une probabilité ajustée de 0 ou 1 : des termes séparent les présences des absences (une catégorie sans présence, ou un seuil d'un X au-delà duquel il n'y a que des présences). Leurs coefficients croissent sans fin, et leurs tests (p près de 1) ne disent rien de leur effet : retirez le terme qui sépare, ou regroupez ses catégories."
-                                                 else "%d of the %d observations %s a fitted probability of 0 or 1: some terms separate the presences from the absences (a category without presences, or a threshold of an X beyond which there are only presences). Their coefficients grow without bound, and their tests (p near 1) say nothing of their effect: remove the term that separates, or merge its categories.",
-                                                 bords, n, if (fr) (if (bords > 1) "ont" else "a") else (if (bords > 1) "have" else "has")))
+  # --- la séparation d'une présence-absence : un coefficient démesuré, et son erreur-type plus encore.
+  # Les coefficients des termes qui séparent les présences des absences, tout à fait (un seuil d'un X
+  # au-delà duquel il n'y a que des présences) ou pour une catégorie (sans présence, ou sans absence),
+  # croissent sans fin, et leurs erreurs-types plus vite encore, jusqu'à ce que l'ajustement s'arrête :
+  # leurs tests ne disent rien de leur effet (Albert et Anderson, 1984). Un coefficient diverge quand il
+  # change le logit de plus de 10 sur l'étendue de sa colonne et que son erreur-type le dépasse ; des
+  # probabilités ajustées de 0 ou 1 n'y suffisent pas : une pente raide mais finie, bien estimée, en
+  # donne aussi. Les observations dont la probabilité ajustée est numériquement 0 ou 1, à 10 ε près
+  # (comme glm.fit le dit, « fitted probabilities numerically 0 or 1 occurred »), sont comptées quand il
+  # y en a ; une catégorie sans présence n'en a souvent pas (l'ajustement s'y arrête vers 1e-9).
+  if (famille == "binomiale" && NROW(r$coefficients)) {
+    co <- r$coefficients
+    t_co <- m$termes[match(co$terme, m$noms_termes)]
+    etendue <- vapply(t_co, function(s) if (!is.na(s) && s %in% names(m$donnees)) diff(range(m$donnees[[s]], na.rm = TRUE)) else NA_real_, 0)
+    diverge <- which(is.finite(etendue) & etendue > 0 & abs(co$estimation) * etendue > 10 & is.finite(co$erreur_type) & co$erreur_type > abs(co$estimation))
+    if (length(diverge)) {
+      eps <- 10 * .Machine$double.eps
+      bords <- sum(r$ajuste < eps | r$ajuste > 1 - eps, na.rm = TRUE)
+      v3 <- function(z) trimws(formatC(z, digits = 3, format = "fg", decimal.mark = if (fr) "," else "."))
+      termes <- vapply(diverge, function(i) sprintf(if (fr) "« %s » (β = %s, erreur-type %s%s)" else "“%s” (β = %s, standard error %s%s)", co$terme[i], v3(co$estimation[i]),
+                                                   v3(co$erreur_type[i]), if (is.finite(co$p[i])) paste0(", ", sub("= +", "= ", pv(co$p[i]))) else ""), "")
+      plusieurs <- length(diverge) > 1
+      quoi <- paste(termes, collapse = ", ")
+      au_bord <- if (bords) sprintf(if (fr) " ; %d des %d observations %s une probabilité ajustée numériquement de 0 ou 1" else "; %d of the %d observations %s a fitted probability numerically 0 or 1",
+                                    bords, n, if (fr) (if (bords > 1) "ont" else "a") else (if (bords > 1) "have" else "has")) else ""
+      ajouter("separation", "attention",
+              if (fr) sprintf(if (plusieurs) "Les coefficients de %s sont démesurés, et leurs erreurs-types plus encore : des termes du modèle séparent les présences des absences (une catégorie sans présence ou sans absence, ou un seuil d'un X au-delà duquel il n'y a que des présences)%s. Leurs coefficients croîtraient sans fin si l'ajustement continuait, et leurs tests ne disent rien de leur effet : retirez le terme qui sépare, ou regroupez ses catégories."
+                              else "Le coefficient de %s est démesuré, et son erreur-type plus encore : ce terme sépare les présences des absences (une catégorie sans présence ou sans absence, ou un seuil d'un X au-delà duquel il n'y a que des présences)%s. Son coefficient croîtrait sans fin si l'ajustement continuait, et son test ne dit rien de son effet : retirez le terme qui sépare, ou regroupez ses catégories.",
+                              quoi, au_bord)
+              else sprintf(if (plusieurs) "The coefficients of %s are huge, and their standard errors larger still: terms of the model separate the presences from the absences (a category without presences or without absences, or a threshold of an X beyond which there are only presences)%s. Their coefficients would grow without bound if the fit went on, and their tests say nothing of their effect: remove the term that separates, or merge its categories."
+                           else "The coefficient of %s is huge, and its standard error larger still: this term separates the presences from the absences (a category without presences or without absences, or a threshold of an X beyond which there are only presences)%s. Its coefficient would grow without bound if the fit went on, and its test says nothing of its effect: remove the term that separates, or merge its categories.",
+                           quoi, au_bord))
     }
   }
   # --- colinéarité des termes quantitatifs (VIF : la diagonale de l'inverse de leur matrice de corrélation)

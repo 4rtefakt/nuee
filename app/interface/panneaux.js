@@ -2929,8 +2929,9 @@ function tracerSeuils(ctx, graphe, m, e, s, lien) {
 
 // What the predicted values of a term hold fixed (moteur/R/moyennes.R: effets_reponse), in words:
 // its other quantitative variables at their mean, its other qualitative variables in their
-// reference category, then the random effects at 0, the effort at 1, the spatial smooth.
-export function fixesReponse(e, commun) {
+// reference category, then the random effects at 0, the effort at 1 (densities, but not with the
+// zero-inflated Poisson's expected counts: `famille`), the spatial smooth.
+export function fixesReponse(e, commun, famille = '') {
   const f = e.fixes || {};
   const col = (x, k) => [].concat((x || {})[k] ?? []);
   const nb = (v) => decimal(String(+Number(v).toPrecision(6)));
@@ -2938,7 +2939,7 @@ export function fixesReponse(e, commun) {
     ...col(f.quantitatives, 'nom').map((nom, i) => t('fixe_moyenne', { nom, valeur: nb(col(f.quantitatives, 'valeur')[i]) })),
     ...col(f.qualitatives, 'nom').map((nom, i) => t('fixe_reference', { nom, categorie: col(f.qualitatives, 'categorie')[i] })),
     [].concat(commun.aleatoires || []).length ? t('fixe_aleatoires', { noms: [].concat(commun.aleatoires).join(', ') }) : '',
-    commun.decalage ? t('fixe_effort', { nom: commun.decalage }) : '',
+    commun.decalage ? t(famille === 'poisson_zi' ? 'fixe_effort_zip' : 'fixe_effort', { nom: commun.decalage }) : '',
     commun.spatial ? t('fixe_spatial', { nom: commun.spatial.nom }) : ''].filter(Boolean);
   return morceaux.length ? morceaux.join(langueActuelle() === 'fr' ? ' ; ' : '; ') : t('fixe_rien');
 }
@@ -2967,8 +2968,11 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   const graphe = el('div', { class: 'graphe' });
   const lien = cache.res.lien || 'identity';
   const y = m.noms_y[0];
-  const echelle = choix(t('effets_echelle'), [['lien', t(lien === 'identity' ? 'effets_echelle_partiel' : 'effets_echelle_lien', { lien })], ['reponse', t('effets_echelle_reponse', { y })]],
-    reponse ? 'reponse' : 'lien', (v) => { loc.echelle = v; ctx.rafraichir(); });
+  // (a transformed response: its values predicted on the modelled scale, named by its formula,
+  // log10(count + 1), as the adjusted means' are: moyennes.R, effets_reponse's forme_y)
+  const yPredit = (reponse && res.forme_y) || y;
+  const echelle = choix(t('effets_echelle'), [['lien', t(lien === 'identity' ? 'effets_echelle_partiel' : 'effets_echelle_lien', { lien })],
+    ['reponse', m.transformation_y ? t('valeurs_predites') : t('effets_echelle_reponse', { y })]], reponse ? 'reponse' : 'lien', (v) => { loc.echelle = v; ctx.rafraichir(); });
   // (a term crossed with categories: one line, or curve, per category, regression.R: effets_par_niveau;
   // a curve per category, s(x, by = f): effets_par_courbe)
   const niveaux = e.niveaux ? [].concat(e.niveaux) : null;
@@ -2986,9 +2990,11 @@ async function rendreEffets(conteneur, ctx, p, loc) {
   }
   const s = avecSeuils ? seuils[cleSeuils] : null;
   const valeursLien = { par: e.par, terme: e.terme, lien: lien === 'identity' ? '' : t('effets_lien', { lien }) };
-  // (the predicted values: what is held fixed, said; one curve per category of a crossed variable)
-  const note = reponse ? t(lien === 'identity' ? 'effets_note_reponse_identite' : 'effets_note_reponse', { y, lien, fixes: fixesReponse(e, res.commun || {}),
-    par: niveaux ? t('effets_reponse_par', { par: e.par }) : '' })
+  // (the predicted values: what is held fixed, said; one curve per category of a crossed variable;
+  // a transformed response's scale)
+  const echelleY = reponse && res.forme_y ? ` ${t(res.log_y ? 'effets_y_log' : 'moyennes_y_transformee', { y: res.forme_y })}` : '';
+  const note = reponse ? `${t(lien === 'identity' ? 'effets_note_reponse_identite' : 'effets_note_reponse', { y: yPredit, lien, fixes: fixesReponse(e, res.commun || {}, res.famille),
+    par: niveaux ? t('effets_reponse_par', { par: e.par }) : '' })}${echelleY}`
     : !niveaux ? t(lien === 'identity' ? 'effets_note' : 'effets_note_lien', { lien })
       : t(e.par_categorie ? 'effets_note_par_categorie' : e.courbe ? 'effets_note_niveaux_courbe' : 'effets_note_niveaux', valeursLien);
   conteneur.replaceChildren(outils(choix(t('terme'), effets.map((x) => [x.terme, x.courbe ? `${x.terme} (${t('courbe').toLowerCase()})` : x.terme]), loc.terme,
@@ -2999,9 +3005,9 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     el('span', { class: 'infos' }, s ? resumeSeuils(s) : note)), graphe);
   if (s) { tracerSeuils(ctx, graphe, m, e, s, lien); return; }
   // (the axis of Y: the effect on the link scale, or the response predicted, in its units)
-  const axeY = reponse ? `${t('valeurs_predites_de', { y })}${uniteAxe(ctx, m.projet, y, !!m.transformation_y)}`
+  const axeY = reponse ? `${t('valeurs_predites_de', { y: yPredit })}${uniteAxe(ctx, m.projet, y, !!m.transformation_y)}`
     : lien === 'identity' ? `${t('effet_sur', { y })}${uniteAxe(ctx, m.projet, y, !!m.transformation_y)}` : t('effet_lien', { lien });
-  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse); return; }
+  if (niveaux) { tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse, yPredit); return; }
   const x = [].concat(e.x);
   const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
@@ -3011,7 +3017,7 @@ async function rendreEffets(conteneur, ctx, p, loc) {
     { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: bas.concat([...[].concat(e.haut)].reverse()), fill: 'toself',
       fillcolor: 'rgba(47, 111, 181, 0.18)', line: { width: 0 }, hoverinfo: 'skip', name: t('ic_95') },
     { type: 'scatter', mode: 'lines', x, y: [].concat(e.effet), line: { color: PALETTE[0], width: 2 }, name: e.terme,
-      hovertemplate: `${e.terme} = %{x:.3f}<br>${reponse ? y : t('effet')} = %{y:.3f}<extra></extra>` },
+      hovertemplate: `${e.terme} = %{x:.3f}<br>${reponse ? yPredit : t('effet')} = %{y:.3f}<extra></extra>` },
     { type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux }, hoverinfo: 'skip', name: t('observations') }],
   { title: { text: `${m.nom} · ${t(reponse ? 'valeurs_predites' : 'effets')} · ${e.terme}` }, showlegend: false, dragmode: 'zoom',
     xaxis: { title: { text: avecUnite(ctx, m.projet, e.terme, transformeeDans(ctx, m, e.terme)) } }, yaxis: { title: { text: axeY } },
@@ -3021,9 +3027,10 @@ async function rendreEffets(conteneur, ctx, p, loc) {
 // A term crossed with categories (regression.R: effets_par_niveau): each category's line (or
 // curve) with its 95 % band, in its colour, over the values of that category, a legend by
 // category, all the observed values along the axis; under the plot, each line's slope per unit
-// of the term with its 95 % interval.
+// of the term with its 95 % interval. `yPredit`: the predicted response's name (a transformed
+// one's formula).
 const translucide = (couleur, a) => `rgba(${[1, 3, 5].map((i) => parseInt(couleur.slice(i, i + 2), 16)).join(', ')}, ${a})`;
-function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse = false) {
+function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, reponse = false, yPredit = m.noms_y[0]) {
   const c = couleursTheme(ctx);
   const valeurs = [].concat(e.valeurs);
   const basMin = Math.min(...niveaux.flatMap((n) => [].concat(n.bas)));
@@ -3034,7 +3041,7 @@ function tracerEffetsNiveaux(ctx, conteneur, graphe, m, e, niveaux, axeY, repons
       { type: 'scatter', mode: 'lines', x: x.concat([...x].reverse()), y: [].concat(n.bas).concat([...[].concat(n.haut)].reverse()), fill: 'toself',
         fillcolor: translucide(couleur, 0.16), line: { width: 0 }, hoverinfo: 'skip', legendgroup: n.niveau, showlegend: false, name: n.niveau },
       { type: 'scatter', mode: 'lines', x, y: [].concat(n.effet), line: { color: couleur, width: 2 }, name: n.niveau, legendgroup: n.niveau,
-        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${reponse ? m.noms_y[0] : t('effet')} = %{y:.3f}<extra></extra>` }];
+        hovertemplate: `${n.niveau}<br>${e.terme} = %{x:.3f}<br>${reponse ? yPredit : t('effet')} = %{y:.3f}<extra></extra>` }];
   }).concat([{ type: 'scatter', mode: 'markers', x: valeurs, y: valeurs.map(() => basMin), marker: { symbol: 'line-ns-open', size: 8, color: c.doux },
     hoverinfo: 'skip', name: t('observations'), showlegend: false }]),
   { title: { text: `${m.nom} · ${t(reponse ? 'valeurs_predites' : 'effets')} · ${e.terme} × ${e.par}` }, showlegend: true, dragmode: 'zoom',

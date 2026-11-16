@@ -1364,10 +1364,12 @@ observations du modèle (avant leur transformation, comme pour les moyennes ajus
 courbes en ce point ; les variables qualitatives dans leur catégorie de référence, sauf celles
 croisées avec le terme, dont chaque catégorie a sa courbe sur ses propres valeurs (et une courbe
 par catégorie, son niveau) ; les effets aléatoires à 0 (la population, sans l'écart propre à un
-groupe) ; un effort de 1 (des densités) ; le lissage spatial au point moyen des coordonnées. Avec
-le lien identité, ce sont les valeurs prédites de la réponse modélisée (transformée, si elle
-l'est). Exporter vers R les calcule et les dessine de même (valeurs_predites, un graphique par
-terme), et un document les cite par {{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
+groupe) ; un effort de 1 (des densités ; des comptages attendus pour le Poisson à excès de zéros) ;
+le lissage spatial au point moyen des coordonnées. Avec le lien identité, ce sont les valeurs
+prédites de la réponse modélisée (transformée, si elle l'est, et alors nommée par sa formule,
+log10(y + 1), dans la vue, sa note et son axe). Exporter vers R les calcule et les dessine de
+même (valeurs_predites, un graphique par terme), et un document les cite par
+{{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
 (standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,
@@ -2139,10 +2141,15 @@ traite comme ses autres modèles.
     pas installé est nommé, avec comment l'installer ; le modèle reste dans le dialogue, non
     ajusté.
 Du modèle, chaque partie quand l'objet le permet : print(summary()) ; les coefficients
-(coef(summary()) quand c'est un tableau de nombres, ou plusieurs, comme cond, zi et disp de
-glmmTMB ; sinon coef() avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à
-leurs degrés de liberté quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses
-degrés de liberté, AIC(), BIC() ; fitted() et residuals() ; predict(fit, newdata) quand il marche.
+(coef(summary()) quand c'est un tableau de nombres avec une colonne d'erreurs-types, trouvée par
+son nom (Std. Error, se(coef)…), ou plusieurs, comme cond, zi et disp de glmmTMB ; sinon coef()
+avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à leurs degrés de liberté
+quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses degrés de liberté,
+AIC(), BIC() ; fitted() et residuals(), chaque valeur rapportée à son observation par son nom, le
+numéro de sa ligne dans donnees (lm, glm, gls… les gardent, même quand le code réordonne
+donnees), ou à aucune quand ces noms ne sont pas ces numéros (lme, nls) ou que le code a ajusté le
+modèle sur d'autres données ; predict(fit, newdata) quand il marche, sur l'échelle de la réponse
+(type = "response", quand le modèle le connaît : les comptages d'un GLM, pas leur log).
 
 Vues : Résumé (la classe, N, logLik, AIC, BIC, les versions de R et des paquets, les
 avertissements, ce que le code a affiché, summary(), Modifier le code), Coefficients (un graphique
