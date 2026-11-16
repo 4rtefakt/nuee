@@ -126,7 +126,7 @@ journaliser <- function(nom, q, r) {
                 maximum = "max(x, na.rm = TRUE)", ecart_type = "sd(x, na.rm = TRUE)", n = "sum(!is.na(x))")
       c(sprintf("%s <- resumer_par_groupe(%s, %s, variables = %s, statistiques = %s)", r$id, q$projet, colonnes_projet_r(groupes), vecteur_r(variables), vecteur_r(stats)),
         sprintf("# soit, sur le tableau des données : d <- tableau_projet(%s) ; aggregate(d[%s], d[%s], function(x) c(%s))", q$projet,
-                vecteur_r(unname(p$noms_var[as.character(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
+                vecteur_r(unname(p$noms_var[nom_numero(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
     },
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     # (l'atelier des données : atelier.R ; l'aperçu de Chercher et remplacer ne change rien)

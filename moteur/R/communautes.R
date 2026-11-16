@@ -241,7 +241,7 @@ donnees_communaute <- function(projet, d, o, quoi, aussi = NULL) {
     stop(sprintf(traduire("Trop peu d'observations ont toutes leurs valeurs pour %s (3 au moins).", "Too few observations have all their values for %s (3 or more)."), quoi), call. = FALSE)
   }
   Y <- Y[connu, , drop = FALSE]
-  noms <- unname(projet$noms_obs[as.character(garde)])
+  noms <- unname(projet$noms_obs[nom_numero(garde)])
   W <- transformer_communaute(Y, o$transformation)
   D <- distance_communaute(W, o$distance, o$binaire, noms)
   if (all(D == 0)) stop(traduire("Toutes les distances entre observations sont nulles : rien à analyser.", "All the distances between observations are zero: nothing to analyse."), call. = FALSE)
@@ -767,7 +767,7 @@ distance_euclidienne_termes <- function(projet, termes, observations) {
   connues <- stats::complete.cases(b$X)
   if (!all(connues)) b <- construire_bloc(projet, termes, observations[connues])
   D <- as.matrix(stats::dist(b$X))
-  dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+  dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
   list(D = D, connues = connues, termes = b$noms, echelles = unique(b$type))
 }
 
@@ -785,7 +785,7 @@ distances_mantel_x <- function(projet, d, observations) {
     connues <- is.finite(pts$x) & is.finite(pts$y)
     if (sum(connues) < 3) stop(traduire("Moins de 3 observations ont des coordonnées : pas de distance géographique.", "Fewer than 3 observations have coordinates: no geographic distance."), call. = FALSE)
     D <- distances_points(pts$x[connues], pts$y[connues], pts$systeme) / 1000
-    dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+    dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
     s <- systeme_coordonnees(pts$systeme)
     co <- pts$coordonnees
     lonlat <- s$type == "lonlat"
@@ -806,9 +806,9 @@ distances_mantel_x <- function(projet, d, observations) {
 # échelle (UV par défaut).
 termes_z_mantel <- function(projet, o) {
   unlist(lapply(o$z, function(u) {
-    tr <- o$z_transformations[[as.character(u)]]
+    tr <- o$z_transformations[[nom_numero(u)]]
     tr <- if (length(tr) && nzchar(as.character(tr[1]))) lire_transformation(as.character(tr[1]))
-    ech <- as.character(unlist(o$z_echelles[[as.character(u)]] %||% "UV"))[1]
+    ech <- as.character(unlist(o$z_echelles[[nom_numero(u)]] %||% "UV"))[1]
     termes_variable(projet, u, if (ech %in% c("UV", "Par", "Ctr", "none")) ech else "UV", tr)
   }), recursive = FALSE)
 }
@@ -943,10 +943,10 @@ ajuster_mantel <- function(projet, d) {
     dx <- distances_mantel_x(projet, d, garde)
     if (!is.null(dz)) dz <- distance_euclidienne_termes(projet, tz, garde)
   }
-  Dx <- dx$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dx <- dx$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   if (all(Dx == 0)) stop(if (identical(o$distance_x, "geographique")) traduire("Toutes les observations sont au même endroit : leurs distances sont nulles.", "All the observations are at the same place: their distances are zero.")
                          else traduire("Les variables X ne varient pas : toutes leurs distances sont nulles.", "The X variables don't vary: all their distances are zero."), call. = FALSE)
-  Dz <- if (!is.null(dz)) dz$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dz <- if (!is.null(dz)) dz$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   strates <- if (!is.null(strates)) strates[dc$connu]
   verifier_strates(strates)
   P <- permutations_lignes(length(garde), o$permutations, strates, o$graine)
@@ -1143,7 +1143,7 @@ tables_permanova <- function(projet, m) {
     out$dispersion_groupes <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$groupes)))
     out$dispersion_tests <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$anova)))
     out$dispersion_paires <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$tukey)))
-    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[as.character(r$observations)]), variable = r$variable,
+    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[nom_numero(r$observations)]), variable = r$variable,
                                                                                  groupe = as.character(r$groupe), distance = unname(r$distances), stringsAsFactors = FALSE)))
     rownames(out$dispersion_groupes) <- rownames(out$dispersion_tests) <- rownames(out$dispersion_paires) <- rownames(out$dispersion_distances) <- NULL
   }

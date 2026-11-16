@@ -183,7 +183,7 @@ resultat_indval <- function(id) {
   d <- e$definition
   o <- m$reglages_indval
   r <- retenues_indval(m)
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
   groupe <- m$niveaux[m$groupe]
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "INDVAL", analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = length(m$especes), noms_y = I(m$especes),

@@ -142,14 +142,14 @@ tester_lda <- function(projet, m, d) {
   test <- as.numeric(d$test)
   y <- as.character(classe_observations(projet, d$classe, test))
   p <- classe_la_plus_probable(predire_lda_matrice(m$ajustement, x_lda(projet, m, test), m$classes)$proba, m$classes)
-  obs <- data.frame(uid = test, nom = unname(projet$noms_obs[as.character(test)]), hors_domaine = FALSE, classe = y, classe_predite = p, stringsAsFactors = FALSE)
+  obs <- data.frame(uid = test, nom = unname(projet$noms_obs[nom_numero(test)]), hors_domaine = FALSE, classe = y, classe_predite = p, stringsAsFactors = FALSE)
   list(n = length(test), hors_domaine = 0, observations = obs, classement = classement_test(y, p, m$classes))
 }
 
 # Les observations d'une LDA : classe observée, ajustée et prédite en validation croisée,
 # scores discriminants, probabilités a posteriori, groupe de validation croisée.
 observations_lda <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), classe = as.character(m$classe),
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), classe = as.character(m$classe),
                     stringsAsFactors = FALSE)
   obs[["classe ajustée"]] <- m$classification$ajuste$predite
   obs[["classe prédite (VC)"]] <- m$classification$vc$predite

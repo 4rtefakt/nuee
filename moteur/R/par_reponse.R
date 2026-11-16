@@ -39,11 +39,11 @@ modeles_par_reponse <- function(projet, d, reponses, correction = "BH") {
   x <- unlist(lapply(d$x, function(t) as.numeric(t$variables)))
   if (any(reponses %in% x)) {
     stop(sprintf(traduire("Une variable X ne peut pas être aussi une réponse : %s.", "An X variable can't also be a response: %s."),
-                 paste(unname(projet$noms_var[as.character(intersect(reponses, x))]), collapse = ", ")), call. = FALSE)
+                 paste(unname(projet$noms_var[nom_numero(intersect(reponses, x))]), collapse = ", ")), call. = FALSE)
   }
   base <- d$name %||% "M"
   modeles <- lapply(reponses, function(u) {
-    nom <- unname(projet$noms_var[as.character(u)])
+    nom <- unname(projet$noms_var[nom_numero(u)])
     tryCatch({
       dk <- definition_pour_reponse(projet, d, u, sprintf("%s · %s", base, nom))
       list(reponse = nom, uid = u, definition = dk, modele = ajuster(projet, dk))

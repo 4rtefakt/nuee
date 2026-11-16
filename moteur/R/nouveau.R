@@ -122,7 +122,7 @@ resumer_par_groupe <- function(projet, groupes, variables = NULL, statistiques =
   noms_groupes <- vapply(g, `[[`, "", "nom")
   # « site, secteur et annee »
   enumerer <- function(et) if (length(noms_groupes) == 1) noms_groupes else paste(paste(utils::head(noms_groupes, -1), collapse = ", "), utils::tail(noms_groupes, 1), sep = et)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
   dans_groupes <- uids %in% suppressWarnings(as.numeric(groupes[!startsWith(groupes, "id:")]))
   qualitative <- vapply(vars, function(v) length(v$categories) > 0, TRUE)
@@ -380,10 +380,10 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
-    if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
+    if (nom_numero(uid) %in% names(echelle)) return(echelle[[nom_numero(uid)]])
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
-  par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
+  par_variable <- function(valeurs, uid) if (nom_numero(uid) %in% names(valeurs)) valeurs[[nom_numero(uid)]]
   # (chaque variable cherchée par son numéro dans un index fait une fois : variable_du_projet parcourt
   # toutes les variables à chaque appel, des millions de fois pour des milliers de longueurs d'onde ;
   # elle reste pour dire qu'un numéro n'existe pas)
@@ -394,7 +394,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   }
   termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u), v = variable(u))
   trans <- function(uid) {
-    n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
+    n <- if (nom_numero(uid) %in% names(transformations)) transformations[[nom_numero(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
     lire_transformation(n)
   }
@@ -536,7 +536,7 @@ reglages_modele <- function(projet, d) {
   modificateurs <- list()
   for (t in c(d$x, d$y)) {
     if (length(t$variables) != 1) next
-    k <- as.character(t$variables)
+    k <- nom_numero(t$variables)
     echelles[[k]] <- t$scaling$type %||% "UV"
     tr <- nom_transformation(t$transform)
     if (!is.null(tr)) transformations[[k]] <- tr
@@ -657,7 +657,7 @@ enregistrer_projet <- function(projet, chemin, version = "") {
   p <- unclass(projet)
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
-    p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
+    p$datasets[[i]]$values <- unname(projet$donnees[nom_numero(d$observations), nom_numero(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session

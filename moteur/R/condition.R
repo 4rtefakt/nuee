@@ -61,7 +61,7 @@ texte_condition <- function(x) trimws(paste(as.character(unlist(x)), collapse = 
 # identifiants des observations qu'aucune variable ne cache. list(variables : leurs numéros, nommés
 # par leur nom ; ids : les noms des identifiants).
 noms_condition <- function(projet) {
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
   uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
   garde <- !duplicated(noms, fromLast = TRUE)
@@ -168,7 +168,7 @@ valeurs_condition <- function(projet, condition) {
 # une erreur quand il n'y en a aucune.
 observations_condition <- function(projet, condition, observations) {
   vraie <- valeurs_condition(projet, condition)
-  garde <- vraie[match(as.character(observations), rownames(projet$donnees))]
+  garde <- vraie[match(nom_numero(observations), rownames(projet$donnees))]
   garde[is.na(garde)] <- FALSE
   if (!any(garde)) {
     stop(sprintf(traduire("Aucune des %d observations cochées ne remplit la condition %s.", "None of the %d ticked observations meets the condition %s."),
@@ -240,7 +240,7 @@ plan_condition <- function(projet, d, tab) {
     colonne <- if (nom %in% names(n$variables)) {
       v <- variable_du_projet(projet, n$variables[[nom]])
       if (length(v$categories)) qualitatives <- TRUE
-      unname(tab$noms[as.character(v$uid)])
+      unname(tab$noms[nom_numero(v$uid)])
     } else if (nom %in% n$ids) unname(tab$ids[[nom]])
     if (is.null(colonne)) next  # (T, F, pi)
     # un nom qui n'est pas un nom R, ou que la traduction du script changerait, entre accents graves
@@ -249,7 +249,7 @@ plan_condition <- function(projet, d, tab) {
              else { bt <- deparse(as.name(colonne), backtick = TRUE); if (startsWith(bt, "`")) bt else paste0("`", colonne, "`") }
     texte <- paste0(substr(texte, 1, pd$col1[i] - 1), ecrit, substr(texte, pd$col2[i] + 1, nchar(texte)))
   }
-  list(texte = texte, cochees = unname(tab$rangs[as.character(d$cochees %||% d$observations)]),
+  list(texte = texte, cochees = unname(tab$rangs[nom_numero(d$cochees %||% d$observations)]),
        qualitatives = qualitatives, fonctions = intersect(all.names(e), FONCTIONS_NUEE_CONDITION),
        avertit = isTRUE(attr(valeurs_condition(projet, d$condition), "avertissement")), n_lignes = nrow(tab$donnees))
 }

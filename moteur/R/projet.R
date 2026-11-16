@@ -26,19 +26,19 @@ lire_projet <- function(chemin) {
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),
-                    dimnames = list(as.character(obs), as.character(vars)))
+                    dimnames = list(nom_numero(obs), nom_numero(vars)))
   for (d in j$datasets) {
     if (!length(d$observations) || !length(d$variables)) next
     v <- en_matrice(d$values, length(d$observations), length(d$variables))
-    donnees[as.character(d$observations), as.character(d$variables)] <- v
+    donnees[nom_numero(d$observations), nom_numero(d$variables)] <- v
   }
   j$donnees <- donnees
   j$noms_obs <- stats::setNames(
     vapply(j$observations, function(o) as.character(o$ids[1]), ""),
-    vapply(j$observations, function(o) as.character(o$uid), ""))
+    vapply(j$observations, function(o) nom_numero(o$uid), ""))
   j$noms_var <- stats::setNames(
     vapply(j$variables, function(v) as.character(v$ids[1]), ""),
-    vapply(j$variables, function(v) as.character(v$uid), ""))
+    vapply(j$variables, function(v) nom_numero(v$uid), ""))
   # Projets écrits avant la version 0.5 : la version d'origine s'appelait « <nom>_version »
   # et la solution enregistrée « <nom> » (le même nom) ; ils prennent les noms d'aujourd'hui.
   if (length(j$models)) j$models <- lapply(j$models, function(d) {
@@ -69,11 +69,24 @@ en_matrice <- function(v, n, k) {
   matrix(unlist(lignes), n, k, byrow = TRUE)
 }
 
+# Le nom d'un numéro interne, d'une observation ou d'une variable, tel que le portent les lignes et
+# les colonnes de projet$donnees, projet$noms_obs et projet$noms_var : as.character(), sauf qu'un
+# nombre entier s'y écrit sans notation scientifique. as.character() écrit le nombre réel 100000
+# « 1e+05 » (l'entier, « 100000 ») : passé 99 999 lignes, des observations ne se retrouvaient plus
+# dans les données (leurs valeurs lues manquantes, une nouvelle variable refusée).
+nom_numero <- function(x) {
+  n <- as.character(x)
+  if (!is.numeric(x)) return(n)
+  entier <- is.finite(x) & x == round(x)
+  n[entier] <- sprintf("%.0f", x[entier])
+  n
+}
+
 # Valeurs brutes d'une variable pour des observations (NA si absentes).
 colonne <- function(projet, variable, observations) {
-  k <- match(as.character(variable), colnames(projet$donnees))
+  k <- match(nom_numero(variable), colnames(projet$donnees))
   if (is.na(k)) return(rep(NA_real_, length(observations)))
-  projet$donnees[match(as.character(observations), rownames(projet$donnees)), k]
+  projet$donnees[match(nom_numero(observations), rownames(projet$donnees)), k]
 }
 
 # Un modèle du projet, par son numéro (3 pour M3) ou son nom ("M3").

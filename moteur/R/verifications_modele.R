@@ -67,7 +67,7 @@ verifications_regression <- function(projet, m) {
     fortes <- which(r$cook > seuil)
     if (length(fortes)) {
       o <- fortes[order(-r$cook[fortes])]
-      noms <- unname(projet$noms_obs[as.character(m$observations[o])])
+      noms <- unname(projet$noms_obs[nom_numero(m$observations[o])])
       ajouter("influence", if (any(r$cook[o] > 1)) "attention" else "info",
               sprintf(if (fr) "%d observation%s %s une distance de Cook au-delà de 4/n = %s : %s%s. Vérifiez leurs valeurs, et refaites le modèle sans elles pour voir s'il change."
                       else "%d observation%s %s a Cook's distance beyond 4/n = %s: %s%s. Check their values, and refit without them to see whether the model changes.",

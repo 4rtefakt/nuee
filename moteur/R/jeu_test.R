@@ -15,7 +15,7 @@
 evaluer_test <- function(projet, m, definition) {
   test <- definition$test
   pr <- predire(projet, m, definition, test)
-  obs <- data.frame(uid = test, nom = unname(projet$noms_obs[as.character(test)]), hors_domaine = pr$hors_domaine,
+  obs <- data.frame(uid = test, nom = unname(projet$noms_obs[nom_numero(test)]), hors_domaine = pr$hors_domaine,
                     stringsAsFactors = FALSE)
   res <- list(n = length(test), hors_domaine = sum(pr$hors_domaine, na.rm = TRUE))
   if (identical(m$type, "PLS")) {

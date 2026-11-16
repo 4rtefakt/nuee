@@ -270,7 +270,7 @@ resume_modele <- function(d) {
 # Les variables qui ont des valeurs dans les jeux de données. Les fichiers .usp listent aussi des variables
 # internes sans données (par exemple « $constant »), qui ne servent ni à l'affichage ni aux modèles.
 variables_avec_donnees <- function(p) {
-  Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
+  Filter(function(v) nom_numero(v$uid) %in% colnames(p$donnees), p$variables)
 }
 
 # (temps : une variable qualitative dont les catégories sont toutes des dates, ou toutes des
@@ -280,7 +280,7 @@ resume_projet <- function(p) {
   # (l'unité et la description de chaque variable : atelier.R, decrire_variables)
   vars <- lapply(variables_avec_donnees(p), function(v) list(
     uid = v$uid, nom = as.character(v$ids[1]), qualitative = length(v$categories) > 0,
-    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[as.character(v$uid)]),
+    categories = I(as.character(v$categories %||% character(0))), manquantes = unname(manquantes[nom_numero(v$uid)]),
     temps = length(v$categories) > 0 && is.null(attr(temps_en_nombres(as.character(v$categories)), "refus")),
     unite = as.character(v$unite %||% ""), description = as.character(v$description %||% "")))
   json <- tolower(tools::file_ext(p$chemin %||% "")) %in% c("nuee", "json")
@@ -311,7 +311,7 @@ donnees_projet <- function(p, colonnes = NULL) {
   montrees <- if (!is.null(colonnes)) as.numeric(unlist(colonnes))
   valeurs <- lapply(seq_along(vars), function(k) {
     if (!is.null(montrees) && !as.numeric(vars[[k]]$uid) %in% montrees) return(NULL)
-    x <- p$donnees[, as.character(vars[[k]]$uid)]
+    x <- p$donnees[, nom_numero(vars[[k]]$uid)]
     cats <- vars[[k]]$categories
     if (length(cats)) cats[x] else x
   })
@@ -598,7 +598,7 @@ resultat_modele <- function(id) {
   Nt <- sum(notes)
   obs <- s$observations
   obs$uid <- m$observations
-  obs$nom <- unname(p$noms_obs[as.character(m$observations)])
+  obs$nom <- unname(p$noms_obs[nom_numero(m$observations)])
   list(id = id, projet = p$id, nom = m$nom, titre = m$titre,
        type = paste0(if (isTRUE(m$opls)) "O" else "", if (m$plsda) "PLS-DA" else m$type), opls = isTRUE(m$opls), Ap = m$Ap %||% 1, A = m$A, N = N, K = m$K,
        groupe = d$groupe_classes$nom %||% NULL, classe_modele = d$groupe_classes$classe %||% NULL,
@@ -629,7 +629,7 @@ predire_demande <- function(q) {
          else vapply(p$observations, function(o) as.numeric(o$uid), 0)
   out <- predire(p, e$modele, e$definition, obs)
   out$uid <- obs
-  out$nom <- unname(p$noms_obs[as.character(obs)])
+  out$nom <- unname(p$noms_obs[nom_numero(obs)])
   out$dans_modele <- obs %in% e$modele$observations
   etat$predictions[[q$modele]] <- out
   list(modele = q$modele, observations = out)
@@ -1212,7 +1212,7 @@ DEMANDES <- list(
     cochees <- setdiff(numeros_observations(p), as.numeric(c(unlist(q$exclues), unlist(q$test))))
     if (!nzchar(texte_condition(q$condition))) return(list(n = length(cochees), total = length(cochees)))
     vraie <- valeurs_condition(p, q$condition)
-    list(n = sum(vraie[match(as.character(cochees), rownames(p$donnees))], na.rm = TRUE), total = length(cochees))
+    list(n = sum(vraie[match(nom_numero(cochees), rownames(p$donnees))], na.rm = TRUE), total = length(cochees))
   },
   importer_spectres = importer_spectres_demande,
   predire_fichier = predire_fichier_demande,
@@ -1280,7 +1280,7 @@ DEMANDES <- list(
     p <- projet(q$projet)
     pts <- points_projet(p)
     s <- systeme_coordonnees(pts$systeme)
-    list(uid = pts$uid, nom = unname(p$noms_obs[as.character(pts$uid)]), x = pts$x, y = pts$y, lon = pts$lon, lat = pts$lat,
+    list(uid = pts$uid, nom = unname(p$noms_obs[nom_numero(pts$uid)]), x = pts$x, y = pts$y, lon = pts$lon, lat = pts$lat,
          coordonnees = pts$coordonnees, systeme = list(code = s$code, nom = s$nom, type = s$type))
   },
   # L'autocorrélation spatiale d'une variable (q$variable) ou des résidus d'une régression
@@ -1432,7 +1432,7 @@ DEMANDES <- list(
   historique = function(q) historique_projet(projet(q$projet)),
   # données modifiées et variables ajoutées : le projet est à enregistrer
   modifier_valeur = function(q) changer_projet(q, function(p) modifier_valeur(p, q$observation, q$variable, q$valeur),
-    sprintf("modification de %s", projet(q$projet)$noms_var[[as.character(q$variable)]])),
+    sprintf("modification de %s", projet(q$projet)$noms_var[[nom_numero(q$variable)]])),
   variable_calculee = function(q) changer_projet(q, function(p) variable_calculee(p, q$nom, q$formule), sprintf("variable %s", q$nom)),
   # les valeurs manquantes remplies par ACP itérative régularisée (variables.R : imputer_acp)
   imputer = function(q) {

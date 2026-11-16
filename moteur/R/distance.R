@@ -1001,7 +1001,7 @@ donnees_echantillonnage <- function(projet, d, r) {
                effort = if (!is.null(r$effort)) quant(r$effort, "L'effort", "The effort"), aire = if (!is.null(r$aire)) quant(r$aire, "L'aire", "The area"),
                taille = if (!is.null(r$taille)) quant(r$taille, "La taille des groupes", "The group size"))
   obs <- as.numeric(d$observations)
-  noms_obs <- unname(projet$noms_obs[as.character(obs)])
+  noms_obs <- unname(projet$noms_obs[nom_numero(obs)])
   x <- colonne(projet, uy, obs)
   tr <- textes_echantillonnage(valeurs_groupement(projet, r$echantillon, obs))
   st <- if (!is.null(r$strate)) textes_echantillonnage(valeurs_groupement(projet, r$strate, obs)) else rep("", length(obs))

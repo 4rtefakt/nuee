@@ -38,15 +38,15 @@ tests_variables <- function(projet, classe, groupes = NULL, test = "welch", corr
                   "A paired test (paired t, Wilcoxon) takes a pairing key, and a pairing key a paired test"))
   }
   if (apparie) {
-    if (identical(as.character(appariement), as.character(classe))) {
+    if (identical(nom_numero(appariement), nom_numero(classe))) {
       stop(traduire("La clé d'appariement doit être une autre variable que la classe", "The pairing key must be another variable than the class"))
     }
     k <- valeurs_a_tester(projet, appariement, obs)
     cle <- as.character(k$valeurs)
   }
   # (ni la classe ni la clé ne sont testées)
-  vars <- Filter(function(v) !length(v$categories) && as.character(v$uid) %in% colnames(projet$donnees) &&
-                   !identical(as.numeric(v$uid), as.numeric(classe)) && !identical(as.character(v$uid), as.character(appariement)), projet$variables)
+  vars <- Filter(function(v) !length(v$categories) && nom_numero(v$uid) %in% colnames(projet$donnees) &&
+                   !identical(as.numeric(v$uid), as.numeric(classe)) && !identical(nom_numero(v$uid), nom_numero(appariement)), projet$variables)
   lignes <- lapply(vars, function(v) {
     x <- colonne(projet, v$uid, obs)
     ligne <- data.frame(uid = as.numeric(v$uid), nom = as.character(v$ids[1]), statistique = NA_real_, p = NA_real_, stringsAsFactors = FALSE)
@@ -145,7 +145,7 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
   a <- valeurs_a_tester(projet, x, obs)
   b <- valeurs_a_tester(projet, y, obs)
   if (length(appariement)) {
-    ligne <- identical(as.character(appariement), "observation")
+    ligne <- identical(nom_numero(appariement), "observation")
     if (a$qualitative && b$qualitative) {
       stop(traduire("Un test apparié compare une mesure entre deux niveaux d'une variable qualitative, ou deux mesures d'une même observation",
                     "A paired test compares a measurement between two levels of a qualitative variable, or two measurements of the same observation"))
@@ -156,7 +156,7 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
       ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
       if (sum(ok) < 3) stop(sprintf(traduire("Il faut au moins trois paires : %d observation(s) seulement ont les deux valeurs",
                                              "At least three pairs are needed: only %d observation(s) have both values"), sum(ok)))
-      noms <- unname(projet$noms_obs[as.character(obs[ok])])
+      noms <- unname(projet$noms_obs[nom_numero(obs[ok])])
       r <- c(list(type = "apparie", ligne = TRUE, a = a$nom, b = b$nom, n = sum(ok), manquantes = sum(!ok),
                   paires = list(cle = noms, a = a$valeurs[ok], b = b$valeurs[ok], difference = b$valeurs[ok] - a$valeurs[ok], nom_a = noms, nom_b = noms),
                   sans_partenaire = list(a = character(0), b = character(0))),
@@ -165,7 +165,7 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
     } else {
       if (ligne) stop(traduire("Une mesure et des groupes s'apparient par une troisième variable (l'année, pour deux secteurs)",
                                "A measurement and groups are paired by a third variable (the year, for two sectors)"))
-      if (as.character(appariement) %in% c(as.character(x), as.character(y))) {
+      if (nom_numero(appariement) %in% c(as.character(x), as.character(y))) {
         stop(traduire("La clé d'appariement doit être une troisième variable", "The pairing key must be a third variable"))
       }
       k <- valeurs_a_tester(projet, appariement, obs)
@@ -179,7 +179,7 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
         g <- valeurs_a_tester(projet, dans, obs)
         if (!g$qualitative) stop(traduire("Les paires se groupent par une variable qualitative ou un identifiant", "Pairs are grouped by a qualitative variable or an ID"))
       }
-      r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[as.character(obs)]), k$nom,
+      r <- comparer_apparies(mesure$valeurs, groupe$valeurs, as.character(k$valeurs), niveaux, unname(projet$noms_obs[nom_numero(obs)]), k$nom,
                              g$valeurs, g$nom, memo)
       if (!is.null(g)) r$dans <- g[c("uid", "nom", "qualitative")]
     }
@@ -188,7 +188,7 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
     return(r)
   }
   ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
-  noms <- unname(projet$noms_obs[as.character(obs[ok])])
+  noms <- unname(projet$noms_obs[nom_numero(obs[ok])])
   r <- if (a$qualitative && b$qualitative) contingence(a$valeurs[ok], b$valeurs[ok])
        else if (a$qualitative) comparer_groupes(b$valeurs[ok], a$valeurs[ok], noms)
        else if (b$qualitative) comparer_groupes(a$valeurs[ok], b$valeurs[ok], noms)
@@ -1108,7 +1108,7 @@ MAX_CORRELATIONS <- 300
 correlations_variables <- function(projet, methode = "pearson", correction = "BH", observations = NULL) {
   if (!methode %in% c("pearson", "spearman")) stop(traduire("Méthode inconnue : ", "Unknown method: "), methode)
   obs <- observations %||% numeros_observations(projet)
-  vars <- Filter(function(v) !length(v$categories) && as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) !length(v$categories) && nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   K <- length(vars)
   if (K < 2) stop(traduire("Il faut au moins deux variables quantitatives", "At least two quantitative variables are needed"))
   if (K > MAX_CORRELATIONS) {

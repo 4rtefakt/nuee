@@ -114,7 +114,7 @@ donnees_trim <- function(projet, d, r) {
     if (!length(v$categories)) err("Les covariables de TRIM (X) sont des variables qualitatives : « %s » ne l'est pas.", "TRIM's covariates (X) are qualitative variables: “%s” isn't one.", v$ids[1])
   }
   obs <- as.numeric(d$observations)
-  noms_obs <- unname(projet$noms_obs[as.character(obs)])
+  noms_obs <- unname(projet$noms_obs[nom_numero(obs)])
   nom_site <- nom_groupement(projet, r$site)
   nom_temps <- nom_groupement(projet, r$temps)
   s <- valeurs_groupement(projet, r$site, obs)
@@ -844,7 +844,7 @@ observations_trim <- function(projet, m) {
   ij <- ij[k, , drop = FALSE]
   f <- t$f[ij]
   mu <- m$ajustement_noyau$mu[ij]
-  data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), site = t$sites[ij[, 1]], temps = t$temps[ij[, 2]],
+  data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), site = t$sites[ij[, 1]], temps = t$temps[ij[, 2]],
              compte = f, ajuste = mu, impute = ifelse(is.na(f), mu, f), residu = (f - mu) / sqrt(mu), stringsAsFactors = FALSE)
 }
 

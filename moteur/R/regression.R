@@ -435,7 +435,7 @@ verifier_regression <- function(projet, d) {
     if (!all(as.numeric(d$lisses) %in% simples_x)) err("Une courbe se fait sur une variable X quantitative.", "A curve is made on a quantitative X variable.")
     if (length(d$k_courbes)) {  # (la dimension de base d'une courbe, demandée : k)
       k <- suppressWarnings(as.numeric(unlist(d$k_courbes)))
-      if (anyNA(k) || any(k < 3 | k > 100 | k != round(k)) || !all(names(d$k_courbes) %in% as.character(as.numeric(d$lisses)))) {
+      if (anyNA(k) || any(k < 3 | k > 100 | k != round(k)) || !all(names(d$k_courbes) %in% nom_numero(as.numeric(d$lisses)))) {
         err("La dimension d'une courbe (k) est un nombre entier de 3 à 100, pour une variable en courbe.", "A curve's dimension (k) is a whole number from 3 to 100, for a variable in a curve.")
       }
     }
@@ -459,7 +459,7 @@ verifier_regression <- function(projet, d) {
     }
     valeurs_groupement(projet, s, d$observations[1])
     for (u in as.numeric(unlist(s$pentes))) {
-      nom <- tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) as.character(u))
+      nom <- tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) nom_numero(u))
       if (!u %in% simples_x) {
         stop(sprintf(traduire("« %s » a une pente aléatoire : elle doit être aussi un terme X du modèle, quantitatif et seul (transformé ou non), la pente fixe autour de laquelle varient celles des groupes.",
                               "\"%s\" has a random slope: it must also be an X term of the model, quantitative and on its own (transformed or not), the fixed slope around which the groups' slopes vary."), nom), call. = FALSE)
@@ -496,7 +496,7 @@ verifier_par_courbes <- function(projet, d) {
   par <- d$par_courbes %||% list()
   if (!length(par)) return(invisible(TRUE))
   if (!identical(d$type, "GAM")) stop(traduire("Une courbe par catégorie demande un modèle additif (GAM).", "A curve per category needs an additive model (GAM)."), call. = FALSE)
-  nom <- function(u) tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) as.character(u))
+  nom <- function(u) tryCatch(as.character(variable_du_projet(projet, u)$ids[1]), error = function(e) nom_numero(u))
   principales <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
   for (u in names(par)) {
     f <- suppressWarnings(as.numeric(unlist(par[[u]]))[1])
@@ -644,7 +644,7 @@ cadre_regression <- function(projet, d, obs = d$observations, imposees = NULL) {
 # catégorie. Une liste nommée par ces colonnes.
 facteurs_courbes <- function(d, composition) {
   par <- d$par_courbes %||% list()
-  vars <- unique(as.numeric(unlist(par[names(par) %in% as.character(as.numeric(d$lisses))])))
+  vars <- unique(as.numeric(unlist(par[names(par) %in% nom_numero(as.numeric(d$lisses))])))
   if (!length(vars)) return(list())
   stats::setNames(lapply(vars, function(f) {
     ts <- Filter(function(t) length(composition[[t]]$variables) == 1 && composition[[t]]$variables == f && composition[[t]]$categories != 0 &&
@@ -834,12 +834,12 @@ ajuster_regression <- function(projet, d) {
     lisses <- quantitatifs[vapply(termes_x[match(quantitatifs, cadre$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)]
     # la dimension demandée d'une courbe (k), par terme
     k_demandes <- unlist(lapply(lisses, function(t) {
-      k <- d$k_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
+      k <- d$k_courbes[[nom_numero(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
       if (length(k)) stats::setNames(as.integer(k), t)
     }))
     # (une courbe par catégorie : la colonne du facteur de sa variable qualitative, par terme ; facteurs_courbes)
     par <- unlist(lapply(lisses, function(t) {
-      f <- d$par_courbes[[as.character(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
+      f <- d$par_courbes[[nom_numero(as.numeric(termes_x[[match(t, cadre$termes)]]$variables))]]
       if (length(f)) stats::setNames(paste0("f", as.numeric(unlist(f))[1]), t)
     }))
     # (le lissage spatial des coordonnées : cadre_regression en a fait les colonnes sx et sy)
@@ -936,7 +936,7 @@ tester_regression <- function(projet, m, d) {
   predit <- as.vector(predit)
   y <- m$y$noms
   e <- predit - nd$y
-  obs <- data.frame(uid = t$observations, nom = unname(projet$noms_obs[as.character(t$observations)]), hors_domaine = FALSE, stringsAsFactors = FALSE)
+  obs <- data.frame(uid = t$observations, nom = unname(projet$noms_obs[nom_numero(t$observations)]), hors_domaine = FALSE, stringsAsFactors = FALSE)
   obs[[paste(y, "observé")]] <- nd$y
   obs[[paste(y, "prédit")]] <- predit
   ok <- !is.na(e)
@@ -986,7 +986,7 @@ predire_observations_regression <- function(projet, m, d, observations, effort_a
     hors <- hors | (!is.na(nd[[t]]) & (nd[[t]] < r[1] - marge | nd[[t]] > r[2] + marge))
   }
   y <- transformer(valeurs_simples(projet, d$y[[1]], observations), d$y[[1]]$transform)
-  out <- data.frame(row.names = as.character(observations))
+  out <- data.frame(row.names = nom_numero(observations))
   out[[paste(m$y$noms, "prédit")]] <- predit
   if (any(!is.na(y))) out[[paste(m$y$noms, "observé")]] <- y
   out$hors_domaine <- hors
@@ -1009,7 +1009,7 @@ quantiles_henry <- function(e) {
 observations_regression <- function(projet, m) {
   r <- m$resultat
   y <- m$y$noms
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   obs[[paste(y, "observé")]] <- m$donnees$y
   obs[[paste(y, "ajusté")]] <- r$ajuste
   if (!is.null(r$ajuste_fixe)) obs[[paste(y, "ajusté (effets fixes)")]] <- r$ajuste_fixe
@@ -1246,7 +1246,7 @@ definition_selection <- function(d, m, choisis) {
   # la validation croisée « à tour de rôle », qui sont des rangs dans cette liste)
   complets <- if (length(d$termes_complets)) d$termes_complets else d$x
   # (de même ses courbes par catégorie : une catégorie qui n'y a pas de courbe reste de côté)
-  par_complet <- if (length(d$termes_complets)) d$courbes_du_complet else d$par_courbes[names(d$par_courbes) %in% as.character(as.numeric(d$lisses))]
+  par_complet <- if (length(d$termes_complets)) d$courbes_du_complet else d$par_courbes[names(d$par_courbes) %in% nom_numero(as.numeric(d$lisses))]
   inconnus <- setdiff(choisis, names(groupes_modele(m)))
   if (length(inconnus)) stop(sprintf(traduire("Groupe de termes inconnu dans ce modèle : %s", "Unknown group of terms in this model: %s"),
                                      paste(inconnus, collapse = ", ")), call. = FALSE)
@@ -1260,11 +1260,11 @@ definition_selection <- function(d, m, choisis) {
   restantes <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1) as.numeric(t$variables)))
   d$lisses <- intersect(as.numeric(d$lisses), restantes)
   if (!length(d$lisses)) d$lisses <- NULL
-  d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% as.character(d$lisses)]
+  d$k_courbes <- d$k_courbes[names(d$k_courbes) %in% nom_numero(d$lisses)]
   if (!length(d$k_courbes)) d$k_courbes <- NULL
   # (une courbe par catégorie reste avec sa courbe et l'effet principal de sa variable qualitative, que la sélection garde avec elle)
   principales <- unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0 && !isTRUE(t$facteur_seul)) as.numeric(t$variables)))
-  d$par_courbes <- Filter(function(f) as.numeric(unlist(f))[1] %in% principales, d$par_courbes[names(d$par_courbes) %in% as.character(d$lisses)])
+  d$par_courbes <- Filter(function(f) as.numeric(unlist(f))[1] %in% principales, d$par_courbes[names(d$par_courbes) %in% nom_numero(d$lisses)])
   if (!length(d$par_courbes)) d$par_courbes <- NULL
   d$termes_complets <- complets
   d$courbes_du_complet <- if (length(par_complet)) par_complet
@@ -2379,7 +2379,7 @@ references_qualitatives <- function(m) {
       length(ct$variables) == 2 && u %in% ct$variables && sum(ct$categories == 0) == 1 && length(principal(ct$variables[ct$categories == 0], FALSE)) > 0
     }, m$candidats)
     if (length(pentes)) laissee(u, pentes) else NA_character_
-  }), qual)
+  }), nom_numero(qual))
 }
 
 # Les variables qualitatives d'une régression dans le texte des Méthodes : la catégorie de
@@ -2396,9 +2396,9 @@ phrases_qualitatives <- function(m, d, fr, liste, guillemets) {
   comp <- m$composition
   refs <- references_qualitatives(m)
   if (!length(refs)) return(character(0))
-  noms <- unlist(lapply(unname(comp), function(ct) stats::setNames(ct$noms, ct$variables)))
-  nom <- function(u) guillemets(noms[[as.character(u)]])
-  ref <- function(u) refs[[as.character(u)]] %||% NA_character_
+  noms <- unlist(lapply(unname(comp), function(ct) stats::setNames(ct$noms, nom_numero(ct$variables))))
+  nom <- function(u) guillemets(noms[[nom_numero(u)]])
+  ref <- function(u) refs[[nom_numero(u)]] %||% NA_character_
   # (le terme de son effet principal parmi les candidats : une catégorie, ou la variable quantitative)
   principal <- function(u, categorie) Find(function(t) length(comp[[t]]$variables) == 1 && comp[[t]]$variables == u && (comp[[t]]$categories != 0) == categorie, m$candidats)
   # les termes croisés qui ont une variable qualitative
@@ -2553,8 +2553,8 @@ verifier_lisse_spatial <- function(projet, d) {
     if (is.na(k) || k < 5 || k > 300 || k != round(k)) err("La dimension du lissage spatial (k) est un nombre entier de 5 à 300.", "The spatial smooth's dimension (k) is a whole number from 5 to 300.")
   }
   if (identical(as.character(ls$base)[1], "sos")) {
-    x <- projet$donnees[, as.character(vs[1])]
-    y <- projet$donnees[, as.character(vs[2])]
+    x <- projet$donnees[, nom_numero(vs[1])]
+    y <- projet$donnees[, nom_numero(vs[2])]
     if (any(abs(x) > 180, na.rm = TRUE) || any(abs(y) > 90, na.rm = TRUE)) {
       err("Une spline sur la sphère demande des longitudes et des latitudes en degrés.", "A spline on the sphere needs longitudes and latitudes in degrees.")
     }

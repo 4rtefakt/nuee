@@ -369,7 +369,7 @@ tester_boost <- function(projet, m, d) {
   test <- as.numeric(d$test)
   p <- prediction_ensemble(projet, m, test)
   y <- suppressWarnings(transformer(valeurs_simples(projet, d$y[[1]], test), d$y[[1]]$transform))
-  test_regression(m, test, unname(projet$noms_obs[as.character(test)]), y, p$prediction, sum(!p$complet))
+  test_regression(m, test, unname(projet$noms_obs[nom_numero(test)]), y, p$prediction, sum(!p$complet))
 }
 
 predire_boost <- function(projet, m, d, observations) {
@@ -395,7 +395,7 @@ dependance_boost <- function(m, j, grille) {
 # Les observations : la réponse observée, ajustée (le modèle de toutes les observations) et prédite
 # en validation croisée (à l'échelle de la réponse), le groupe de validation croisée.
 observations_boost <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   y <- m$y$nom
   obs[[paste(y, "observé")]] <- m$y_valeurs
   obs[[paste(y, "ajusté")]] <- m$ajuste

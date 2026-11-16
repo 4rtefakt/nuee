@@ -49,13 +49,13 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
   uid <- vapply(termes[simples], function(t) as.numeric(t$variables), 0)
   us <- unique(uid)
   k <- lapply(us, function(u) simples[uid == u])
-  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[as.character(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
+  vars <- if (length(us)) data.frame(uid = us, nom = unname(projet$noms_var[nom_numero(us)]), manquantes = vapply(k, function(i) max(manque[i]), 0),
                                      constante = vapply(k, function(i) all(constant[i]), TRUE))
   vars <- if (is.null(vars)) data.frame() else vars[vars$manquantes > limite | vars$constante, , drop = FALSE]
   manque_obs <- if (ncol(bx$X)) rowMeans(is.na(bx$X)) else rep(0, length(obs))  # (une régression sans X : le modèle nul)
   garde <- manque_obs > limite
   list(variables = vars,
-       observations = data.frame(uid = obs[garde], nom = unname(projet$noms_obs[as.character(obs[garde])]),
+       observations = data.frame(uid = obs[garde], nom = unname(projet$noms_obs[nom_numero(obs[garde])]),
                                  manquantes = manque_obs[garde]))
 }
 
@@ -81,7 +81,7 @@ verifier_donnees <- function(projet, definition, limite = 0.5) {
 # zéros, en %).
 statistiques_variables <- function(projet, observations = NULL) {
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   lignes <- lapply(vars, function(v) {
     x <- colonne(projet, v$uid, obs)
     ok <- x[!is.na(x)]

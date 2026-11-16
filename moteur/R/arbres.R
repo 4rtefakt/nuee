@@ -410,7 +410,7 @@ ajuster_tree <- function(projet, d) {
 tester_tree <- function(projet, m, d) {
   test <- as.numeric(d$test)
   X <- x_bruts(projet, m$variables, test)
-  noms <- unname(projet$noms_obs[as.character(test)])
+  noms <- unname(projet$noms_obs[nom_numero(test)])
   vides <- rowSums(!is.na(X)) == 0
   if (m$classement) {
     y <- as.character(classe_observations(projet, d$classe, test))
@@ -485,7 +485,7 @@ feuilles_nouvelles <- function(a, X) {
 # Les observations d'un arbre : réponse observée, ajustée et prédite en validation croisée (et
 # probabilités), résidu standardisé (par le RMSEE) et son quantile normal, feuille, groupe.
 observations_arbre <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   if (m$classement) {
     obs$classe <- as.character(m$donnees$.y)
     obs[["classe ajustée"]] <- m$classification$ajuste$predite

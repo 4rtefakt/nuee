@@ -73,7 +73,7 @@ remplacer_valeurs <- function(projet, variables = NULL, chercher = "", remplacer
   if (!vides && !nzchar(cherche)) {
     stop(traduire("Donner le texte ou le nombre à chercher, ou chercher les cellules vides.", "Give the text or number to find, or find the empty cells."), call. = FALSE)
   }
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   if (length(variables)) {
     variables <- as.numeric(unlist(variables))
     inconnues <- setdiff(variables, vapply(vars, function(v) as.numeric(v$uid), 0))
@@ -85,9 +85,9 @@ remplacer_valeurs <- function(projet, variables = NULL, chercher = "", remplacer
   n_par <- if (nzchar(par)) lire_nombres(par) else NA_real_
   infos <- list()
   # (la place de chaque variable dans le projet, par son numéro : un tableau de spectres en a des milliers)
-  place <- stats::setNames(seq_along(projet$variables), vapply(projet$variables, function(w) as.character(w$uid), ""))
+  place <- stats::setNames(seq_along(projet$variables), vapply(projet$variables, function(w) nom_numero(w$uid), ""))
   for (v in vars) {
-    k <- as.character(v$uid)
+    k <- nom_numero(v$uid)
     nom <- as.character(v$ids[1])
     i <- place[[k]]
     x <- projet$donnees[, k]
@@ -199,9 +199,9 @@ coller_cellules <- function(projet, observations, variables, valeurs) {
   # (une colonne à la fois, ses cases comme modifier_valeur les lit, et une seule écriture dans le
   # tableau des données : case par case, chacune en copiait tout le tableau)
   n <- 0L
-  lignes <- as.character(observations)
+  lignes <- nom_numero(observations)
   for (j in seq_along(variables)) {
-    k <- as.character(variables[j])
+    k <- nom_numero(variables[j])
     a <- which(!is.na(valeurs[, j]))
     if (!length(a)) next
     if (!(k %in% colnames(projet$donnees))) stop(traduire("Variable sans données : ", "Variable without data: "), variables[j])
@@ -247,7 +247,7 @@ changer_categories <- function(projet, variable, noms, ordre = NULL) {
   fr <- !identical(getOption("nuee.langue"), "en")
   uid <- as.numeric(variable)[1]
   i <- which(vapply(projet$variables, function(v) identical(as.numeric(v$uid), uid), TRUE))[1]
-  if (is.na(i) || !as.character(uid) %in% colnames(projet$donnees)) stop(traduire("Variable introuvable : ", "Variable not found: "), variable, call. = FALSE)
+  if (is.na(i) || !nom_numero(uid) %in% colnames(projet$donnees)) stop(traduire("Variable introuvable : ", "Variable not found: "), variable, call. = FALSE)
   v <- projet$variables[[i]]
   nom <- as.character(v$ids[1])
   cats <- as.character(v$categories %||% character(0))
@@ -271,9 +271,9 @@ changer_categories <- function(projet, variable, noms, ordre = NULL) {
   }
   if (identical(nouvelles, cats)) stop(traduire("Les catégories n'ont pas changé.", "The categories didn't change."), call. = FALSE)
   carte <- match(noms, nouvelles)
-  x <- projet$donnees[, as.character(uid)]
+  x <- projet$donnees[, nom_numero(uid)]
   effectifs <- tabulate(x[!is.na(x)], length(cats))
-  projet$donnees[, as.character(uid)] <- carte[x]
+  projet$donnees[, nom_numero(uid)] <- carte[x]
   projet$variables[[i]]$categories <- nouvelles
   projet <- suivre_categories(projet, uid, carte, cats)
   g <- function(x) guillemets_texte(x, fr)
@@ -456,7 +456,7 @@ categories_definition <- function(projet, d) {
     v <- tryCatch(variable_du_projet(projet, u), error = function(e) NULL)
     as.character(v$categories %||% character(0))
   })
-  stats::setNames(vus, as.character(uids))
+  stats::setNames(vus, nom_numero(uids))
 }
 
 # Une définition ajustée avec les catégories `vues` (categories_definition) rapportée aux
@@ -544,7 +544,7 @@ unite_texte <- function(projet, variable) {
 # « Variables » d'un classeur, une table d'un GeoPackage) : un data.frame variable, unité,
 # description (les noms des colonnes dans la langue de l'interface), NULL quand aucune n'en a.
 descriptions_variables <- function(projet) {
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees) && (nzchar(v$unite %||% "") || nzchar(v$description %||% "")), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees) && (nzchar(v$unite %||% "") || nzchar(v$description %||% "")), projet$variables)
   if (!length(vars)) return(NULL)
   df <- data.frame(variable = vapply(vars, function(v) as.character(v$ids[1]), ""),
                    unite = vapply(vars, function(v) as.character(v$unite %||% ""), ""),

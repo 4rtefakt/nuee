@@ -9,7 +9,7 @@ classification <- function(m, composantes = m$A) {
   T <- m$T[, seq_len(composantes), drop = FALSE]
   garde <- stats::complete.cases(T)
   arbre <- stats::hclust(stats::dist(T[garde, , drop = FALSE]), method = "ward.D2")
-  arbre$labels <- as.character(m$observations[garde])
+  arbre$labels <- nom_numero(m$observations[garde])
   arbre$hauteur_ward <- arbre$height^2 / 2
   arbre$composantes <- composantes
   arbre

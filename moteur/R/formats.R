@@ -966,7 +966,7 @@ ecrire_tables <- function(tables, chemin, objet = "resultats") {
 # chaque variable (en facteur pour une variable qualitative).
 tableau_projet <- function(projet) {
   obs <- rownames(projet$donnees)
-  uid <- vapply(projet$observations, function(o) as.character(o$uid), "")
+  uid <- vapply(projet$observations, function(o) nom_numero(o$uid), "")
   noms_id <- as.character(projet$observation_id_names %||% character(0))
   premier <- if (length(noms_id) && nzchar(noms_id[1]) && !startsWith(noms_id[1], "$")) noms_id[1] else "Observation"
   colonnes <- list(unname(projet$noms_obs[obs]))
@@ -979,8 +979,8 @@ tableau_projet <- function(projet) {
     noms <- c(noms, noms_id[k])
   }
   for (v in projet$variables) {
-    if (!as.character(v$uid) %in% colnames(projet$donnees)) next
-    x <- projet$donnees[, as.character(v$uid)]
+    if (!nom_numero(v$uid) %in% colnames(projet$donnees)) next
+    x <- projet$donnees[, nom_numero(v$uid)]
     colonnes[[length(colonnes) + 1]] <- if (length(v$categories)) factor(v$categories[x], levels = v$categories) else unname(x)
     noms <- c(noms, as.character(v$ids[1]))
   }

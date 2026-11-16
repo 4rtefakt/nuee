@@ -240,7 +240,7 @@ nom_traduit <- function(x, langue, noms) {
 # laisse ensuite de côté celles qu'il ne peut pas prendre, comme le moteur).
 code_lignes_definition <- function(projet, d, tab, tx) {
   obs <- as.numeric(d$observations)
-  rangs <- unname(tab$rangs[as.character(obs)])
+  rangs <- unname(tab$rangs[nom_numero(obs)])
   pc <- plan_condition(projet, d, tab)
   if (!is.null(pc)) {
     return(c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle.", length(obs)), sprintf("The %d observations of the model.", length(obs)))),

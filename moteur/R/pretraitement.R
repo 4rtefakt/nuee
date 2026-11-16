@@ -198,7 +198,7 @@ construire_bloc <- function(projet, termes, observations, poids = c("calcules", 
     X[, k] <- mettre_a_echelle(k, transformer(x, t$transform))
   }
   colnames(X) <- noms
-  rownames(X) <- as.character(observations)
+  rownames(X) <- nom_numero(observations)
   list(X = X, centre = centre, poids = poids_k, type = type, facteur = facteur, noms = noms, simples = simples, reference = reference,
        ecart = ecart, gardes = gardes)
 }
@@ -212,8 +212,8 @@ valeurs_bloc <- function(projet, termes, observations) {
   croises <- which(vapply(termes, function(t) length(t$variables) > 1, TRUE))
   simples <- setdiff(seq_along(termes), croises)
   if (!length(simples)) return(bruts)
-  lignes <- match(as.character(observations), rownames(projet$donnees))
-  colonnes <- match(vapply(termes[simples], function(t) as.character(t$variables[1]), ""), colnames(projet$donnees))
+  lignes <- match(nom_numero(observations), rownames(projet$donnees))
+  colonnes <- match(vapply(termes[simples], function(t) nom_numero(t$variables[1]), ""), colnames(projet$donnees))
   for (i in seq_along(simples)) {
     k <- simples[i]
     x <- if (is.na(colonnes[i])) rep(NA_real_, length(observations)) else projet$donnees[lignes, colonnes[i]]

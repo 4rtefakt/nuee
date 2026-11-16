@@ -14,7 +14,7 @@ statistiques <- function(m, niveau = 0.95) {
   notes <- !is.na(m$T[, 1])
   Nt <- sum(notes)
   var_t <- colSums(m$T[notes, , drop = FALSE]^2) / (Nt - 1)
-  obs <- data.frame(row.names = as.character(m$observations))
+  obs <- data.frame(row.names = nom_numero(m$observations))
   for (a in seq_len(A)) obs[[paste0("t", a)]] <- m$T[, a]
   if (pls) for (a in seq_len(A)) obs[[paste0("u", a)]] <- m$U[, a]
   obs$T2 <- rowSums(sweep(m$T^2, 2, var_t, "/"))

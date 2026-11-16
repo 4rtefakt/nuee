@@ -14,7 +14,7 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
     i <- i[1]
     uid <- projet$variables[[i]]$uid
     if (!is.null(categories)) {
-      if (!length(projet$variables[[i]]$categories) && any(!is.na(projet$donnees[, as.character(uid)]))) {
+      if (!length(projet$variables[[i]]$categories) && any(!is.na(projet$donnees[, nom_numero(uid)]))) {
         stop(sprintf(traduire("La variable « %s » existe déjà et n'est pas qualitative", "The variable “%s” already exists and isn't qualitative"), nom))
       }
       projet$variables[[i]]$categories <- categories
@@ -23,7 +23,7 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
     uid <- max(c(0, vapply(projet$variables, function(v) as.numeric(v$uid), 0))) + 1
     projet$variables <- c(projet$variables, list(list(uid = uid, ids = nom, categories = categories,
                                                       formula = "ajoutée par l'application")))
-    projet$noms_var[as.character(uid)] <- nom
+    projet$noms_var[nom_numero(uid)] <- nom
     jeu <- which(vapply(projet$datasets, function(d) identical(d$name, JEU_AJOUTE), TRUE))
     if (!length(jeu)) {
       projet$datasets <- c(projet$datasets, list(list(name = JEU_AJOUTE,
@@ -33,12 +33,12 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
     }
     projet$datasets[[jeu]]$variables <- c(projet$datasets[[jeu]]$variables, uid)
   }
-  k <- as.character(uid)
+  k <- nom_numero(uid)
   if (!(k %in% colnames(projet$donnees))) {
     projet$donnees <- cbind(projet$donnees, matrix(NA_real_, nrow(projet$donnees), 1, dimnames = list(NULL, k)))
   }
   if (effacer) projet$donnees[, k] <- NA
-  projet$donnees[as.character(observations), k] <- valeurs
+  projet$donnees[nom_numero(observations), k] <- valeurs
   projet
 }
 
@@ -82,7 +82,7 @@ numeros <- function(projet, noms) {
 numeros_observations <- function(projet, noms = NULL) {
   uids <- vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   if (is.null(noms)) return(uids)
-  k <- match(noms, unname(projet$noms_obs[as.character(uids)]))
+  k <- match(noms, unname(projet$noms_obs[nom_numero(uids)]))
   if (anyNA(k)) stop(traduire("Observation introuvable : ", "Observation not found: "), paste(noms[is.na(k)], collapse = ", "))
   uids[k]
 }
@@ -91,7 +91,7 @@ numeros_observations <- function(projet, noms = NULL) {
 # catégorie (une nouvelle catégorie est ajoutée au besoin) ; une valeur vide devient manquante.
 # Les modèles déjà ajustés ne changent pas : il faut les réajuster.
 modifier_valeur <- function(projet, observation, variable, valeur) {
-  k <- as.character(variable)
+  k <- nom_numero(variable)
   if (!(k %in% colnames(projet$donnees))) stop(traduire("Variable sans données : ", "Variable without data: "), variable)
   i <- which(vapply(projet$variables, function(v) identical(as.numeric(v$uid), as.numeric(variable)), TRUE))[1]
   texte <- trimws(as.character(valeur %||% ""))
@@ -106,7 +106,7 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
     if (is.na(n)) stop(sprintf(traduire("Valeur non numérique pour %s : %s", "Non-numeric value for %s: %s"), projet$noms_var[[k]], texte))
     n
   }
-  projet$donnees[as.character(observation), k] <- x
+  projet$donnees[nom_numero(observation), k] <- x
   projet
 }
 
@@ -401,7 +401,7 @@ variable_calculee <- function(projet, nom, formule) {
   env <- environnement_formule(projet)
   # (l'ordre des colonnes du tableau, celui de la vue Données, pour les plages des indices de
   # diversité : shannon(Ablette:Vandoise))
-  attr(env, "colonnes") <- vapply(Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables),
+  attr(env, "colonnes") <- vapply(Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables),
                                   function(v) as.character(v$ids[1]), "")
   r <- tryCatch(eval(parse(text = formule), envir = env), error = function(e) {
     m <- conditionMessage(e)
@@ -430,11 +430,11 @@ variable_calculee <- function(projet, nom, formule) {
 environnement_formule <- function(projet, noms = NULL) {
   obs <- as.numeric(rownames(projet$donnees))
   env <- new.env(parent = globalenv())
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   pris <- vapply(vars, function(v) as.character(v$ids[1]), "")
   for (v in vars) {
     if (!is.null(noms) && !as.character(v$ids[1]) %in% noms) next
-    x <- projet$donnees[, as.character(v$uid)]
+    x <- projet$donnees[, nom_numero(v$uid)]
     assign(as.character(v$ids[1]), if (length(v$categories)) as.character(v$categories)[x] else unname(x), envir = env)
   }
   noms_id <- as.character(projet$observation_id_names %||% character(0))
@@ -486,7 +486,7 @@ imputer_acp <- function(projet, variables, k = NULL, maxit = 1000, bornes = TRUE
   s <- apply(Xu, 2, stats::sd, na.rm = TRUE)
   if (any(!is.finite(s) | s == 0)) {
     stop(sprintf(traduire("Une variable constante ou presque vide ne s'impute pas : %s.", "A constant or nearly empty variable can't be imputed: %s."),
-                 paste(projet$noms_var[as.character(variables[!is.finite(s) | s == 0])], collapse = ", ")), call. = FALSE)
+                 paste(projet$noms_var[nom_numero(variables[!is.finite(s) | s == 0])], collapse = ", ")), call. = FALSE)
   }
   n <- nrow(Xu)
   p <- ncol(Xu)
@@ -513,10 +513,10 @@ imputer_acp <- function(projet, variables, k = NULL, maxit = 1000, bornes = TRUE
     if (!any(M[, j])) next  # (une variable sans valeur remplie aide à imputer les autres, sans copie)
     u <- variables[j]
     if (remplacer) {
-      projet$donnees[, as.character(u)] <- X[, j]
+      projet$donnees[, nom_numero(u)] <- X[, j]
     } else {
       # (imputée à nouveau, avec d'autres réglages : la même variable, mise à jour)
-      projet <- ajouter_colonne(projet, paste0(projet$noms_var[[as.character(u)]], traduire(" (imputée)", " (imputed)")), obs, X[, j])
+      projet <- ajouter_colonne(projet, paste0(projet$noms_var[[nom_numero(u)]], traduire(" (imputée)", " (imputed)")), obs, X[, j])
     }
   }
   attr(projet, "imputation") <- list(valeurs = sum(M), tours = r$tours, composantes = k, choisies = choisies, laissees = sum(!utiles))
@@ -635,7 +635,7 @@ colonne_ou_identifiant <- function(projet, x, obs) {
     noms <- as.character(projet$observation_id_names %||% character(0))
     k <- suppressWarnings(as.integer(substring(x, 4)))
     if (is.na(k) || k < 1 || (k > 1 && k > length(noms))) stop(traduire("Identifiant inconnu : ", "Unknown identifier: "), x, call. = FALSE)
-    v <- trimws(if (k == 1) unname(projet$noms_obs[as.character(obs)]) else identifiants_observations(projet, k, obs))
+    v <- trimws(if (k == 1) unname(projet$noms_obs[nom_numero(obs)]) else identifiants_observations(projet, k, obs))
     v[!is.na(v) & !nzchar(v)] <- NA
     # (sans nom dans le fichier, celui des observations est « Observation », comme dans tableau_projet)
     nom <- if (k > length(noms) || !nzchar(noms[k]) || (k == 1 && startsWith(noms[1], "$"))) "Observation" else noms[k]
@@ -683,7 +683,7 @@ cle_composee <- function(parties) {
 proposer_cles <- function(projet, tableau) {
   obs <- numeros_observations(projet)
   noms_id <- as.character(projet$observation_id_names %||% character(0))
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   # (les identifiants qui ont des valeurs, sans ceux des fichiers .usp, $ClassID...)
   rangs <- Filter(function(k) k == 1 || (nzchar(noms_id[k]) && !startsWith(noms_id[k], "$") &&
                                            any(!is.na(colonne_ou_identifiant(projet, sprintf("id:%d", k), obs)$valeurs))),
@@ -802,7 +802,7 @@ ajouter_colonnes_table <- function(projet, tableau, cles_projet, cles_table, col
                                 paste(sprintf(traduire("« %s » ajoutée sous le nom « %s »", "“%s” added as “%s”"), colonnes[renommees], noms[renommees]), collapse = ", ")),
     sprintf(traduire("%d observation(s) sur %d ont trouvé leur clé dans le tableau.", "%d of the %d observations found their key in the table."), sum(!is.na(i)), length(obs)),
     if (length(sans)) sprintf(traduire("%d observation(s) sans correspondance, aux valeurs manquantes : %s.", "%d observation(s) without a match, their values missing: %s."),
-                              length(sans), liste(unname(projet$noms_obs[as.character(obs[sans])]))),
+                              length(sans), liste(unname(projet$noms_obs[nom_numero(obs[sans])]))),
     if (length(seules)) sprintf(traduire("%d clé(s) du tableau%s ne répondent à aucune observation : %s.", "%d key(s) of the table%s match no observation: %s."),
                                 length(seules), colonnes_cle, liste(vapply(la[seules], texte_cle, ""))),
     if (sans_cle) sprintf(traduire("%d ligne(s) du tableau sans clé, laissée(s) de côté.", "%d row(s) of the table without a key, left out."), sans_cle))

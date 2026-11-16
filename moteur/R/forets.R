@@ -267,7 +267,7 @@ ajuster_forest <- function(projet, d) {
 tester_forest <- function(projet, m, d) {
   test <- as.numeric(d$test)
   p <- prediction_ensemble(projet, m, test)
-  noms <- unname(projet$noms_obs[as.character(test)])
+  noms <- unname(projet$noms_obs[nom_numero(test)])
   if (m$classement) {
     y <- as.character(classe_observations(projet, d$classe, test))
     obs <- data.frame(uid = test, nom = noms, hors_domaine = FALSE, classe = y, classe_predite = p$prediction, stringsAsFactors = FALSE)
@@ -338,7 +338,7 @@ predire_forest <- function(projet, m, d, observations) {
 # ajustée par tous les arbres (en classement : les classes, et la part des votes hors sac de
 # chaque classe), le groupe de validation croisée.
 observations_foret <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   if (m$classement) {
     cl <- m$classification
     obs$classe <- as.character(m$y_valeurs)

@@ -48,7 +48,7 @@ qualitatives_modele <- function(m) {
     list(uid = u, nom = comp[[ts[1]]]$noms[1], colonnes = vus, categories = vapply(vus, function(t) comp[[t]]$categories, 0, USE.NAMES = FALSE),
          niveaux = vapply(vus, function(t) as.character(comp[[t]]$niveaux[1]), "", USE.NAMES = FALSE))
   })
-  stats::setNames(res, as.character(uids))
+  stats::setNames(res, nom_numero(uids))
 }
 
 # Les variables qualitatives croisées avec la variable `u` dans un terme du modèle (m$candidats), par
@@ -58,7 +58,7 @@ croisees_avec <- function(m, u) {
     q <- ct$variables[ct$categories != 0]
     if (length(ct$variables) > 1 && u %in% q) setdiff(q, u)
   }))
-  as.character(unique(vs))
+  nom_numero(unique(vs))
 }
 
 # Les variables quantitatives croisées avec la variable qualitative `u` (regression.R :
@@ -70,7 +70,7 @@ pentes_avec <- function(m, u) {
   pc <- pentes_croisees(m)
   garde <- Filter(function(t) u %in% unlist(lapply(comp[pc[[t]]], function(ct) ct$variables[ct$categories != 0])), names(pc))
   stats::setNames(lapply(garde, function(t) list(uid = comp[[t]]$variables, terme = t, nom = m$noms_termes[match(t, m$termes)])),
-                  vapply(garde, function(t) as.character(comp[[t]]$variables), ""))
+                  vapply(garde, function(t) nom_numero(comp[[t]]$variables), ""))
 }
 
 # Les réglages des moyennes ajustées (ceux de la demande, sinon ceux par défaut), vérifiés : la
@@ -81,7 +81,7 @@ pentes_avec <- function(m, u) {
 # et l'échelle d'un modèle au lien log ou logit (`echelle` : "reponse" ou "lien").
 reglages_moyennes <- function(m, quals, q) {
   un <- function(x) {
-    x <- as.character(unlist(x))
+    x <- nom_numero(unlist(x))
     if (length(x) && !is.na(x[1]) && nzchar(x[1])) x[1]
   }
   nom <- function(u) if (!is.null(quals[[u]])) quals[[u]]$nom else u
@@ -99,10 +99,10 @@ reglages_moyennes <- function(m, quals, q) {
   pentes <- pentes_avec(m, as.numeric(facteur))
   if (!is.null(pente) && !pente %in% names(pentes)) {
     # (son nom, si elle est une variable du modèle)
-    ct <- Find(function(ct) pente %in% as.character(ct$variables), m$composition)
+    ct <- Find(function(ct) pente %in% nom_numero(ct$variables), m$composition)
     stop(sprintf(traduire("« %s » n'est pas une variable quantitative croisée avec « %s » dans un terme du modèle : sa pente ne change pas d'une catégorie à l'autre.",
                           "\"%s\" isn't a quantitative variable crossed with \"%s\" in a term of the model: its slope doesn't change from one category to another."),
-                 if (!is.null(ct)) ct$noms[match(pente, as.character(ct$variables))] else pente, nom(facteur)), call. = FALSE)
+                 if (!is.null(ct)) ct$noms[match(pente, nom_numero(ct$variables))] else pente, nom(facteur)), call. = FALSE)
   }
   ajustement <- un(q$ajustement) %||% "tukey"
   if (!ajustement %in% c("tukey", "holm", "aucun")) stop(traduire("Ajustement inconnu : tukey, holm ou aucun.", "Unknown adjustment: tukey, holm or aucun (none)."), call. = FALSE)
@@ -148,8 +148,8 @@ bruts_grille <- function(m, quals, G, cov, decale = NULL) {
     if (ct$categories == 0) {
       B[, t] <- if (!is.null(decale[[t]])) decale[[t]] else cov[[t]]$valeur
     } else {
-      f <- quals[[as.character(ct$variables)]]
-      B[, t] <- if (is.null(f)) 0 else as.numeric(f$categories[G[[as.character(ct$variables)]]] == ct$categories)
+      f <- quals[[nom_numero(ct$variables)]]
+      B[, t] <- if (is.null(f)) 0 else as.numeric(f$categories[G[[nom_numero(ct$variables)]]] == ct$categories)
     }
   }
   B
@@ -244,7 +244,7 @@ colonnes_ddl <- function(m, quals) {
     ct <- comp[[t]]
     for (j in which(ct$categories != 0)) {
       reste <- paste(sort(ct$variables[-j]), collapse = " ")
-      if ((!nzchar(reste) || reste %in% cles) && isTRUE(ct$categories[j] == quals[[as.character(ct$variables[j])]]$categories[1])) return(FALSE)
+      if ((!nzchar(reste) || reste %in% cles) && isTRUE(ct$categories[j] == quals[[nom_numero(ct$variables[j])]]$categories[1])) return(FALSE)
     }
     TRUE
   }, TRUE)
