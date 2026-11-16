@@ -184,6 +184,13 @@ journaliser <- function(nom, q, r) {
     } else sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
                    code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
                    paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
+    # (le paquet de reproductibilité : paquet.R ; chaque modèle, son dernier ajustement de la séance)
+    paquet = {
+      ids <- as.character(unlist(q$modeles))
+      c(sprintf("modeles <- lapply(%s, function(id) list(id = id, definition = definition(id), modele = get(id)))", vecteur_r(ids)),
+        sprintf("ecrire_paquet(%s, modeles, %s, %s, langue = %s)", q$projet, code_r(r$chemin), code_r(metadonnees_paquet(q$meta)),
+                code_r(if (identical(q$langue, "en")) "en" else "fr")))
+    },
     NULL)
   if (length(lignes)) noter("appel", lignes)
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
