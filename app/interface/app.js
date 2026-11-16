@@ -1096,7 +1096,8 @@ async function apresOuverture(res, session = null) {
 // (main.js deletes the others): those of this launch, named after it so that they never
 // replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
 // set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
-// One main window writes them: the first one open (several main windows share the projects).
+// One main window writes them: the first one open, then, once it is closed, the next one
+// (several main windows share the projects; each counts the two minutes).
 const LANCEMENT = Date.now().toString(36);
 let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
 let secoursEnAttente = [];
@@ -1106,6 +1107,9 @@ async function sauvegarderSecours() {
   try {
     const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
     if (principales.length && !principales[0].actuelle) return;
+    // (a window taking over from the first one: the copies that one kept waiting are those the
+    // index marks so, proposerRecuperation)
+    if (ID_FENETRE !== 'principale') secoursEnAttente = [].concat(await bureau.secoursListe()).filter((e) => e && e.attente);
     const dossier = await bureau.secoursDossier();
     const entrees = [];
     for (const p of Object.values(etat.projets)) {
@@ -1133,6 +1137,7 @@ async function proposerRecuperation() {
   try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
   if (!entrees.length) return;
   secoursEnAttente = entrees;
+  bureau.secoursIndex(entrees.map((e) => ({ ...e, attente: true }))).catch(() => {});  // (marked at once, for another main window: sauvegarderSecours)
   const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   dialogue({ titre: t('recuperation'),
     contenu: el('div', {}, el('p', {}, t('recuperation_question')), el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}`)))),
@@ -1904,8 +1909,8 @@ async function demarrerPrincipal() {
   if (ID_FENETRE === 'principale') {
     quoiDeNeuf();
     proposerRecuperation();
-    if (bureau) setInterval(sauvegarderSecours, 120000);
   }
+  if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
   if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
     etat.majAuto = await bureau.majAuto();

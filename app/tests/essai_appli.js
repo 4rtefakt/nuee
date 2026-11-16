@@ -301,6 +301,15 @@ async function brancher(cible) {
     p = p2;
     verifier('secondeFenetreGardee', proc.exitCode === null && (await p.evaluer("!!document.querySelector('.arbre')").catch(() => false)),
       `${proc.exitCode} ${(await pages(port)).map((c) => c.url).join(' ')}`);
+    // and the recovery copies: the second window writes them now, every two minutes (app.js:
+    // sauvegarderSecours), keeping the earlier stop's that waits (checked after quitting)
+    const nomCopie = 'essai-copie-de-secours';
+    const pc = await p.api('coller', { texte: 'nom\ta\tb\no1\t1\t2\no2\t3\t5\n', nom: nomCopie });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    const copie = () => { try { return JSON.parse(fs.readFileSync(path.join(secours, 'index.json'), 'utf8')).find((e) => e.nom === nomCopie && fs.existsSync(e.fichier)); } catch { return undefined; } };
+    for (let i = 0; i < 150 && !copie() && proc.exitCode === null; i += 1) await pause(1000);
+    verifier('copieDeSecoursDeLaSecondeFenetre', !!copie(), fs.existsSync(path.join(secours, 'index.json')) ? fs.readFileSync(path.join(secours, 'index.json'), 'utf8') : 'no index');
+    await p.api('fermer_projet', { projet: pc.id });  // (quitting then has nothing to ask)
 
     // quitting stops R and removes its temporary folder
     verifier('dossierTemporaireR', /nuee-r-[\d-]+$/.test(temporaire) && fs.existsSync(temporaire), temporaire);
