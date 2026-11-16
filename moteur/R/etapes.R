@@ -435,7 +435,9 @@ ETAPES_DONNEES <- list(
     appliquer = function(p, q, rejeu = NULL) {
       if (is.null(rejeu) || is.null(q$anciennes)) return(changer_categories(p, q$variable, q$noms, q$ordre))
       fr <- !identical(getOption("nuee.langue"), "en")
-      cats <- as.character(variable_du_projet(p, q$variable)$categories %||% character(0))
+      v <- variable_du_projet(p, q$variable)
+      cats <- as.character(v$categories %||% character(0))
+      if (!length(cats)) etape_sautee(sprintf(traduire("%s n'est pas qualitative dans ces données.", "%s isn't qualitative in these data."), guillemets_texte(as.character(v$ids[1]), fr)))
       anciennes <- as.character(unlist(q$anciennes))
       noms <- as.character(unlist(q$noms))
       absentes <- setdiff(anciennes[anciennes != noms], cats)

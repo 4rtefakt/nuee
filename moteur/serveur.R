@@ -1573,8 +1573,9 @@ DEMANDES <- list(
   # variables et les identifiants des observations. q$sans_nouvelles : les modèles (noms ou numéros)
   # qui ne prennent pas les nouvelles observations. Avec q$apercu, le rapport seul, sans rien
   # changer : `observations` (ajoutees, retirees, premieres_ajoutees, premieres_retirees, cellules
-  # changées, par_position : sans colonne qui les nomme, retrouvées par leur place ; repetees : des
-  # noms qui reviennent, retrouvés dans leur ordre), `variables` (nouvelles, absentes, recalculees
+  # changées et cellules_par_variable, celles des observations communes ; par_position : sans colonne
+  # qui les nomme, retrouvées par leur place ; repetees : des noms qui reviennent, retrouvés dans leur
+  # ordre), `variables` (nouvelles, absentes, recalculees
   # d'après leur formule, categories : les nouvelles de chaque variable, types : celles qui ont changé
   # de type dans le fichier et l'ont repris), `identifiants` (nouveaux, absents), `etapes` (n,
   # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`

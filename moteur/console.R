@@ -167,6 +167,12 @@ journaliser <- function(nom, q, r) {
     },
     coordonnees = if (isTRUE(q$regler)) sprintf("%s <- regler_coordonnees(%s, %s, %s, %s)", q$projet, q$projet,
                                                  if (length(q$x)) q$x else "NULL", if (length(q$y)) q$y else "NULL", code_r(q$systeme %||% "plan")),
+    # (les rapports vivants : etapes.R ; l'aperçu ne change rien)
+    mettre_a_jour = if (!isTRUE(q$apercu) && !is.null(r$projet)) sprintf("%s <- mise_a_jour(%s)$projet", q$projet, paste(c(q$projet,
+      if (length(q$chemin) && nzchar(as.character(q$chemin)[1])) code_r(as.character(q$chemin)[1]),
+      if (length(q$table) && nzchar(as.character(q$table)[1])) paste("table =", code_r(as.character(q$table)[1])),
+      if (length(q$sans_nouvelles)) paste("sans_nouvelles =", vecteur_r(as.character(unlist(q$sans_nouvelles))))), collapse = ", ")),
+    retirer_etape = if (!is.null(r$projet)) sprintf("%s <- mise_a_jour(%s, etapes = %s$etapes[-%d])$projet", q$projet, q$projet, q$projet, as.integer(q$n)),
     carte = sprintf("points_projet(%s)", q$projet),
     par_reponse = sprintf("modeles_par_reponse(%s, definition(%s), %s, %s)", pm(q$modele), code_r(q$modele), vecteur_r(as.numeric(unlist(q$reponses))),
                           code_r(q$correction %||% "BH")),
