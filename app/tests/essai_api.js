@@ -39,6 +39,18 @@ function portLibre() {
 
 function verifier(condition, message) { if (!condition) throw new Error(message); }
 
+// The result columns of models (their observations, their predictions) whose names the English
+// interface would still show in French (interface/i18n.js: libelleResultat), as it shows them.
+async function colonnesEnFrancais(...tableaux) {
+  globalThis.document ??= { documentElement: {} };  // (i18n.js puts the language on the page)
+  const i18n = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'i18n.js')).href);
+  const avant = i18n.langueActuelle();
+  i18n.changerLangue('en');
+  const noms = [...new Set(tableaux.flatMap((o) => Object.keys(o || {})))].filter((k) => !['uid', 'nom'].includes(k)).map((k) => i18n.libelleResultat(k));
+  i18n.changerLangue(avant);
+  return noms.filter((x) => /[àâçéèêëîïôûùü]|\b(groupe|temps|compte|ajuste|impute|dans_troncature|CP\d)\b/.test(x));
+}
+
 async function etape(nom, f) {
   try {
     await f();
@@ -1780,6 +1792,9 @@ async function principal() {
       verifier(pr.observations['densite prédit'].length === 72 && pr.observations.feuille.length === 72, 'prédire avec l’arbre');
       const prl = await api('predire', { modele: lda.id });
       verifier(prl.observations['classe prédite'].length === 72 && prl.observations['probabilité haute'].length === 72, 'prédire avec la LDA');
+      const francais = await colonnesEnFrancais(arbre.observations, classement.observations, lda.observations, km.observations, pr.observations, prl.observations,
+        (await api('predire', { modele: km.id })).observations);
+      verifier(!francais.length, `colonnes des résultats en français dans l’interface en anglais : ${francais.join(', ')}`);
       const re = await api('reajuster', { modele: arbre.id, exclues: [1, 2] });
       verifier(re.type === 'TREE' && re.N === 70 && re.A === 0, `arbre réajusté : N = ${re.N}`);
       for (const [m, f] of [[arbre, 'arbre.R'], [lda, 'lda.R'], [km, 'km.Rmd']]) {
@@ -1964,6 +1979,8 @@ async function principal() {
         && [].concat(tr.vues_defaut).join() === 'trim_indices,trim_totaux' && [].concat(tr.indices.impute).length === 7 && [].concat(tr.pentes.quoi).join() === 'imputee,modele'
         && /^pente /.test(tr.chiffres) && tr.comptes.length === 8 && tr.comptes[0].length === 7 && tr.observations.compte.length === 55 && typeof tr.sigma2 === 'number'
         && [].concat(tr.tests.test).includes('covariable') && tr.reglages.options.modele === 3, `TRIM : ${tr.chiffres}, N = ${tr.N}`);
+      const francais = await colonnesEnFrancais(tr.observations);
+      verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
       const m2 = await api('ajuster', { ...def, x: [], nom: 'TRIM 2', options: { ...options, modele: 2, changements: [2015, 2018], correlation: false } });
       verifier(m2.modele_trim === 2 && [].concat(m2.changements).join() === '2015,2018' && [].concat(m2.tests.test).join() === 'changement,changement' && m2.rho === null,
         `TRIM modèle 2 : ${m2.chiffres}`);
@@ -2015,6 +2032,8 @@ async function principal() {
         && [].concat(dn.strate).length === 3 && [].concat(dn.strate)[2] === null && [].concat(dn.D).every((x) => x > 0) && [].concat(dn.N).every((x) => x > 0)
         && [].concat(dm.candidats.modele)[0] === 'hn' && dm.courbe.x.length === 101 && dm.adequation.qq.uid.length === dm.n && typeof dm.adequation.cvm.p === 'number'
         && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
+      const francais = await colonnesEnFrancais(dm.observations);
+      verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
       const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
       verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
         `groupes, hasard et un terme : ${groupes.chiffres}`);
@@ -2093,6 +2112,9 @@ async function principal() {
       verifier(pr.observations['densite prédit'].length === 72 && pr.observations['densite prédit'].filter((x) => x === null).length === 7, 'prédire avec la forêt');
       const pb = await api('predire', { modele: bb.id });
       verifier(pb.observations['presence prédit'].length === 72, 'prédire avec les arbres boostés');
+      const francais = await colonnesEnFrancais(foret.observations, fc.observations, bo.observations, bb.observations, pr.observations, pb.observations,
+        (await api('predire', { modele: fc.id })).observations);
+      verifier(!francais.length, `colonnes des résultats en français dans l’interface en anglais : ${francais.join(', ')}`);
       const re = await api('reajuster', { modele: foret.id, exclues: [2, 3] });
       verifier(re.type === 'FOREST' && re.N === 63 && re.A === 0, `forêt réajustée : N = ${re.N}`);
       const e = await api('exporter', { modele: bo.id, chemin: path.join(dossier, 'boosting.xlsx') });

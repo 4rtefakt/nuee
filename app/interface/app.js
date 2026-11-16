@@ -587,7 +587,7 @@ const app = {
         const r = await occupe(() => demander('par_reponse', q));
         if (r.projet) projetChange(r.projet);
         for (const res of [].concat(r.resultats || [])) await garder_(res);
-        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction]), res: r } });
+        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction, langueActuelle()]), res: r } });
       })().catch((e) => statut(e.message, true));
       return true;
     } }] });

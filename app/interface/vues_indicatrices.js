@@ -209,7 +209,7 @@ const blocsResume = (m) => {
 const blocsEspeces = (m) => {
   const lignes = especes(m).filter((e) => !m.options.permutations || significative(e)).sort((a, b) => (a.p_ajuste ?? 2) - (b.p_ajuste ?? 2) || b.indval - a.indval);
   return [{ texte: m.options.permutations ? t('iv_rapport_significatives', { n: lignes.length }) : t('iv_note_sans_test') },
-    { entetes: [t('iv_espece'), t('iv_groupe'), 'A', 'B', 'IndVal', 'p', t('p_ajuste')],
+    { entetes: [t('iv_espece'), t('iv_groupe'), 'A', 'B', m.options.indice === 'IndVal' ? 'IndVal' : 'IndVal.g', 'p', t('p_ajuste')],
       lignes: lignes.map((e) => [e.espece, e.groupe, fmt(e.A, 3), fmt(e.B, 3), fmt(e.indval, 3), pValeur(e.p), pValeur(e.p_ajuste)]) }];
 };
 PARTIES_TYPES.INDVAL = [
