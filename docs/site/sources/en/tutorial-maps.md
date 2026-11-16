@@ -97,7 +97,7 @@ and the p and intervals are too optimistic (Legendre, 1993).
 Moran's I compares each residual with those of its neighbours, here the 4 nearest meadows (made
 mutual: 4.8 neighbours on average). Without autocorrelation it would be near −0.0112; it is
 **0.3120**, z = 4.83, p = 7.0e-7, and none of 999 permutations of the residuals between the meadows
-gave as much (p = 0.0010). For a linear model, the second line is the test that accounts for the
+gave as much (p = 0.0010). For a linear model, the third line is the test that accounts for the
 fit (Cliff and Ord, 1981): I = 0.3112, p = 3.8e-7.
 
 The **correlogram** gives Moran's I by classes of distance: 0.41 below 0.69 km, 0.34 from 0.69 to
