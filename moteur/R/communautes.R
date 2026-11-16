@@ -502,7 +502,11 @@ nmds_noyau <- function(D, k, departs, graine) {
         if (pr$rmse < 0.005 && max(pr$residus) < 0.01) retrouvee <- retrouvee + 1
       }
     }
-    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee)
+    # (les autres départs qui atteignent le stress de la meilleure solution à 0,0001 près, quelle que
+    # soit leur configuration : des minimums presque égaux, où quelques observations se placent un peu
+    # autrement, ne sont pas « retrouvés » par Procrustes, et le stress est pourtant atteint)
+    meme_stress <- sum(abs(stress - s0$stress) < 0.01) - 1
+    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee, meme_stress = meme_stress)
   })
   X <- scale(r$s0$points, scale = FALSE)
   X <- stats::prcomp(X, center = TRUE)$x
@@ -520,7 +524,7 @@ nmds_noyau <- function(D, k, departs, graine) {
   M[lower.tri(M)] <- part
   M <- M + t(M)
   list(points = X, stress = sqrt(sum(ecarts)), stress_departs = r$stress / 100, meilleur = r$meilleur, retrouvee = r$retrouvee,
-       nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
+       meme_stress = r$meme_stress, nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
        stress_observations = sqrt(colSums(M) / 2))
 }
 
@@ -1044,7 +1048,7 @@ resultat_nmds <- function(id) resultat_communaute(id, function(p, m, d) {
   obs$stress <- k$stress_observations
   list(chiffres = sprintf("stress %s · k = %d", formatC(k$stress, format = "f", digits = 3), m$options$k),
        vues_defaut = I(c("ordination_dist", "shepard")), observations = obs, axes = I(colnames(k$points)),
-       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, nuls = k$nuls,
+       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, meme_stress = k$meme_stress %||% 0, nuls = k$nuls,
        stress_departs = data.frame(depart = seq_along(k$stress_departs) - 1, stress = k$stress_departs),
        shepard = list(dissimilarite = sh$dissimilarite[garde], distance = sh$distance[garde], ajustee = sh$ajustee[garde], total = length(sh$dissimilarite)),
        especes = scores_table(m$especes), ajustement = ajustement_interface(m$ajustement),
@@ -1270,7 +1274,9 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
                             "The configuration in %d dimension%s is that of the isoMDS function of the MASS package (Venables & Ripley, 2002), which minimizes Kruskal's stress between the ordination distances and the monotone regression of the dissimilarities, from the PCoA configuration then %d random configurations (seed %d), as vegan::metaMDS; the lowest-stress solution was kept (stress = %s)"),
                          o$k, if (o$k > 1) "s" else "", o$departs, o$graine, nombre(k$stress, 3)),
                  if (o$departs > 0) {
-                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %d fois (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %d times (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "), k$retrouvee)
+                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %d fois%s (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %d time%s (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "), k$retrouvee, if (fr) "" else if (k$retrouvee > 1) "s" else "")
+                   else if (isTRUE(k$meme_stress > 0)) sprintf(tx(" ; aucun autre départ n'a retrouvé sa configuration (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01), mais %d ont atteint son stress à 0,0001 près, quelques observations placées un peu autrement : le stress est atteint, la place de ces observations est incertaine. ",
+                                                                   "; no other start found its configuration again (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01), but %d reached its stress to 0.0001, with some observations placed slightly differently: the stress is reached, the place of those observations is uncertain. "), k$meme_stress)
                    else tx(" ; aucun autre départ ne l'a retrouvée : ce peut être un minimum local. ", "; no other start found it again: it may be a local minimum. ")
                  } else ". ",
                  if (k$nuls) sprintf(tx("%d dissimilarités nulles entre observations distinctes ont été remplacées par la moitié de la plus petite non nulle. ", "%d zero dissimilarities between distinct observations were replaced by half the smallest non-zero one. "), k$nuls) else "",

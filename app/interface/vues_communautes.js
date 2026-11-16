@@ -194,13 +194,18 @@ function rendreShepard(conteneur, ctx, p, loc) {
   loc.table ??= {};
   tableau(bas, ctx, loc.table, {
     n: liste(d.depart).length, nom: 'Starts', choisie: (i) => liste(d.depart)[i] === m.meilleur,
-    avant: [el('span', { class: 'infos' }, m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
-      : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart'))],
+    avant: [el('span', { class: 'infos' }, texteRetrouvee(m))],
     colonnes: [{ cle: 'depart', titre: t('com_depart') }, { cle: 'stress', titre: 'stress', num: true, decimales: 4 }],
     valeur: (i, k) => (k === 'depart' ? departTexte(liste(d.depart)[i]) : liste(d[k])[i]),
   });
 }
 const departTexte = (k) => (k === 0 ? t('com_depart_pcoa') : `${t('com_depart_hasard')} ${k}`);
+// Whether the NMDS's best solution was found again; not found again by Procrustes but reached in
+// stress by other starts (meme_stress: some observations placed slightly differently), it isn't
+// called a local minimum.
+const texteRetrouvee = (m) => (m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) })
+  : m.departs > 0 && m.meme_stress > 0 ? t('com_meme_stress', { n: m.meme_stress, meilleur: departTexte(m.meilleur) })
+    : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart'));
 
 // ------------------------------------------------------------ the fitted variables (PCOA, NMDS)
 
@@ -379,8 +384,8 @@ function rendreResumeCommunaute(conteneur, ctx, m) {
     textes.push(t('com_resume_pcoa'));
   } else if (m.type === 'NMDS') {
     ligne2 = el('div', { class: 'fiche-chiffres' }, chiffre('stress', m.stress, 4), chiffre('k', m.k, 0), chiffre(t('com_departs'), m.departs, 0),
-      chiffre(t('com_retrouvee_mot'), m.retrouvee, 0));
-    if (m.departs > 0 && !m.retrouvee) textes.push(t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }));
+      chiffre(t('com_retrouvee_mot'), m.retrouvee, 0), !m.retrouvee && m.meme_stress > 0 ? chiffre(t('com_meme_stress_mot'), m.meme_stress, 0) : null);
+    if (m.departs > 0 && !m.retrouvee) textes.push(texteRetrouvee(m));
     if (m.nuls) textes.push(t('com_nuls', { n: m.nuls }));
     textes.push(t('com_resume_nmds'));
   } else if (m.type === 'PERMANOVA') {
@@ -513,7 +518,9 @@ const blocsResume = (m) => {
     b.push({ entetes: [t('ord_axe'), t('valeur_propre'), t('ord_part_inertie'), `${t('ord_cumul')} (%)`],
       lignes: lignesDe(m.valeurs_propres, ['axe', 'valeur_propre', 'part', 'cumul']).slice(0, 5).map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2), fmt(100 * l[3], 2)]) });
   } else if (m.type === 'NMDS') {
-    b.push({ entetes: ['stress', 'k', t('com_departs'), t('com_retrouvee_mot')], lignes: [[fmt(m.stress, 4), String(m.k), String(m.departs), String(m.retrouvee)]] });
+    const memeStress = !m.retrouvee && m.meme_stress > 0;
+    b.push({ entetes: ['stress', 'k', t('com_departs'), t('com_retrouvee_mot')].concat(memeStress ? [t('com_meme_stress_mot')] : []),
+      lignes: [[fmt(m.stress, 4), String(m.k), String(m.departs), String(m.retrouvee)].concat(memeStress ? [String(m.meme_stress)] : [])] });
   } else if (m.type === 'PERMANOVA') {
     b.push({ entetes: ['R2', t('ord_pseudo_f'), 'p', t('nb_permutations')], lignes: [[fmt(m.modele.R2, 4), fmt(m.modele.F, 3), pValeur(m.modele.p), String(m.distance.permutations)]] });
   } else {
@@ -526,7 +533,7 @@ const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre')
   lignes: lignesDe(m.valeurs_propres, ['axe', 'valeur_propre', 'part', 'cumul']).slice(0, 10).map((l) => [l[0], fmt(l[1], 5), fmt(100 * l[2], 2), fmt(100 * l[3], 2)]) }]
   .concat(m.negatives && m.negatives.n ? [{ texte: t('com_vp_negatives', { n: m.negatives.n, part: fmt(100 * m.negatives.part, 1) }) }] : []);
 const blocsShepard = (m) => [{ texte: t('com_shepard_note', { stress: fmt(m.stress, 3), r2: fmt(1 - m.stress * m.stress, 3) }) },
-  { texte: m.retrouvee > 0 ? t('com_retrouvee', { n: m.retrouvee, meilleur: departTexte(m.meilleur) }) : m.departs > 0 ? t('com_pas_retrouvee', { meilleur: departTexte(m.meilleur) }) : t('com_sans_depart') }];
+  { texte: texteRetrouvee(m) }];
 const blocsAjustement = (m) => {
   const aj = m.ajustement;
   if (!aj) return [{ texte: t('com_sans_x') }];
@@ -644,6 +651,8 @@ ajouterTextes({
   com_paires: 'Paires', com_paires_mot: 'paires', com_monotone: 'Régression monotone', com_dissimilarite: 'Dissimilarité', com_distance_ordination: 'Distance dans l’ordination',
   com_retrouvee: 'La meilleure solution ({meilleur}) a été retrouvée {n} fois (Procrustes : erreur quadratique < 0,005, plus grand résidu < 0,01).',
   com_pas_retrouvee: 'La meilleure solution ({meilleur}) n’a été retrouvée par aucun autre départ : ce peut être un minimum local (augmentez les départs).',
+  com_meme_stress: 'Aucun autre départ n’a retrouvé la configuration de la meilleure solution ({meilleur}) à l’analyse procrustéenne (erreur quadratique < 0,005, plus grand résidu < 0,01), mais {n} ont atteint son stress à 0,0001 près, quelques observations placées un peu autrement : le stress est atteint, la place de ces observations est incertaine.',
+  com_meme_stress_mot: 'Même stress',
   com_sans_depart: 'Un seul ajustement, depuis la configuration de la PCoA.', com_depart: 'Départ', com_depart_pcoa: 'PCoA', com_depart_hasard: 'hasard',
   com_departs: 'Départs', com_retrouvee_mot: 'Retrouvée', com_nuls: '{n} dissimilarités nulles ont été remplacées par la moitié de la plus petite non nulle (isoMDS les refuse).',
   com_sans_x: 'Aucune variable X : ajoutez-en (Modifier le modèle) pour les ajuster sur l’ordination.',
@@ -715,6 +724,8 @@ ajouterTextes({
   com_paires: 'Pairs', com_paires_mot: 'pairs', com_monotone: 'Monotone regression', com_dissimilarite: 'Dissimilarity', com_distance_ordination: 'Distance in the ordination',
   com_retrouvee: 'The best solution ({meilleur}) was found again {n} times (Procrustes: root mean square error < 0.005, largest residual < 0.01).',
   com_pas_retrouvee: 'The best solution ({meilleur}) was not found again by any other start: it may be a local minimum (raise the starts).',
+  com_meme_stress: 'No other start found the configuration of the best solution ({meilleur}) again by Procrustes (root mean square error < 0.005, largest residual < 0.01), but {n} reached its stress to 0.0001, with some observations placed slightly differently: the stress is reached, the place of those observations is uncertain.',
+  com_meme_stress_mot: 'Same stress',
   com_sans_depart: 'A single fit, from the PCoA configuration.', com_depart: 'Start', com_depart_pcoa: 'PCoA', com_depart_hasard: 'random',
   com_departs: 'Starts', com_retrouvee_mot: 'Found again', com_nuls: '{n} zero dissimilarities were replaced by half the smallest non-zero one (isoMDS refuses them).',
   com_sans_x: 'No X variable: add some (Edit model) to fit them onto the ordination.',
