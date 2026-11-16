@@ -168,8 +168,10 @@ export function grilleClavier(table, loc, plus) {
   const depart = cellule(ou.r, ou.c);
   if (!depart) return;
   depart.tabIndex = 0;
-  // (drawn again while it had the keyboard, nothing else having taken it since)
-  if (ou.focus) requestAnimationFrame(() => { if (depart.isConnected && (document.activeElement === document.body || !document.activeElement)) depart.focus({ preventScroll: false }); });
+  // (drawn again while it had the keyboard, nothing else having taken it since: at once, before what
+  // drew it goes on, a document it opens taking the front; a table not yet in the page, once it is)
+  const rendre = () => { if (depart.isConnected && (document.activeElement === document.body || !document.activeElement)) depart.focus(); };
+  if (ou.focus) { if (depart.isConnected) rendre(); else requestAnimationFrame(rendre); }
   let actuelle = depart;
   const aller = (x) => {
     if (!x) return;
