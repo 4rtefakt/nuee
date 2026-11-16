@@ -20,6 +20,7 @@
 //   n.fichierAOuvrir(chemin)             the answer of the next Open dialog (n.fichierAEnregistrer: Save)
 //   n.nouveauModele({ type, y, sans })   Model › New model filled in, then fitted
 //   n.api('etat')                        a request to the engine, as the interface makes it
+//   n.fenetre((url) => …)                another main window of the program (Window › New window), its own `n`
 // and the helpers below (graphe, plotlyPret, cliquerPoint, modele, lireClasseur, ...).
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -364,32 +365,51 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
     // then the window (R starts first: up to two minutes)
     const cible = await jusqua(async () => ((await lister(portPage)) || []).find((c) => c.type === 'page' && /^http:\/\/127\.0\.0\.1:\d+\/(\?.*)?$/.test(c.url)),
       120000, 'the window');
-    const page = await session(cible.webSocketDebuggerUrl);
     const erreurs = [];
-    page.ecouter((j) => {
-      if (j.method === 'Runtime.exceptionThrown') erreurs.push(j.params.exceptionDetails.exception?.description || j.params.exceptionDetails.text);
-      if (j.method === 'Runtime.consoleAPICalled' && j.params.type === 'error') erreurs.push(j.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
-      // a question of the page (window.confirm: closing a project with unsaved changes...) that no
-      // scenario expects: answered Cancel at once, so that nothing waits for it, and counted as an error
-      if (j.method === 'Page.javascriptDialogOpening') {
-        erreurs.push(`unexpected ${j.params.type}: ${j.params.message}`);
-        page.envoyer('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
-      }
-    });
-    await page.envoyer('Page.enable');
-    await page.envoyer('Runtime.enable');
-    // (without a window manager, as under Xvfb, the window may never get the focus the keys need)
-    await page.envoyer('Emulation.setFocusEmulationEnabled', { enabled: true });
-    // the window's page at the size of the window Nuée opens, whatever the screen (GitHub's
-    // Windows machines have 1024 × 768): the same layout everywhere
-    await page.envoyer('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-    await page.envoyer('Page.addScriptToEvaluateOnNewDocument', { source: ESPION });
-    // the page was already loading: once more now, then the interface's own load
-    await page.envoyer('Runtime.evaluate', { expression: `window.__essai || ${ESPION}` });
+    // a window's page made ready to be driven: its errors recorded in `erreurs`
+    const brancher = async (c) => {
+      const page = await session(c.webSocketDebuggerUrl);
+      page.ecouter((j) => {
+        if (j.method === 'Runtime.exceptionThrown') erreurs.push(j.params.exceptionDetails.exception?.description || j.params.exceptionDetails.text);
+        if (j.method === 'Runtime.consoleAPICalled' && j.params.type === 'error') erreurs.push(j.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
+        // a question of the page (window.confirm: closing a project with unsaved changes...) that no
+        // scenario expects: answered Cancel at once, so that nothing waits for it, and counted as an error
+        if (j.method === 'Page.javascriptDialogOpening') {
+          erreurs.push(`unexpected ${j.params.type}: ${j.params.message}`);
+          page.envoyer('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
+        }
+      });
+      await page.envoyer('Page.enable');
+      await page.envoyer('Runtime.enable');
+      // (without a window manager, as under Xvfb, the window may never get the focus the keys need)
+      await page.envoyer('Emulation.setFocusEmulationEnabled', { enabled: true });
+      // the window's page at the size of the window Nuée opens, whatever the screen (GitHub's
+      // Windows machines have 1024 × 768): the same layout everywhere
+      await page.envoyer('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+      await page.envoyer('Page.addScriptToEvaluateOnNewDocument', { source: ESPION });
+      // the page was already loading: once more now, then the interface's own load
+      await page.envoyer('Runtime.evaluate', { expression: `window.__essai || ${ESPION}` });
+      return page;
+    };
+    const page = await brancher(cible);
+    const pret = "document.querySelectorAll('.menu-haut').length > 3 && !!document.querySelector('#dock .arbre, #dock .accueil-explorateur')";
 
     const n = await piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie: () => sortie, dossier, programme });
-    await n.attendre("document.querySelectorAll('.menu-haut').length > 3 && !!document.querySelector('#dock .arbre, #dock .accueil-explorateur')", 120000);
+    await n.attendre(pret, 120000);
     await n.outils();
+    // Another main window of the program (Window › New window), the first page whose address
+    // `filtre` accepts, driven the same way once it shows the interface (its errors count with this
+    // window's); detacher() lets it go, the program going on.
+    n.fenetre = async (filtre) => {
+      const c = await jusqua(async () => ((await lister(portPage)) || []).find((x) => x.type === 'page' && x.id !== cible.id && filtre(x.url)), ATTENTE, 'the other window');
+      const autre = await brancher(c);
+      const m = await piloter({ page: autre, principal, evaluerPrincipal, erreurs, proc, vivant, arreter, sortie: () => sortie, dossier, programme });
+      m.detacher = () => autre.fermer();
+      await m.attendre(pret, 120000);
+      await m.evaluer(`!!(window.__essai || ${ESPION})`);  // (in case its page was still the one before when it came)
+      await m.outils();
+      return m;
+    };
     // a first start opens on the start page alone (What's new comes once after an update): once
     // the start has noted the version seen, no dialog is open
     if (premierLancement) {

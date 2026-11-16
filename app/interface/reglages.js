@@ -257,9 +257,12 @@ async function signalerRepli(app) {
   if (!repli) return;
   const propre = t(repli.plateforme === 'linux' ? 'r_systeme_phrase' : 'r_propre_phrase');
   const dossier = repli.dossier || repli.chemin;
+  // (why: not there, not ready in time, with what it said meanwhile, or stopped, with what it said)
+  const pourquoi = repli.motif === 'absent' ? el('p', {}, t('r_absent_texte'))
+    : repli.motif === 'delai' ? [el('p', {}, t('r_repli_delai', { s: repli.secondes })), repli.sortie ? el('pre', { class: 'sortie-r' }, String(repli.sortie).trim()) : null]
+      : [el('p', {}, t('r_repli_arret')), el('pre', { class: 'sortie-r' }, String(repli.motif || '').trim())];
   dialogue({ titre: t('r_repli_titre'), contenu: el('div', { class: 'dialogue-r' },
-    el('p', {}, t(repli.type === 'organisation' ? 'r_repli_organisation' : 'r_repli_texte', { dossier, propre })),
-    repli.motif === 'absent' ? el('p', {}, t('r_absent_texte')) : [el('p', {}, t('r_repli_arret')), el('pre', { class: 'sortie-r' }, String(repli.motif || '').trim())]),
+    el('p', {}, t(repli.type === 'organisation' ? 'r_repli_organisation' : 'r_repli_texte', { dossier, propre })), pourquoi),
   boutons: [{ libelle: t('reglages'), action: () => { app.reglages(); return true; } }, { libelle: t('fermer'), principal: true, action: () => true }] });
 }
 
@@ -290,10 +293,12 @@ ajouterTextes({
   r_repli_texte: 'Le R choisi dans Fichier › Réglages… ({dossier}) n’a pas pu démarrer : Nuée calcule avec {propre}. Réglages… permet d’en choisir un autre.',
   r_repli_organisation: 'Le R que votre organisation choisit pour Nuée ({dossier}) n’a pas pu démarrer : Nuée calcule avec {propre}. Votre service informatique peut en choisir un autre.',
   r_repli_arret: 'Il s’est arrêté avant d’être prêt, en disant :',
+  r_repli_delai: 'Il n’était toujours pas prêt au bout de {s} secondes : Nuée l’a arrêté.',
   seance_titre: 'Au démarrage', seance_rouvrir: 'Rouvrir les projets ouverts quand Nuée a été fermée',
   seance_note: 'Les projets enregistrés dans un fichier reviennent avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé. Sans cette case, la page d’accueil propose Rouvrir la dernière séance. Pris en compte tout de suite.',
   seance_bouton: 'Rouvrir la dernière séance', seance_rouverte_un: 'Dernière séance rouverte : un projet.', seance_rouverte: 'Dernière séance rouverte : {n} projets.',
   seance_absents: 'Introuvables (déplacés ou supprimés) : {noms}.', seance_illisibles: 'Pas rouverts : {noms}.',
+  seance_injoignables: 'Pas joignables (un dossier réseau qui ne répond pas) : {noms}.',
 }, {
   reglages: 'Settings…', reglages_titre: 'Settings', r_titre: 'R used by Nuée',
   r_texte: 'Nuée computes with its own R, which comes with it, with every package it needs. It can use an R installed on this computer instead: that R’s packages and .Renviron apply, not your .Rprofile, so that it can’t change the results.',
@@ -321,8 +326,10 @@ ajouterTextes({
   r_repli_texte: 'The R chosen in File › Settings… ({dossier}) couldn’t start, so Nuée computes with {propre}. Settings… lets you choose another one.',
   r_repli_organisation: 'The R your organisation sets for Nuée ({dossier}) couldn’t start, so Nuée computes with {propre}. Your IT department can set another one.',
   r_repli_arret: 'It stopped before it was ready, saying:',
+  r_repli_delai: 'It still wasn’t ready after {s} seconds, so Nuée stopped it.',
   seance_titre: 'At start-up', seance_rouvrir: 'Reopen the projects that were open when Nuée was closed',
   seance_note: 'Projects saved to a file come back with their models and views; a file moved or deleted since is named. Without this box, the start page offers Reopen last session. Taken into account at once.',
   seance_bouton: 'Reopen last session', seance_rouverte_un: 'Last session reopened: one project.', seance_rouverte: 'Last session reopened: {n} projects.',
   seance_absents: 'Not found (moved or deleted): {noms}.', seance_illisibles: 'Not reopened: {noms}.',
+  seance_injoignables: 'Out of reach (a network folder that doesn’t answer): {noms}.',
 });

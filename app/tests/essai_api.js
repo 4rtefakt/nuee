@@ -76,9 +76,9 @@ async function principal() {
   // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
   // the figures' layout and their PNG and TIFF files; the plots' labels spread apart; the interface's
   // numbers in each language; the words and numbers of Versions and What changed; an update of the data
-  // read for its dialogs; Help
+  // read for its dialogs; Help; the desktop app's main process (main.js) without a window
   for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_etiquettes.mjs', 'essai_nombres.mjs',
-    'essai_versions_texte.mjs', 'essai_etapes.mjs', 'essai_aide.mjs']) {
+    'essai_versions_texte.mjs', 'essai_etapes.mjs', 'essai_aide.mjs', 'essai_principal.js']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 

@@ -87,6 +87,14 @@ Any tool that writes registry values sets them, as for the update check below. O
 Linux, which have no such policy, the environment variable `NUEE_SANS_CODE=1` (set for the
 session, by a profile script or launchd) turns R-code models off the same way.
 
+Nuée reads the policies with `reg.exe`, from the system's folder, or, where `reg.exe` doesn't run
+for users (the *Prevent access to registry editing tools* policy, an AppLocker or WDAC rule), with
+PowerShell's registry provider, which works in Constrained Language mode. If neither can read them,
+Nuée doesn't take them for unset: R-code models and plugins are turned off, as with
+`DisableCustomCode` = 1 (the plugins of `PluginsFolder` included, when that value couldn't be read
+either). *Help › Diagnostic information* says whether the policies were read, by which of the two,
+and which are set.
+
 ## Plugins
 
 A plugin (1.1) is an R function with a manifest, `plugin.json`, that adds a model type to Nuée:
@@ -100,7 +108,8 @@ plugin). A plugin is R code that runs with the user's rights: Nuée shows its ma
 before installing it, and installing it approves it, as running a project's R code does (its
 SHA-256 joins the fingerprints the user approved: [Opening files from elsewhere](#opening-files-from-elsewhere)).
 The R packages a plugin needs can be installed from that dialog into the user library of the R
-Nuée uses ([R and the users' own R](#r-and-the-users-own-r)).
+Nuée uses, its own or another: downloaded from CRAN by that R itself, with R's own download
+settings ([R and the users' own R](#r-and-the-users-own-r)).
 
 To give plugins to everyone, put them in a folder the computers can read, one folder per plugin
 (the folder of a `.nueeplugin`, unzipped: `plugin.json` and its R files), and set the policy value
@@ -118,7 +127,9 @@ can't install others, and the projects that carry another plugin show its models
 new version of one of your plugins (another `version` in its `plugin.json`) replaces the old one
 for everyone at their next start; the projects made with the old one keep their own copy, and
 say a newer one is installed. On macOS and Linux, the environment variable
-`NUEE_GREFFONS_ORGANISATION` (a folder) does the same.
+`NUEE_GREFFONS_ORGANISATION` (a folder) does the same. On Windows only the policy does: an
+installed copy ignores that variable, which any user could set to make a folder of their own
+yours.
 
 ## Deployment tools
 
@@ -224,12 +235,17 @@ of the plugins as its value.
 
 - Nuée sends nothing anywhere except the update check above, when it is on; the map tiles of a
   background map, when a user chooses one (OpenStreetMap, IGN); for a project a user shares
-  on GitHub or GitLab (from 1.1), its versions, to that repository; and, when a user has Nuée use
-  another R and asks it to install the packages that R lacks (from 1.1), their download from CRAN
-  (`cloud.r-project.org`), made by that R itself. There is no telemetry, no usage statistics, no
-  crash report, no account of Nuée's own and no licence server.
-- All of it goes through the system's proxy settings and certificates, as Chrome does: see
-  [Proxies and certificates](#proxies-and-certificates).
+  on GitHub or GitLab (from 1.1), its versions, to that repository; on Windows and Linux, the
+  spell-checking dictionaries of French, English and the system's language, downloaded once from
+  Google's servers (`redirector.gvt1.com`), as Chrome downloads its own (macOS has its own
+  spell-checker; where they can't be downloaded, documents are simply not spell-checked); and,
+  when a user asks Nuée to install R packages (from 1.1) — those another R lacks (*File ›
+  Settings…*), or those a plugin needs (*File › Plugins…*), into Nuée's own R as into another —,
+  their download from CRAN (`cloud.r-project.org`), made by that R itself. There is no telemetry,
+  no usage statistics, no crash report, no account of Nuée's own and no licence server.
+- All of it goes through the system's proxy settings and certificates, as Chrome does (see
+  [Proxies and certificates](#proxies-and-certificates)), except the downloads from CRAN, which R
+  makes with its own settings (see [R and the users' own R](#r-and-the-users-own-r)).
 - Data stay on the computer. Projects are files saved wherever users choose.
 - The calculations run in a local R process. It serves the interface on `127.0.0.1` only (port
   47863, or another free one), so no firewall rule is needed. It answers only Nuée's own windows:
@@ -247,7 +263,8 @@ computer, as in Chrome or Edge. The hosts are `github.com`, `api.github.com` and
 `avatars.githubusercontent.com` (the account's picture) for GitHub; `gitlab.com`, or your own
 GitLab's host. The page where users approve Nuée opens in their default browser. *Use this
 computer's git sign-in*, in the sign-in dialog, asks the git installed on the computer for its
-stored sign-in (`git credential fill`), which follows git's own settings.
+stored sign-in (`git credential fill`), which follows git's own settings. The spell-checking
+dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
 
 ## What Nuée writes where
 
@@ -360,8 +377,9 @@ Settings…*:
   that R.
 - **Then:** the engine runs on that R with its own libraries only (Nuée's packages are built for
   R 4.6 and stay out), still without the user's `.Rprofile`; the `.Renviron` files apply. If that
-  R is no longer there or stops before the engine is ready, Nuée starts its own R instead and
-  tells the user once.
+  R is no longer there, stops before the engine is ready, or isn't ready within 90 seconds (a
+  network share that doesn't answer, an `Rprofile.site` that waits), Nuée stops it, starts its own
+  R instead and tells the user once.
 
 To point every user to your institution's R, set the policy value `RHome` (`REG_SZ`: the R's
 folder, or its `bin\x64\Rscript.exe`) in the same key as `DisableUpdateCheck`:
@@ -480,5 +498,6 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
 
 ## Reporting a problem
 
-*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, and
-which R is in use, to paste into a report. It includes no paths and nothing personal.
+*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, which R
+is in use and, on Windows, whether the policies could be read and which are set, to paste into a
+report. It includes no paths and nothing personal.

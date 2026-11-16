@@ -52,18 +52,28 @@ const cookieR = () => `nuee_${port}`;
 // other code, whatever a window asks: opening a file never runs code from it (docs/deploiement.md).
 const secretCode = crypto.randomBytes(32).toString('hex');
 const APPROUVES_MAX = 10000;  // (the latest approvals: an older code is asked about again)
+// The organisation's policies (Windows: HKLM or HKCU\SOFTWARE\Policies\Nuee, the computer's winning;
+// r-installes.js: lirePolitiques), read once at start-up, before anything that depends on them
+// (demarrer): DisableUpdateCheck, DisableCustomCode, RHome, PluginsFolder. Until then, and when they
+// couldn't be read (reg.exe and PowerShell both refused), R-code models are off (codeInterdit).
+// docs/deploiement.md
+let politiques = { valeurs: {}, lues: process.platform !== 'win32', par: null };
+const politique = (nom) => (Object.hasOwn(politiques.valeurs, nom) ? politiques.valeurs[nom] : null);
+const textePolitique = (nom) => (typeof politique(nom) === 'string' ? politique(nom) : null);
 // Plugins (moteur/R/greffons.R): R code with a manifest, which becomes a model type. This user's are
 // installed in the settings' folder (greffons), where the engine writes them (installing one approves
 // it, as for R code: approuver-code); an organisation's, offered to everyone without asking, are in a
-// folder set by a policy (REG_SZ PluginsFolder under HKLM or HKCU\SOFTWARE\Policies\Nuee, read as RHome
-// is: r-installes.js) or, on any system, by the variable NUEE_GREFFONS_ORGANISATION; with
-// DisableCustomCode = 1 only those run. The engine is given both folders and Nuée's version (a plugin
-// says the oldest Nuée it works with). docs/deploiement.md
+// folder set by a policy (REG_SZ PluginsFolder) or, on macOS and Linux and from the sources, by the
+// variable NUEE_GREFFONS_ORGANISATION; with DisableCustomCode = 1 only those run. (An installed copy
+// on Windows ignores the variable: a user could set one, and make any folder the organisation's, whose
+// plugins would run without approval, DisableCustomCode or not.) The engine is given both folders and
+// Nuée's version (a plugin says the oldest Nuée it works with). docs/deploiement.md
 const dossierGreffons = () => path.join(app.getPath('userData'), 'greffons');
 let greffonsOrganisation;
 const dossierGreffonsOrganisation = () => {
   if (greffonsOrganisation === undefined) {
-    greffonsOrganisation = (process.platform === 'win32' ? rInstalles.politiqueTexte('PluginsFolder') : null) || process.env.NUEE_GREFFONS_ORGANISATION || null;
+    const variable = app.isPackaged && process.platform === 'win32' ? null : process.env.NUEE_GREFFONS_ORGANISATION;
+    greffonsOrganisation = (process.platform === 'win32' ? textePolitique('PluginsFolder') : null) || variable || null;
   }
   return greffonsOrganisation;
 };
@@ -72,6 +82,13 @@ let langue = 'en';  // the interface's (English until it says), for the dialogs 
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
 const indexSecours = () => path.join(dossierSecours(), 'index.json');
+// The engine running now, by a name of its own: this launch's (its time) and how many engines it
+// started (one more each time one is ready). A recovery copy carries the one it was made with: a
+// restart reopens only the copies of the engine that stopped, whichever main window made them, and a
+// copy of an earlier launch never passes for one of this launch's (interface/app.js: sauvegarderSecours)
+const LANCEMENT = Date.now().toString(36);
+let demarrages = 0;
+const idMoteur = () => `${LANCEMENT}-${demarrages}`;
 // A fixed port when free: the interface keeps its settings (theme, language, plot format...)
 // per address, so they come back from one launch to the next.
 const PORT_HABITUEL = 47863;
@@ -79,8 +96,18 @@ const PORT_HABITUEL = 47863;
 function lireReglages() {
   try { reglages = { ...reglages, ...JSON.parse(fs.readFileSync(fichierReglages(), 'utf8')) }; } catch { /* first start */ }
 }
+// Written beside, then put in its place in one step: a stop meanwhile (a crash, a full disk, the
+// computer switched off) leaves the settings as they were, never a cut file, which would read as a
+// first start (the R chosen, the approvals, the GitLab application IDs, the session, the port lost).
 function ecrireReglages() {
-  try { fs.writeFileSync(fichierReglages(), JSON.stringify(reglages, null, 1)); } catch { /* read-only profile */ }
+  const fichier = fichierReglages();
+  const temporaire = `${fichier}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporaire, JSON.stringify(reglages, null, 1));
+    fs.renameSync(temporaire, fichier);
+  } catch {
+    try { fs.rmSync(temporaire, { force: true }); } catch { /* read-only profile */ }
+  }
 }
 
 // Windows: bin\x64\Rscript.exe is R itself; bin\Rscript.exe only starts it, and stopping that
@@ -111,7 +138,7 @@ function trouverRscript() {
 // computer's: trouverRscript). { type: 'nuee', 'organisation', 'autre' or 'rscript', rscript (null:
 // none where it was set), chemin (as it was set) }. r-installes.js finds and checks the others.
 const rPropre = () => ({ type: 'nuee', rscript: trouverRscript(), chemin: null });
-const rOrganisation = () => (process.platform === 'win32' ? rInstalles.politiqueTexte('RHome') : null);
+const rOrganisation = () => (process.platform === 'win32' ? textePolitique('RHome') : null);
 function rVoulu() {
   if (process.env.RSCRIPT) return { type: 'rscript', rscript: trouverRscript(), chemin: process.env.RSCRIPT };
   const organisation = rOrganisation();
@@ -127,6 +154,28 @@ let rRepliASignaler = null;  // that fallback, until a window tells it (once: 'r
 // (reglages.rouvrirSeance), or from the start page's Reopen last session. Given once, to the first
 // main window that asks: a second window, or the page loaded again, doesn't reopen them twice.
 let seancePrecedente = [];
+// Whether files are there (the last session's, when they reopen), without holding the main process:
+// true, false, or null when their folder didn't answer in time (a network share out of reach, which
+// the system waits for far longer). One look at a time per share, drive or mount, and none more at one
+// that didn't answer: a look at a share out of reach holds one of the few threads Node reads files
+// with until the system gives up.
+const DELAI_PRESENCE = 5000;
+const racineDe = (c) => ((/^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.exec(c) || /^[A-Za-z]:/.exec(c) || /^\/[^/]+(?:\/[^/]+)?/.exec(c) || [''])[0]).toLowerCase();
+async function fichiersPresents(chemins) {
+  const presents = chemins.map(() => null);
+  const parRacine = new Map();
+  chemins.forEach((c, i) => parRacine.set(racineDe(c), [...(parRacine.get(racineDe(c)) || []), i]));
+  await Promise.all([...parRacine.values()].map(async (indices) => {
+    for (const i of indices) {
+      let minuterie;
+      presents[i] = await Promise.race([fs.promises.stat(chemins[i]).then((s) => s.isFile(), () => false),
+        new Promise((ok) => { minuterie = setTimeout(ok, DELAI_PRESENCE, null); })]);
+      clearTimeout(minuterie);
+      if (presents[i] === null) return;
+    }
+  }));
+  return presents;
+}
 
 // Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
 // brings along; null otherwise (documents.js then compiles by itself).
@@ -227,9 +276,23 @@ function arreterCalcul() {
   return true;
 }
 
+// What the R `r` (rVoulu's) runs with besides the computer's environment, as the engine and the
+// installation of a plugin's packages into it: Nuée's own R (an installed copy, on Windows and macOS)
+// finds the packages that come with Nuée before those of the user's own R library, which stays
+// available to the R console (library(vegan)…); the Rscript of Nuée.app starts the R of RHOME, or else
+// the one CRAN's installer puts in /Library/Frameworks, if the Mac has it. Another R loads its own
+// libraries only: Nuée's packages are built for Nuée's R, and may not load in another version.
+function environnementR(r) {
+  const env = {};
+  if (r.type === 'nuee' && app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
+  if (r.rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+  return env;
+}
+
 // `r`: rVoulu's. repli: Nuée's own R takes over if this one stops before it is ready
-// (demarrerMoteur), so that stop isn't reported to the windows.
-function demarrerR(port, r, repli = false) {
+// (demarrerMoteur), so that stop isn't reported to the windows. delai (ms, 0: none): an R not ready by
+// then is stopped (`depasse` in the error).
+function demarrerR(port, r, repli = false, delai = 0) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
     fichierArret = path.join(temporaireR, 'arreter');
@@ -243,31 +306,34 @@ function demarrerR(port, r, repli = false) {
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
     // out (their .Rprofile could attach packages that hide the engine's functions), and the
-    // packages that come with Nuée are found before those of their own R library, which stays
-    // available to the R console (library(vegan)…). Another R keeps its .Renviron and loads its own
-    // libraries: Nuée's packages are built for Nuée's R, and may not load in another version.
+    // packages that come with Nuée are found first (environnementR). Another R keeps its .Renviron.
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
-    if (r.type === 'nuee' && app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
-    // (the Rscript of Nuée.app starts the R of RHOME, or else the one CRAN's installer puts in
-    // /Library/Frameworks, if the Mac has it)
-    if (r.rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+    Object.assign(env, environnementR(r));
     let pret = false;
+    let depasse = false;
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
-    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; resolve(); } });
+    const ceR = serveur;  // (the one the time limit stops: never one started after it)
+    const minuterie = delai ? setTimeout(() => { if (!pret && serveur === ceR) { depasse = true; arreterR(); } }, delai) : null;
+    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; demarrages += 1; clearTimeout(minuterie); resolve(); } });
     serveur.stderr.on('data', (d) => { journal += d; });
     serveur.on('exit', (code) => {
-      reject(Object.assign(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`), { fin: journal.slice(-1500) }));
+      clearTimeout(minuterie);
+      reject(Object.assign(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`), { fin: journal.slice(-1500), depasse }));
       // once running, an unexpected stop is reported to the windows, which offer a restart
       if (!quitter && !arretVoulu && (pret || !repli)) BrowserWindow.getAllWindows().forEach((f) => f.webContents.send('moteur-arrete', journal.slice(-1500)));
     });
-    serveur.on('error', reject);
+    serveur.on('error', (e) => { clearTimeout(minuterie); reject(e); });
   });
 }
 
 // The engine started on the R wanted (rVoulu). When that is another R than Nuée's own and it is
-// missing, or stops before it is ready, Nuée's own starts instead, and the user is told once: by
-// the first window that asks ('r-repli'), and not at the next starts while the same R fails
-// (reglages.rSignale; forgotten once it starts, or when the settings change).
+// missing, stops before it is ready, or isn't ready in time, Nuée's own starts instead, and the user
+// is told once: by the first window that asks ('r-repli'), and not at the next starts while the same
+// R fails (reglages.rSignale; forgotten once it starts, or when the settings change).
+// In time: another R's first start reads every file of the engine, a minute and more on a slow
+// computer or from a network share; one that is never ready (a share that doesn't answer, an
+// Rprofile.site that waits) is stopped then. Nuée's own R has no such limit.
+const DELAI_AUTRE_R = 90000;
 async function demarrerMoteur() {
   const voulu = rVoulu();
   if (voulu.type !== 'autre' && voulu.type !== 'organisation') {
@@ -276,14 +342,17 @@ async function demarrerMoteur() {
     return;
   }
   let motif = 'absent';
+  let sortie = null;
   if (voulu.rscript) {
     try {
-      await demarrerR(port, voulu, true);
+      await demarrerR(port, voulu, true, DELAI_AUTRE_R);
       rUtilise = voulu;
       if (reglages.rSignale) { delete reglages.rSignale; ecrireReglages(); }
       return;
     } catch (e) {
-      motif = e.fin || e.message;
+      // (not ready in time: said so, with what it said meanwhile)
+      motif = e.depasse ? 'delai' : (e.fin || e.message);
+      if (e.depasse) sortie = e.fin || null;
     }
   }
   journal = '';
@@ -291,7 +360,7 @@ async function demarrerMoteur() {
   await demarrerR(port, propre);
   rUtilise = { ...propre, repli: { ...voulu, motif } };
   if (reglages.rSignale !== voulu.chemin) {
-    rRepliASignaler = { ...decrireR(voulu), motif, plateforme: process.platform };
+    rRepliASignaler = { ...decrireR(voulu), motif, sortie, secondes: DELAI_AUTRE_R / 1000, plateforme: process.platform };
     reglages.rSignale = voulu.chemin;
     ecrireReglages();
   }
@@ -316,16 +385,21 @@ function etatR() {
   };
 }
 
+// R still running. (R that ended from a signal has no exit code, only its signalCode: R raises its
+// SIGSEGV again once it has said so, the system's OOM killer sends SIGKILL; on Windows, a process
+// Node stopped with kill() ends the same way)
+const rEnMarche = () => !!serveur && serveur.exitCode === null && serveur.signalCode === null;
+
 // R and anything it started (on Linux and macOS, Rscript becomes R itself: stopping it is enough)
 function arreterR() {
-  if (!serveur || serveur.exitCode !== null) return;
+  if (!rEnMarche()) return;
   if (process.platform !== 'win32') { serveur.kill(); return; }
   try { execFileSync('taskkill', ['/pid', String(serveur.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { serveur.kill(); }
 }
 
 async function redemarrerR() {
   arretVoulu = true;
-  if (serveur && serveur.exitCode === null) {
+  if (rEnMarche()) {
     await new Promise((resolve) => { serveur.once('exit', resolve); arreterR(); });
   }
   arretVoulu = false;
@@ -500,15 +574,29 @@ function principale(f) {
 }
 
 // Closes Nuée, once unsaved projects are saved or left (accordFermeture); the recovery copies go
-// with it, unless R didn't answer (they then hold the latest state known, offered next time).
-async function fermerNuee(fenetre) {
-  const accord = await accordFermeture(fenetre);
-  if (!accord) return false;
-  await versionsAvantDeFermer();
-  quitter = true;
-  if (accord !== 'secours') fermerSecours();
-  app.quit();
-  return true;
+// with it, unless R didn't answer (they then hold the latest state known, offered next time). One
+// close at a time: asked again meanwhile (a second ×, File › Quit, ⌘Q, Update), it waits for the
+// first one's answer instead of asking again. Once the user agreed, the windows are hidden while the
+// projects' last versions go (fifteen seconds at most): nothing can be changed there meanwhile, then
+// lost. `apres`: what runs just before Nuée quits, if it does (the update's installer).
+let fermeture = null;
+const avantDeQuitter = [];
+function fermerNuee(fenetre, apres = null) {
+  if (apres) avantDeQuitter.push(apres);
+  if (!fermeture) {
+    fermeture = (async () => {
+      const accord = await accordFermeture(fenetre);
+      if (!accord) { avantDeQuitter.length = 0; return false; }
+      for (const f of BrowserWindow.getAllWindows()) if (!f.isDestroyed()) f.hide();
+      await versionsAvantDeFermer();
+      quitter = true;
+      if (accord !== 'secours') fermerSecours();
+      for (const f of avantDeQuitter.splice(0)) f();
+      app.quit();
+      return true;
+    })().finally(() => { fermeture = null; });
+  }
+  return fermeture;
 }
 
 // Before closing (or installing an update): projects with unsaved changes are saved, or left,
@@ -549,13 +637,20 @@ function fenetrePrincipale() {
   const visible = f && screen.getAllDisplays().some((d) => f.x >= d.bounds.x - 50 && f.x < d.bounds.x + d.bounds.width && f.y >= d.bounds.y - 50 && f.y < d.bounds.y + d.bounds.height);
   const fenetre = new BrowserWindow({ ...options(1400, 900), ...(visible ? { x: f.x, y: f.y, width: f.width, height: f.height } : {}) });
   if (visible && f.maximized) fenetre.maximize();
+  // (its size and place kept once it stops moving, and when it closes: not the whole settings file
+  // written again at each step of a move)
+  let attente = null;
   const garder = () => {
+    clearTimeout(attente);
+    attente = null;
     if (fenetre.isDestroyed()) return;
     reglages.fenetre = { ...fenetre.getNormalBounds(), maximized: fenetre.isMaximized() };
     ecrireReglages();
   };
-  fenetre.on('resize', garder);
-  fenetre.on('move', garder);
+  const plusTard = () => { clearTimeout(attente); attente = setTimeout(garder, 1000); };
+  fenetre.on('resize', plusTard);
+  fenetre.on('move', plusTard);
+  fenetre.on('close', () => { if (attente) garder(); });
   const fichier = fichierDonne(process.argv) || fichierMac;
   fichierMac = null;
   fenetre.loadURL(fichier ? `${adresse}?ouvrir=${encodeURIComponent(fichier)}` : adresse);
@@ -688,12 +783,14 @@ function ipc() {
     return r.canceled ? null : r.filePath;
   });
   recevoir('recents', () => reglages.recents);
-  // (the last session's projects, once: each file, and whether it is still there; this session's, as told)
+  // (the last session's projects, once: their files, whether each is still there asked only when they
+  // reopen, fichiersPresents; this session's, as told)
   recevoir('seance-precedente', () => {
     const liste = seancePrecedente;
     seancePrecedente = [];
-    return liste.map((chemin) => ({ chemin, existe: fs.existsSync(chemin) }));
+    return liste.map((chemin) => ({ chemin }));
   });
+  recevoir('seance-presents', (_, chemins) => fichiersPresents([].concat(chemins || []).filter((c) => typeof c === 'string').slice(0, 50)));
   recevoir('seance-noter', (_, chemins) => {
     const liste = [...new Set([].concat(chemins || []).filter((c) => typeof c === 'string' && c))].slice(0, 50);
     if (JSON.stringify(liste) === JSON.stringify(reglages.seance || [])) return;
@@ -816,6 +913,10 @@ function ipc() {
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
+  // (before a restart's recovery copies: what every window's documents and figures still hold goes to
+  // the engine, as before closing; and the engine the copies are made with: idMoteur)
+  recevoir('vider-fenetres', () => viderFenetres());
+  recevoir('id-moteur', () => idMoteur());
   recevoir('arreter-calcul', () => arreterCalcul());
   // File › Settings…, the R the engine runs on (interface/reglages.js, r-installes.js): what is set
   // and in use, the Rs of this computer, one of them checked, its missing packages installed (one
@@ -836,13 +937,15 @@ function ipc() {
   });
   // the packages a plugin needs (File › Plugins…, interface/vues_greffons.js), installed into the user
   // library of the R the engine runs on, as Settings installs the engine's own (one installation at a
-  // time); names that aren't an R package's are left out
+  // time), that R run as the engine runs it (environnementR: on macOS, Nuée.app's Rscript starts
+  // another R without it); names that aren't an R package's are left out
   recevoir('r-installer-greffon', (e, paquets) => {
     if (!installation) {
       const fenetre = e.sender;
       const noms = [...new Set([].concat(paquets || []).filter((x) => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$/.test(x)))];
-      installation = rInstalles.installer((rUtilise && rUtilise.rscript) || trouverRscript(), noms,
-        { autres: noms, surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
+      const r = rUtilise || rPropre();
+      installation = rInstalles.installer(r.rscript, noms,
+        { env: { ...process.env, ...environnementR(r) }, autres: noms, surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
         .finally(() => { installation = null; });
     }
     return installation;
@@ -862,10 +965,13 @@ function ipc() {
   // the policy turns R-code models off
   recevoir('approuver-code', (_, empreintes) => (codeInterdit() ? false : approuverCode(empreintes)));
   recevoir('nouvelle-version', (_, maintenant) => nouvelleVersion(!!maintenant).catch((e) => ({ erreur: e.message })));
-  // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where
+  // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where; on Windows,
+  // whether the policies were read, and by what, and those set (a folder's: only that it is)
   recevoir('diagnostic', () => ({ systeme: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
     electron: process.versions.electron, chrome: process.versions.chrome, installe: app.isPackaged,
-    r: rUtilise ? { type: rUtilise.type, repli: rUtilise.repli ? rUtilise.repli.type : null } : null }));
+    r: rUtilise ? { type: rUtilise.type, repli: rUtilise.repli ? rUtilise.repli.type : null } : null,
+    politiques: process.platform === 'win32' ? { lues: politiques.lues, par: politiques.par, valeurs: Object.fromEntries(rInstalles.NOMS_POLITIQUES
+      .filter((n) => politique(n) !== null).map((n) => [n, typeof politique(n) === 'string' ? 'set' : politique(n)])) } : null }));
   // the check at start-up, on or off (null: not offered, see verificationPossible)
   recevoir('maj-auto', (_, oui) => {
     if (!verificationPossible()) return null;
@@ -894,15 +1000,8 @@ function ipc() {
     } catch (err) {
       return { erreur: err.code === 'empreinte' ? 'empreinte' : 'reseau', detail: err.message };
     }
-    const accord = await accordFermeture(fenetre);
-    if (!accord) return { erreur: 'annulee' };
-    await versionsAvantDeFermer();
-    quitter = true;
-    if (accord !== 'secours') fermerSecours();
-    arreterR();
-    installerPuisRelancer(fichier);
-    app.quit();
-    return null;
+    const ferme = await fermerNuee(fenetre, () => { arreterR(); installerPuisRelancer(fichier); });
+    return ferme ? null : { erreur: 'annulee' };
   };
   let miseAJour = null;
   recevoir('mettre-a-jour', (e) => miseAJour || (miseAJour = mettreAJour(e).finally(() => { miseAJour = null; })));
@@ -917,34 +1016,14 @@ const DERNIERE_VERSION = process.env.NUEE_SOURCE_MAJ || 'https://api.github.com/
 const sourceSure = (url) => !!process.env.NUEE_SOURCE_MAJ || String(url).startsWith('https://github.com/4rtefakt/nuee/releases/download/');
 // An organisation that deploys and updates Nuée itself turns the check and the one-click update
 // off for everyone (Group Policy, Intune…): DWORD DisableUpdateCheck = 1 under
-// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee. (The text
-// RHome there, the R every user's engine runs on, is read by r-installes.js: rVoulu.)
-// docs/deploiement.md
-function politique(nom) {
-  if (process.platform !== 'win32') return null;
-  for (const cle of ['HKLM\\SOFTWARE\\Policies\\Nuee', 'HKCU\\SOFTWARE\\Policies\\Nuee']) {
-    try {
-      const m = new RegExp(`${nom}\\s+REG_DWORD\\s+0x([0-9a-f]+)`, 'i')
-        .exec(execFileSync('reg', ['query', cle, '/v', nom], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }));
-      if (m) return parseInt(m[1], 16);
-    } catch { /* not set there */ }
-  }
-  return null;
-}
+// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee, among the
+// policies read at start-up (politiques). docs/deploiement.md
+const verificationPossible = () => app.isPackaged && !process.argv.includes('--lanceur-nas') && politique('DisableUpdateCheck') !== 1;
 // The same policy key turns R-code models off (DWORD DisableCustomCode = 1), as does the environment
 // variable NUEE_SANS_CODE=1 (any system): they aren't offered, and the engine refuses them
-// (NUEE_SANS_CODE, demarrerR). Read once per start.
-let codeRefuse;
-const codeInterdit = () => {
-  if (codeRefuse === undefined) codeRefuse = process.env.NUEE_SANS_CODE === '1' || politique('DisableCustomCode') === 1;
-  return codeRefuse;
-};
-let majInterdite;
-const verificationPossible = () => {
-  if (!app.isPackaged || process.argv.includes('--lanceur-nas')) return false;
-  if (majInterdite === undefined) majInterdite = politique('DisableUpdateCheck') === 1;
-  return !majInterdite;
-};
+// (NUEE_SANS_CODE, demarrerR). So do policies that couldn't be read: one that couldn't be read isn't
+// taken for one that isn't set.
+const codeInterdit = () => process.env.NUEE_SANS_CODE === '1' || politique('DisableCustomCode') === 1 || !politiques.lues;
 let versionTrouvee;  // checked once per start, for every window, and again from Aide › Chercher une mise à jour
 function chercherVersion() {
   return reseau.fetch(DERNIERE_VERSION, { headers: { Accept: 'application/vnd.github+json' } })
@@ -1065,6 +1144,7 @@ function enregistrerProgramme() {
 
 async function demarrer() {
   lireReglages();
+  politiques = await rInstalles.lirePolitiques();  // (first: the update check, the R and R code depend on them)
   seancePrecedente = [].concat(reglages.seance || []).filter((c) => typeof c === 'string' && c);
   // A new version (an update): Chromium's HTTP cache may still hold the interface of the version
   // before, which the engine served up to 0.9.5 without Cache-Control; Chromium kept it fresh for

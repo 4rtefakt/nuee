@@ -1,18 +1,19 @@
 // Checks r-installes.js, the Rs of this computer the engine can run on instead of Nuée's own (File ›
 // Settings…, main.js): finding them (a stand-in registry, folders and links, for Windows, macOS and
-// Linux), the registry's export and the RHome policy read, then the check of an R and the
+// Linux), the registry's export, Nuée's policies read (reg.exe, then PowerShell), then the check of an R and the
 // installation of its missing packages with stand-in Rscripts: one too old, one missing packages
 // (installed one after the other), one that says nothing R would, one that never answers.
 // Given an R (its folder), the same for real: found, checked, its missing packages installed into a
 // temporary user library and checked again. Given the program too (Nuée built, or Electron and the
-// app's folder): that R chosen in File › Settings… with a project open and a PCA not saved yet, the
-// engine restarted on it and the project back with its PCA, the engine's libraries, a model fitted
-// through its API, Help › Diagnostic information; the next start on the setting kept; then an R
-// that isn't there any more: Nuée's own R takes over, and says so once.
+// app's folder): that R chosen in File › Settings… of a second main window, with a project open in
+// the first, its PCA and its document not saved yet (text typed there just before Restart), the
+// engine restarted on it and the project back with its PCA and that text, the engine's libraries, a
+// model fitted through its API, Help › Diagnostic information; the next start on the setting kept;
+// then an R that isn't there any more: Nuée's own R takes over, and says so once.
 //   node tests/essai_r_installe.js [<R folder> [--neuf] [<program> [program options...]]]
 // --neuf: that R was just installed: the check must find the engine's packages missing, R's
 // recommended ones there. Needs Node 22 or later (the program: fetch, WebSocket).
-const { execFileSync } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -53,6 +54,8 @@ if (process.argv.some((a) => /serveur\.R$/.test(a))) {
 const install = /install\.packages\((c\([^)]*\)|"[^"]*")/.exec(code);
 if (install) {
   const demandes = [...install[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  // (the environment it was given, as R would use it: RHOME, the R Nuée.app's Rscript starts; R_LIBS)
+  for (const v of ['RHOME', 'R_LIBS']) if (process.env[v]) ecrire(v + '=' + process.env[v]);
   ecrire('NUEE_BIBLIOTHEQUE=' + bibliotheque);
   for (const p of demandes) {
     ecrire("trying URL 'https://cloud.r-project.org/bin/windows/contrib/" + version.split('.').slice(0, 2).join('.') + '/' + p + "_1.0.zip'");
@@ -175,9 +178,7 @@ function sansProgramme() {
   'macOS et Linux : R.framework, /opt/R/<version>, un dossier bin');
 
   // reg export: UTF-16 whatever the code page (an accent in a user's folder), strings with their
-  // escapes, REG_EXPAND_SZ in hexadecimal over two lines, a DWORD
-  const utf16 = (s) => [...Buffer.from(`${s}\0`, 'utf16le')].map((b) => b.toString(16).padStart(2, '0')).join(',');
-  const etendu = utf16('%ProgramFiles%\\R\\R-4.5.2');
+  // escapes, REG_EXPAND_SZ in hexadecimal over two lines (lesPolitiques), a DWORD
   const export1 = ['\uFEFFWindows Registry Editor Version 5.00', '',
     '[HKEY_LOCAL_MACHINE\\SOFTWARE\\R-core]', '',
     '[HKEY_LOCAL_MACHINE\\SOFTWARE\\R-core\\R]', '"Current Version"="4.5.2"', '"InstallPath"="C:\\\\Program Files\\\\R\\\\R-4.5.2"', '',
@@ -190,17 +191,6 @@ function sansProgramme() {
   verifier(egal(R.rsDuRegistre(cles), [{ version: null, dossier: 'C:\\Program Files\\R\\R-4.5.2' }, { version: '4.1.0', dossier: 'C:\\Program Files\\R\\R-4.1.0' },
     { version: '4.5.2', dossier: 'C:\\Program Files\\R\\R-4.5.2' }, { version: '4.5.2', dossier: 'C:\\Program Files\\R\\R-4.5.2' }]),
   'reg export : les R de R-core\\R et R64, une clé par version (le R courant sans la sienne)', R.rsDuRegistre(cles));
-  const politique = (hklm, hkcu) => (cle) => (cle.startsWith('HKEY_LOCAL_MACHINE') ? hklm : hkcu);
-  const exportPolitique = (lignes) => ['\uFEFFWindows Registry Editor Version 5.00', '', '[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Nuee]', ...lignes, ''].join('\r\n');
-  const exportPolitiqueU = (lignes) => exportPolitique(lignes).replace('HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER');
-  const env = { ProgramFiles: 'C:\\Program Files' };
-  verifier(R.politiqueTexte('RHome', { exporter: politique(exportPolitique(['"DisableUpdateCheck"=dword:00000001', '"RHome"="D:\\\\Logiciels\\\\R\\\\R-4.5.2"']),
-    exportPolitiqueU(['"RHome"="C:\\\\Autre"'])), env }) === 'D:\\Logiciels\\R\\R-4.5.2', 'RHome : celui de l’ordinateur l’emporte');
-  const coupure = etendu.indexOf(',', 50) + 1;  // (reg export cuts its lines after a comma)
-  verifier(R.politiqueTexte('RHome', { exporter: politique('', exportPolitiqueU([`"RHome"=hex(2):${etendu.slice(0, coupure)}\\`, `  ${etendu.slice(coupure)}`])), env })
-    === 'C:\\Program Files\\R\\R-4.5.2', 'RHome : celui de l’utilisateur, en REG_EXPAND_SZ sur deux lignes, %ProgramFiles% remplacé');
-  verifier(R.politiqueTexte('RHome', { exporter: politique(exportPolitique(['"RHome"=""', '"DisableUpdateCheck"=dword:00000001']), ''), env }) === null
-    && R.politiqueTexte('RHome', { exporter: () => '', env }) === null, 'RHome : vide ou absent, pas de politique');
   if (windows) {
     // (a key every Windows has, its names in the system's language: accents on a French one)
     const cle = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones\\UTC';
@@ -236,6 +226,83 @@ function sansProgramme() {
   verifier(R.ligneInstallation(['ranger']) === 'install.packages("ranger", repos = "https://cloud.r-project.org")'
     && R.ligneInstallation(['httpuv', 'RSQLite']) === 'install.packages(c("httpuv", "RSQLite"), repos = "https://cloud.r-project.org")',
   'la ligne à lancer dans ce R');
+  // an R that ended from a signal has no exit code, only its signal: not stopped again (its number,
+  // 999999, is never a process's on Windows, whose numbers are multiples of 4)
+  let arrets = 0;
+  R.arreter({ pid: 999999, exitCode: null, signalCode: 'SIGKILL', kill: () => { arrets += 1; } });
+  verifier(arrets === 0, 'un R arrêté par un signal n’est pas arrêté de nouveau', arrets);
+}
+
+// Nuée's policies (lirePolitiques): with a stand-in for reg.exe and PowerShell (what each root's key
+// holds, as reg export writes it, or null: not there; what PowerShell finds; what can't run), then this
+// computer's, for real, read only (Windows)
+async function lesPolitiques() {
+  console.log('Les politiques');
+  const env = { ProgramFiles: 'C:\\Program Files' };
+  const systeme = ({ hklm = null, hkcu = null, ps = { HKLM: {}, HKCU: {} }, refuses = [] } = {}) => {
+    const appels = [];
+    const executer = async (programme, args) => {
+      const nom = path.win32.basename(programme).toLowerCase();
+      appels.push(`${nom} ${args[0]}`);
+      if (refuses.includes(nom)) return null;
+      if (nom === 'reg.exe') {
+        const racine = /^HKEY_\w+/.exec(args[1])[0];
+        const lignes = racine === 'HKEY_LOCAL_MACHINE' ? hklm : hkcu;
+        if (args[0] === 'query') return ['', `${racine}\\SOFTWARE\\Policies\\Microsoft`, ...(lignes ? [`${racine}\\SOFTWARE\\Policies\\Nuee`] : []), ''].join('\r\n');
+        fs.writeFileSync(args[2], ['\uFEFFWindows Registry Editor Version 5.00', '', `[${racine}\\SOFTWARE\\Policies\\Nuee]`, ...lignes, ''].join('\r\n'), 'utf16le');
+        return '';
+      }
+      const fichier = /-LiteralPath '((?:[^']|'')*)' -Encoding UTF8$/.exec(args[args.length - 1])[1].replace(/''/g, "'");
+      fs.writeFileSync(fichier, `\uFEFF${JSON.stringify(ps)}`);
+      return '';
+    };
+    return { executer, appels };
+  };
+  const lire = (s) => R.lirePolitiques({ plateforme: 'win32', executer: s.executer, env });
+  let s = systeme({ hklm: ['"DisableUpdateCheck"=dword:00000001', '"RHome"="D:\\\\Logiciels\\\\R\\\\R-4.5.2"'],
+    hkcu: ['"RHome"="C:\\\\Autre"', '"disablecustomcode"=dword:00000001', '"PluginsFolder"="\\\\\\\\serveur\\\\greffons-écologie"'] });
+  let p = await lire(s);
+  verifier(p.lues && p.par === 'reg' && p.valeurs.RHome === 'D:\\Logiciels\\R\\R-4.5.2' && p.valeurs.DisableUpdateCheck === 1 && p.valeurs.DisableCustomCode === 1
+    && p.valeurs.PluginsFolder === '\\\\serveur\\greffons-écologie' && !s.appels.some((a) => a.startsWith('powershell')),
+  'par reg.exe : celles de l’ordinateur l’emportent, celles de l’utilisateur s’ajoutent (un nom en minuscules, un dossier accentué)', [p, s.appels]);
+  const utf16 = (x) => [...Buffer.from(`${x}\0`, 'utf16le')].map((b) => b.toString(16).padStart(2, '0')).join(',');
+  const etendu = utf16('%ProgramFiles%\\R\\R-4.5.2');
+  const coupure = etendu.indexOf(',', 50) + 1;  // (reg export cuts its lines after a comma)
+  p = await lire(systeme({ hklm: ['"RHome"=""', '"DisableUpdateCheck"=dword:00000000'], hkcu: [`"RHome"=hex(2):${etendu.slice(0, coupure)}\\`, `  ${etendu.slice(coupure)}`] }));
+  verifier(p.lues && p.valeurs.RHome === 'C:\\Program Files\\R\\R-4.5.2' && p.valeurs.DisableUpdateCheck === 0,
+    'RHome vide pour l’ordinateur : celui de l’utilisateur, en REG_EXPAND_SZ sur deux lignes, %ProgramFiles% remplacé', p);
+  s = systeme();
+  p = await lire(s);
+  verifier(p.lues && p.par === 'reg' && egal(p.valeurs, {}) && egal(s.appels, ['reg.exe query', 'reg.exe query']), 'aucune politique : lues, deux questions à reg.exe', [p, s.appels]);
+  // reg.exe refused ("Prevent access to registry editing tools", AppLocker, WDAC): PowerShell
+  s = systeme({ refuses: ['reg.exe'], ps: { HKLM: { DisableCustomCode: 1, RHome: 'D:\\R' }, HKCU: { RHome: 'C:\\Autre', PluginsFolder: '' } } });
+  p = await lire(s);
+  verifier(p.lues && p.par === 'powershell' && egal(p.valeurs, { RHome: 'D:\\R', DisableCustomCode: 1 }), 'reg.exe refusé : lues par PowerShell (un texte vide n’est pas une politique)', [p, s.appels]);
+  s = systeme({ refuses: ['reg.exe', 'powershell.exe'] });
+  p = await lire(s);
+  verifier(!p.lues && p.par === null && egal(p.valeurs, {}), 'reg.exe et PowerShell refusés : pas lues (main.js retire alors le code R)', p);
+  // (HKCU\SOFTWARE\Policies missing, a computer without any user policy: reg.exe can't tell, PowerShell can)
+  s = systeme({ hklm: ['"DisableUpdateCheck"=dword:00000001'] });
+  const ex = s.executer;
+  p = await R.lirePolitiques({ plateforme: 'win32', env, executer: (pr, a) => (/HKEY_CURRENT_USER/.test(a[1] || '') ? Promise.resolve(null) : ex(pr, a)) });
+  verifier(p.lues && p.par === 'powershell', 'une clé que reg.exe ne peut pas dire : PowerShell la lit', [p, s.appels]);
+  p = await R.lirePolitiques({ plateforme: 'linux', executer: () => { throw new Error('nothing to run'); } });
+  verifier(egal(p, { valeurs: {}, lues: true, par: null }), 'ailleurs que sous Windows : aucune politique, rien de lancé', p);
+  if (windows) {
+    // this computer's, by reg.exe, then by PowerShell as when reg.exe can't run; then a key that has
+    // values, its names in the system's language (accents on a French Windows), read by both
+    const vrai = (pr, a) => new Promise((ok) => execFile(pr, a, { encoding: 'utf8', windowsHide: true, timeout: 60000 }, (e, x) => ok(e ? null : x)));
+    const sansReg = (pr, a) => (/reg\.exe$/i.test(pr) ? Promise.resolve(null) : vrai(pr, a));
+    const ici = await R.lirePolitiques();
+    const ps = await R.lirePolitiques({ executer: sansReg });
+    verifier(ici.lues && ici.par === 'reg' && ps.lues && ps.par === 'powershell' && egal(ici.valeurs, ps.valeurs),
+      `celles de cet ordinateur, par reg.exe et par PowerShell : ${JSON.stringify(ici.valeurs)}`, [ici, ps]);
+    const cle = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones\\UTC';
+    const parReg = await R.lirePolitiques({ cle, executer: (pr, a) => (/reg\.exe$/i.test(pr) && /^HKEY_CURRENT_USER/.test(a[1]) ? Promise.resolve('\r\nHKEY_CURRENT_USER\\SOFTWARE\\Microsoft\r\n') : vrai(pr, a)) });
+    const parPs = await R.lirePolitiques({ cle, executer: sansReg });
+    verifier(parReg.par === 'reg' && parPs.par === 'powershell' && typeof parReg.valeurs.Std === 'string' && parReg.valeurs.Std.length > 3 && !parReg.valeurs.Std.includes('�')
+      && ['Std', 'Dlt', 'Display'].every((k) => parReg.valeurs[k] === parPs.valeurs[k]), `une clé lue par reg.exe et par PowerShell, la même (${parReg.valeurs.Std})`, [parReg, parPs]);
+  }
 }
 
 async function avecFauxR(racine) {
@@ -265,8 +332,11 @@ async function avecFauxR(racine) {
   verifier(i2.ok && !i2.ligne && v4.ok, 'installé ensuite : ce R est utilisable (un paquet que le moteur ne demande pas n’est pas installé)', [i2, v4]);
   // a plugin's packages (main.js: r-installer-greffon): installed when allowed (autres), a name that isn't an R package's left out
   fs.writeFileSync(path.join(r44, 'faux.json'), JSON.stringify({ manquants: ['unmarked'], installables: ['unmarked'] }));
-  const i3 = await R.installer(r44, ['unmarked', 'pas un paquet'], { autres: ['unmarked', 'pas un paquet'] });
+  // (with the engine's environment, as main.js gives it: RHOME for the Rscript of Nuée.app, R_LIBS for Nuée's own R)
+  const envMoteur = { ...process.env, RHOME: path.join(racine, 'Nuée.app', 'R'), R_LIBS: path.join(racine, 'Nuée.app', 'R', 'library') };
+  const i3 = await R.installer(r44, ['unmarked', 'pas un paquet'], { autres: ['unmarked', 'pas un paquet'], env: envMoteur });
   verifier(i3.ok && !i3.ligne && egal(i3.manquants, []), 'le paquet d’un greffon (autres) : installé ; un nom qui n’est pas celui d’un paquet R, laissé de côté', i3);
+  verifier(i3.fin.includes(`RHOME=${envMoteur.RHOME}`) && i3.fin.includes(`R_LIBS=${envMoteur.R_LIBS}`), 'ce R lancé avec l’environnement donné (RHOME, R_LIBS)', i3.fin);
   const muet = await R.verifier(faux('4.5.0', { muet: true }));
   verifier(!muet.ok && /unable to open the base package/.test(muet.erreur), 'un R qui ne répond pas comme R : ce qu’il a dit', muet);
   const debut = Date.now();
@@ -331,27 +401,55 @@ async function moteurSurCeR(n, v) {
 }
 
 async function avecProgramme(programme, options, v, racine) {
-  console.log(`Nuée : Fichier › Réglages…, ce R, un projet ouvert (${programme})`);
+  console.log(`Nuée : Fichier › Réglages…, ce R, choisi dans une seconde fenêtre, un projet ouvert (${programme})`);
   const csv = path.join(__dirname, '..', '..', 'exemple', 'orchards.csv');
   let n = await lancer(programme, options, racine, 'profil-autre-r', null);
+  let n2 = null;
   try {
     verifier((await n.evaluer('window.bureau.r.etat()')).utilise.type === 'nuee', 'au départ, le R de Nuée');
-    // a project with a change not saved: a PCA fitted
+    // a project with changes not saved, in the first window: a PCA fitted, a document
     await n.fichierAOuvrir(csv);
     await n.menu('m_fichier', 'ouvrir');
     await n.attendre(n.ligneProjet('orchards.csv'));
     await n.nouveauModele({ type: 'PCA' });
-    await n.menu('m_fichier', 'reglages');
-    await n.dialogue('reglages_titre');
-    await n.cliquer(`[...__n.boite().querySelectorAll('.entree-r input')].find((i) => i.value.toLowerCase() === ${JSON.stringify(v.rscript.toLowerCase())})`);
-    await n.attendre("__n.boite().querySelector('.resultat-r .etat-r.ok')", 120000);
-    await n.bouton('r_utiliser');
-    await n.dialogue('r_redemarrer_titre');
-    await n.bouton('redemarrer');
-    await n.attendre("window.bureau.r.etat().then((e) => e.utilise && e.utilise.type === 'autre')", 120000);
-    const rouvert = await n.attendre(`__n.api('etat').then((e) => { const p = [].concat(e.projets).find((x) => x.nom === 'orchards.csv');
-      return !!p && [].concat(e.modeles).some((m) => m.projet === p.id && m.type === 'PCA'); })`, 120000).catch(() => false);
-    verifier(rouvert, 'le moteur redémarré sur ce R : le projet revient, avec son ACP pas encore enregistrée');
+    await n.menu('m_fichier', 'nouveau_document');
+    await n.dialogue('nouveau_document');
+    await n.ecrire("__n.boite().querySelector('.grille-champs input')", 'Notes');
+    await n.bouton('creer_document');
+    await n.attendre('!__n.dialogue() && !!document.querySelector(".document .cm-content")');
+    await n.cliquer("document.querySelector('.document .cm-content')");
+    // that R chosen in a second main window (Window › New window), which isn't the one that makes the
+    // recovery copies every two minutes: the restart makes them there, and takes them whichever window
+    // made them (interface/app.js: sauvegarderSecours)
+    await n.menu('m_fenetre', 'nouvelle_fenetre');
+    n2 = await n.fenetre((url) => /[?&]fenetre=/.test(url));
+    await n2.menu('m_fichier', 'reglages');
+    await n2.dialogue('reglages_titre');
+    await n2.cliquer(`[...__n.boite().querySelectorAll('.entree-r input')].find((i) => i.value.toLowerCase() === ${JSON.stringify(v.rscript.toLowerCase())})`);
+    await n2.attendre("__n.boite().querySelector('.resultat-r .etat-r.ok')", 120000);
+    await n2.bouton('r_utiliser');
+    await n2.dialogue('r_redemarrer_titre');
+    // typed in the first window's document just before Restart: a document sends its text after a
+    // pause in typing (0.8 s), and the restart has every window send what it holds first
+    const phrase = 'Typed just before the restart.';
+    const documentDuProjet = `const p = [].concat(e.projets).find((x) => x.nom === 'orchards.csv'); const d = p && [].concat(p.documents || [])[0];
+      const texte = d ? (await __n.api('document', { projet: p.id, id: d.id })).texte : null;`;
+    await n.taper(phrase);
+    const dejaEnvoye = await n2.evaluer(`__n.api('etat').then(async (e) => { ${documentDuProjet} return String(texte).includes(${JSON.stringify(phrase)}); })`);
+    await n2.bouton('redemarrer');
+    await n2.attendre("window.bureau.r.etat().then((e) => e.utilise && e.utilise.type === 'autre')", 120000);
+    const rouvert = await n2.attendre(`__n.api('etat').then(async (e) => { ${documentDuProjet}
+      return !!p && [].concat(e.modeles).some((m) => m.projet === p.id && m.type === 'PCA') ? { texte } : null; })`, 120000).catch(() => null);
+    verifier(!!rouvert, 'le moteur redémarré sur ce R, depuis la seconde fenêtre : le projet revient, avec son ACP pas encore enregistrée');
+    verifier(!!rouvert && String(rouvert.texte).includes(phrase),
+      `et son document avec ce qui venait d’être tapé dans la première${dejaEnvoye ? ' (déjà envoyé avant Redémarrer : rien de plus de vérifié ici)' : ''}`, rouvert);
+    // (the recovery copies then: the one reopened gone, the reopened project's own, made with the new engine, none waiting)
+    const index = await n2.attendre(`Promise.all([window.bureau.secoursListe(), window.bureau.idMoteur()])
+      .then(([l, m]) => (l.length === 1 && !l[0].attente && l[0].moteur === m && l[0].nom === 'orchards.csv' ? l : null))`, 30000).catch(() => null);
+    verifier(!!index, 'ses copies de secours : celle rouverte partie, celle du projet faite avec le nouveau moteur, aucune en attente',
+      await n2.evaluer('window.bureau.secoursListe()').catch((e) => e.message));
+    n2.detacher();
+    n2 = null;
     await moteurSurCeR(n, v);
     const p = await n.api('ouvrir', { chemin: csv });
     const x = [].concat(p.variables).filter((x) => !x.qualitative).map((x) => x.uid);
@@ -360,9 +458,13 @@ async function avecProgramme(programme, options, v, racine) {
     await n.menu('m_aide', 'diagnostic');
     await n.dialogue('diagnostic');
     const diag = await n.evaluer("__n.norm(__n.boite().querySelector('pre.diagnostic').textContent)");
-    verifier(diag.includes('R used: another R of this computer (File › Settings)') && diag.includes(`R version ${v.version}`), 'Aide › Informations de diagnostic dit quel R', diag);
+    verifier(diag.includes('R used: another R of this computer (File › Settings)') && diag.includes(`R version ${v.version}`)
+      && (!windows || /Policies: read by (reg\.exe|PowerShell)/.test(diag)), 'Aide › Informations de diagnostic dit quel R, et (Windows) si les politiques ont été lues', diag);
     verifier(await n.quitter(), 'Nuée quitte');
-  } finally { n.fermer(); }
+  } finally {
+    if (n2) n2.detacher();
+    n.fermer();
+  }
   console.log('Le démarrage suivant, sur le réglage gardé');
   n = await lancer(programme, options, racine, 'profil-autre-r', null, false);
   try {
@@ -399,6 +501,7 @@ async function principal() {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-r-installe-'));
   try {
     sansProgramme();
+    await lesPolitiques();
     await avecFauxR(path.join(racine, 'faux'));
     if (dossierR) {
       const v = await avecVraiR(path.resolve(dossierR), neuf, racine);
