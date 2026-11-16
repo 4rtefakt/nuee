@@ -504,6 +504,7 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .versions { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
 .versions > p { margin: 2px 0; max-width: 60em; }
 .versions .note { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.versions a { color: var(--accent); }
 .attention-versions { color: var(--attention); }
 .attention-versions .icone { width: 14px; height: 14px; }
 .liste-versions { flex: 1; min-height: 80px; overflow: auto; border: 1px solid var(--grille); border-radius: 6px; }
