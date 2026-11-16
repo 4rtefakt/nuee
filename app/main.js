@@ -109,7 +109,8 @@ let rRepliASignaler = null;  // that fallback, until a window tells it (once: 'r
 // The projects of the last session: the files of the saved projects open when Nuée last closed, as
 // the main windows tell them while they change (reglages.seance; interface/app.js: noterSeance),
 // read at start-up before this session writes its own; reopened at start when File › Settings… says so
-// (reglages.rouvrirSeance), or from the start page's Reopen last session.
+// (reglages.rouvrirSeance), or from the start page's Reopen last session. Given once, to the first
+// main window that asks: a second window, or the page loaded again, doesn't reopen them twice.
 let seancePrecedente = [];
 
 // Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
@@ -657,8 +658,12 @@ function ipc() {
     return r.canceled ? null : r.filePath;
   });
   recevoir('recents', () => reglages.recents);
-  // (the last session's projects: each file, and whether it is still there; this session's, as told)
-  recevoir('seance-precedente', () => seancePrecedente.map((chemin) => ({ chemin, existe: fs.existsSync(chemin) })));
+  // (the last session's projects, once: each file, and whether it is still there; this session's, as told)
+  recevoir('seance-precedente', () => {
+    const liste = seancePrecedente;
+    seancePrecedente = [];
+    return liste.map((chemin) => ({ chemin, existe: fs.existsSync(chemin) }));
+  });
   recevoir('seance-noter', (_, chemins) => {
     const liste = [...new Set([].concat(chemins || []).filter((c) => typeof c === 'string' && c))].slice(0, 50);
     if (JSON.stringify(liste) === JSON.stringify(reglages.seance || [])) return;
