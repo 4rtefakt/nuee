@@ -878,9 +878,9 @@ présences-absences et des valeurs positives, ses résidus quantiles), avec son 
 autocorrélation, z et la valeur p unilatérale (autocorrélation positive) sous la randomisation,
 et p par permutations (999 par défaut). Pour un modèle linéaire sans effet aléatoire, une seconde
 ligne donne le test qui tient compte de l'ajustement (Cliff et Ord 1981, comme
-spdep::lm.morantest). Voisinage : les k plus proches voisines de chaque observation (rendues
-réciproques), les observations à moins d'une distance (vide : la plus petite qui donne une
-voisine à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
+spdep::lm.morantest). Voisinage : les k plus proches voisins de chaque observation (rendus
+réciproques), les observations à moins d'une distance (vide : la plus petite qui donne un
+voisin à chacune), ou l'inverse de la distance ; lignes de somme 1 (style « W » de spdep) ou
 poids tels quels. Dessous, le corrélogramme (l'I de Moran par classes de distance jusqu'à la
 moitié de la plus grande, p bilatérale corrigée par Holm sur les classes, en rouge à 0,05) et le
 semi-variogramme (la moitié de la moyenne des carrés des écarts entre les valeurs des paires de
