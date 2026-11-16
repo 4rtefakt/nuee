@@ -2334,6 +2334,10 @@ phrase_selection_aic <- function(m, fr, nombre, liste, guillemets) {
                                                                 if (fr) (if (plusieurs) "portent une pente aléatoire, sont restés" else "porte une pente aléatoire, est resté")
                                                                 else (if (plusieurs) "carry a random slope, stayed" else "carries a random slope, stayed")))
   p <- s$parcimonieux
+  # (des AICc non calculés, des valeurs trop grandes pour le calcul : ni meilleur modèle ni importance à dire)
+  if (!isTRUE(p >= 1) || !isTRUE(is.finite(mo$poids[1]))) {
+    return(paste(comparaison, if (fr) "Les AICc n'ont pas pu être calculés : aucun modèle n'est désigné." else "The AICc couldn't be computed: no model is singled out."))
+  }
   choix <- sprintf(if (fr) "Le meilleur modèle (l'AICc le plus bas, poids d'Akaike %s) %s ; %s." else "The best model (lowest AICc, Akaike weight %s) %s; %s.",
                    nombre(mo$poids[1]), contenu(1),
                    if (p == 1) (if (fr) "c'était aussi le plus parcimonieux à ΔAICc ≤ 2" else "it was also the most parsimonious within ΔAICc ≤ 2")

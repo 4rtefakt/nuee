@@ -714,7 +714,8 @@ texte_apres <- function(evenement, fin, nom_temps, dates = FALSE) {
 phrase_test <- function(r) {
   fr <- !identical(getOption("nuee.langue"), "en")
   marque <- if (fr) "," else "."
-  nb <- function(x, chiffres = 2) if (is.na(x)) "NA" else formatC(if (round(x, chiffres) == 0) 0 else x, format = "f", digits = chiffres, decimal.mark = marque)
+  # (un infini, le t d'une corrélation parfaite : « ∞ », plutôt que « Inf »)
+  nb <- function(x, chiffres = 2) if (is.na(x)) "NA" else if (is.infinite(x)) (if (x > 0) "∞" else "−∞") else formatC(if (round(x, chiffres) == 0) 0 else x, format = "f", digits = chiffres, decimal.mark = marque)
   ddl <- function(x) if (is.na(x)) "NA" else if (abs(x - round(x)) < 1e-8) format(round(x)) else nb(x, 1)
   # (3 chiffres significatifs : 0,0497 ne s'écrit pas 0,05)
   pv <- function(p) if (is.na(p)) "p = NA" else if (p < 0.001) paste("p <", nb(0.001, 3)) else paste("p =", trimws(formatC(p, digits = 3, format = "g", decimal.mark = marque)))
