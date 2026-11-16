@@ -356,6 +356,15 @@ convertir_colonnes <- function(df, virgule = "decimale", quantitatives = NULL, t
   for (k in seq_along(df)) {
     x <- df[[k]]
     if (names(df)[k] %in% textes) next
+    # (NaN et Inf d'un fichier qui dit ses nombres, R ou SPSS : des valeurs manquantes, dites ; chaque
+    # analyse planterait sur eux)
+    if (is.numeric(x) && any(is.nan(x) | is.infinite(x))) {
+      faux <- is.nan(x) | is.infinite(x)
+      note[names(df)[k]] <- note_manquantes(names(df)[k], as.character(x[faux]))
+      x[faux] <- NA
+      df[[k]] <- x
+      next
+    }
     if (!(forcees[k] && (is.character(x) || is.factor(x) || is.logical(x))) && !(toutes && is.character(x))) next
     y <- convertir_colonne(as.character(x), virgule, premiere = k == 1, forcer = forcees[k])
     manquantes <- attr(y, "manquantes")
@@ -383,6 +392,7 @@ convertir_colonne <- function(x, virgule = "decimale", premiere = FALSE, forcer 
   connues <- !is.na(v)
   if (!any(connues)) return(rep(NA_real_, length(v)))
   n <- lire_nombres(v, virgule)
+  n[is.infinite(n)] <- NA  # (« Inf », « 1e999 » : pas des mesures, lues manquantes et dites comme « NaN »)
   autres <- connues & is.na(n)
   if (!any(autres)) return(n)
   texte <- sum(!valeur_manquante(v[autres]))
@@ -420,7 +430,8 @@ valeur_manquante <- function(v) {
   code <- gsub("[[:space:]./]", "", tolower(v))
   grepl("^[<>≤≥]", v) |
     code %in% c("nd", "na", "nan", "nm", "nq", "ns", "null", "-", "--", "---", "—", "–", "?", "??",
-                "lod", "loq", "ld", "lq", "dl", "ql", "tr", "trace", "traces") |
+                "lod", "loq", "ld", "lq", "dl", "ql", "tr", "trace", "traces",
+                "inf", "-inf", "+inf", "infinity", "-infinity", "+infinity", "∞", "-∞", "+∞") |
     grepl("^#(n/a|div/0!|value!|valeur!|ref!|name\\?|nom\\?|num!|nombre!|null!|nul!)$", v, ignore.case = TRUE)
 }
 

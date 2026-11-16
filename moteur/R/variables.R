@@ -106,7 +106,8 @@ modifier_valeur <- function(projet, observation, variable, valeur) {
     match(texte, cats)
   } else {
     n <- suppressWarnings(as.numeric(sub(",", ".", texte, fixed = TRUE)))  # 3,5 ou 3.5
-    if (is.na(n)) stop(sprintf(traduire("Valeur non numérique pour %s : %s", "Non-numeric value for %s: %s"), projet$noms_var[[k]], texte))
+    # (« Inf » aussi : as.numeric() le lit, et chaque analyse planterait sur lui)
+    if (!is.finite(n)) stop(sprintf(traduire("Valeur non numérique pour %s : %s", "Non-numeric value for %s: %s"), projet$noms_var[[k]], texte))
     n
   }
   projet$donnees[nom_numero(observation), k] <- x
