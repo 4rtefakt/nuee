@@ -603,7 +603,9 @@ function dessinerApercu(s, analyse, resolus, texte, citations) {
   const erreurs = resolus.filter((r) => r && r.erreur).length + s.citesInconnues.size;
   const nc = analyse.citations.length;
   const motsTexte = texte.replace(/^---[\s\S]*?\n(---|\.\.\.)/, '').replace(/\{\{[^{}]*\}\}/g, ' x ').replace(/[#*_`>|[\]()~-]/g, ' ').split(/\s+/).filter(Boolean).length;
-  s.etatTexte.replaceChildren(t('document_mots', { n: motsTexte }), n ? ` · ${t('document_refs', { n })}` : '', nc ? ` · ${t('document_citations', { n: nc })}` : '',
+  // (one word, one reference: the singular; in French, none too)
+  const compte = (cle, k) => t(k === 1 || (k === 0 && langueActuelle() === 'fr') ? `${cle}_un` : cle, { n: k });
+  s.etatTexte.replaceChildren(compte('document_mots', motsTexte), n ? ` · ${compte('document_refs', n)}` : '', nc ? ` · ${compte('document_citations', nc)}` : '',
     erreurs ? el('span', { class: 'erreur' }, ` · ${t('document_refs_erreurs', { n: erreurs })}`) : '');
 }
 
@@ -1569,7 +1571,7 @@ ajouterTextes({
   document_inserer: 'Insérer', document_inserer_aide: 'Insérer une valeur, un graphique, un tableau ou le texte des méthodes d’un modèle du projet',
   document_compiler: 'Compiler', document_compiler_aide: 'Écrire le document en Word, PDF, HTML ou Quarto, les références remplacées par leurs résultats',
   document_apercu_aide: 'Montrer ou cacher l’aperçu', document_aide: 'Écrire un document', document_modifie: 'modifié…',
-  document_non_enregistre: 'non gardé : le moteur ne répond pas', document_mots: '{n} mots', document_refs: '{n} références',
+  document_non_enregistre: 'non gardé : le moteur ne répond pas', document_mots: '{n} mots', document_refs: '{n} références', document_mots_un: '{n} mot', document_refs_un: '{n} référence', document_citations_un: '{n} citation',
   document_refs_erreurs: '{n} introuvable(s)', document_tableau: 'Tableau', document_methodes: 'Texte des méthodes', document_methodes_references: 'Références du texte des méthodes, dans la liste du document', document_resultats: 'Texte des résultats',
   document_renvoi: 'le numéro d’une figure ou d’un tableau étiqueté (#…)',
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
@@ -1651,7 +1653,7 @@ ajouterTextes({
   document_inserer: 'Insert', document_inserer_aide: 'Insert a value, a plot, a table or the Methods text of a model of the project',
   document_compiler: 'Compile', document_compiler_aide: 'Write the document as Word, PDF, HTML or Quarto, its references replaced by their results',
   document_apercu_aide: 'Show or hide the preview', document_aide: 'Writing a document', document_modifie: 'changed…',
-  document_non_enregistre: 'not kept: the engine doesn’t answer', document_mots: '{n} words', document_refs: '{n} references',
+  document_non_enregistre: 'not kept: the engine doesn’t answer', document_mots: '{n} words', document_refs: '{n} references', document_mots_un: '{n} word', document_refs_un: '{n} reference', document_citations_un: '{n} citation',
   document_refs_erreurs: '{n} unresolved', document_tableau: 'Table', document_methodes: 'Methods text', document_methodes_references: 'The Methods text’s references, in the document’s list', document_resultats: 'Results text',
   document_renvoi: 'the number of a labelled figure or table (#…)',
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',

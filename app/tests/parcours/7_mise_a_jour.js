@@ -35,6 +35,9 @@ module.exports = {
     const cite = await n.attendre(`(() => { const a = document.querySelector('.document .apercu-document');
       return a && !document.querySelector('.document .etat-document .erreur') && /Q2 = \\d/.test(a.textContent) ? __n.norm(a.textContent) : null; })()`);
     verifier('documentEcrit', cite.includes('Q2 = '), cite);
+    // (its status line: one reference, in the singular)
+    const etatDocument = await n.evaluer("__n.norm(document.querySelector('.document .etat-document').textContent)");
+    verifier('uneReference', etatDocument.includes(await n.t('document_refs_un', { n: 1 })), etatDocument);
 
     // ---- File › Save project
     const fichier = path.join(dossier, 'orchards.nuee');
