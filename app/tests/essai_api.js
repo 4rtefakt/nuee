@@ -1332,7 +1332,22 @@ async function principal() {
       verifier(!termes(m2).includes('habitat(lande)') && termes(m2).includes('habitat(prairie)') && termes(m2).includes('habitat(forêt)'), `référence après : ${termes(m2).join()}`);
       // a new order only: the model of the session is mapped to it, and refits
       const lda = await api('ajuster', { projet: q.id, type: 'LDA', x: [v.altitude, v.densite], classe: v.habitat, echelle: 'UV', nom: 'LDAhab' });
+      // a forest with the habitat among its X, its predictions before that order (the project's, a file's)
+      const rf = await api('ajuster', { projet: q.id, type: 'FOREST', x: [v.habitat, v.altitude], y: [v.densite], options: { arbres: 50 }, nom: 'RFhab' });
+      const fh = path.join(dossier, 'habitats_a_predire.csv');
+      fs.writeFileSync(fh, 'nom,habitat,altitude\nA,prairie,200\nB,forêt,300\nC,lande,700\n');
+      const rfAvant = [await api('predire', { modele: rf.id }), await api('predire_fichier', { modele: rf.id, chemin: fh })];
       q = await api('categories', { projet: q.id, variable: v.habitat, noms: ['prairie', 'forêt', 'lande'], ordre: ['forêt', 'prairie', 'lande'] });
+      // after it: the same predictions, the model read on the project as it saw it (serveur.R: pour_predire)
+      const rfApres = [await api('predire', { modele: rf.id }), await api('predire_fichier', { modele: rf.id, chemin: fh })];
+      const predits = (r) => JSON.stringify(r.observations['densite prédit']);
+      verifier(rfApres.every((r, i) => predits(r) === predits(rfAvant[i])) && [].concat(rfApres[1].observations['densite prédit']).every((x) => typeof x === 'number'),
+        `les prédictions d’une forêt ajustée avant un nouvel ordre de son X : ${rfAvant.map(predits)} → ${rfApres.map(predits)}`);
+      // the R console's log of that prediction (moteur/console.R): on the same project, it gives them again
+      const jp = (await api('journal', { depuis: 0 })).entrees.filter((e) => e.type === 'appel' && e.texte.startsWith('predire(')).pop();
+      const rejouee = jp ? await api('console', { code: `cat(isTRUE(all.equal(${jp.texte}[["densite prédit"]], c(${[].concat(rfApres[0].observations['densite prédit']).join(', ')}))))` }) : { journal: [] };
+      verifier(jp && jp.texte.startsWith('predire(projet_tel_ajuste(') && rejouee.journal.some((e) => e.type === 'sortie' && e.texte.trim() === 'TRUE'),
+        `journal de la prédiction : ${jp && jp.texte} → ${JSON.stringify(rejouee.journal)}`);
       const m3 = await api('reajuster', { modele: m2.id, exclues: [2] });
       verifier(m3.N === m2.N - 1 && termes(m3).includes('habitat(forêt)'), `réajusté après un nouvel ordre : N = ${m3.N}`);
       // an LDA of the habitat fitted before that order: its script, written with the categories in the
