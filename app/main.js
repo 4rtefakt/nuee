@@ -447,10 +447,12 @@ function menuMac(l) {
 }
 
 // The file the system asks Nuée to open (a .nuee project double-clicked, "Open with"): the
-// first argument that is an existing file. A Linux desktop gives it as a file:// URL (%U).
-function fichierDonne(argv) {
-  const chemin = (a) => { if (!/^file:\/\//i.test(a)) return a; try { return fileURLToPath(a); } catch { return null; } };
-  return argv.slice(1).map(chemin).find((a) => a && !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
+// first argument that is an existing file, a relative path taken from the folder Nuée was
+// started in (`dossier`: a second start's own, not this one's). A Linux desktop gives it as a
+// file:// URL (%U).
+function fichierDonne(argv, dossier = process.cwd()) {
+  const chemin = (a) => { if (!/^file:\/\//i.test(a)) return path.resolve(dossier, a); try { return fileURLToPath(a); } catch { return null; } };
+  return argv.slice(1).filter((a) => !a.startsWith('-')).map(chemin).find((a) => a && fs.existsSync(a) && fs.statSync(a).isFile()) || null;
 }
 
 function ipc() {
@@ -802,7 +804,7 @@ async function demarrer() {
 // interface's own settings, kept by address, seemed lost at the next start)
 const premiere = app.requestSingleInstanceLock();
 if (!premiere) app.quit();
-app.on('second-instance', (_, argv) => montrerFenetre(fichierDonne(argv)));  // its file opens in the main window
+app.on('second-instance', (_, argv, dossier) => montrerFenetre(fichierDonne(argv, dossier)));  // its file opens in the main window
 if (premiere) app.whenReady().then(demarrer);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => {

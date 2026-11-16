@@ -46,8 +46,8 @@ function portLibre() {
 }
 
 // (detached on Linux: its own process group, so that a failed run can stop all of it)
-const lancer = (port, args = []) => spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${port}`, ...optionsProgramme, ...args],
-  { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
+const lancer = (port, args = [], cwd = undefined) => spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${port}`, ...optionsProgramme, ...args],
+  { env, cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
 function tuer(proc) {
   if (proc.exitCode !== null) return;
   try {
@@ -276,6 +276,15 @@ async function brancher(cible) {
     const rDuSecond = fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => new RegExp(`^nuee-r-(\\d+-)?${second.pid}(-|$)`).test(n));
     verifier('secondLancementSansMoteur', !rDuSecond.length && portReglages() === portAvant, { rDuSecond, portAvant, portApres: portReglages() });
     tuer(second);
+    // the same by its name alone, from its folder, as a command line in that folder gives it (main.js:
+    // fichierDonne, from the second start's working folder)
+    for (const x of [].concat((await p.api('etat')).projets).filter((y) => y.nom.includes(nom))) await p.api('fermer_projet', { projet: x.id });
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre(`!document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000);
+    const relatif = lancer(await portLibre(), [path.basename(fichier)], dossier);
+    await new Promise((ok) => { relatif.on('exit', ok); setTimeout(ok, 60000); });
+    verifier('fichierRelatifOuvertParUnSecondLancement', !!(await p.attendre(`document.querySelector('.arbre').textContent.includes(${JSON.stringify(nom)})`, 20000).catch(() => false)));
+    tuer(relatif);
     // macOS: a .nuee double-clicked in the Finder comes as an event (open-file), not as an argument
     if (mac) {
       const nomFinder = 'essai-finder';
