@@ -40,6 +40,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
 .menu-haut { border: 0; background: transparent; padding: 3px 9px; border-radius: 4px; }
 .menu-haut:hover, .menu-haut.ouvert { background: var(--survol); }
+/* a menu's letter (Alt+letter), underlined while the keyboard is in the menu bar */
+#menus.clavier .cle-acces { text-decoration: underline; text-underline-offset: 2px; }
 #barre-outils { display: flex; align-items: stretch; gap: 0; padding: 3px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); overflow-x: auto; }
 .groupe-outils { display: flex; gap: 1px; padding: 0 6px; border-right: 1px solid var(--bord); }
 .groupe-outils:last-child { border-right: 0; }
@@ -77,8 +79,12 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .menu { position: fixed; z-index: 1000; min-width: 230px; padding: 4px; background: var(--fond-panneau); border: 1px solid var(--bord);
   border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; }
 .menu .item { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
-.menu .item:hover:not(.desactive) { background: var(--accent-doux); }
-.menu .item.desactive { color: var(--texte-doux); opacity: .55; }
+.menu .item:hover:not(.desactive), .menu .item:focus { background: var(--accent-doux); }
+.menu .item.desactive { color: var(--texte-doux); }
+.menu .item.desactive > span { opacity: .55; }
+.menu .item.desactive:focus { background: var(--survol); }
+.menu:focus, .menu .item:focus { outline: none; }
+.clavier .menu .item:focus { box-shadow: inset 0 0 0 2px var(--accent); }
 .menu .coche { display: inline-flex; justify-content: center; color: var(--accent); }
 .menu .raccourci { color: var(--texte-doux); font-size: 12px; padding-left: 18px; display: inline-flex; }
 .menu .separateur { height: 1px; background: var(--bord); margin: 4px 6px; }

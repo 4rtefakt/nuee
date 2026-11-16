@@ -4,7 +4,7 @@
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
-import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
+import { el, icone, menuContextuel, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
@@ -1711,21 +1711,12 @@ app.enregistrerImage = (f) => enregistrerImage(undefined, f);
 
 // ------------------------------------------------------------ chrome
 
+// (ui.js, barreMenus: the mouse, and the keyboard from Alt, F10 or a menu's letter)
 function rendreMenus() {
-  const nav = document.getElementById('menus');
-  nav.replaceChildren(el('img', { class: 'logo', src: 'nuee.svg', alt: '' }), ...menus(app, C).map((d) => {
-    const b = el('button', { class: 'menu-haut' }, t(d.cle));
-    const ouvrir = async () => {
-      if (d.cle === 'm_fenetre' && bureau) fenetres = await bureau.fenetres();
-      ouvrirMenuSous(b, menus(app, C).find((x) => x.cle === d.cle).items());
-    };
-    b.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      if (b.classList.contains('ouvert')) fermerMenus(); else ouvrir();
-    });
-    b.addEventListener('mouseenter', () => { if (document.querySelector('.menu-haut.ouvert') && !b.classList.contains('ouvert')) ouvrir(); });
-    return b;
-  }));
+  barreMenus(document.getElementById('menus'), menus(app, C).map((d) => ({ libelle: t(d.cle), items: async () => {
+    if (d.cle === 'm_fenetre' && bureau) fenetres = await bureau.fenetres();
+    return menus(app, C).find((x) => x.cle === d.cle).items();
+  } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
 }
 
 function rendreBarreOutils() {
