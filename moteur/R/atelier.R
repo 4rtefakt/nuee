@@ -810,8 +810,9 @@ renommer_variable <- function(projet, variable, nom) {
 }
 
 # Une variable supprimée (un clic droit sur l'en-tête de sa colonne › Supprimer) : sa colonne, sa place
-# dans les jeux de données, les coordonnées quand elle en est une. Refusée quand un modèle du projet
-# l'utilise (sa définition ne s'ajusterait plus, et son numéro pourrait revenir à une autre variable) :
+# dans les jeux de données, les coordonnées quand elle en est une ; son numéro ne revient jamais à une
+# autre variable (variables.R : numero_variable_garde). Refusée quand un modèle du projet l'utilise (sa
+# définition ne s'ajusterait plus, etapes.R : variables_definition, les poids de TRIM compris) :
 # modifier ou supprimer le modèle d'abord ; `modeles` FALSE (une étape rejouée sur des données sans
 # modèles) ne le regarde pas. Un modèle de code R qui la nomme dans son code ne l'empêche pas : il est
 # nommé, son code est à changer. attr(, "suppression") : la variable, son nom, ces modèles, les variables
@@ -837,8 +838,10 @@ supprimer_variable <- function(projet, variable, modeles = TRUE) {
   })))
   co <- projet$coordonnees
   coordonnee <- is.list(co) && uid %in% suppressWarnings(as.numeric(c(unlist(co$x), unlist(co$y))))
+  dernier <- dernier_numero_variable(projet)
   projet$donnees <- projet$donnees[, colnames(projet$donnees) != k, drop = FALSE]
   projet$variables <- projet$variables[-i]
+  projet <- numero_variable_garde(projet, dernier)  # (son numéro ne reviendra pas à une autre variable)
   projet$noms_var <- projet$noms_var[names(projet$noms_var) != k]
   projet$datasets <- lapply(projet$datasets, function(d) {
     d$variables <- d$variables[!as.numeric(unlist(d$variables)) %in% uid]

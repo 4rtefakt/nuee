@@ -584,13 +584,15 @@ par_numeros <- function(p, def, q, colonnes = NULL) {
 etape_sautee <- function(raison) stop(structure(class = c("etape_sautee", "error", "condition"), list(message = raison, call = NULL)))
 
 # Les noms qu'une formule de Nouvelle variable lit et que le projet n'a pas : ni ses variables, ni ses
-# identifiants, ni un objet de R (pi, une fonction du moteur) ; une formule qui ne se lit pas n'en a
-# pas, son erreur viendra du calcul.
+# identifiants, ni une constante qu'une formule lit (pi, LETTERS : variables.R, CONSTANTES_FORMULE ;
+# ni T ni F, une colonne T renommée par le fichier suivant serait lue TRUE) : comme
+# lire_formule_variable les refuse, et non un objet quelconque de la séance de R. Une formule qui ne se
+# lit pas n'en a pas, son erreur viendra du calcul.
 noms_absents_formule <- function(p, formule) {
   e <- tryCatch(parse(text = formule, keep.source = FALSE), error = function(err) NULL)
   if (is.null(e)) return(character(0))
   n <- noms_condition(p)
-  Filter(function(x) !exists(x, envir = globalenv()), setdiff(all.vars(e), c(names(n$variables), n$ids)))
+  setdiff(all.vars(e), c(names(n$variables), n$ids, CONSTANTES_FORMULE))
 }
 
 # ---------------------------------------------------------------- les étapes
@@ -980,14 +982,16 @@ rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL
 
 # Les variables (leurs numéros) qu'utilise une définition de modèle : celles de ses termes X et Y (et
 # du modèle complet d'une sélection par l'AIC), sa classe, ses courbes, son décalage, son lissage
-# spatial, celle de son groupe de modèles de classe, ses covariables (options$z), la réponse, le
-# temps et l'unité d'un modèle BACI, et celles des groupements de sa validation croisée, de ses
-# effets aléatoires, de son autocorrélation et des réglages d'une autre analyse
-# (list(by = "variable", variable = …)).
+# spatial, celle de son groupe de modèles de classe, ses covariables (options$z), les poids de TRIM,
+# l'effort, l'aire et la taille des groupes de l'échantillonnage par distances (comme fusion.R les
+# suit : renumeroter_definition), la réponse, le temps et l'unité d'un modèle BACI, et celles des
+# groupements de sa validation croisée, de ses effets aléatoires, de son autocorrélation et des
+# réglages d'une autre analyse (list(by = "variable", variable = …)).
 variables_definition <- function(d) {
   groupements <- function(x) if (is.list(x)) c(if (identical(premier_texte(x$by), "variable")) x$variable, x$pentes, unlist(lapply(x, groupements)))
+  reglees <- if (is.list(d$options)) d$options[intersect(switch(premier_texte(d$type), TRIM = "poids", DISTANCE = c("effort", "aire", "taille"), character(0)), names(d$options))]
   u <- c(unlist(lapply(c(d$x, d$y, d$termes_complets), function(t) t$variables)), d$classe, d$lisses, d$decalage, d$lisse_spatial$variables,
-         d$groupe_classes$variable, names(d$k_courbes), names(d$par_courbes), unlist(d$par_courbes), d$options$z,
+         d$groupe_classes$variable, names(d$k_courbes), names(d$par_courbes), unlist(d$par_courbes), d$options$z, unlist(reglees),
          unlist(lapply(d[intersect(c("groupes_vc", "aleatoires", "correlation", "options"), names(d))], groupements)))
   b <- as.character(unlist(d$baci_origine[c("y", "temps", "unite")]))
   u <- suppressWarnings(as.numeric(c(as.character(unlist(u)), b[!startsWith(b, "id:")])))
@@ -1238,7 +1242,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     }
   }
   uid_v <- uids(va)[k]
-  uid_v[is.na(k)] <- max(c(0L, uids(actuel$variables))) + seq_len(sum(is.na(k)))
+  uid_v[is.na(k)] <- numeros_variables_libres(actuel, sum(is.na(k)))  # (jamais celui d'une variable qu'il a eue : variables.R)
   uid_v <- numeros_entiers(uid_v)
   # (les observations)
   uo_a <- uids(actuel$observations)
@@ -1360,6 +1364,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     recalculees <- c(recalculees, nom(a))
   }
   absentes_uid <- vapply(parties, uid, 0)
+  p <- numero_variable_garde(p, max(dernier_numero_variable(actuel), uid_v))  # (les numéros des variables parties ne reviendront pas)
   # (les modèles : les numéros des catégories suivent leur nouvel ordre, comme quand l'atelier les range
   # (atelier.R : suivre_categories), chaque famille de termes d'une variable prend ceux de ses nouvelles
   # catégories (sauf les classes d'une PLS-DA : ses observations d'une classe nouvelle n'y entrent

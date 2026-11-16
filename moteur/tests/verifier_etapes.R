@@ -44,7 +44,11 @@
 #     observation laissée de côté ; sans rien qui les distingue, par leur rang, et dit ; une étape d'avant,
 #     par son rang ;
 #   - une case vide dans la colonne des noms : un nom vide, jamais manquant, enregistré et rouvert (aussi
-#     écrit null, d'avant), lu par la 1.0 ; la modification de sa ligne refaite.
+#     écrit null, d'avant), lu par la 1.0 ; la modification de sa ligne refaite ;
+#   - une colonne renommée par le fichier suivant (T) qu'une formule lisait : l'étape sautée, la variable
+#     absente nommée ; un TRIM pondéré, ses poids une de ses variables (suppression refusée, la mise à jour
+#     dit qu'il ne se réajuste plus sans eux) ; le numéro d'une variable partie ne revient jamais à une
+#     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -957,6 +961,61 @@ if (exists("v10", inherits = FALSE)) {
   verifier("lu par le lire_projet de la 1.0 : ses noms vides",
            isTRUE(tryCatch(identical(unname(v10$lire_projet(f_vides)$noms_obs), c("a", "", "", "d")), error = function(e) FALSE)))
 }
+
+cat("Une colonne renommée qu'une formule lisait ; les numéros des variables, jamais deux fois\n")
+# (la colonne T du fichier, Temp dans celui de l'année suivante : une formule qui la lisait n'a plus de T
+# à lire, et non TRUE)
+meteo <- fichier("meteo.csv")
+utils::write.csv(data.frame(station = paste0("S", 1:5), T = c(12.1, 13.4, 9.8, 15.2, 11.0), pluie = c(80, 75, 90, 60, 85)), meteo, row.names = FALSE)
+tid <- demande("ouvrir", list(chemin = meteo))$id
+demande("variable_calculee", list(projet = tid, nom = "T_K", formule = "T + 273.15"))
+meteo26 <- fichier("meteo 2026.csv")
+utils::write.csv(data.frame(station = paste0("S", 1:6), Temp = c(12.5, 13.0, 10.1, 15.9, 11.3, 14.0), pluie = c(82, 70, 95, 61, 80, 77)), meteo26, row.names = FALSE)
+at <- demande("mettre_a_jour", list(projet = tid, chemin = meteo26, apercu = TRUE))
+verifier("une formule qui lit une colonne absente (T, qu'R lirait TRUE) : sautée, la variable absente nommée",
+         identical(statuts(at), "sautee") && grepl("1 variable(s) absente(s) des données : T", at$etapes[[1]]$raison, fixed = TRUE) &&
+           identical(noms_absents_formule(projet(tid), "T + pi + F"), "F"))
+# (un TRIM pondéré : ses poids sont une de ses variables, que la suppression refuse, et que la mise à jour
+# dit manquer quand le fichier ne les a plus ; leur numéro ne revient pas à une nouvelle variable, que
+# le TRIM prendrait pour ses poids)
+set.seed(5)
+gt <- expand.grid(annee = 2000:2007, site = sprintf("S%02d", 1:8), stringsAsFactors = FALSE)
+comptages <- data.frame(nom = sprintf("r%03d", seq_len(nrow(gt))), site = gt$site, annee = gt$annee, compte = rpois(nrow(gt), 20),
+                        poids = c(1, 2.5, 4)[as.integer(factor(gt$site)) %% 3 + 1])
+f_compt <- fichier("comptages.csv")
+utils::write.csv(comptages, f_compt, row.names = FALSE)
+cid <- demande("ouvrir", list(chemin = f_compt))$id
+uc <- function(nom) uid_de(projet(cid), nom)
+poids_uid <- uc("poids")
+demande("ajuster", list(projet = cid, type = "TRIM", y = list(uc("compte")), x = list(), nom = "T1", echelle = "none",
+                        options = list(site = list(by = "variable", variable = uc("site")), temps = list(by = "variable", variable = uc("annee")), modele = 2, poids = poids_uid)))
+verifier("un TRIM pondéré : ses poids sont une de ses variables, et leur suppression est refusée, le modèle nommé",
+         poids_uid %in% variables_definition(definition(projet(cid), "T1")) && grepl("T1", refus("supprimer_variable", list(projet = cid, variable = poids_uid))))
+f_sans_poids <- fichier("comptages sans poids.csv")
+utils::write.csv(comptages[setdiff(names(comptages), "poids")], f_sans_poids, row.names = FALSE)
+ap_t <- demande("mettre_a_jour", list(projet = cid, chemin = f_sans_poids, apercu = TRUE))
+verifier("un fichier sans les poids : l'aperçu dit que T1 ne se réajuste plus, faute d'eux",
+         any(vapply(ap_t$modeles$variables_absentes, function(m) identical(m$nom, "T1") && "poids" %in% as.character(m$variables), TRUE)))
+demande("mettre_a_jour", list(projet = cid, chemin = f_sans_poids))
+demande("variable_calculee", list(projet = cid, nom = "surface", formule = "compte * 0 + 100"))
+verifier("puis une nouvelle variable : elle ne prend pas leur numéro, et T1 ne se réajuste pas pondéré par elle",
+         uc("surface") != poids_uid && nzchar(refus("ajuster", list(projet = cid, numero = definition(projet(cid), "T1")$number))))
+# (une variable supprimée, celle du plus grand numéro : une nouvelle ne le reprend pas, ni une après que le
+# projet a été enregistré et rouvert ; ni après Annuler d'une nouvelle variable)
+nid <- demande("ouvrir", list(chemin = meteo))$id
+un <- function(id, nom) uid_de(projet(id), nom)
+pluie_uid <- un(nid, "pluie")
+demande("supprimer_variable", list(projet = nid, variable = pluie_uid))
+f_numeros <- fichier("numeros.nuee")
+demande("enregistrer", list(projet = nid, chemin = f_numeros))
+rid <- demande("ouvrir", list(chemin = f_numeros))$id
+demande("variable_calculee", list(projet = rid, nom = "a", formule = "T * 2"))
+demande("variable_calculee", list(projet = rid, nom = "b", formule = "T * 3"))
+b_uid <- un(rid, "b")
+demande("annuler", list(projet = rid))
+demande("variable_calculee", list(projet = rid, nom = "c", formule = "T * 4"))
+verifier("une variable supprimée, le projet enregistré et rouvert : une nouvelle ne prend pas son numéro ; ni après Annuler de la dernière",
+         !un(rid, "a") %in% pluie_uid && !un(rid, "c") %in% c(pluie_uid, b_uid, un(rid, "a")))
 
 cat("En anglais\n")
 options(nuee.langue = "en")

@@ -13,7 +13,8 @@
 #   - cellule par cellule quand les étapes ne se rejouent pas : la source introuvable sur cet ordinateur,
 #     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ; la source
 #     changée depuis sa lecture, une étape qui ne se refait pas ici (son fichier n'est que chez l'autre), une
-#     variable supprimée d'un côté et changée de l'autre ;
+#     variable supprimée d'un côté et changée de l'autre ; une variable nouvelle de leur côté, qui ne prend
+#     pas le numéro d'une que j'ai supprimée ;
 #   - les données cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux
 #     côtés par deux mises à jour, une cellule changée autrement des deux côtés, les catégories nouvelles
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
@@ -469,6 +470,29 @@ verifier("le leur : z et leur correction", isTRUE(tryCatch(unname(valeurs(fusion
 r <- fusion2(mien_z, leur26 <- cote2("leur_o7.nuee", function(id) demande("mettre_a_jour", list(projet = id, chemin = csv26))))
 verifier("une variable supprimée d'un côté, inchangée de l'autre : par les étapes, sans elle", identical(r$donnees$mode, "etapes") && !"z" %in% r$projet$noms_var &&
            "O7" %in% names(valeurs(r$projet, "x")))
+
+# (j'ai fait puis supprimé une variable, eux en ont fait une : la leur ne prend pas le numéro de la mienne,
+# par les étapes comme cellule par cellule, et la fusion garde le plus grand numéro donné)
+mien_w <- cote2("mien_w.nuee", function(id) {
+  demande("variable_calculee", list(projet = id, nom = "w", formule = "x * 2"))
+  demande("supprimer_variable", list(projet = id, variable = uid(id, "w")))
+})
+leur_v <- cote2("leur_v.nuee", function(id) demande("variable_calculee", list(projet = id, nom = "v", formule = "x * 3")))
+w_uid <- max(vapply(lire_projet(base2)$variables, function(v) as.numeric(v$uid), 0)) + 1
+# (le numéro qu'une nouvelle variable prend dans le projet fusionné)
+neuve <- function(p) uid_p(ajouter_colonne(p, "neuve", numeros_observations(p), rep(1, length(p$observations))), "neuve")
+sans_etapes2 <- function(f) {
+  j <- jsonlite::fromJSON(f, simplifyVector = FALSE)
+  j$source_donnees <- j$etapes <- j$empreinte_donnees <- NULL
+  g <- sub("\\.nuee$", " sans etapes.nuee", f)
+  writeLines(enc2utf8(as.character(jsonlite::toJSON(j, auto_unbox = TRUE, null = "null", na = "null", digits = NA))), g, useBytes = TRUE)
+  g
+}
+r_e <- fusion2(mien_w, leur_v)
+r_c <- fusionner_projets(lire_projet(sans_etapes2(base2)), lire_projet(sans_etapes2(mien_w)), lire_projet(sans_etapes2(leur_v)), list(), dossier = etude2, qui = "Bob")
+verifier("leur variable nouvelle ne prend pas le numéro d'une variable que j'ai supprimée, par les étapes comme cellule par cellule ; le plus grand numéro gardé",
+         identical(c(r_e$donnees$mode, r_c$donnees$mode), c("etapes", "cellules")) && !uid_p(r_e$projet, "v") %in% w_uid && !uid_p(r_c$projet, "v") %in% w_uid &&
+           !neuve(r_e$projet) %in% c(w_uid, uid_p(r_e$projet, "v")) && !neuve(r_c$projet) %in% c(w_uid, uid_p(r_c$projet, "v")))
 
 # ---------------------------------------------------------------- cellule par cellule
 

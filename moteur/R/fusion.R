@@ -480,6 +480,9 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
   vars_k <- garder_v[!startsWith(garder_v, ID_FUSION)]
   ids_k <- garder_v[startsWith(garder_v, ID_FUSION)]
   pris <- numeros_entiers(vapply(M$variables, function(v) as.numeric(v$uid), 0))
+  # (une variable nouvelle de leur côté ne prend pas un numéro que le mien ou la base a donné, même à une
+  # variable supprimée depuis : variables.R, numeros_variables_libres)
+  limite <- max(dernier_numero_variable(M), dernier_numero_variable(tB$p))
   uid_v <- stats::setNames(numeric(length(vars_k)), vars_k)
   for (k in vars_k) {
     if (k %in% tM$cles_v) {
@@ -487,7 +490,7 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
       next
     }
     u <- if (k %in% tL$cles_v) tL$uid_v[[k]] else tB$uid_v[[k]]
-    if (u %in% pris) u <- max(c(0, pris)) + 1
+    if (u %in% pris || (!k %in% tB$cles_v && u <= limite)) u <- max(c(0, pris, limite)) + 1
     pris <- c(pris, u)
     uid_v[[k]] <- u
   }
@@ -1735,7 +1738,7 @@ fusion_predictions <- function(tB, tM, tL, cartes, ctx) {
 # l'historique d'un fichier .usp, les réglages d'un import de KoboToolbox…) se fusionnent champ par champ.
 CHAMPS_FUSIONNES <- c("observations", "variables", "datasets", "observation_id_names", "donnees", "noms_obs", "noms_var", "models",
                       "documents", "figures", "source_donnees", "etapes", "empreinte_donnees", "session", "nuee", "coordonnees",
-                      "prediction_sets", CHAMPS_SEANCE_FUSION)
+                      "prediction_sets", "dernier_numero_variable", CHAMPS_SEANCE_FUSION)
 
 # ---------------------------------------------------------------- la fusion
 
@@ -1873,6 +1876,9 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   }
   # (la séance est la mienne ; ce qui a écrit le fichier, ce qui l'enregistrera ; un côté fusionné avec
   # lui-même ou avec la base, tel quel)
+  # (le plus grand numéro de variable que l'une des trois versions a donné : aucun ne reviendra)
+  p$dernier_numero_variable <- NULL
+  p <- numero_variable_garde(p, max(vapply(list(base, mien, leur), dernier_numero_variable, 0)))
   p <- avec_champ(p, "session", mien$session)
   p$nuee <- NULL
   cb <- contenu_fusion(base)

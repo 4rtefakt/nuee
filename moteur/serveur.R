@@ -188,6 +188,8 @@ revenir_a <- function(actuel, e) {
     }
   }
   if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
+  # (le numéro d'une variable qu'Annuler retire ne reviendra pas à une autre : variables.R)
+  ancien <- numero_variable_garde(ancien, dernier_numero_variable(actuel))
   ancien$modifie <- TRUE
   suivre_conditions_seance(actuel, ancien)
   ancien
