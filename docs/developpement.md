@@ -111,6 +111,9 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/tests/essai_installation.js` | That decision with stand-in registries, then `reg.exe` itself |
 | `app/r-macos.js` | macOS: CRAN's R, brought along in `Nuée.app`, made to run from there (see [On macOS](#on-macos)) |
 | `app/tests/essai_r_macos.js` | The names of the libraries R loads once moved, and the folder `bin/R` finds for itself |
+| `app/r-installes.js` | The Rs of this computer the engine can run on instead of Nuée's own (1.1, *File › Settings…*), in the main process (`main.js`: IPC `r-etat`, `r-trouver`, `r-verifier`, `r-installer`, `r-choisir`, `r-repli`, which `preload.js` gives the page as `window.bureau.r`): found (Windows: the registry's `R-core\R` and `R64` keys, read with `reg export`, which writes UTF-16 whatever the code page, then `%ProgramFiles%\R\R-*` and `%LOCALAPPDATA%\Programs\R\R-*`; macOS: CRAN's framework, whose `bin/R` starts its Current version only, and Homebrew's; Linux: `/opt/R`), checked by running one once (`Rscript --no-init-file -e`, a minute at most: its version, 4.3 or newer, and the 13 packages the engine loads), its missing packages installed from CRAN into its user library (`R_LIBS_USER`'s first folder, made if needed), what R says sent to the window as it comes; the `RHome` policy read |
+| `app/tests/essai_r_installe.js` | r-installes.js with stand-ins: registries, folders and links of the three systems, `reg export`'s format, the policy, then stand-in Rscripts (an `Rscript.exe` compiled by the .NET Framework's `csc.exe` on Windows, a shell script elsewhere, running a Node script) too old, missing packages, saying nothing R would, never answering; given an R's folder, the same for real, and given the program, Nuée on that R end to end (see [Checks on GitHub](#checks-on-github)) |
+| `app/interface/reglages.js` | *File › Settings…* (and the macOS menu's *Settings…*): the R used by Nuée, its own or one of the computer's (`window.bureau.r`); the list, *Browse…*, the check of the one chosen and the installation of what it lacks, the line to copy; a new choice restarts the engine as *Help › Restart the R engine* does, recovery copies made first (`app.redemarrerMoteur({ copies: true })`). Also the message, once, that the R chosen couldn't start, and the R in use for About |
 | `app/interface/vues_classement.js` | The views of a tree, an LDA and a k-means (tree, pruning, rules, importance, stability, scores, coefficients, probabilities, clusters, silhouettes, choice of k), their New model fields and report parts |
 | `app/interface/vues_par_reponse.js` | One model per response's view: for a chosen term, the forest plot of every response's coefficient and interval (or a curve's edf), coloured where the corrected p is at most 0.05, the small multiples of its effect (a panel per response, 36 at most), the table with each model's N, AIC, R² and Q²; the dialog is `app.unModeleParReponse` (app.js) |
 | `app/interface/vues_carte.js` | Plots › Map and Plots › Spatial autocorrelation: the coordinates' form (R: `coordonnees`), the points on a plane with equal scales or on tiles (OpenStreetMap, IGN's map and aerial photographs: MapLibre through Plotly's `scattermap`, only when chosen; `index.html`'s Content-Security-Policy allows those two hosts and blob workers), coloured and sized by a variable or a model's result column, a white halo under each point on a background, the zoom fitted to the points (512 px per world at zoom 0), the selection under the project's id; Moran's I, the correlogram, the semivariogram and the classes' table |
@@ -166,6 +169,18 @@ cd app && npm install && npm run vendor
 Rscript moteur/serveur.R 8765 app/interface   # then open the address it prints
 npx electron app                               # or the desktop window, which starts R itself
 ```
+
+The R the desktop window starts (`app/main.js`: `rVoulu`): `RSCRIPT=<Rscript>` above all,
+whatever *File › Settings…* and the policy say (developers); then the organisation's (the policy
+`RHome` under `HKLM` or `HKCU\SOFTWARE\Policies\Nuee`, Windows only); then the one chosen in
+*File › Settings…* (`rscript` in `reglages.json`); Nuée's own otherwise (packaged, its
+`resources/R`; from the sources, `%LOCALAPPDATA%\Programs\R\R-4.6.2`, or the `PATH`'s on Linux and
+macOS). Another R starts the engine without `R_LIBS` (Nuée's packages are built for its own R)
+and, packaged, with `--no-init-file` as Nuée's own does; its `.Renviron` applies. If it isn't
+there or stops before printing `PRET`, Nuée's own starts instead (`demarrerMoteur`), and the first
+window to ask says so, once (`rSignale` in `reglages.json`, until that R starts again or the
+setting changes); a stop before `PRET` then isn't reported to the windows as the engine stopping.
+`app/r-installes.js` finds, checks and completes the others.
 
 The engine answers only requests carrying the session's token, in the cookie `nuee_<port>`.
 The desktop app draws it at each start and passes it to R as `NUEE_JETON`. Started by hand,
@@ -413,8 +428,8 @@ about unsaved projects as *File › Quit* does. A `.nuee` double-clicked in the 
 R is not brought along: a Linux R build is tied to its distribution's libraries (BLAS, ICU,
 readline…), so the application uses the system's R, found on the `PATH`, then in
 `/usr/local/bin`, `/usr/bin` and `/opt/R/<version>/bin` (`RSCRIPT=<Rscript>` picks another, for
-the build too). If R or one of the engine's packages is missing, the error at start-up says
-what to install. The `.usp` converter needs only Python's standard library: it is shipped as
+the build too; in the application, *File › Settings…* another, `/opt/R`'s listed). If R or one of
+the engine's packages is missing, the error at start-up says what to install. The `.usp` converter needs only Python's standard library: it is shipped as
 `resources/convertisseur/*.py` and run with `python3` (`PYTHON=<python>` picks another).
 `moteur/serveur.R` switches R to `C.UTF-8` when it starts without a UTF-8 locale (a launch
 from the desktop menu with no `LANG`), since the engine's files are in UTF-8.
@@ -516,7 +531,14 @@ except `verifier_references.R`, whose exported projects aren't in the repository
   then builds the program as the network share holds it (`Nuee\application`, without the
   installer, which is never run there), and runs `app/tests/essai_appli.js` and
   `app/tests/essai_parcours.js` on it; their screenshots are kept with the run
-  (`capture-windows`);
+  (`capture-windows`). Last, R 4.5.3 is installed beside it, as people have it
+  (`C:\Program Files\R\R-4.5.3`, in the registry), and `app/tests/essai_r_installe.js` uses it
+  for real: found in the registry and its folder, checked (the engine's packages missing,
+  the recommended ones there), the missing ones installed into a temporary user library and
+  checked again, then the built program started on it (*File › Settings…*'s setting): its engine
+  runs on R 4.5.3 without Nuée's library, fits a PCA through its API, and *Help › Diagnostic
+  information* says another R; then on an R that isn't there, Nuée's own R takes over and says
+  so once (about two minutes in all);
 - on Ubuntu 24.04, with Ubuntu's own R (4.3) and R packages. This job then builds the Linux
   packages, installs the `.deb` with apt, and runs `app/tests/essai_appli.js` as the runner's
   ordinary user on the installed program and on the AppImage (mounted with FUSE 2), then

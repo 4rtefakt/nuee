@@ -120,6 +120,20 @@ jobs:
         working-directory: app
         run: node tests/essai_accessibilite.js Rscript
 
+      # Another R of the computer, as people have it (File › Settings…, app/r-installes.js): R 4.5
+      # from CRAN beside C:\R, in Program Files and the registry (last: its installer makes it the
+      # registry's current R). Found, checked (the engine's packages missing), those installed into
+      # a temporary user library, then the program above run on it, and on an R that isn't there
+      # (app/tests/essai_r_installe.js).
+      - name: Un autre R de l'ordinateur
+        shell: pwsh
+        working-directory: app
+        run: |
+          $v = '4.5.3'
+          Invoke-WebRequest "https://cloud.r-project.org/bin/windows/base/old/$v/R-$v-win.exe" -OutFile "$env:RUNNER_TEMP\R-$v.exe"
+          Start-Process "$env:RUNNER_TEMP\R-$v.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES', "/DIR=C:\Program Files\R\R-$v" -Wait
+          node tests/essai_r_installe.js "C:\Program Files\R\R-$v" --neuf ../dist/Nuee/application/Nuee.exe
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:

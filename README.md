@@ -65,8 +65,8 @@ check off for everyone, what Nuée writes where and sends over the network:
    couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy &
    Security*, and confirm. Nuée then opens as any other application.
 
-R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
-neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At
+R is included, as on Windows: there is nothing else to install. An R already on the Mac is never
+changed, and used only if you choose it in *Nuée › Settings…*. Settings are kept in `~/Library/Application Support/Nuee`. At
 start-up it asks GitHub whether a newer version exists; a click in the status bar opens its
 page, whose `.dmg` replaces the application. Every change is checked on GitHub on Apple silicon
 and Intel Macs, from the `.dmg`, on a Mac without R.

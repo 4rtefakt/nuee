@@ -29,8 +29,9 @@ Sous Linux, Nuée utilise le R de l'ordinateur.
   lancer) ou Nuee-<version>-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer
   d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven",
   "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).
-Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec
-RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.
+Les projets .usp demandent python3. Pour un autre R que celui du PATH : Fichier › Réglages...
+(voir Le R utilisé par Nuée), ou lancer Nuée avec RSCRIPT=/chemin/vers/Rscript. Les réglages sont
+dans ~/.config/Nuee.
 
 Ouvrir
 ------
@@ -186,6 +187,30 @@ proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour u
 pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour
 fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle
 version au démarrage arrête la recherche.
+
+Le R utilisé par Nuée
+---------------------
+Fichier › Réglages... : Nuée calcule avec son propre R (sous Windows et macOS, R 4.6.2 avec tous
+les paquets qu'il lui faut), le choix recommandé, ou avec un R déjà installé sur l'ordinateur, en
+version 4.3 ou plus récente. La liste montre ceux que les installateurs de R mettent aux endroits
+habituels : sous Windows, ceux que connaît le registre et ceux de Program Files ou de votre
+propre dossier Programs ; sous macOS, celui du CRAN et celui de Homebrew ; sous Linux, où Nuée
+prend par défaut le R de l'ordinateur trouvé dans le PATH, ceux de /opt/R. Parcourir... en ajoute
+un autre, par son dossier.
+Nuée lance une fois le R choisi pour le vérifier : sa version, et les paquets dont le moteur a
+besoin (httpuv, jsonlite, openxlsx, haven, readxl, RSQLite et ranger, et mgcv, nlme, MASS, rpart,
+cluster et foreign, parmi les paquets recommandés de R). « Les installer » installe ceux qui
+manquent depuis le CRAN, dans la bibliothèque de l'utilisateur de ce R, créée au besoin, en
+montrant ce que dit R pendant ce temps ; ou copiez la ligne affichée et lancez-la dans ce R (R ou
+RStudio). Avec un R antérieur à 4.4, les fichiers .rds et .RData ne s'ouvrent pas ; antérieur à
+4.5, les empreintes des fichiers de données sont des MD5 et non des SHA-256 (voir Étapes des
+données et mise à jour).
+Le bouton « Utiliser ce R » redémarre le moteur avec lui, et les projets ouverts se rouvrent avec
+leurs modèles, leurs vues et leurs changements (« Au prochain démarrage » attend). Les paquets et
+le .Renviron de ce R s'appliquent, pas votre .Rprofile, pour qu'il ne change pas les résultats.
+Si le R choisi ne démarre pas (supprimé, abîmé), Nuée calcule avec son propre R et le dit une
+fois. Une organisation peut choisir le R de tous ; les Réglages le montrent alors, sans le
+changer. Aide › Informations de diagnostic et Aide › À propos disent quel R est utilisé.
 
 L'explorateur (à gauche)
 ------------------------

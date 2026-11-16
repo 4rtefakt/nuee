@@ -795,3 +795,32 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .invites-compte { margin: 0; padding: 0; list-style: none; }
 .invites-compte li { display: flex; align-items: center; gap: 6px; color: var(--ok); }
 .actions-compte { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* File › Settings…, the R Nuée uses (reglages.js): the Rs to choose from, the one chosen checked,
+   the line installing its missing packages to copy, what R says while it installs them */
+.dialogue-r { display: flex; flex-direction: column; gap: 6px; }
+.dialogue-r h3 { margin: 2px 0; font-size: 13px; }
+.dialogue-r p { margin: 2px 0; }
+.liste-r { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; }
+.entree-r { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--grille); border-radius: 6px; cursor: pointer; }
+.entree-r:hover { background: var(--survol); }
+.entree-r:has(input:checked) { border-color: var(--accent); }
+.entree-r.desactivee { cursor: default; }
+.entree-r.desactivee .nom-r b { color: var(--texte-doux); }
+.nom-r { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.nom-r .doux { font-size: 11.5px; overflow-wrap: anywhere; }
+.etiquette-r { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--accent-doux); color: var(--accent); }
+.etiquette-r.alerte { background: none; color: var(--attention); border: 1px solid var(--attention); }
+.resultat-r { padding: 6px 8px; border-radius: 6px; background: var(--fond-barre); border: 1px solid var(--bord); }
+.resultat-r:empty { display: none; }
+.etat-r { display: flex; align-items: flex-start; gap: 6px; }
+.etat-r .icone { margin-top: 1px; }
+.etat-r.ok { color: var(--ok); }
+.etat-r.alerte { color: var(--attention); }
+.ligne-r { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.ligne-r > span { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+.ligne-r code { flex: 1 1 24em; min-width: 0; padding: 4px 6px; background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
+  font: 11.5px Consolas, 'Cascadia Mono', monospace; overflow-wrap: anywhere; user-select: all; }
+.sortie-r { margin: 4px 0 0; max-height: 12em; overflow: auto; padding: 6px 8px; background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
+  font: 11px Consolas, 'Cascadia Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sortie-r:empty { display: none; }

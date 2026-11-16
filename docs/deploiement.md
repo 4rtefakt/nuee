@@ -2,15 +2,17 @@
 
 For IT departments installing Nuée on several Windows computers: how to install it silently,
 the settings for Intune, Configuration Manager, Group Policy and other deployment tools, how to
-turn off its update check, what it writes where (the versions it keeps beside projects included),
-what it sends over the network and through which proxy, and how to let users sign in to your own
-GitLab. Macs and Linux computers: see [macOS](#macos) and [Linux](#linux) at the end.
+turn off its update check, how to have it use your institution's R, what it writes where (the
+versions it keeps beside projects included), what it sends over the network and through which
+proxy, and how to let users sign in to your own GitLab. Macs and Linux computers: see
+[macOS](#macos) and [Linux](#linux) at the end.
 
 ## What gets installed
 
 Nuée is a desktop application (Electron) with its own R (4.6.2) and the R packages it needs, in
-one folder. An R already installed on the computer is neither used nor changed. Windows 10 or 11,
-64-bit. A per-user installation needs no administrator rights.
+one folder. An R already installed on the computer is never changed, and used only when a user
+chooses it, or you do for everyone: see [R and the users' own R](#r-and-the-users-own-r). Windows
+10 or 11, 64-bit. A per-user installation needs no administrator rights.
 
 ## Installing
 
@@ -63,7 +65,8 @@ reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableUpdateCheck /t REG_DWORD /d 1 /f
 Any tool that writes registry values can set it: see [Deployment tools](#deployment-tools) for
 Intune and Group Policy. Nuée reads the registry's 64-bit view, hence `/reg:64` for a tool that
 runs as a 32-bit process. The same value under `HKCU\SOFTWARE\Policies\Nuee` applies to one user.
-When both exist, the computer's value wins.
+When both exist, the computer's value wins. The same key holds the other policy, `RHome`, the R
+every user's engine runs on: see [R and the users' own R](#r-and-the-users-own-r).
 
 ## Deployment tools
 
@@ -114,6 +117,10 @@ As a *Windows app (Win32)*:
    New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Nuee' -Name DisableUpdateCheck -PropertyType DWord -Value 1 -Force | Out-Null
    ```
 
+   Your institution's R for everyone ([R and the users' own R](#r-and-the-users-own-r)) is one
+   more line in the same script:
+   `New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Nuee' -Name RHome -PropertyType String -Value 'C:\Program Files\R\R-4.5.2' -Force | Out-Null`.
+
 ### Configuration Manager (SCCM, MECM)
 
 An application with a *Script Installer* deployment type:
@@ -128,7 +135,7 @@ An application with a *Script Installer* deployment type:
   not a user is logged on*; installation program visibility *Hidden*.
 - **A new version** supersedes the previous one without uninstalling it (*Uninstall* unticked).
 - **The update check:** the Group Policy preference below, or a configuration item that sets
-  `DisableUpdateCheck`.
+  `DisableUpdateCheck` (and `RHome`, for your institution's R).
 
 ### Group Policy
 
@@ -146,7 +153,9 @@ if errorlevel 1 "\\server\share\Nuee-Setup-1.1.0.exe" /S /allusers
 
 To turn the update check off: *Computer Configuration › Preferences › Windows Settings ›
 Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, key path
-`SOFTWARE\Policies\Nuee`, value name `DisableUpdateCheck`, type `REG_DWORD`, value `1`.
+`SOFTWARE\Policies\Nuee`, value name `DisableUpdateCheck`, type `REG_DWORD`, value `1`. Your
+institution's R for everyone is another item there: value name `RHome`, type `REG_SZ`, the R's
+folder as its value.
 
 ### PDQ Deploy and other tools
 
@@ -159,9 +168,11 @@ Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, 
 ## Network and privacy
 
 - Nuée sends nothing anywhere except the update check above, when it is on; the map tiles of a
-  background map, when a user chooses one (OpenStreetMap, IGN); and, for a project a user shares
-  on GitHub or GitLab (from 1.1), its versions, to that repository. There is no telemetry, no
-  usage statistics, no crash report, no account of Nuée's own and no licence server.
+  background map, when a user chooses one (OpenStreetMap, IGN); for a project a user shares
+  on GitHub or GitLab (from 1.1), its versions, to that repository; and, when a user has Nuée use
+  another R and asks it to install the packages that R lacks (from 1.1), their download from CRAN
+  (`cloud.r-project.org`), made by that R itself. There is no telemetry, no usage statistics, no
+  crash report, no account of Nuée's own and no licence server.
 - All of it goes through the system's proxy settings and certificates, as Chrome does: see
   [Proxies and certificates](#proxies-and-certificates).
 - Data stay on the computer. Projects are files saved wherever users choose.
@@ -196,6 +207,8 @@ stored sign-in (`git credential fill`), which follows git's own settings.
 | Projects' versions (1.1) | A hidden folder beside the projects, `.nuee-versions`: see [The versions folder](#the-versions-folder) |
 | Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
 | Sign-ins and tokens for GitHub and GitLab, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
+| The R a user chose in *File › Settings…* (1.1) | `%APPDATA%\Nuee\reglages.json` |
+| Packages installed for that R, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |
 
 ## Projects on network folders
 
@@ -267,10 +280,52 @@ between sessions.
 
 ## R and the users' own R
 
-An installed copy ignores the user's `.Rprofile` and loads the packages that come with Nuée
-first. This means a personal R setup can't change the engine's results. Packages from the user's
-own R library (same R version) can still be loaded in Nuée's R console, for example
+Nuée computes with its own R (4.6.2), which comes with it, with every package the engine needs. An
+installed copy ignores the user's `.Rprofile` and loads the packages that come with Nuée first,
+so a personal R setup can't change the engine's results. Packages from the user's own R library
+for the same R version (4.6) can still be loaded in Nuée's R console, for example
 `library(vegan)`.
+
+From 1.1, users can have Nuée use an R already installed on the computer instead, in *File ›
+Settings…*:
+
+- **Which:** R 4.3 or newer. Nuée lists those in the registry (`HKLM` and `HKCU`,
+  `SOFTWARE\R-core\R` and `R64`, a key per version with its `InstallPath`), in
+  `%ProgramFiles%\R\R-*` and in `%LOCALAPPDATA%\Programs\R\R-*`; *Browse…* takes any other R
+  folder. With an R older than 4.4, `.rds` and `.RData` files don't open (reading one could run
+  code); older than 4.5, the fingerprints Nuée keeps of data files are MD5 rather than SHA-256.
+- **Checked first:** Nuée runs that R once (`Rscript --no-init-file`, a minute at most) for its
+  version and the packages the engine needs: `httpuv`, `jsonlite`, `openxlsx`, `haven`,
+  `readxl`, `RSQLite` and `ranger`, and the recommended `mgcv`, `nlme`, `MASS`, `rpart`,
+  `cluster` and `foreign`, which come with R on Windows. Those missing are installed when the
+  user asks, from CRAN (`https://cloud.r-project.org`) into that R's user library, by that R
+  itself and with its own download settings (a proxy goes in its `etc\Renviron.site` or the
+  user's `.Renviron`, as for any `install.packages`); or the user runs the line Nuée shows in
+  that R.
+- **Then:** the engine runs on that R with its own libraries only (Nuée's packages are built for
+  R 4.6 and stay out), still without the user's `.Rprofile`; the `.Renviron` files apply. If that
+  R is no longer there or stops before the engine is ready, Nuée starts its own R instead and
+  tells the user once.
+
+To point every user to your institution's R, set the policy value `RHome` (`REG_SZ`: the R's
+folder, or its `bin\x64\Rscript.exe`) in the same key as `DisableUpdateCheck`:
+
+```
+reg add "HKLM\SOFTWARE\Policies\Nuee" /v RHome /t REG_SZ /d "C:\Program Files\R\R-4.5.2" /f /reg:64
+```
+
+Nuée then uses that R, and *File › Settings…* shows it as set by your organisation, without a
+choice. As with `DisableUpdateCheck`, the computer's value (`HKLM`) wins over the user's (`HKCU`),
+any deployment tool can set it (see [Deployment tools](#deployment-tools)), and a `REG_EXPAND_SZ`
+works too, its `%variables%` replaced. Put the engine's packages in that R's own library, so that
+every user has them (run as administrator; the recommended ones are already there):
+
+```
+"C:\Program Files\R\R-4.5.2\bin\Rscript.exe" -e "install.packages(c('httpuv', 'jsonlite', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'ranger'), lib = .Library, repos = 'https://cloud.r-project.org')"
+```
+
+Otherwise each user installs those missing into their own library, from *File › Settings…*.
+*Help › Diagnostic information* says which R is in use: Nuée's own, another, or the organisation's.
 
 ## Opening files from elsewhere
 
@@ -296,9 +351,10 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
   deployment tool: `Nuee-<version>-arm64.dmg` for Apple silicon (macOS 14 or later),
   `Nuee-<version>-x64.dmg` for Intel (macOS 13 or later). Deleting `Nuée.app` uninstalls it.
 - **R:** brought along in `Nuée.app`, as on Windows (CRAN's R 4.6.2 with the packages Nuée
-  needs); an R already on the Mac is neither used nor changed. The user's `.Rprofile` is
-  ignored, and the packages that come with Nuée are found before those of the user's own
-  library.
+  needs); an R already on the Mac is never changed, and used only when a user chooses it in
+  *Nuée › Settings…* (CRAN's in `/Library/Frameworks/R.framework`, Homebrew's, or another), checked
+  as on Windows. The user's `.Rprofile` is ignored, and the packages that come with Nuée are found
+  before those of the user's own library. There is no system-wide policy for it on macOS.
 - **Gatekeeper:** the application is signed ad hoc, not with an Apple Developer ID, and isn't
   notarized. A copy downloaded with a browser is quarantined, and macOS asks once to allow it
   (*System Settings › Privacy & Security › Open Anyway*). A copy put in place by a deployment
@@ -325,7 +381,8 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
 - **R:** the computer's R and its packages (only the Windows and macOS builds bring their own
   R). As in R
   itself, packages in a user's own library come before the system's; the user's `.Rprofile`
-  is ignored.
+  is ignored. A user can choose another R in *File › Settings…* (Posit's builds in `/opt/R`, or
+  any other), checked as on Windows.
 - **Updates:** the same check as on Windows, but a click only opens the release's page; the
   new `.deb` installs over the old one. Users can turn the check off in *Help*; there is no
   system-wide policy on Linux.
@@ -336,5 +393,5 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
 
 ## Reporting a problem
 
-*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, to
-paste into a report. It includes no paths and nothing personal.
+*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, and
+which R is in use, to paste into a report. It includes no paths and nothing personal.

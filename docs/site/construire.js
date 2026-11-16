@@ -50,9 +50,9 @@ const TEXTES = {
 // guide has the same sections in the same order). A section the guide gains must be given a page.
 const PAGES_GUIDE = [
   { id: 'demarrer', slug: { fr: 'demarrer', en: 'getting-started' }, titre: { fr: 'Démarrer', en: 'Getting started' },
-    resume: { fr: 'Installer, ouvrir un tableau, enregistrer et retrouver son travail, l’explorateur, les menus, les fenêtres.',
-      en: 'Installing, opening a table, saving and getting your work back, the explorer, the menus, the windows.' },
-    sections: ['Getting started', 'Opening', 'Saving and getting your work back', 'If the R engine stops', 'The explorer (on the left)', 'Menus and toolbar', 'Windows'] },
+    resume: { fr: 'Installer, ouvrir un tableau, enregistrer et retrouver son travail, le R utilisé par Nuée, l’explorateur, les menus, les fenêtres.',
+      en: 'Installing, opening a table, saving and getting your work back, the R Nuée uses, the explorer, the menus, the windows.' },
+    sections: ['Getting started', 'Opening', 'Saving and getting your work back', 'If the R engine stops', 'R used by Nuée', 'The explorer (on the left)', 'Menus and toolbar', 'Windows'] },
   { id: 'donnees', slug: { fr: 'donnees', en: 'data' }, titre: { fr: 'Les données', en: 'The data' },
     resume: { fr: 'Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, les étapes des données et leur mise à jour, résumer par groupe, les dates.',
       en: 'Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, data steps and updating the data, summarizing by group, dates.' },

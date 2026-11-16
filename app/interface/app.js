@@ -36,6 +36,7 @@ import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
 import { installerEtapes } from './etapes.js';
+import { installerReglages } from './reglages.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
@@ -586,8 +587,15 @@ const app = {
   // A new R engine (after it stopped, or on request): the projects reopen with the session they
   // had: from their recovery copy when they had unsaved changes, otherwise from the file they
   // are saved to (or, never saved, the file they came from). Those with neither are named.
-  async redemarrerMoteur() {
+  // copies (another R chosen in File › Settings…, the engine answering): recovery copies made
+  // first, so that the changes since the last ones reopen too. Afterwards, if the R chosen didn't
+  // start and Nuée's own took over, the window says so (reglages.js).
+  async redemarrerMoteur({ copies = false } = {}) {
     if (!bureau) { statut(t('moteur_navigateur'), true); return; }
+    if (copies) {
+      statut(t('moteur_redemarrage'));
+      await sauvegarderSecours();
+    }
     const aRouvrir = [];
     const perdus = [];
     for (const p of Object.values(etat.projets)) {
@@ -626,6 +634,7 @@ const app = {
     diffuser('modeles');
     statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
     if (n) sauvegarderSecours();  // the reopened projects get copies of their own at once
+    app.signalerRepliR();
   },
   confirmerRedemarrage() {
     dialogue({ titre: t('redemarrer_moteur'), contenu: el('p', {}, t('redemarrer_confirmation')),
@@ -665,10 +674,14 @@ const app = {
   async diagnostic() {
     const v = await app.version();
     const d = bureau && bureau.diagnostic ? await bureau.diagnostic() : { systeme: navigator.userAgent };
+    // (which R, File › Settings…; not where it is)
+    const quelR = d.r && { nuee: /^linux/.test(d.systeme) ? 'the computer’s (PATH)' : 'Nuée’s own', autre: 'another R of this computer (File › Settings)',
+      organisation: 'another R of this computer (set by the organisation’s policy)', rscript: 'RSCRIPT' }[d.r.type];
     const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
       `System: ${d.systeme}`,
       d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
       `${v.R}, ${v.plateforme}, ${v.systeme}`,
+      quelR ? `R used: ${quelR}${d.r.repli ? ` (the R ${d.r.repli === 'organisation' ? 'set by the organisation' : 'chosen in Settings'} couldn’t start)` : ''}` : null,
       `R locale: ${v.locale}`,
       `R packages: ${Object.entries(v.paquets).map(([k, x]) => `${k} ${x}`).join(', ')}`,
       `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');
@@ -1056,6 +1069,7 @@ installerFigures(app);  // (the figures for publication: their view, app.compose
 installerVersions(app);  // (File › History and What changed: their views, sharing, the status bar's clock...)
 const C = creerCommandes(app);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
+installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
 
 // ------------------------------------------------------------ state helpers
 
@@ -2193,6 +2207,7 @@ async function demarrerPrincipal() {
   if (ID_FENETRE === 'principale') {
     quoiDeNeuf();
     proposerRecuperation();
+    app.signalerRepliR();
   }
   if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app

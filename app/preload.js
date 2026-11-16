@@ -14,6 +14,9 @@ const compte = (nom, ...args) => ipcRenderer.invoke(`comptes-${nom}`, ...args).t
   if ('erreur' in r) return Promise.reject({ name: 'Error', message: r.erreur, code: r.code || null });
   return r.valeur;
 });
+// what R says while it installs packages, for the window that asked (one installation at a time)
+let surInstallation = null;
+ipcRenderer.on('r-installation', (_, texte) => { if (surInstallation) surInstallation(texte); });
 
 contextBridge.exposeInMainWorld('bureau', {
   versions: {
@@ -99,6 +102,20 @@ contextBridge.exposeInMainWorld('bureau', {
   secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
   surMoteurArrete: (f) => ipcRenderer.on('moteur-arrete', (_, journal) => f(journal)),
   redemarrerMoteur: () => ipcRenderer.invoke('redemarrer-moteur'),
+  // File › Settings…: the R the engine runs on, Nuée's own or another R of this computer (main.js,
+  // r-installes.js); `chemin`, an R's folder or its Rscript. surReglages: the macOS menu's Settings…
+  r: {
+    etat: () => ipcRenderer.invoke('r-etat'),
+    trouver: () => ipcRenderer.invoke('r-trouver'),
+    verifier: (chemin) => ipcRenderer.invoke('r-verifier', chemin),
+    installer: (chemin, paquets, surTexte) => {
+      surInstallation = typeof surTexte === 'function' ? surTexte : null;
+      return ipcRenderer.invoke('r-installer', chemin, paquets).finally(() => { surInstallation = null; });
+    },
+    choisir: (chemin) => ipcRenderer.invoke('r-choisir', chemin || null),
+    repli: () => ipcRenderer.invoke('r-repli'),
+  },
+  surReglages: (f) => ipcRenderer.on('ouvrir-reglages', () => f()),
   nouvelleVersion: (maintenant) => ipcRenderer.invoke('nouvelle-version', maintenant),
   diagnostic: () => ipcRenderer.invoke('diagnostic'),
   majAuto: (oui) => ipcRenderer.invoke('maj-auto', oui),

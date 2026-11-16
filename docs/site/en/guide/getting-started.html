@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Getting started · Nuée</title>
-<meta name="description" content="Installing, opening a table, saving and getting your work back, the explorer, the menus, the windows.">
+<meta name="description" content="Installing, opening a table, saving and getting your work back, the R Nuée uses, the explorer, the menus, the windows.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -62,6 +62,7 @@
 <li><a href="#opening">Opening</a></li>
 <li><a href="#saving-and-getting-your-work-back">Saving and getting your work back</a></li>
 <li><a href="#if-the-r-engine-stops">If the R engine stops</a></li>
+<li><a href="#r-used-by-nuee">R used by Nuée</a></li>
 <li><a href="#the-explorer">The explorer</a></li>
 <li><a href="#menus-and-toolbar">Menus and toolbar</a></li>
 <li><a href="#windows">Windows</a></li>
@@ -79,7 +80,7 @@
 <li><strong>Debian, Ubuntu and their derivatives:</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb also installs R and the R packages needed. Nuée appears in the applications menu.</li>
 <li><strong>Other distributions:</strong> Nuee-&lt;version&gt;-x86_64.AppImage (make it executable, then run it) or Nuee-&lt;version&gt;-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R: install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).</li>
 </ul>
-<p>.usp projects need python3. For another R than the PATH's: start Nuée with RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.</p>
+<p>.usp projects need python3. For another R than the PATH's: File › Settings... (see <a href="#r-used-by-nuee">R used by Nuée</a>), or start Nuée with RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.</p>
 </section>
 <section id="opening">
 <h2>Opening</h2>
@@ -119,6 +120,12 @@ GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)</pre>
 <h2>If the R engine stops</h2>
 <p>The application says so and offers to restart it; you can also do it yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and views, from their recovery copy if they had changes, otherwise from the file they save to; changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when the engine no longer answers keeps the recovery copies, offered at the next start. After a minute of computing, the status bar says so.</p>
 <p><strong>Help › What's new:</strong> the changes in each version (shown once after an update). The installed copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar; on macOS and Linux, a click opens the version's page. On Windows, one click offers to update: the installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then Nuée closes (offering to save the projects you changed), installs it and starts again. For an installation for all users, Windows asks for permission. Help › Check for updates does the same at any time, even with the start-up check off; Help › Look for a new version at start-up turns the check off.</p>
+</section>
+<section id="r-used-by-nuee">
+<h2>R used by Nuée</h2>
+<p><strong>File › Settings...:</strong> Nuée computes with its own R (on Windows and macOS, R 4.6.2 with every package it needs), the recommended choice, or with an R already installed on the computer, R 4.3 or newer. The list shows those that R's installers put in the usual places: on Windows, those the registry knows and those in Program Files or in your own Programs folder; on macOS, CRAN's and Homebrew's; on Linux, where Nuée's default is the computer's R found on the PATH, those in /opt/R. Browse... adds any other, by its folder.</p>
+<p>Nuée runs the R chosen once to check it: its version, and the packages the engine needs (httpuv, jsonlite, openxlsx, haven, readxl, RSQLite and ranger, and R's recommended mgcv, nlme, MASS, rpart, cluster and foreign). "Install them" installs those missing from CRAN into that R's user library, made if needed, and shows what R says meanwhile; or copy the line shown and run it in that R (R or RStudio). With an R older than 4.4, .rds and .RData files don't open; older than 4.5, data files are fingerprinted with MD5 rather than SHA-256 (see <a href="data.html#data-steps-and-updating-the-data">Data steps and updating the data</a>).</p>
+<p>"Use this R" restarts the engine with it, and open projects reopen with their models, views and changes ("At the next start" waits). That R's packages and .Renviron apply, not your .Rprofile, so that it can't change the results. If the R chosen doesn't start (removed, broken), Nuée computes with its own R and says so once. An organisation can set everyone's R; Settings then shows it, and doesn't change it. Help › Diagnostic information and Help › About say which R is in use.</p>
 </section>
 <section id="the-explorer">
 <h2>The explorer (on the left)</h2>
