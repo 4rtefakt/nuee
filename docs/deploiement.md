@@ -108,7 +108,8 @@ plugin). A plugin is R code that runs with the user's rights: Nuée shows its ma
 before installing it, and installing it approves it, as running a project's R code does (its
 SHA-256 joins the fingerprints the user approved: [Opening files from elsewhere](#opening-files-from-elsewhere)).
 The R packages a plugin needs can be installed from that dialog into the user library of the R
-Nuée uses ([R and the users' own R](#r-and-the-users-own-r)).
+Nuée uses, its own or another: downloaded from CRAN by that R itself, with R's own download
+settings ([R and the users' own R](#r-and-the-users-own-r)).
 
 To give plugins to everyone, put them in a folder the computers can read, one folder per plugin
 (the folder of a `.nueeplugin`, unzipped: `plugin.json` and its R files), and set the policy value
@@ -234,12 +235,17 @@ of the plugins as its value.
 
 - Nuée sends nothing anywhere except the update check above, when it is on; the map tiles of a
   background map, when a user chooses one (OpenStreetMap, IGN); for a project a user shares
-  on GitHub or GitLab (from 1.1), its versions, to that repository; and, when a user has Nuée use
-  another R and asks it to install the packages that R lacks (from 1.1), their download from CRAN
-  (`cloud.r-project.org`), made by that R itself. There is no telemetry, no usage statistics, no
-  crash report, no account of Nuée's own and no licence server.
-- All of it goes through the system's proxy settings and certificates, as Chrome does: see
-  [Proxies and certificates](#proxies-and-certificates).
+  on GitHub or GitLab (from 1.1), its versions, to that repository; on Windows and Linux, the
+  spell-checking dictionaries of French, English and the system's language, downloaded once from
+  Google's servers (`redirector.gvt1.com`), as Chrome downloads its own (macOS has its own
+  spell-checker; where they can't be downloaded, documents are simply not spell-checked); and,
+  when a user asks Nuée to install R packages (from 1.1) — those another R lacks (*File ›
+  Settings…*), or those a plugin needs (*File › Plugins…*), into Nuée's own R as into another —,
+  their download from CRAN (`cloud.r-project.org`), made by that R itself. There is no telemetry,
+  no usage statistics, no crash report, no account of Nuée's own and no licence server.
+- All of it goes through the system's proxy settings and certificates, as Chrome does (see
+  [Proxies and certificates](#proxies-and-certificates)), except the downloads from CRAN, which R
+  makes with its own settings (see [R and the users' own R](#r-and-the-users-own-r)).
 - Data stay on the computer. Projects are files saved wherever users choose.
 - The calculations run in a local R process. It serves the interface on `127.0.0.1` only (port
   47863, or another free one), so no firewall rule is needed. It answers only Nuée's own windows:
@@ -257,7 +263,8 @@ computer, as in Chrome or Edge. The hosts are `github.com`, `api.github.com` and
 `avatars.githubusercontent.com` (the account's picture) for GitHub; `gitlab.com`, or your own
 GitLab's host. The page where users approve Nuée opens in their default browser. *Use this
 computer's git sign-in*, in the sign-in dialog, asks the git installed on the computer for its
-stored sign-in (`git credential fill`), which follows git's own settings.
+stored sign-in (`git credential fill`), which follows git's own settings. The spell-checking
+dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
 
 ## What Nuée writes where
 
