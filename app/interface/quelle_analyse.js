@@ -45,6 +45,8 @@ function faitsTexte(f) {
   else if (f.min === null) return t('qa_faits_inconnus');
   else {
     morceaux.push(t('qa_faits_bornes', { min: nombre(f.min), max: nombre(f.max) }), t(f.entiers ? 'qa_faits_entiers' : 'qa_faits_decimales'));
+    // (whole numbers that their unit or name says are a measurement, not counts: choix_analyse.js, genre)
+    if (f.entiers && f.min >= 0 && f.max > 1 && genre(f) === 'mesure') morceaux.push(t('qa_faits_mesure_arrondie'));
     if (f.zeros > 0) {
       const poisson = genre(f) === 'comptage' ? zerosPoisson(f) : null;
       morceaux.push(t('qa_faits_zeros', { p: pourcent(f.zeros) }) + (poisson !== null ? ` (${t('qa_faits_poisson', { q: pourcent(poisson) })})` : ''));
