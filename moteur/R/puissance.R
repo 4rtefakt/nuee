@@ -87,7 +87,7 @@ pente_puissance <- function(tendance, unite, transformation) {
   if (identical(unite, "pourcent")) {
     if (is.null(base)) stop(traduire("Une tendance en % par an demande une réponse en log10 ou en ln (Nouveau modèle › Variables).",
                                      "A trend in % per year needs a log10 or ln response (New model › Variables)."), call. = FALSE)
-    if (!(tendance > -100)) stop(traduire("Une baisse de 100 % ou plus n'a pas de logarithme.", "A decline of 100 % or more has no logarithm."), call. = FALSE)
+    if (!(tendance > -100)) stop(traduire("Une baisse de 100 % ou plus n'a pas de logarithme.", "A decline of 100% or more has no logarithm."), call. = FALSE)
     return(list(pente = if (base$type == "log10") log10(1 + tendance / 100) else log(1 + tendance / 100), approchee = base$decalage != 0))
   }
   list(pente = tendance, approchee = FALSE)

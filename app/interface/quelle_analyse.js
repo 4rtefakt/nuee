@@ -269,13 +269,14 @@ export async function dialogueQuelleAnalyse(app, projet) {
     }
     const b = construire(r.choix, R, F, p(), c, { langue: langueActuelle() });
     const autres = r.autres.map((id) => construire(id, R, F, p(), c, { langue: langueActuelle() }));
-    droite.replaceChildren(el('h3', {}, t('qa_recommandee')),
+    // (without alternatives, their heading and list are left out: replaceChildren would write a null as "null")
+    droite.replaceChildren(...[el('h3', {}, t('qa_recommandee')),
       el('div', { class: 'qa-carte' }, el('h4', {}, nomAnalyse(b)), ...details(b, c), el('div', { class: 'qa-ouvrir' }, bouton(b, true))),
       autres.length ? el('h3', {}, t('qa_autres')) : null,
       autres.length ? el('div', { class: 'qa-autres' }, autres.map((a) => el('details', {},
         el('summary', {}, el('span', { class: 'qa-nom' }, nomAnalyse(a)), el('span', { class: 'espace' }), bouton(a, false)),
         el('div', { class: 'qa-detail' }, ...details(a, c))))) : null,
-      el('p', { class: 'note' }, t('qa_conseil')));
+      el('p', { class: 'note' }, t('qa_conseil'))].filter(Boolean));
   }
   function maj(structure) {
     if (structure) rendreGauche();

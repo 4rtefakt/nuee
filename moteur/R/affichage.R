@@ -34,7 +34,7 @@ print.modele_nuee <- function(x, lignes = 25, ...) {
     section(traduire("Classement (part bien classée)", "Classification (share correctly classified)"))
     cl <- s$classification
     tableau(data.frame(classe = cl$ajuste$classes, ajuste = unname(cl$ajuste$correct), validation_croisee = unname(cl$vc$correct)))
-    cat(sprintf(traduire("Ensemble : %.1f %% (ajusté), %.1f %% (validation croisée)\n", "Overall: %.1f %% (fitted), %.1f %% (cross-validation)\n"),
+    cat(sprintf(traduire("Ensemble : %.1f %% (ajusté), %.1f %% (validation croisée)\n", "Overall: %.1f%% (fitted), %.1f%% (cross-validation)\n"),
                 100 * cl$ajuste$global, 100 * cl$vc$global))
   }
   if (!is.null(x$test)) {

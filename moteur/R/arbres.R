@@ -157,8 +157,8 @@ groupes_texte <- function(vc_par, G, fr) {
   else sprintf(if (fr) "en %d groupes" else "in %d groups", G)
 }
 
-# Un pourcentage pour la ligne d'un modèle dans l'explorateur.
-fmt_pourcent <- function(x) if (is.na(x)) "—" else sprintf("%.0f %%", 100 * x)
+# Un pourcentage pour la ligne d'un modèle dans l'explorateur : « 85 % » en français, « 85% » en anglais.
+fmt_pourcent <- function(x, fr = !identical(getOption("nuee.langue"), "en")) if (is.na(x)) "—" else sprintf(if (fr) "%.0f %%" else "%.0f%%", 100 * x)
 # Une valeur p pour cette ligne, à deux chiffres significatifs (virgule décimale en français).
 p_explorateur <- function(p, fr = TRUE) if (is.na(p)) "—" else sub(".", if (fr) "," else ".", format(signif(p, 2)), fixed = TRUE)
 
