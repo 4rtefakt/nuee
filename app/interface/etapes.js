@@ -47,11 +47,13 @@ function noterSource(app, pid, r) {
   return e;
 }
 
-// (not an old version opened read-only, versions.js: its source is the project's, said there)
+// Only a project made from a file (a_source), not an old version opened read-only (versions.js: its
+// source is the project's, said there), and without asking whether its data are still those of its
+// steps (conformes: false), which would read them all.
 async function verifierSource(app, pid) {
   const p = app.projet(pid);
-  if (!p || p.lecture_seule) return;
-  try { noterSource(app, pid, await demander('etapes', { projet: pid }, { silencieux: true })); } catch { /* asked again when the window comes back */ }
+  if (!p || p.lecture_seule || !p.a_source) return;
+  try { noterSource(app, pid, await demander('etapes', { projet: pid, conformes: false }, { silencieux: true })); } catch { /* asked again when the window comes back */ }
 }
 
 // The window back in front: each open project's source asked again, at most every ten seconds (a
@@ -117,8 +119,8 @@ const confirmer = (titre, texte, note, bouton) => new Promise((resolve) => {
 
 // ------------------------------------------------------------ Data steps
 
-// The project's source and its steps: each with its label, date and the files it read, and Remove,
-// whose preview comes first (dialogueRetrait).
+// The project's source and its steps: each with its label (written by the engine in the reader's
+// language), its date and the files it read, and Remove, whose preview comes first (dialogueRetrait).
 async function dialogueEtapes(app, pid) {
   const p = app.projet(pid);
   if (!p) { app.statut(t('choisir_projet'), true); return; }
@@ -147,8 +149,9 @@ async function dialogueEtapes(app, pid) {
         el('thead', {}, el('tr', {}, ['', t('etapes_col_etape'), t('etapes_col_date'), t('etapes_col_fichiers'), ''].map((h) => el('th', {}, h)))),
         el('tbody', {}, etapes.map((e) => el('tr', {},
           el('td', { class: 'num doux' }, String(e.n)),
-          el('td', {}, el('span', { class: 'ligne etape' }, icone(ICONES_ETAPES[e.demande] || 'pencil'), el('span', {}, e.etiquette || genreEtape(e.demande)),
-            e.etiquette ? el('span', { class: 'doux' }, genreEtape(e.demande)) : null)),
+          // (the kind of step on its icon, for the mouse and screen readers)
+          el('td', {}, el('span', { class: 'ligne etape' }, el('span', { class: 'genre-etape', title: genreEtape(e.demande), role: 'img', 'aria-label': genreEtape(e.demande) },
+            icone(ICONES_ETAPES[e.demande] || 'pencil')), el('span', {}, e.etiquette || genreEtape(e.demande)))),
           el('td', { class: 'doux' }, dateLisible(e.date)),
           el('td', {}, liste(e.fichiers).map((f) => el('span', { class: 'fichier-etape', title: f.trouve || f.chemin }, nomFichier(f.chemin), ' ', badgeEtat(etatSource(f).etat)))),
           el('td', {}, el('button', { title: t('etapes_retirer_aide'), onclick: () => retirer(e) }, icone('trash-2'), t('retirer')))))))) : el('p', { class: 'note' }, t('etapes_aucune')),

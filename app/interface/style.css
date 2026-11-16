@@ -556,8 +556,6 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .tableau.liste-etapes { width: 100%; }
 .liste-etapes td:last-child { text-align: right; }
 .liste-etapes .etape { gap: 6px; }
-.liste-etapes .etape > .icone { color: var(--accent); }
-.liste-etapes .etape .doux { font-size: 11.5px; }
 .liste-etapes th { cursor: default; }
 .fichier-etape { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
 .etape-retiree { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; }
