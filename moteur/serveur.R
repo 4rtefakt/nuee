@@ -1410,10 +1410,11 @@ DEMANDES <- list(
     e <- modele(q$modele)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
     avant <- e$modele$puissance_tendance
-    r <- if (!length(setdiff(names(q), "modele")) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
-         else puissance_tendance(e$modele, e$definition, q, avant)
+    reglages <- q[intersect(names(q), REGLAGES_PUISSANCE)]  # (ses seuls champs qui sont des réglages)
+    r <- if (!length(reglages) && !is.null(avant)) utils::modifyList(avant, list(phrase = phrase_puissance(avant)))
+         else puissance_tendance(e$modele, e$definition, reglages, avant)
     etat$modeles[[q$modele]]$modele$puissance_tendance <- r
-    choisis <- length(setdiff(names(q), "modele")) > 0
+    choisis <- length(reglages) > 0
     if (choisis || is.null(e$definition$puissance_tendance)) garder_avec_definition(q$modele, "puissance_tendance", r[c("reglages", "simulation")], choisis)
     c(list(modele = q$modele), r)
   },
@@ -1424,7 +1425,7 @@ DEMANDES <- list(
   moyennes = function(q) {
     e <- modele(q$modele, TRUE)
     if (!est_regression(e$definition)) stop(traduire("Seulement pour une régression.", "Only for a regression."))
-    reglages <- q[setdiff(names(q), "modele")]
+    reglages <- q[intersect(names(q), REGLAGES_MOYENNES)]  # (ses seuls champs qui sont des réglages)
     r <- moyennes_ajustees(projet(e$projet), e$modele, e$definition, if (length(reglages)) reglages else e$modele$moyennes$reglages %||% list())
     etat$modeles[[q$modele]]$modele$moyennes <- r
     if (length(reglages) || is.null(e$definition$moyennes)) garder_avec_definition(q$modele, "moyennes", r$reglages, length(reglages) > 0)

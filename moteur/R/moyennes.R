@@ -79,6 +79,9 @@ pentes_avec <- function(m, u) {
 # rien), la variable quantitative dont donner la pente dans chaque catégorie (`pente`, croisée avec
 # elle, ou rien : les moyennes), l'ajustement des paires (`ajustement` : "tukey", "holm" ou "aucun")
 # et l'échelle d'un modèle au lien log ou logit (`echelle` : "reponse" ou "lien").
+# Les réglages d'une demande des moyennes ajustées (serveur.R : moyennes) : ses autres champs n'en
+# sont pas (un champ en trop ferait oublier les réglages gardés avec le modèle).
+REGLAGES_MOYENNES <- c("facteur", "dans", "pente", "ajustement", "echelle")
 reglages_moyennes <- function(m, quals, q) {
   un <- function(x) {
     x <- nom_numero(unlist(x))

@@ -244,6 +244,9 @@ PUISSANCE_LIMITES <- list(annees = c(3L, 100L), unites = 10000L, courbes = 10L, 
 # défaut), vérifiés : le terme du temps (son nom), la tendance et son unité ("pente" ou
 # "pourcent"), alpha, les années des courbes (de, à), les nombres d'unités (celui des données y est
 # toujours), le plan et le nombre de jeux de la simulation.
+# (les champs d'une demande qui sont des réglages, serveur.R : puissance_tendance ; ses autres champs
+# n'en sont pas : un champ en trop referait le calcul avec les réglages par défaut)
+REGLAGES_PUISSANCE <- c("terme", "tendance", "unite", "alpha", "annees", "unites", "simulation", "simuler")
 reglages_puissance <- function(m, d, lu, q) {
   err <- function(fr, en) stop(traduire(fr, en), call. = FALSE)
   nombre <- function(v, defaut) { v <- suppressWarnings(as.numeric(unlist(v))); if (length(v) && !anyNA(v)) v else defaut }
