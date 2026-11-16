@@ -4,7 +4,9 @@
 // moteur/serveur.R: ready at once), then its functions are driven directly:
 // - the engine restarted after R ended from a signal (R raises its SIGSEGV again, the OOM killer
 //   sends SIGKILL; Node's kill() on Windows): no exit code, its signal only, and Restart doesn't wait
-//   for an end that already came.
+//   for an end that already came;
+// - a plugin's packages installed into the engine's R as the engine runs it (RHOME, R_LIBS), another
+//   R with its own environment only.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -32,6 +34,7 @@ const auPlus = (p, ms, quoi) => {
     .finally(() => clearTimeout(minuterie));
 };
 const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const egal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ------------------------------------------------------------ stand-ins
 
@@ -117,7 +120,14 @@ function chargerMain(dossier, modules = {}) {
   vm.runInContext(fs.readFileSync(MAIN, 'utf8'), ctx, { filename: MAIN });
   // main.js's variables (let, const) are read and set by code run in its context; a value goes in through __valeur
   const evaluer = (code, valeur) => { ctx.__valeur = valeur; return vm.runInContext(code, ctx); };
-  return { ctx, E, evaluer };
+  return { ctx, E, electron, evaluer };
+}
+// A request from a window of the interface to main.js (ipc(): IPC handlers, only for the interface's pages)
+const ADRESSE = 'http://127.0.0.1:9/';
+function demandeur(m) {
+  m.evaluer(`adresse = ${JSON.stringify(ADRESSE)}; ipc()`);
+  const page = Object.assign(new EventEmitter(), { isDestroyed: () => false, send() {} });
+  return (canal, ...args) => m.E.gestionnaires.get(canal)({ senderFrame: { url: ADRESSE }, sender: page }, ...args);
 }
 
 // The R engine's stand-in: moteur/serveur.R, run by Node started under an Rscript's name; ready at once
@@ -161,6 +171,28 @@ async function redemarrageApresUnSignal(dossier) {
   }
 }
 
+// The packages a plugin needs, installed into the R the engine runs on, run as the engine runs it
+async function paquetsDUnGreffon(dossier) {
+  console.log('Les paquets d’un greffon, dans le R du moteur');
+  const appels = [];
+  const m = chargerMain(dossier, { './r-installes': { ...require('../r-installes'),
+    installer: async (chemin, paquets, o = {}) => { appels.push({ chemin, paquets, env: o.env || {} }); return { ok: true }; } } });
+  const demander = demandeur(m);
+  m.electron.app.isPackaged = true;  // (an installed copy: Nuée's own R with its packages)
+  m.evaluer("rUtilise = { type: 'nuee', rscript: rscriptMac, chemin: null }");
+  await demander('r-installer-greffon', ['unmarked', 'pas un paquet']);
+  const a = appels.shift();
+  verifier(!!a && a.chemin === path.join(dossier, 'R', 'bin', 'Rscript') && egal(a.paquets, ['unmarked']) && a.env.RHOME === path.join(dossier, 'R')
+    && a.env.R_LIBS === (windows || process.platform === 'darwin' ? path.join(dossier, 'R', 'library') : process.env.R_LIBS) && a.env.PATH === process.env.PATH,
+  'le R de Nuée (celui de Nuée.app sur macOS) : RHOME et R_LIBS, comme le moteur, avec l’environnement de l’ordinateur', a && { ...a, env: { RHOME: a.env.RHOME, R_LIBS: a.env.R_LIBS } });
+  const autre = path.join(dossier, 'R-4.5.2', 'bin', 'Rscript');
+  m.evaluer("rUtilise = { type: 'autre', rscript: __valeur, chemin: __valeur }", autre);
+  await demander('r-installer-greffon', ['unmarked']);
+  const b = appels.shift();
+  verifier(!!b && b.chemin === autre && b.env.RHOME === process.env.RHOME && b.env.R_LIBS === process.env.R_LIBS, 'un autre R : l’environnement de l’ordinateur seul',
+    b && { ...b, env: { RHOME: b.env.RHOME, R_LIBS: b.env.R_LIBS } });
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -168,6 +200,7 @@ async function principal() {
     fs.mkdirSync(path.join(dossier, 'temp'), { recursive: true });
     fs.writeFileSync(path.join(dossier, 'moteur', 'serveur.R'), SERVEUR_FACTICE);
     await redemarrageApresUnSignal(dossier);
+    await paquetsDUnGreffon(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

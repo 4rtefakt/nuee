@@ -53,6 +53,8 @@ if (process.argv.some((a) => /serveur\.R$/.test(a))) {
 const install = /install\.packages\((c\([^)]*\)|"[^"]*")/.exec(code);
 if (install) {
   const demandes = [...install[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  // (the environment it was given, as R would use it: RHOME, the R Nuée.app's Rscript starts; R_LIBS)
+  for (const v of ['RHOME', 'R_LIBS']) if (process.env[v]) ecrire(v + '=' + process.env[v]);
   ecrire('NUEE_BIBLIOTHEQUE=' + bibliotheque);
   for (const p of demandes) {
     ecrire("trying URL 'https://cloud.r-project.org/bin/windows/contrib/" + version.split('.').slice(0, 2).join('.') + '/' + p + "_1.0.zip'");
@@ -270,8 +272,11 @@ async function avecFauxR(racine) {
   verifier(i2.ok && !i2.ligne && v4.ok, 'installé ensuite : ce R est utilisable (un paquet que le moteur ne demande pas n’est pas installé)', [i2, v4]);
   // a plugin's packages (main.js: r-installer-greffon): installed when allowed (autres), a name that isn't an R package's left out
   fs.writeFileSync(path.join(r44, 'faux.json'), JSON.stringify({ manquants: ['unmarked'], installables: ['unmarked'] }));
-  const i3 = await R.installer(r44, ['unmarked', 'pas un paquet'], { autres: ['unmarked', 'pas un paquet'] });
+  // (with the engine's environment, as main.js gives it: RHOME for the Rscript of Nuée.app, R_LIBS for Nuée's own R)
+  const envMoteur = { ...process.env, RHOME: path.join(racine, 'Nuée.app', 'R'), R_LIBS: path.join(racine, 'Nuée.app', 'R', 'library') };
+  const i3 = await R.installer(r44, ['unmarked', 'pas un paquet'], { autres: ['unmarked', 'pas un paquet'], env: envMoteur });
   verifier(i3.ok && !i3.ligne && egal(i3.manquants, []), 'le paquet d’un greffon (autres) : installé ; un nom qui n’est pas celui d’un paquet R, laissé de côté', i3);
+  verifier(i3.fin.includes(`RHOME=${envMoteur.RHOME}`) && i3.fin.includes(`R_LIBS=${envMoteur.R_LIBS}`), 'ce R lancé avec l’environnement donné (RHOME, R_LIBS)', i3.fin);
   const muet = await R.verifier(faux('4.5.0', { muet: true }));
   verifier(!muet.ok && /unable to open the base package/.test(muet.erreur), 'un R qui ne répond pas comme R : ce qu’il a dit', muet);
   const debut = Date.now();

@@ -227,6 +227,19 @@ function arreterCalcul() {
   return true;
 }
 
+// What the R `r` (rVoulu's) runs with besides the computer's environment, as the engine and the
+// installation of a plugin's packages into it: Nuée's own R (an installed copy, on Windows and macOS)
+// finds the packages that come with Nuée before those of the user's own R library, which stays
+// available to the R console (library(vegan)…); the Rscript of Nuée.app starts the R of RHOME, or else
+// the one CRAN's installer puts in /Library/Frameworks, if the Mac has it. Another R loads its own
+// libraries only: Nuée's packages are built for Nuée's R, and may not load in another version.
+function environnementR(r) {
+  const env = {};
+  if (r.type === 'nuee' && app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
+  if (r.rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+  return env;
+}
+
 // `r`: rVoulu's. repli: Nuée's own R takes over if this one stops before it is ready
 // (demarrerMoteur), so that stop isn't reported to the windows.
 function demarrerR(port, r, repli = false) {
@@ -243,14 +256,9 @@ function demarrerR(port, r, repli = false) {
     if (fs.existsSync(conv)) env.CONVERTISSEUR_USP = conv;
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
     // out (their .Rprofile could attach packages that hide the engine's functions), and the
-    // packages that come with Nuée are found before those of their own R library, which stays
-    // available to the R console (library(vegan)…). Another R keeps its .Renviron and loads its own
-    // libraries: Nuée's packages are built for Nuée's R, and may not load in another version.
+    // packages that come with Nuée are found first (environnementR). Another R keeps its .Renviron.
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
-    if (r.type === 'nuee' && app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
-    // (the Rscript of Nuée.app starts the R of RHOME, or else the one CRAN's installer puts in
-    // /Library/Frameworks, if the Mac has it)
-    if (r.rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+    Object.assign(env, environnementR(r));
     let pret = false;
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
     serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; resolve(); } });
@@ -841,13 +849,15 @@ function ipc() {
   });
   // the packages a plugin needs (File › Plugins…, interface/vues_greffons.js), installed into the user
   // library of the R the engine runs on, as Settings installs the engine's own (one installation at a
-  // time); names that aren't an R package's are left out
+  // time), that R run as the engine runs it (environnementR: on macOS, Nuée.app's Rscript starts
+  // another R without it); names that aren't an R package's are left out
   recevoir('r-installer-greffon', (e, paquets) => {
     if (!installation) {
       const fenetre = e.sender;
       const noms = [...new Set([].concat(paquets || []).filter((x) => typeof x === 'string' && /^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$/.test(x)))];
-      installation = rInstalles.installer((rUtilise && rUtilise.rscript) || trouverRscript(), noms,
-        { autres: noms, surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
+      const r = rUtilise || rPropre();
+      installation = rInstalles.installer(r.rscript, noms,
+        { env: { ...process.env, ...environnementR(r) }, autres: noms, surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
         .finally(() => { installation = null; });
     }
     return installation;
