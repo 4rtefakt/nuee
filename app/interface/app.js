@@ -1248,7 +1248,6 @@ async function apresOuverture(res, session = null) {
   diffuser('modeles');
   app.rafraichirExplorateur();
   majEtat();
-  document.title = `${t('titre')} — ${res.nom}`;
   if (app.verifierSource) app.verifierSource(res.id);  // (its data file changed since it was read: a notice, etapes.js)
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
   // a table (a project without models): its data open, in front, so that the menus act on it
@@ -1948,7 +1947,6 @@ function rafraichirModele(id) {
 }
 
 function toutRedessiner() {
-  document.title = t('titre');
   if (!VUE_SEULE) { rendreMenus(); rendreBarreOutils(); }
   for (const e of etat.panneaux.values()) rendrePanneau(e);
   if (dock) for (const p of dock.panels) if (p.id === 'explorateur') p.api.setTitle(t('explorateur')); else if (p.id === 'accueil') p.api.setTitle(t('titre'));
@@ -2080,8 +2078,17 @@ function majBarreOutils() {
   }
 }
 
+// The window's title, which the taskbar and Window's list of windows show: the project in front,
+// the one the menus act on (a window of its own, a detached view, has its view's: rendrePanneau)
+function majTitre() {
+  const p = etat.projets[app.projetActif()];
+  const titre = p ? `${t('titre')} — ${p.nom}` : t('titre');
+  if (document.title !== titre) document.title = titre;
+}
+
 function majEtat() {
   if (!VUE_SEULE) majBarreOutils();
+  if (!VUE_SEULE) majTitre();
   if (!VUE_SEULE && app.barresCode) app.barresCode();  // (a project's R code written elsewhere: vues_code.js)
   const c = etat.panneaux.get('console:');
   if (c && c.element._console) c.element._console.entete();  // m and p follow the model shown

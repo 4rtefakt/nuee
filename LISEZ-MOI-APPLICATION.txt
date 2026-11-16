@@ -2600,7 +2600,9 @@ comparer deux modèles. Clic droit sur un onglet, ou l'icône en haut à droite 
 détacher dans sa propre fenêtre (par exemple sur un second écran), agrandir, fermer.
 Fenêtre › Nouvelle fenêtre ouvre une deuxième fenêtre complète. Une sélection d'observations (cadre ou lasso dans un
 graphique, clic sur un point ou une ligne de liste) apparaît dans toutes les vues et toutes
-les fenêtres du même modèle.
+les fenêtres du même modèle. Le titre d'une fenêtre, que montrent son bouton dans la barre
+des tâches et le menu Fenêtre, nomme le projet qui est devant : celui sur lequel agissent
+les menus.
 Graphiques : molette pour zoomer ; clic droit pour copier l'image ou l'enregistrer (PNG, SVG),
 voir les contributions de la sélection ou en faire une classe.
 Ctrl+C dans une vue qui montre un tableau (résumé, listes, statistiques...) copie le tableau en

@@ -2384,7 +2384,8 @@ icon at the top right of a group: detach into its own window (on a second screen
 example), maximise, close.
 Window › New window opens a second full window. A selection of observations (box or lasso in
 a plot, click on a point or a list row) shows in every view and every window of the same
-model.
+model. A window's title, which its taskbar button and the Window menu show, names the project
+in front: the one the menus act on.
 Plots: mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the
 selection's contributions or make it a class.
 Ctrl+C in a view that shows a table (summary, lists, statistics...) copies the table as
