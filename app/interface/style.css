@@ -864,3 +864,34 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
 .barre-code > .icone { color: var(--attention); }
 .montrer-code section { margin-bottom: 10px; }
 .montrer-code h4 { margin: 6px 0 2px; font-size: 13px; }
+/* ---------------------------------------------------------------- plugins (vues_greffons.js) */
+/* a plugin's card (File › Plugins…, the install dialog, Show, a model's summary) */
+.dialogue-greffons { display: flex; flex-direction: column; gap: 8px; }
+.dialogue-greffons > p { margin: 2px 0; }
+.liste-greffons { display: flex; flex-direction: column; gap: 8px; }
+.carte-greffon { border: 1px solid var(--grille); border-radius: 6px; padding: 8px 12px; background: var(--fond-panneau); }
+.carte-greffon.alerte { border-color: var(--attention); }
+.carte-greffon .fiche-titre > .icone { color: var(--accent); }
+.carte-greffon p { margin: 4px 0; }
+.carte-greffon .ligne { margin-top: 6px; }
+.carte-greffon.modele { margin: 8px 0; }
+.paquets-greffon { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.citations-greffon summary { cursor: pointer; color: var(--accent); }
+.citation-greffon { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0; }
+.citation-greffon p { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.reglages-greffon { display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr); gap: 2px 12px; margin: 6px 0 0; }
+.reglages-greffon dt { color: var(--texte-doux); }
+.reglages-greffon dd { margin: 0; overflow-wrap: anywhere; }
+.confiance-greffon { display: flex; align-items: flex-start; gap: 8px; }
+.confiance-greffon > .icone { color: var(--attention); flex: none; }
+/* its dialog in New model: a field per input and option, the variables to tick in a box that scrolls */
+.grille-champs:has(.champ-greffon) { grid-template-columns: max-content minmax(0, 480px); align-items: start; }
+.grille-champs:has(.champ-greffon) > label { padding-top: 3px; }
+.champ-greffon { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.champ-greffon .note { margin: 0; }
+.champ-greffon .infos.attention { color: var(--attention); }
+.liste-variables { display: flex; flex-wrap: wrap; gap: 2px 14px; max-height: 9.5em; overflow: auto; padding: 4px 8px; border: 1px solid var(--bord-champ);
+  border-radius: 4px; background: var(--fond-panneau); }
+.liste-variables .champ { white-space: nowrap; }
+/* the bar over a project whose plugin isn't approved here (as R code's) */
+#barres-greffons:empty { display: none; }

@@ -833,12 +833,16 @@ resultat_plugin <- function(id) {
   fr <- !identical(getOption("nuee.langue"), "en")
   installe <- Find(function(x) identical(x$id, m$greffon$id), greffons_installes())
   r$type <- "PLUGIN"
-  r$greffon <- c(m$greffon, reglages_greffon(list(entrees = (greffon_definition(d)$manifeste)$entrees, options = (greffon_definition(d)$manifeste)$options), m$entrees, m$options_greffon),
-                 list(installe = if (!is.null(installe)) list(version = installe$version, empreinte = installe$empreinte, source = installe$source)))
+  m_g <- greffon_definition(d)$manifeste
+  # (le manifeste de sa version, pour refaire son dialogue même quand elle n'est pas installée ; ce qui a
+  # été choisi ; la version installée de même id)
+  r$greffon <- c(m$greffon, list(manifeste = specs_greffon(m_g), reglages = reglages_greffon(m_g, m$entrees, m$options_greffon),
+                                 installe = if (!is.null(installe)) list(version = installe$version, empreinte = installe$empreinte, source = installe$source)))
   r$chiffres <- paste(c(texte_langue(m$greffon$nom, fr), sprintf("N %d", as.integer(m$N)), if (!is.null(m$statistiques$AIC)) sprintf("AIC %s", nombre_texte(m$statistiques$AIC, 1, fr))), collapse = " · ")
-  # (ses vues d'abord, deux au plus : ses coefficients, ses valeurs et ses tableaux, ses résidus, selon ce qu'il a)
+  # (ses deux vues d'abord, celles qu'il a : ses coefficients, ses valeurs et ses tableaux, ses résidus ;
+  # sinon le greffon, ses graphiques : app.js, vuesParDefaut, en ouvre deux)
   vues <- c(if (NROW(m$coefficients)) "code_coefficients", if (length(m$valeurs) || length(m$tableaux)) "code_tableaux", if (length(m$ajustees)) "code_diagnostics")
-  r$vues_defaut <- I(utils::head(if (length(vues)) vues else "resume", 2))
+  r$vues_defaut <- I(utils::head(c(vues, "greffon_source", "code_graphiques"), 2))
   # (sans le code du greffon : ce que l'interface renvoie pour le modifier n'en a pas besoin)
   if (!is.null(r$reglages$options$greffon)) r$reglages$options$greffon$fichiers <- NULL
   r
@@ -856,22 +860,28 @@ resume_greffon_modele <- function(d) {
        installe = if (!is.null(installe)) list(version = installe$version, empreinte = installe$empreinte, source = installe$source))
 }
 
+# Les entrées et les options d'un manifeste, telles que l'interface en fait le dialogue d'un modèle
+# (interface/vues_greffons.js).
+specs_greffon <- function(m) {
+  list(entrees = I(lapply(m$entrees, function(e) list(id = e$id, type = e$type, accepte = e$accepte, min = e$min, max = if (is.na(e$max)) NULL else e$max,
+                                                     facultatif = e$facultatif, libelle = e$libelle, aide = e$aide))),
+       options = I(lapply(m$options, function(o) c(list(id = o$id, type = o$type, libelle = o$libelle, aide = o$aide, defaut = o$defaut),
+                                                  if (identical(o$type, "number")) list(min = if (is.na(o$min)) NULL else o$min, max = if (is.na(o$max)) NULL else o$max, entier = o$entier),
+                                                  if (identical(o$type, "choice")) list(valeurs = I(o$valeurs))))))
+}
+
 # Un greffon tel que le dialogue des greffons et les menus le montrent (et le dialogue d'installation,
 # `code` : avec ses fichiers).
 greffon_interface <- function(g, code = FALSE) {
   m <- g$manifeste
   pq <- if (!is.null(m)) paquets_greffon(g) else data.frame(nom = character(0), present = logical(0), version = character(0))
-  c(list(id = g$id, version = g$version, source = g$source, etat = g$etat %||% (if (length(g$erreurs)) "invalide" else "ok"),
+  c(list(id = g$id, version = g$version, source = g$source, dossier = if (g$source %in% c("utilisateur", "organisation")) g$dossier,
+         etat = g$etat %||% (if (length(g$erreurs)) "invalide" else "ok"),
          empreinte = g$empreinte, permis = greffon_permis(g$empreinte), trop_recent = greffon_trop_recent(g),
          erreurs = I(g$erreurs), avertissements = I(g$avertissements),
          paquets = list(nom = I(pq$nom), present = I(pq$present), version = I(pq$version))),
-    if (!is.null(m)) list(nom = m$nom, description = m$description, licence = m$licence, nuee = m$nuee, fonction = m$fonction,
-                          auteurs = I(lapply(m$auteurs, function(a) list(nom = a$nom, orcid = a$orcid))), citations = I(m$citations),
-                          entrees = I(lapply(m$entrees, function(e) list(id = e$id, type = e$type, accepte = e$accepte, min = e$min, max = if (is.na(e$max)) NULL else e$max,
-                                                                       facultatif = e$facultatif, libelle = e$libelle, aide = e$aide))),
-                          options = I(lapply(m$options, function(o) c(list(id = o$id, type = o$type, libelle = o$libelle, aide = o$aide, defaut = o$defaut),
-                                                                     if (identical(o$type, "number")) list(min = if (is.na(o$min)) NULL else o$min, max = if (is.na(o$max)) NULL else o$max, entier = o$entier),
-                                                                     if (identical(o$type, "choice")) list(valeurs = I(o$valeurs)))))),
+    if (!is.null(m)) c(list(nom = m$nom, description = m$description, licence = m$licence, nuee = m$nuee, fonction = m$fonction,
+                            auteurs = I(lapply(m$auteurs, function(a) list(nom = a$nom, orcid = a$orcid))), citations = I(m$citations)), specs_greffon(m)),
     if (code) list(fichiers = I(lapply(g$fichiers, function(f) list(chemin = f$chemin, texte = f$texte)))))
 }
 

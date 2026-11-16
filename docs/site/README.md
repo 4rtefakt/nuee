@@ -13,6 +13,7 @@ is merged).
 | `assets/` | `site.css`, `site.js` (the theme the reader chose, the guide's menu folded on a phone), the logo |
 | `images/fr/`, `images/en/` | the tutorials' screenshots, made by `captures.mjs`; their dark versions in `sombre/` |
 | `donnees/` | the tutorials' data (simulated) and the R scripts that made them |
+| `greffons/` | the example plugins of `exemple/plugins` as `.nueeplugin` files, for download, built by `construire.js` (don't edit them by hand) |
 | `sources/fr/`, `sources/en/` | the home page, the installation and the tutorials, in Markdown |
 | `construire.js` | builds the pages |
 | `captures.mjs` | takes the screenshots, the tutorials' and the README's (`docs/captures/`) |

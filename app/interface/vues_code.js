@@ -23,8 +23,9 @@ let appli = null;  // (the application, given by installerCode)
 
 // Code approved by this user on this computer (typed and fitted, or read and run): its fingerprint,
 // computed by the engine, kept by the desktop app (main.js: approuver-code), which tells the engine;
-// in a browser (an engine started by hand), told to the engine directly, for its session.
-async function approuver(empreintes) {
+// in a browser (an engine started by hand), told to the engine directly, for its session. (A plugin
+// is approved the same way: vues_greffons.js.)
+export async function approuver(empreintes) {
   if (!empreintes.length) return;
   if (bureau && bureau.approuverCode) {
     if (!(await bureau.approuverCode(empreintes))) throw new Error(t('code_approbation_echec'));
@@ -197,9 +198,10 @@ const paquetsTexte = (m) => {
 };
 const nObservations = (m) => (m.n_donnees && m.N !== m.n_donnees ? `${m.N} / ${m.n_donnees}` : String(m.N));
 
-function rendreResumeCode(conteneur, ctx, m) {
+// (a plugin's model, vues_greffons.js: its own badge, its card after the figures, its own buttons)
+export function rendreResumeCode(conteneur, ctx, m, { badge = t('code_badge'), carte = null, boutons = null } = {}) {
   const s = m.statistiques || {};
-  const titre = el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, t('code_badge')), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
+  const titre = el('div', { class: 'fiche-titre' }, el('b', {}, m.nom), el('span', { class: 'badge' }, badge), m.titre ? el('span', { class: 'doux' }, m.titre) : null);
   const fiche = el('div', { class: 'fiche' }, titre,
     el('div', { class: 'fiche-chiffres' }, chiffre(t('code_classe'), liste(m.classe)[0] || '—'), chiffre('N', nObservations(m)),
       s.logLik !== undefined ? chiffre('logLik', `${nombre(s.logLik, 2)}${s.ddl !== undefined ? ` (${s.ddl} ${t('ddl')})` : ''}`) : null,
@@ -212,9 +214,9 @@ function rendreResumeCode(conteneur, ctx, m) {
   const avert = liste(m.avertissements);
   const messages = liste(m.messages);
   const sortie = liste(m.sortie);
-  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche,
-    el('div', { class: 'ligne' }, el('button', { onclick: () => modifierCode(m) }, icone('square-pen'), t('code_modifier')),
-      el('button', { onclick: () => ctx.ouvrirVue('code_source', m.id) }, icone('file-code'), t('code_source'))),
+  conteneur.replaceChildren(el('div', { class: 'defile resume' }, fiche, carte,
+    el('div', { class: 'ligne' }, boutons || [el('button', { onclick: () => modifierCode(m) }, icone('square-pen'), t('code_modifier')),
+      el('button', { onclick: () => ctx.ouvrirVue('code_source', m.id) }, icone('file-code'), t('code_source'))]),
     notes.champ,
     avert.length ? el('div', { class: 'alerte-donnees' }, el('b', {}, t('code_avertissements', { n: avert.length })), el('ul', {}, avert.slice(0, 50).map((a) => el('li', {}, a)))) : null,
     liste(m.autres).length ? el('p', { class: 'note attention' }, t('code_autres', { noms: liste(m.autres).join(', ') })) : null,
@@ -356,7 +358,7 @@ function rendreSourceCode(conteneur, ctx, p) {
 }
 
 // A code shown with its line numbers (read only).
-const codeNumerote = (code) => el('pre', { class: 'code-r' }, String(code || '').replace(/\n$/, '').split('\n').map((l) => el('span', { class: 'ligne-code' }, l || ' ')));
+export const codeNumerote = (code) => el('pre', { class: 'code-r' }, String(code || '').replace(/\n$/, '').split('\n').map((l) => el('span', { class: 'ligne-code' }, l || ' ')));
 
 // Edit the code: New model with this model's settings and code; fitted, it takes the place of this
 // fit (its page and views), under the same name (app.js: modifierModele, ajusterDefinition's remplace).

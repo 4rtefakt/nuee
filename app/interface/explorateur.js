@@ -74,6 +74,15 @@ export function rendreExplorateur(conteneur, app) {
       const s = d.stocke;
       const der = (v) => (v && v.length ? v[d.A - 1] : null);
       const chiffres = s ? `R2X ${fmt(der(s.R2Xcum), 2)}${s.R2Ycum && der(s.R2Ycum) !== null ? ' · R2Y ' + fmt(der(s.R2Ycum), 2) : ''} · Q2 ${fmt(der(s.Q2cum), 2)}` : '';
+      // (a plugin's model whose plugin isn't approved on this computer: show it, then install and run it,
+      // vues_greffons.js)
+      if (d.code_r && d.code_r.approuve === false && d.type === 'PLUGIN') {
+        return noeud({ cle: `${p.id}/def/${d.numero}`, niveau: 3, ic: 'lock', classe: 'inactif',
+          libelle: [el('b', {}, d.nom), ' ', el('span', { class: 'badge' }, d.type)], details: t('greffon_non_execute'), titre: t('greffon_non_execute_aide'),
+          double: () => app.montrerGreffons(p.id),
+          menu: () => [{ libelle: t('greffon_montrer'), icone: 'file-code', action: () => app.montrerGreffons(p.id) },
+            { libelle: t('code_executer'), icone: 'refresh-cw', action: () => app.executerGreffons(p.id) }] });
+      }
       // (an R-code model whose code isn't approved on this computer: read it, then run it, vues_code.js)
       if (d.code_r && d.code_r.approuve === false) {
         return noeud({ cle: `${p.id}/def/${d.numero}`, niveau: 3, ic: 'lock', classe: 'inactif',

@@ -65,8 +65,9 @@ reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableUpdateCheck /t REG_DWORD /d 1 /f
 Any tool that writes registry values can set it: see [Deployment tools](#deployment-tools) for
 Intune and Group Policy. Nuée reads the registry's 64-bit view, hence `/reg:64` for a tool that
 runs as a 32-bit process. The same value under `HKCU\SOFTWARE\Policies\Nuee` applies to one user.
-When both exist, the computer's value wins. The same key holds the other policy, `RHome`, the R
-every user's engine runs on: see [R and the users' own R](#r-and-the-users-own-r).
+When both exist, the computer's value wins. The same key holds the other policies: `RHome`, the R
+every user's engine runs on (see [R and the users' own R](#r-and-the-users-own-r)), and
+`PluginsFolder`, your organisation's plugins (see [Plugins](#plugins)).
 
 ## Policies
 
@@ -76,7 +77,7 @@ wins) or `HKCU\SOFTWARE\Policies\Nuee` (one user), in the registry's 64-bit view
 | Value | Set to 1 |
 |---|---|
 | `DisableUpdateCheck` | No update check and no one-click update: the update items disappear from *Help* ([Updates](#updates)) |
-| `DisableCustomCode` | R-code models are turned off (from 1.2): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)) |
+| `DisableCustomCode` | R-code models are turned off (from 1.2): *New model* doesn't offer them, the R engine refuses to fit them, and the projects that have some show them not fitted ([Opening files from elsewhere](#opening-files-from-elsewhere)). Plugins too, except your organisation's ([Plugins](#plugins)): users can't install any, and only those of `PluginsFolder` run |
 
 ```
 reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableCustomCode /t REG_DWORD /d 1 /f /reg:64
@@ -85,6 +86,39 @@ reg add "HKLM\SOFTWARE\Policies\Nuee" /v DisableCustomCode /t REG_DWORD /d 1 /f 
 Any tool that writes registry values sets them, as for the update check below. On macOS and
 Linux, which have no such policy, the environment variable `NUEE_SANS_CODE=1` (set for the
 session, by a profile script or launchd) turns R-code models off the same way.
+
+## Plugins
+
+A plugin (1.1) is an R function with a manifest, `plugin.json`, that adds a model type to Nuée:
+a menu item (*Model › Plugins*) with its dialog, its results, its Methods text and citation, and
+its Export to R. It is a folder, `plugin.json` and its R files, shared as one `.nueeplugin` file (a
+zip of that folder). The user guide's *Plugins* and *Writing a plugin* pages describe them, and
+`exemple/plugins` in the repository holds two.
+
+Each user installs plugins from *File › Plugins…*, into `%APPDATA%\Nuee\greffons` (one folder per
+plugin). A plugin is R code that runs with the user's rights: Nuée shows its manifest and its code
+before installing it, and installing it approves it, as running a project's R code does (its
+SHA-256 joins the fingerprints the user approved: [Opening files from elsewhere](#opening-files-from-elsewhere)).
+The R packages a plugin needs can be installed from that dialog into the user library of the R
+Nuée uses ([R and the users' own R](#r-and-the-users-own-r)).
+
+To give plugins to everyone, put them in a folder the computers can read, one folder per plugin
+(the folder of a `.nueeplugin`, unzipped: `plugin.json` and its R files), and set the policy value
+`PluginsFolder` (`REG_SZ`) to that folder:
+
+```
+reg add "HKLM\SOFTWARE\Policies\Nuee" /v PluginsFolder /t REG_SZ /d "\\server\share\nuee-plugins" /f /reg:64
+```
+
+Nuée reads that folder at each start and offers its plugins to every user, without asking: they
+need no approval, can't be removed from *File › Plugins…*, and a plugin of the same id that a user
+installed gives way to yours. Keep the folder writable by your administrators only: whatever is
+in it runs for everyone. With `DisableCustomCode` = 1 they are the only plugins that run: users
+can't install others, and the projects that carry another plugin show its models not fitted. A
+new version of one of your plugins (another `version` in its `plugin.json`) replaces the old one
+for everyone at their next start; the projects made with the old one keep their own copy, and
+say a newer one is installed. On macOS and Linux, the environment variable
+`NUEE_GREFFONS_ORGANISATION` (a folder) does the same.
 
 ## Deployment tools
 
@@ -137,7 +171,9 @@ As a *Windows app (Win32)*:
 
    Your institution's R for everyone ([R and the users' own R](#r-and-the-users-own-r)) is one
    more line in the same script:
-   `New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Nuee' -Name RHome -PropertyType String -Value 'C:\Program Files\R\R-4.5.2' -Force | Out-Null`.
+   `New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Nuee' -Name RHome -PropertyType String -Value 'C:\Program Files\R\R-4.5.2' -Force | Out-Null`;
+   your organisation's plugins ([Plugins](#plugins)), another:
+   `New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Nuee' -Name PluginsFolder -PropertyType String -Value '\\server\share\nuee-plugins' -Force | Out-Null`.
 
 ### Configuration Manager (SCCM, MECM)
 
@@ -153,7 +189,7 @@ An application with a *Script Installer* deployment type:
   not a user is logged on*; installation program visibility *Hidden*.
 - **A new version** supersedes the previous one without uninstalling it (*Uninstall* unticked).
 - **The update check:** the Group Policy preference below, or a configuration item that sets
-  `DisableUpdateCheck` (and `RHome`, for your institution's R).
+  `DisableUpdateCheck` (and `RHome`, for your institution's R; `PluginsFolder`, for its plugins).
 
 ### Group Policy
 
@@ -173,7 +209,8 @@ To turn the update check off: *Computer Configuration › Preferences › Window
 Registry*, a new registry item with action *Update*, hive `HKEY_LOCAL_MACHINE`, key path
 `SOFTWARE\Policies\Nuee`, value name `DisableUpdateCheck`, type `REG_DWORD`, value `1`. Your
 institution's R for everyone is another item there: value name `RHome`, type `REG_SZ`, the R's
-folder as its value.
+folder as its value; its plugins one more: value name `PluginsFolder`, type `REG_SZ`, the folder
+of the plugins as its value.
 
 ### PDQ Deploy and other tools
 
@@ -226,7 +263,8 @@ stored sign-in (`git credential fill`), which follows git's own settings.
 | Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
 | Sign-ins and tokens for GitHub and GitLab, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
 | The R a user chose in *File › Settings…* (1.1) | `%APPDATA%\Nuee\reglages.json` |
-| Packages installed for that R, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |
+| The plugins a user installed (1.1) | `%APPDATA%\Nuee\greffons`, one folder per plugin (its `plugin.json` and R files); approving them, their fingerprints in `reglages.json` |
+| Packages installed for that R, or for a plugin, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |
 
 ## Projects on network folders
 
@@ -352,6 +390,8 @@ Opening a file never runs code from it:
 - **Projects (`.nuee`):** data and model definitions only. Nothing in them can choose where Nuée
   saves. From 1.2 a project can hold R-code models (*New model › R code*): their code runs only
   once a user of this computer has approved it, below.
+- **Plugins (`.nueeplugin`):** read, their manifest checked and their code parsed without running
+  it, then shown; nothing runs until the user installs one, below.
 - **R files (`.rds`, `.RData`):** must hold tables; anything else is refused.
 - **Spectra and text tables:** read with checks on their size and structure.
 
@@ -367,6 +407,17 @@ start. Approved code runs with the user's rights, as code typed in the R console
 read and write files and use the network. To turn R-code models off for everyone, set the
 `DisableCustomCode` policy (see [Policies](#policies)): the type is no longer offered, and the
 engine refuses it.
+
+Plugins ([Plugins](#plugins)) follow the same rule. A plugin runs only when its fingerprint (the
+SHA-256 of its files, its manifest included, in a fixed order) is one this user approved on this
+computer, by installing it or from a project's bar, or when it is one of your organisation's
+(`PluginsFolder`). A project made with a plugin keeps a copy of it, so that it can be redone
+elsewhere: opened on a computer where that plugin isn't approved, its models stay not fitted,
+under a bar that names the plugin, its version and its authors, with *Show* (its card and its
+code) and *Install and run*; when another version is installed there, the bar says so, and the
+project's own copy is what refits its models unless the user chooses the installed version. A
+plugin installed and then changed on disk has another fingerprint, and doesn't run until it is
+installed again. The engine checks this on every path that fits a model, as for R code.
 
 The windows run with Electron's sandbox and context isolation and a content security policy, and
 can't be navigated to another site.

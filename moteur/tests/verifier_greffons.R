@@ -294,8 +294,9 @@ verifier("ajusté : un modèle PLUGIN, son greffon gardé en entier dans sa déf
            setequal(variables_definition(d_occ), u("visit1", "visit2", "visit3", "visit4", "forest", "noise")))
 verifier("ce que l'interface reçoit : le greffon (son nom dans les deux langues, sa version, ses auteurs, sa citation, ses entrées et options choisies), sa ligne, ses vues, sans le code dans ses réglages",
          identical(m_occ$greffon$nom$en, "Site occupancy (single season)") && identical(m_occ$greffon$version, "1.0.0") && identical(m_occ$greffon$auteurs[[1]]$nom, "Clément Boutin") &&
-           grepl("MacKenzie", m_occ$greffon$citations[[1]]$texte) && identical(as.character(m_occ$greffon$entrees[[1]]$variables), c("visit1", "visit2", "visit3", "visit4")) &&
-           identical(m_occ$greffon$options[[1]]$valeur, "BFGS") && grepl("^Occupation des sites \\(une saison\\) · N 80 · AIC ", m_occ$chiffres) &&
+           grepl("MacKenzie", m_occ$greffon$citations[[1]]$texte) && identical(as.character(m_occ$greffon$reglages$entrees[[1]]$variables), c("visit1", "visit2", "visit3", "visit4")) &&
+           identical(m_occ$greffon$reglages$options[[1]]$valeur, "BFGS") && identical(m_occ$greffon$manifeste$entrees[[1]]$min, 2L) &&
+           identical(m_occ$greffon$manifeste$options[[1]]$valeurs[[2]]$valeur, "Nelder-Mead") && grepl("^Occupation des sites \\(une saison\\) · N 80 · AIC ", m_occ$chiffres) &&
            identical(as.character(m_occ$vues_defaut), c("code_coefficients", "code_tableaux")) && is.null(m_occ$reglages$options$greffon$fichiers) &&
            identical(m_occ$reglages$options$greffon$empreinte, g_occ$empreinte))
 verifier("ses résultats, ceux d'un modèle de code R : les coefficients des deux parties (psi., p.), z et p, logLik, AIC, les valeurs et les tableaux du greffon, son résumé",
