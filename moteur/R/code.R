@@ -502,11 +502,20 @@ observations_utilisees_code <- function(fit, obs, N) {
   NULL
 }
 
+# Les prédictions du modèle pour les données `nd`, sur l'échelle de la réponse : predict(fit, newdata,
+# type = "response") (sans lui, un glm, un gam, glmmTMB… prédisent le prédicteur linéaire : le log
+# d'un comptage), son appel par défaut quand ce type le fait échouer (une classe qui ne le connaît pas).
+predire_reponse_code <- function(fit, nd) {
+  p <- tryCatch(suppressWarnings(stats::predict(fit, newdata = nd, type = "response")), error = function(e) NULL)
+  if (is.null(p)) p <- suppressWarnings(stats::predict(fit, newdata = nd))
+  p
+}
+
 # predict(fit, newdata) marche-t-il sur des données comme celles que Nuée lui donne ?
 prediction_code <- function(fit, donnees) {
   if (is.null(fit) || !nrow(donnees)) return(FALSE)
   nd <- donnees[seq_len(min(nrow(donnees), 5)), , drop = FALSE]
-  p <- essai_code(stats::predict(fit, newdata = nd))
+  p <- essai_code(predire_reponse_code(fit, nd))
   is.numeric(p) && length(p) == nrow(nd)
 }
 
@@ -685,10 +694,11 @@ tables_code <- function(projet, m) {
 # ---------------------------------------------------------------- prédire
 
 # Les prédictions de predict(fit, newdata) pour des observations du projet, avec les données que le
-# code voit (donnees_code) ; la réponse observée quand le modèle en a une du projet.
+# code voit (donnees_code), sur l'échelle de la réponse (predire_reponse_code) ; la réponse observée
+# quand le modèle en a une du projet.
 predire_code <- function(projet, m, d, observations) {
   nd <- donnees_code(projet, d, observations)
-  p <- tryCatch(suppressWarnings(as.numeric(stats::predict(m$ajustement, newdata = nd))), error = function(e) {
+  p <- tryCatch(suppressWarnings(as.numeric(predire_reponse_code(m$ajustement, nd))), error = function(e) {
     stop(sprintf(traduire("predict() n'a pas prédit ces observations : %s", "predict() didn't predict these observations: %s"), conditionMessage(e)), call. = FALSE)
   })
   if (length(p) != nrow(nd)) stop(traduire("predict() n'a pas rendu une prédiction par observation.", "predict() didn't give one prediction per observation."), call. = FALSE)

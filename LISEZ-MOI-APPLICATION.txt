@@ -2143,7 +2143,8 @@ Du modèle, chaque partie quand l'objet le permet : print(summary()) ; les coeff
 son nom (Std. Error, se(coef)…), ou plusieurs, comme cond, zi et disp de glmmTMB ; sinon coef()
 avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à leurs degrés de liberté
 quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses degrés de liberté,
-AIC(), BIC() ; fitted() et residuals() ; predict(fit, newdata) quand il marche.
+AIC(), BIC() ; fitted() et residuals() ; predict(fit, newdata) quand il marche, sur l'échelle de
+la réponse (type = "response", quand le modèle le connaît : les comptages d'un GLM, pas leur log).
 
 Vues : Résumé (la classe, N, logLik, AIC, BIC, les versions de R et des paquets, les
 avertissements, ce que le code a affiché, summary(), Modifier le code), Coefficients (un graphique

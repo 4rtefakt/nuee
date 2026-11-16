@@ -16,7 +16,7 @@
 #   - le texte des méthodes, avec R, les paquets, leur version et leur citation ;
 #   - la comparaison par l'AIC : le même ensemble que la régression linéaire de Nuée de la même réponse
 #     sur les mêmes observations ; écarté, avec sa raison, ajusté par REML ;
-#   - les prédictions ; les tableaux exportés ;
+#   - les prédictions, sur l'échelle de la réponse (un glm de Poisson : des comptages) ; les tableaux exportés ;
 #   - l'export vers R : le script écrit, lancé seul par Rscript, redonne les mêmes nombres.
 #   Rscript moteur/tests/verifier_code.R
 
@@ -314,6 +314,9 @@ pr <- demande("predire", list(modele = m_lm$id))
 verifier("les prédictions de predict(fit, newdata) sur les observations du projet ; la réponse observée",
          proche(pr$observations[["y prédit"]], predict(attendu, newdata = dd)) && proche(pr$observations[["y observé"]], dd$y))
 verifier("un modèle dont predict() ne marche pas (une liste sans modele) : sans prédiction", identical(demande("modele", list(modele = m_seules$id))$prediction, FALSE))
+pr_glm <- demande("predire", list(modele = m_glm$id))
+verifier("les prédictions d'un glm de Poisson : sur l'échelle de la réponse, des comptages (predict(type = \"response\")), pas leur log",
+         proche(pr_glm$observations[["n prédit"]], predict(a_glm, newdata = dd, type = "response")) && proche(pr_glm$observations[["n observé"]], dd$n))
 cles <- vapply(demande("resultats_cles", list(modele = m_lm$id))$entrees, `[[`, "", "cle")
 verifier("ses résultats clés : N, K, logLik, AIC, BIC, chaque coefficient (coef., se.) ; les valeurs d'un code (valeurs.)",
          all(c("N", "K", "logLik", "AIC", "BIC", "coef.(Intercept)", "coef.x", "coef.gtraité", "se.x") %in% cles) &&
