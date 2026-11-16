@@ -85,7 +85,7 @@ export function installerVersions(app) {
     refuserEnregistrement: (pid) => refuserEnregistrement(app, pid),
     // (app.js's hooks: a project's summary received, a save done, a project closed)
     suivreProjet: (p) => suivreProjet(app, p),
-    apresEnregistrementVersions: (pid, ancien) => apresEnregistrement(app, pid, ancien),
+    apresEnregistrementVersions: (pid, ancien, options) => apresEnregistrement(app, pid, ancien, options),
     fermetureVersions: (p) => fermeture(p),
     // (Save that met the file changed on disk by someone else, the engine able to merge: app.js)
     fusionnerFichier: (pid) => fusionAvantEnregistrement(app, pid),
@@ -116,9 +116,10 @@ function suivreProjet(app, p) {
   c.ouvert(chemin, { modifie }).then(() => { if (!avant) lireEtat(chemin).then(() => app.majStatut(), () => {}); }, () => {});
 }
 
-// After a successful save: a version when the last is an hour old, then sent in the background
-// when shared; Save as copies the history (`ancien`: the former file)
-async function apresEnregistrement(app, pid, ancien) {
+// After a successful save: a version when the last is an hour old (not for Save a version…, whose
+// own comes at once: versionAuto false), then sent in the background when shared; Save as copies
+// the history (`ancien`: the former file)
+async function apresEnregistrement(app, pid, ancien, { versionAuto = true } = {}) {
   const c = couche();
   const p = app.projet(pid);
   const chemin = fichierProjet(p);
@@ -126,7 +127,7 @@ async function apresEnregistrement(app, pid, ancien) {
   const avecAncien = ancien && /\.nuee$/i.test(ancien) && !memeFichier(ancien, chemin);
   suivis.set(pid, { chemin, modifie: false });
   try {
-    const r = await c.apresEnregistrement(chemin, avecAncien ? { ancien } : {});
+    const r = await c.apresEnregistrement(chemin, { ...(avecAncien ? { ancien } : {}), ...(versionAuto ? {} : { auto: false }) });
     if (r && r.version) dernieres.set(chemin, r.version.oid);
   } catch { /* the history can't be written now: the next save tries again */ }
   apresAction(app, pid);
@@ -574,7 +575,8 @@ async function enregistrerUneVersion(app, pid) {
   if (!chemin) return false;
   const texte = await demanderDescription(p);
   if (!texte) return false;
-  if (app.projet(pid).modifie && !(await app.enregistrer(pid, false))) return false;
+  // (saved without the automatic version an hour after the last one: the version is this one, its words)
+  if (app.projet(pid).modifie && !(await app.enregistrer(pid, false, { versionAuto: false }))) return false;
   const x = await etatPour(app, pid);
   if (!x) return false;
   const r = await essayer(app, () => couche().marquer(chemin, texte));

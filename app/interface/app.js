@@ -33,7 +33,7 @@ import { installerGreffons } from './vues_greffons.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
-import { nomFichier } from './versions_texte.js';
+import { nomFichier, sansExtension } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables, actionsVariable } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
@@ -323,8 +323,9 @@ const app = {
     }
   },
 
-  // true once saved; false if the user cancelled the choice of a file
-  async enregistrer(pid, sous) {
+  // true once saved; false if the user cancelled the choice of a file. versionAuto: false, no
+  // automatic version after it (versions.js: Save a version… makes its own, with its words)
+  async enregistrer(pid, sous, { versionAuto = true } = {}) {
     if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
     // (an old version opened read-only is never saved over the temporary file it was read from:
     // versions.js offers Save as… or Restore…)
@@ -359,7 +360,7 @@ const app = {
             { libelle: t('enregistrer_sous_bouton'), principal: true, action: () => resolve('sous') }],
           surFermeture: () => resolve(null) }));
       }
-      if (choix === 'sous') return app.enregistrer(pid, true);
+      if (choix === 'sous') return app.enregistrer(pid, true, { versionAuto });
       if (choix !== 'ecraser' && choix !== 'fusion') return false;
       // (merged: saved as it is now, asked again if the file changed once more meanwhile)
       r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
@@ -374,7 +375,7 @@ const app = {
     // (its versions: one when the last is an hour old; after Save as, the former file's history
     // copied first, versions.js. Not that of an old version's temporary file.)
     if (app.apresEnregistrementVersions) {
-      app.apresEnregistrementVersions(pid, !p.lecture_seule && p.chemin_enregistrement && p.chemin_enregistrement !== r.chemin ? p.chemin_enregistrement : null);
+      app.apresEnregistrementVersions(pid, !p.lecture_seule && p.chemin_enregistrement && p.chemin_enregistrement !== r.chemin ? p.chemin_enregistrement : null, { versionAuto });
     }
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
@@ -1313,6 +1314,8 @@ function placerArret() {
 async function arreterCalcul() {
   etat.arretDemande = true;
   majArret();
+  // (a progress dialog under way, Update the data's, stops after the model being fitted: etapes.js)
+  window.dispatchEvent(new CustomEvent('arret-demande'));
   try { await bureau.arreterCalcul(); } catch { etat.arretDemande = false; majArret(); return; }
   // (a computation that doesn't check between rounds, a single fit in compiled code: said after a while)
   clearTimeout(minuterieArretLent);
@@ -1600,7 +1603,9 @@ function collecterSession(pid) {
   const parNumero = new Map();  // the latest fit of each project model
   for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
   const code = new Map([...parNumero.values()].map((m) => [m.id, '@' + m.numero]));
-  const panneaux = [...etat.panneaux.values()].filter((e) => !EXTERNES.includes(e.vue));
+  // (EXTERNES holds panels' ids: the guide's and the console's, 'aide:' and 'console:', are no
+  // project's views)
+  const panneaux = [...etat.panneaux.values()].filter((e) => !EXTERNES.includes(e.id));
   // (a view that can't be made again from its settings, What changed: changements.js, isn't kept)
   const aMoi = (e) => e.params.projet === pid && (!e.params.modele || code.has(e.params.modele)) && !(VUES[e.vue] || {}).passager;
   const codeVue = (e) => (e.params.modele ? code.get(e.params.modele) : null);
@@ -1881,10 +1886,10 @@ const estPage = (p) => !!p && typeof p.id === 'string' && p.id.startsWith('page:
 // (the tabs of an old version opened read-only, versions.js: marked, its model pages beside the
 // project's own of the same names)
 const marqueLecture = (pid) => (etat.projets[pid] && etat.projets[pid].lecture_seule ? '🔒 ' : '');
-// A project's name without its file's extension ("skylark_counts"); with several projects open, a
-// model's tab starts with it, as Compare models' bars do: "skylark_counts · M1 · TRIM"
-// (retitrerPages, from majEtat, when that changes)
-const sansExtension = (nom) => String(nom || '').replace(/\.[^.]+$/, '');
+// A project's name without its file's extension ("skylark_counts": versions_texte.js, which knows
+// the extensions, so that an old version's "… version of 12 Nov. 2026, 15:32" stays whole); with
+// several projects open, a model's tab starts with it, as Compare models' bars do:
+// "skylark_counts · M1 · TRIM" (retitrerPages, from majEtat, when that changes)
 const nomProjetCourt = (pid) => {
   const nom = String((etat.projets[pid] || {}).nom || '');
   // (two projects of the same name, a table and its project: with their extensions)

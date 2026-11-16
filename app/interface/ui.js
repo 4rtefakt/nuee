@@ -396,9 +396,11 @@ export function focusables(racine) {
 // surFermeture: called once the dialog is gone, whichever way (button, Esc, ×, click outside).
 // The keyboard starts in the dialog (its first field, or its main button), Tab and Shift+Tab go
 // round inside it, and it goes back where it was when the dialog closes (the R console's prompt,
-// for one; in a dialog that opened this one, its button).
+// for one; in a dialog that opened this one, its button). clicDehors: false, a click beside it
+// leaves it open (a progress whose closing stops the work); focus: 'corps', the keyboard starts on
+// its text, not on its main button (code to approve: a second Enter mustn't run what wasn't read).
 let nDialogues = 0;
-export function dialogue({ titre, contenu, boutons = [], large = false, surFermeture = null }) {
+export function dialogue({ titre, contenu, boutons = [], large = false, surFermeture = null, clicDehors = true, focus = null }) {
   const avant = document.activeElement;
   const fond = el('div', { class: 'fond-dialogue' });
   let ferme = false;
@@ -440,13 +442,13 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
   // a click beside it closes a dialog that only shows something; one with fields to fill in (New
   // model, Export to R...) stays, so that a click beside it doesn't lose what was chosen (Esc or ×)
   const aDesChamps = () => boite.querySelector('.corps-dialogue input, .corps-dialogue select, .corps-dialogue textarea');
-  fond.addEventListener('mousedown', (e) => { if (e.target === fond && !aDesChamps()) fermer(); });
+  fond.addEventListener('mousedown', (e) => { if (e.target === fond && clicDehors && !aDesChamps()) fermer(); });
   document.addEventListener('keydown', touche, true);
   document.body.append(fond);
   const corps = boite.querySelector('.corps-dialogue');
   const champs = focusables(corps);
-  if (!champs.length) corps.tabIndex = 0;  // (a text that scrolls: the keyboard scrolls it)
-  const premier = champs.find((x) => x.matches('input, select, textarea'))
+  if (!champs.length || focus === 'corps') corps.tabIndex = 0;  // (a text that scrolls: the keyboard scrolls it)
+  const premier = focus === 'corps' ? corps : champs.find((x) => x.matches('input, select, textarea'))
     || pied.querySelector('button.principal') || pied.querySelector('button') || boite.querySelector('.tete-dialogue button');
   if (premier) premier.focus();
   return { fermer, boite };

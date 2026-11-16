@@ -64,6 +64,7 @@ egal('what is new: observations, variables, categories', textes(lu, 'nouveau'),
 egal('what is missing, as a warning', [textes(lu, 'absent'), classes(lu, 'absent')], [['1 observation(s) no longer in the file, which leave every model: S2-2019'], ['attention']]);
 egal('the cells changed, the variable with the most first', textes(lu, 'change'), ['40 cell(s) of the observations already there: $C1.t1 (39), y (1)']);
 egal('every step replayed', textes(lu, 'etapes'), ['All 2 steps replayed.']);
+egal('… its one step, in the singular', textes(lireRapport({ ...rapport, etapes: rapport.etapes.slice(0, 1) }, 40), 'etapes'), ['The step replayed.']);
 egal('a reference category that changes warns, a category gained informs', [textes(lu, 'modeles'), classes(lu, 'modeles')],
   [['Tous: its reference category of “habitat”, “prairie”, has no observations left; “lande” takes its place', 'C1 takes the new categories of “habitat”: “dune”'], ['attention', '']]);
 egal('one line: the observations before and after, what came and went', lu.resume, '40 → 44 observations · 5 new, 1 gone · 40 cell(s) changed · variables: 1 new, 0 gone');

@@ -53,6 +53,7 @@ async function actualiser(app) {
     try { app.majProjet(await demander('projet', { projet: p.id })); } catch { /* closed meanwhile */ }
   }
   barresGreffons(app);
+  app.diffuser('modeles');  // (the other windows' menus and New model too: app.js, synchroniser)
 }
 
 // ------------------------------------------------------------ the model's dialog
@@ -213,11 +214,12 @@ function surErreurGreffon(e) {
   if (r && liste(r.paquets_manquants).length && appli) installerPaquets(appli, liste(r.paquets_manquants));
 }
 
-// Model › Plugins › <name>…: New model with its dialog.
+// Model › Plugins › <name>…: New model with its dialog (its type given as a new model's, as Find a
+// command does: Auto ticked, the scaling its own; not as a model to edit)
 function nouveauModeleGreffon(app, g) {
   const p = app.projet(app.projetActif());
   if (!p) { app.statut(t('choisir_projet'), true); return; }
-  dialogueModele(app, p, { type: CLE(g.id) }, texte(g.nom) || g.id);
+  dialogueModele(app, p, null, texte(g.nom) || g.id, null, CLE(g.id));
 }
 
 // Edit the model: its dialog again, made from the installed plugin when it is the model's own version,
@@ -332,7 +334,8 @@ function dialogueInstallation(app, lu, source, apres = null) {
   const i = lu.installe;
   const remplace = i ? t(i.meme ? 'greffon_deja' : i.ordre > 0 ? 'greffon_remplace_ancienne' : i.ordre < 0 ? 'greffon_remplace_recente' : 'greffon_remplace_copie', { version: i.version }) : '';
   const manquants = liste((g.paquets || {}).nom).filter((_, k) => !liste((g.paquets || {}).present)[k]);
-  dialogue({ titre: t('greffon_installer_titre', { nom: texte(g.nom) || g.id || '?', version: g.version || '' }), large: true,
+  // (the keyboard on its text and code: Enter doesn't install what wasn't read)
+  dialogue({ titre: t('greffon_installer_titre', { nom: texte(g.nom) || g.id || '?', version: g.version || '' }), large: true, focus: 'corps',
     contenu: el('div', { class: 'montrer-code installation-greffon' }, carteGreffon(g),
       remplace ? el('p', { class: 'note' }, remplace) : null,
       !lu.peut ? el('p', { class: 'erreur' }, lu.raison) : null,
@@ -472,7 +475,8 @@ async function montrerGreffons(app, pid, empreinte = null) {
   if (!gs.length) return;
   const g = gs[0];
   const cas = g.etat === 'invalide' ? 'invalide' : g.interdit ? 'interdit' : !g.installe ? 'absent' : g.installe.version === g.version ? 'copie' : 'autre';
-  const d = dialogue({ titre: `${t('greffon_montrer')} — ${p.nom || ''}`, large: true,
+  // (the keyboard on its text and code: Enter doesn't run what wasn't read)
+  const d = dialogue({ titre: `${t('greffon_montrer')} — ${p.nom || ''}`, large: true, focus: 'corps',
     contenu: el('div', { class: 'montrer-code' }, el('p', { class: 'note' }, t('greffon_montrer_note')),
       gs.map((x) => [carteGreffon(x), el('p', { class: 'note' }, t('greffon_montrer_modeles', { modeles: liste(x.modeles).map((y) => y.nom).join(', ') })),
         x.installe ? el('p', { class: 'note' }, t(x.installe.version === x.version ? 'greffon_version_copie' : 'greffon_version_autre', { version: x.version, installee: x.installe.version })) : null,

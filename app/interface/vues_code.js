@@ -130,6 +130,8 @@ function editeurCode(st) {
       }),
     });
     zone.remove();
+    // (the dialog drawn again, a new editor each time: the one before, out of the page, let go)
+    if (st._editeur && st._editeur !== vue && !st._editeur.dom.isConnected) st._editeur.destroy();
     st._editeur = vue;
   }).catch(() => { /* the plain field stays */ });
   return boite;
@@ -444,7 +446,8 @@ function barresCode(app) {
 async function montrerCode(app, pid) {
   const r = await demander('code_modeles', { projet: pid });
   const modeles = liste(r.modeles).filter((x) => !x.approuve);
-  dialogue({ titre: `${t('code_montrer')} — ${(app.projet(pid) || {}).nom || ''}`, large: true,
+  // (the keyboard on the code, not on Run it: a second Enter doesn't run what wasn't read)
+  dialogue({ titre: `${t('code_montrer')} — ${(app.projet(pid) || {}).nom || ''}`, large: true, focus: 'corps',
     contenu: el('div', { class: 'montrer-code' }, el('p', { class: 'note' }, t('code_montrer_note')),
       modeles.map((x) => el('section', {}, el('h4', {}, x.nom, x.titre ? el('span', { class: 'doux' }, ` — ${x.titre}`) : null), codeNumerote(x.code)))),
     boutons: [{ libelle: t('fermer'), action: () => true }, { libelle: t('code_executer'), principal: true, action: () => { executerCode(app, pid); return true; } }] });

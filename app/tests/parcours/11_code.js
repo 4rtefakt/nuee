@@ -114,6 +114,9 @@ module.exports = {
     await n.dialogue('code_montrer');
     const montre = await n.attendre(`(() => { const p = ${boite}.querySelector('pre.code-r'); return p ? [...p.querySelectorAll('.ligne-code')].map((l) => l.textContent).join('\\n') : null; })()`);
     verifier('codeMontreTelQuel', montre === CODE3, montre);
+    // (the keyboard on the code, not on Run it: Enter runs nothing unread)
+    const focus = await n.evaluer(`(() => { const a = document.activeElement; return a === ${boite}.querySelector('.corps-dialogue') ? 'code' : a && a.matches('button.principal') ? 'executer' : (a && a.tagName) || ''; })()`);
+    verifier('clavierSurLeCode', focus === 'code', focus);
     await capture('4-montrer');
     await n.bouton('code_executer');
     const fait = await n.attendre(`__n.api('etat').then((e) => [].concat(e.modeles).find((x) => x.projet === ${JSON.stringify(pc.id)} && x.type === 'CODE') || null)`, 180000);

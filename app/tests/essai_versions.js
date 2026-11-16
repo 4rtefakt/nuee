@@ -297,6 +297,11 @@ async function automatiques() {
   verifier('fermé : une version si le fichier a changé, puis plus', v3 && v3.description === 'M1 changed' && (await alice.aLaFermeture(projet)).version === null, v3);
   const avantMaj = await alice.marquer(projet, 'Before updating the data');
   ecrire(projet, projetJson({ lignes: 30, modeles: { M1: 3, M4: 1 } }));
+  // (Save a version…, the project saved first, an hour after the last version: the save makes no
+  // automatic version, auto: false, so that the one marquer makes has its words)
+  avancer(61 * MINUTE);
+  verifier('enregistré pour une version nommée (auto : false) : pas de version automatique', (await alice.apresEnregistrement(projet, { auto: false })).version === null
+    && (await alice.liste(projet))[0].oid === v3.oid);
   const maj = await alice.marquer(projet, 'Before updating the data');
   const l = await alice.liste(projet);
   verifier('avant une mise à jour : la dernière version si rien n’a changé, sinon une version qui le dit', avantMaj.oid === v3.oid && maj.oid === l[0].oid

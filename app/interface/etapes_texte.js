@@ -109,7 +109,7 @@ export function lireRapport(r, n = null) {
   const faites = etapes.filter((e) => e.statut === 'ok').length;
   const lignesEtapes = [];
   if (etapes.length) {
-    lignesEtapes.push(ligne(faites === etapes.length ? t('etapes_r_toutes', { n: etapes.length }) : t('etapes_r_faites', { n: faites, total: etapes.length })));
+    lignesEtapes.push(ligne(faites === etapes.length ? t(etapes.length === 1 ? 'etapes_r_toutes_une' : 'etapes_r_toutes', { n: etapes.length }) : t('etapes_r_faites', { n: faites, total: etapes.length })));
     for (const e of etapes) {
       const qui = `${e.n}. ${e.etiquette || genreEtape(e.demande)}`;
       if (e.statut === 'sautee') lignesEtapes.push(ligne(t('etapes_r_sautee', { etape: qui, raison: e.raison }), 'attention'));

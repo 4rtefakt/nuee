@@ -1196,7 +1196,8 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
     return {};
   }
 
-  async function apresEnregistrement(chemin, { ancien = null } = {}) {
+  // (auto: false, no automatic version: the interface makes one with its words at once, marquer)
+  async function apresEnregistrement(chemin, { ancien = null, auto = true } = {}) {
     if (ancien && cle(ancien) !== cle(chemin)) {
       const avant = ouverts.get(cle(ancien));
       ouverts.delete(cle(ancien));
@@ -1205,6 +1206,7 @@ function creerVersions({ fetch, jetons, langue = () => 'en', reglages: stockes, 
     }
     const o = ouverts.get(cle(chemin));
     if (o) o.modifie = false;
+    if (auto === false) return { version: null };
     const v = await ecrire(chemin, async (d) => {
       if (!actifPour(d)) return null;
       const derniere = d.tete ? (await lireCommit(d, d.tete)).committer.timestamp * 1000 : null;

@@ -31,7 +31,9 @@ const LIGNES = 60;
 // quietly (app.calculerDiscret: no views open). A project the interface doesn't show (an old
 // version opened in the engine only) has none in the session: its models are fitted with the
 // number of components its saved session had. A model that can't be fitted is kept with its error.
-export async function resumerProjet(app, pid, { surProgression } = {}) {
+// arrete(): true once Stop was pressed (etapes.js, its progress dialog): no more models; Stop
+// pressed in the status bar during a fit, the request's refusal, goes on to the caller.
+export async function resumerProjet(app, pid, { surProgression, arrete = null } = {}) {
   const montre = !!app.projet(pid);
   const p = app.projet(pid) || await demander('projet', { projet: pid });
   const definitions = [].concat(p.modeles || []).filter((d) => d.ajuste);
@@ -44,6 +46,7 @@ export async function resumerProjet(app, pid, { surProgression } = {}) {
   const numero = (id) => Number(String(id).replace(/\D/g, '')) || 0;
   const modeles = [];
   for (const [k, d] of definitions.entries()) {
+    if (arrete && arrete()) break;
     if (surProgression) surProgression({ fait: k, total: definitions.length, nom: d.nom });
     try {
       const calcules = montre ? app.modelesDe(pid).filter((m) => m.numero === d.numero).sort((a, b) => numero(b.id) - numero(a.id)) : [];
@@ -51,6 +54,7 @@ export async function resumerProjet(app, pid, { surProgression } = {}) {
       const r = await demander('resultats_cles', { modele: id });
       modeles.push({ nom: d.nom, numero: d.numero, type: d.type, entrees: [].concat(r.entrees || []) });
     } catch (e) {
+      if (arrete && e.reponse && e.reponse.arrete) throw e;
       modeles.push({ nom: d.nom, numero: d.numero, type: d.type, entrees: null, erreur: e.message });
     }
   }
