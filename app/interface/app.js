@@ -1691,14 +1691,16 @@ function enregistrerImage(div = app.grapheActif(), format = 'png') {
 app.copierImage = () => copierImage();
 
 // Ctrl+C in a panel that shows a table (and no text selected): the table as tab-separated
-// text, for Excel. A list copies all its rows at full precision (its copy button), any other
-// table as shown.
+// text, for Excel. A table of panneaux.js's tableau() copies all its rows at full precision (its
+// copy button), whether it fills the panel or sits under a plot; a view's own copy comes first;
+// any other table as shown.
 app.tableauActif = () => {
   const p = VUE_SEULE ? { id: 'seul' } : panneauCourant();
   const e = p && etat.panneaux.get(p.id);
   const table = e && e.element && e.element.querySelector('table');
   if (!table) return null;
   if (e.element._copierTableau) return e.element._copierTableau;
+  for (let x = table.parentElement; x && x !== e.element; x = x.parentElement) if (x._copierTableau) return x._copierTableau;
   return () => {
     const texte = (c) => { const x = c.cloneNode(true); x.querySelectorAll('.marque').forEach((m) => m.remove()); return x.textContent.replace(/[▲▼]/g, '').trim(); };
     navigator.clipboard.writeText([...table.rows].map((r) => [...r.cells].map(texte).join('\t')).join('\n')).then(() => statut(t('table_copiee')));

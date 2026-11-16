@@ -3468,7 +3468,7 @@ async function rendreMoyennes(conteneur, ctx, p, loc) {
 // regressions ticked, side by side (rendreCoteACote).
 function rendreComparaison(conteneur, ctx, p, loc) {
   loc.mode ??= 'ajustement';
-  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as shown)
+  // (Ctrl+C and File › Export: the side-by-side table sets its own; here Ctrl+C copies the first table, as its copy button does)
   conteneur._copierTableau = null;
   conteneur._coefficients = null;
   const mode = outils(choix('', [['ajustement', t('comparaison_ajustement')], ['coefficients', t('cote_a_cote')]], loc.mode,
