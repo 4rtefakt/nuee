@@ -2,7 +2,7 @@
 // settings in the model dialog, their views (summary, variable importance, partial dependence
 // computed on request, observed against predicted or the classification, the error against the
 // number of trees), their report parts and strings. Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints } from './i18n.js';
 import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
   notesModele, ficheTest, ficheCondition, avecUnite, uniteAxe, transformeeDans, etendue } from './panneaux.js';
@@ -200,7 +200,7 @@ function rendreClassement(conteneur, ctx, p, loc) {
       el('td', { class: 'num' }, somme(tab.map(somme))), el('td', { class: 'num' }, pct(r.global)))));
   const graphe = el('div', { class: 'graphe' });
   conteneur.replaceChildren(outils(choix('', modes.map((k) => [k, t(`ens_mode_${k}`)]), loc.mode, (v) => { loc.mode = v; ctx.rafraichir(); }),
-    el('span', { class: 'infos' }, `${t('bien_classes')} : ${pct(r.global)}`)),
+    el('span', { class: 'infos' }, `${t('bien_classes')}${deuxPoints()}${pct(r.global)}`)),
   el('p', { class: 'note' }, t(foret(m) ? `ens_classement_note_${loc.mode}` : 'ens_classement_note_boost')), el('div', { class: 'tableau-court' }, table), graphe);
   const traces = r.roc.map((roc, j) => ({ type: 'scatter', mode: 'lines', name: `${classes[j]} (AUC ${fmt(roc.auc, 3)})`,
     x: roc.fpr, y: roc.tpr, line: { color: PALETTE[j % PALETTE.length], width: 2, shape: 'hv' } }));

@@ -3,7 +3,7 @@
 // plot, eigenvalues, permutation tests, contributions, summary), their report parts and their
 // strings. A CCA is shown as the RDA is (a triplot, its tests), with the CA's three scalings.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints } from './i18n.js';
 import { el, fmt, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, controleCouleur, controleEtiquettes, pointsObservations, tableau,
@@ -403,7 +403,7 @@ const blocsResume = (m) => {
   const pct = (v) => fmt(100 * v / i.totale, 1);
   const cca = m.type === 'CCA';
   return [{ texte: `${t(cca ? 'type_cca' : 'type_rda')} · N = ${m.N} · ${cca ? t('ord_especes') : t('ord_reponses')} ${liste(m.noms_y).length} · ${t('nb_termes')} ${liste(m.termes).length}`
-    + (liste(m.covariables).length ? ` · ${t('ord_covariables')} : ${liste(m.covariables).join(', ')}` : '') },
+    + (liste(m.covariables).length ? ` · ${t('ord_covariables')}${deuxPoints()}${liste(m.covariables).join(', ')}` : '') },
   { entetes: ['R2', t('r2_ajuste'), t('ord_pseudo_f'), 'p', t('nb_permutations')],
     lignes: [[fmt(m.r2, 4), m.r2_ajuste === null || m.r2_ajuste === undefined ? '—' : fmt(m.r2_ajuste, 4), fmt(m.test.F, 3), m.test.permutations ? pValeur(m.test.p) : '—',
       String(m.test.permutations || 0)]] },
@@ -419,7 +419,7 @@ const blocsValeursPropres = (m) => [{ entetes: [t('ord_axe'), t('valeur_propre')
 const demandeRapport = async (nom, m, f) => { try { return f(await demander(nom, { modele: m.id })); } catch (e) { return [{ texte: e.message }]; } };
 const lignesTests = (df, premiere) => lignesDe(df, [premiere, 'ddl', 'inertie', 'F', 'p']).map((l) => [l[0], fmt(l[1], 0), fmt(l[2], 5), l[3] === null ? '' : fmt(l[3], 3), l[4] === null ? '' : pValeur(l[4])]);
 const blocsTests = (m) => (!m.test.permutations ? [{ texte: t('ord_sans_permutations') }] : demandeRapport('rda_tests', m, (r) => [
-  { texte: `${t('ord_test_global')} : ${t('ord_pseudo_f')} = ${fmt(m.test.F, 3)}, p = ${pValeur(m.test.p)} (${m.test.permutations} ${t('ord_permutations_mot')}${m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : ''})` },
+  { texte: `${t('ord_test_global')}${deuxPoints()}${t('ord_pseudo_f')} = ${fmt(m.test.F, 3)}, p = ${pValeur(m.test.p)} (${m.test.permutations} ${t('ord_permutations_mot')}${m.strates ? `, ${t('ord_permutations_dans', { g: m.strates })}` : ''})` },
   { texte: t('ord_tests_axes') }, { entetes: [t('ord_axe'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.axes, 'axe') },
   ...(r.sequentiels ? [{ texte: t('ord_tests_sequentiels') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.sequentiels, 'terme') }] : []),
   { texte: t('ord_tests_termes') }, { entetes: [t('terme'), t('ddl'), t('ord_inertie'), t('ord_pseudo_f'), 'p'], lignes: lignesTests(r.termes, 'terme') }]));

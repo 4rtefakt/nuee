@@ -1,7 +1,7 @@
 // Main window: menu bar, toolbar, project explorer, dockable panels and status bar.
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
-import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire } from './i18n.js';
+import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
@@ -447,7 +447,7 @@ const app = {
           oublierModele(id);
           if (r.projet) projetChange(r.projet);
           diffuser('modeles');
-        }).catch((e) => statut(`${t('erreur')} : ${e.message}`, true));
+        }).catch((e) => statut(`${t('erreur')}${deuxPoints()}${e.message}`, true));
         return true;
       } }] });
   },
@@ -458,7 +458,7 @@ const app = {
   },
   async noterModele(id, note) {
     let r;
-    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')} : ${e.message}`, true); return; }
+    try { r = await demander('note_modele', { modele: id, note }); } catch (e) { statut(`${t('erreur')}${deuxPoints()}${e.message}`, true); return; }
     if (etat.modeles[id]) etat.modeles[id].note = r.note;
     projetRecu(r.projet);
     app.rafraichirExplorateur();
@@ -487,7 +487,7 @@ const app = {
     statut(t('moteur_redemarrage'));
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
-    if (erreur) { statut(`${t('erreur')} : ${erreur}`, true); return; }
+    if (erreur) { statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
@@ -955,7 +955,7 @@ async function occupe(f) {
     return r;
   } catch (e) {
     console.error(e);
-    statut(`${t('erreur')} : ${e.message}`, true);
+    statut(`${t('erreur')}${deuxPoints()}${e.message}`, true);
     throw e;
   } finally {
     etat.occupe -= 1;
@@ -1626,7 +1626,7 @@ function rendrePanneau(entree) {
   let rendu;
   try { rendu = v.rendre(entree.element, contexte(entree), entree.params, entree.loc); } catch (e) { rendu = Promise.reject(e); }
   Promise.resolve(rendu).catch((e) => {
-    entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
+    entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${e.message}`));
   });
   const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
   if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : titre);  // in its model's page, the model's name goes without saying

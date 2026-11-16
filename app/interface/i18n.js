@@ -1420,6 +1420,11 @@ export function libelleResultat(cle) {
 
 export function langueActuelle() { return langue; }
 
+// The interface's typography: a space before a colon or a percent sign in French only
+// ("Erreur : …", "5 %"; "Error: …", "5%")
+export const deuxPoints = () => (langue === 'fr' ? ' : ' : ': ');
+export const pourcent = () => (langue === 'fr' ? ' %' : '%');
+
 export function changerLangue(l) {
   langue = l;
   ecrire('langue', l);

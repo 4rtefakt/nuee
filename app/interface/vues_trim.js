@@ -2,7 +2,7 @@
 // dialog, its views (the summary with the overall slope and its class, the indices with their
 // band, the time totals, the parameters and tests, each site's counts against the model's), its
 // report parts and its strings. Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints } from './i18n.js';
 import { el, fmt, decimal } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
@@ -364,7 +364,7 @@ const blocsResume = (m) => {
   const tp = liste(m.temps);
   return [{ texte: `TRIM · ${libelleModele(m)} · ${t('trim_n_sites')} ${m.I} · ${t('trim_temps')} ${temps(tp[0])}–${temps(tp[tp.length - 1])} · ${t('trim_comptages')} ${m.O} / ${m.I * m.J}`
     + (m.surdispersion ? ` · σ² ${fmt(m.sigma2, 3)}` : '') + (m.correlation ? ` · ρ ${fmt(m.rho, 3)}` : '') },
-  { texte: `${t('trim_pente_globale')} : ×${nombre(pi.mult, 4)} (${t('trim_se')} ${nombre(pi.se, 4)}) · ${classe(pi)}` },
+  { texte: `${t('trim_pente_globale')}${deuxPoints()}×${nombre(pi.mult, 4)} (${t('trim_se')} ${nombre(pi.se, 4)}) · ${classe(pi)}` },
   { entetes: ['', t('trim_valeur'), t('ddl'), 'p'], lignes: [[t('trim_chi2'), fmt(m.ajustement.chi2, 2), String(m.ajustement.ddl), pValeur(m.ajustement.p_chi2)],
     [t('trim_lr'), fmt(m.ajustement.LR, 2), String(m.ajustement.ddl), pValeur(m.ajustement.p_LR)], ['AIC', fmt(m.ajustement.AIC, 2), '', '']] },
   ...notesTrim(m).map((x) => ({ texte: x }))];

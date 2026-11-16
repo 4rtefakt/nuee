@@ -9,7 +9,7 @@
 // names (bibliography:), from Zotero on this computer (zotero.js: My Library or a group library), or
 // kept in the document itself (its `bib`: the references added from Zotero, with where they are in
 // it, or pasted, and a copy of those cited from files).
-import { t, ajouterTextes, langueActuelle, lire, ecrire } from './i18n.js';
+import { t, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
@@ -866,7 +866,7 @@ function citationsZotero(app, s) {
 
 function menuCiter(app, s) {
   const z = zotero.etat;
-  const fichiers = s.biblio.fichiers.map((f) => ({ libelle: `${nomFichier(f.chemin)} : ${f.erreur ? t('citer_fichier_erreur') : t('citer_n', { n: f.entrees.length })}`,
+  const fichiers = s.biblio.fichiers.map((f) => ({ libelle: `${nomFichier(f.chemin)}${deuxPoints()}${f.erreur ? t('citer_fichier_erreur') : t('citer_n', { n: f.entrees.length })}`,
     icone: f.erreur ? 'x-circle' : 'file-text', actif: false, action: () => {} }));
   return [
     { libelle: t('citer_inserer'), icone: 'book-open', action: () => dialogueCiter(app, s) },
@@ -983,7 +983,7 @@ async function lierFichier(app, s) {
   const f = s.biblio.fichiers.find((x) => x.chemin === valeur);
   // (with what bibliotheque() said of a key the file gives to another work than one kept from Zotero)
   const conflit = s.biblio.dernierConflit;
-  app.statut([f && f.erreur ? `${nomFichier(valeur)} : ${f.erreur}` : t('citer_lie', { fichier: nomFichier(valeur), n: f ? f.entrees.length : 0 }), conflit].filter(Boolean).join(' — '),
+  app.statut([f && f.erreur ? `${nomFichier(valeur)}${deuxPoints()}${f.erreur}` : t('citer_lie', { fichier: nomFichier(valeur), n: f ? f.entrees.length : 0 }), conflit].filter(Boolean).join(' — '),
     !!(f && f.erreur) || !!conflit);
   s.rafraichir();
 }
@@ -1010,7 +1010,7 @@ async function dialogueReferences(app, s) {
   const lignes = [...entrees.values()].sort((a, b) => resume(a).localeCompare(resume(b))).map((e) => el('div', { class: `ligne-reference${citees.has(e.cle) ? ' citee' : ''}` },
     el('code', {}, `@${e.cle}`), el('span', { class: 'resume-citation' }, resume(e, s.langue)),
     el('span', { class: 'source-citation' }, e.origine ? nomFichier(e.origine) : dansDocument(e))));
-  const sources = [...s.biblio.fichiers.map((f) => `${f.chemin} : ${f.erreur || t('citer_n', { n: f.entrees.length })}${f.erreurs.length ? ` (${t('citer_coller_erreurs', { n: f.erreurs.length })})` : ''}`),
+  const sources = [...s.biblio.fichiers.map((f) => `${f.chemin}${deuxPoints()}${f.erreur || t('citer_n', { n: f.entrees.length })}${f.erreurs.length ? ` (${t('citer_coller_erreurs', { n: f.erreurs.length })})` : ''}`),
     t('citer_n_document', { n: lireBibtex(s.bib).entrees.length })];
   const inutiles = lireBibtex(s.bib).entrees.filter((e) => !citees.has(e.cle));
   dialogue({ titre: t('citer_references').replace(/…$/, ''), large: true,
@@ -1234,7 +1234,7 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
         // (Quarto runs the R of a reproducible .qmd with the engine's R when it has knitr and rmarkdown, unless QUARTO_R says another)
         const R = rep && rep.R && rep.R.knitr && rep.R.rmarkdown ? rep.R.bin : null;
         const sortie = await bureau.quarto(chemin, quarto, R ? { R } : {});
-        if (sortie.erreur) throw new Error(sortie.erreur === 'quarto_absent' ? t('document_quarto_absent') : `Quarto : ${sortie.erreur}`);
+        if (sortie.erreur) throw new Error(sortie.erreur === 'quarto_absent' ? t('document_quarto_absent') : `Quarto${deuxPoints()}${sortie.erreur}`);
         ouvrir = sortie.sortie;
       }
     }
@@ -1298,7 +1298,7 @@ function dialogueNouveau(app, pid, apres = null) {
     { libelle: t('creer_document'), principal: true, action: () => {
       const choisis = ajustes.filter((d) => st.modeles.has(d.nom));
       creer(app, p.id, { titre: st.titre.trim(), langue: st.langue, texte: gabarit(app, p, st, choisis) })
-        .then((id) => { if (id && apres) apres(id); }, (e) => app.statut(`${t('erreur')} : ${e.message}`, true));
+        .then((id) => { if (id && apres) apres(id); }, (e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true));
       return true;
     } }] });
 }
@@ -1359,9 +1359,9 @@ function menuDocument(app, pid, id) {
   return [
     { libelle: t('ouvrir_document'), icone: 'file-text', action: () => app.ouvrirDocument(pid, id) },
     { libelle: t('document_renommer'), icone: 'pencil', action: () => renommer(app, pid, id) },
-    { libelle: t('document_dupliquer'), icone: 'copy', action: () => dupliquer(app, pid, id).catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true)) },
+    { libelle: t('document_dupliquer'), icone: 'copy', action: () => dupliquer(app, pid, id).catch((e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true)) },
     '-',
-    { libelle: t('supprimer_document'), icone: 'trash-2', action: () => supprimer(app, pid, id).catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true)) },
+    { libelle: t('supprimer_document'), icone: 'trash-2', action: () => supprimer(app, pid, id).catch((e) => app.statut(`${t('erreur')}${deuxPoints()}${e.message}`, true)) },
   ];
 }
 

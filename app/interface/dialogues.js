@@ -1,5 +1,5 @@
 // Dialogs: model definition (type, variables, observations), help and about.
-import { t, langueActuelle } from './i18n.js';
+import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander } from './api.js';
 import { libelleTransfo, lireTransfo, codeTransfo, TYPES_TRANSFO, FORMAT, changerFormat } from './panneaux.js';
@@ -578,7 +578,7 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
           };
           const r2 = st.croisesReglages[k] || {};
           return el('tr', {}, el('td', {}, fs.map(nom).join(' × ')),
-            horsX.length ? el('td', { class: 'erreur' }, `${t('facteur_non_x')} : ${horsX.map(nom).join(', ')}`)
+            horsX.length ? el('td', { class: 'erreur' }, `${t('facteur_non_x')}${deuxPoints()}${horsX.map(nom).join(', ')}`)
               : el('td', { class: 'doux' }, seuls.length ? t('sans_effet_principal', { noms: seuls.map(nom).join(', ') }) : ''),
             el('td', {}, el('select', { onchange: (e) => reglage('echelle', e.target.value) },
               ECHELLES.map((e2) => el('option', { value: e2, selected: e2 === (r2.echelle || st.echelle) }, t('echelle_' + e2))))),

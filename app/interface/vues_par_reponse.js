@@ -5,7 +5,7 @@
 // term's effect in small multiples (one small plot per response, its band, the same x axis); and
 // each model's quality (N, AIC, R², Q²) with the responses that couldn't be fitted.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, deuxPoints } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, tableau, valeurP } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -24,7 +24,7 @@ async function rendreParReponse(conteneur, ctx, p, loc) {
     try { cache.res = await ctx.demander('par_reponse', { modele: m.id, reponses: liste(loc.reponses), correction: loc.correction || 'BH' }); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const tab = r.tableau || {};
   const col = (k) => liste(tab[k]);

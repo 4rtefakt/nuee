@@ -2,7 +2,7 @@
 // of the interface, and a prompt that runs R in the application's own R session
 // (moteur/console.R). m and p are the model and the project shown; P1, M7... the open
 // projects and models, by the names the log gives them.
-import { t, lire, ecrire } from './i18n.js';
+import { t, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone } from './ui.js';
 
 // the last click anywhere: what the prompt's focus guard compares with the last key typed
@@ -39,7 +39,7 @@ export function rendreConsole(conteneur, ctx) {
         continue;
       }
       const texte = e.type === 'commande' ? e.texte.split('\n').map((l, i) => (i ? '+ ' : '> ') + l).join('\n')
-        : e.type === 'erreur' ? `${t('erreur')} : ${e.texte}` : e.type === 'avertissement' ? `${t('avertissement')} : ${e.texte}` : e.texte;
+        : e.type === 'erreur' ? `${t('erreur')}${deuxPoints()}${e.texte}` : e.type === 'avertissement' ? `${t('avertissement')}${deuxPoints()}${e.texte}` : e.texte;
       // (resultat: what R prints of a model the interface fitted; hidden with the calls)
       const bloc = el('pre', { class: 'r-' + e.type, title: e.heure }, texte);
       if (e.type === 'appel' || e.type === 'commande') bloc.dataset.code = e.texte;

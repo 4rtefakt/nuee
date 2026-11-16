@@ -7,7 +7,7 @@
 // selection shared with the project's models. The autocorrelation view gives Moran's I of a
 // variable or of a regression's residuals, its correlogram and the semivariogram.
 // Imported by app.js.
-import { t, ajouterTextes, libelleResultat } from './i18n.js';
+import { t, ajouterTextes, libelleResultat, deuxPoints } from './i18n.js';
 import { el, fmt, decimal, entreNombres } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, valeurP, uniteAxe, etendue } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -289,7 +289,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
     try { cache.res = await ctx.demander('autocorrelation_spatiale', q); cache.erreur = null; } catch (e) { cache.res = null; cache.erreur = e.message; }
     cache.cle = cle;
   }
-  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')} : ${cache.erreur}`)); return; }
+  if (!cache.res) { conteneur.replaceChildren(barre, el('p', { class: 'erreur' }, `${t('erreur')}${deuxPoints()}${cache.erreur}`)); return; }
   const r = cache.res;
   const mo = r.moran;
   const km = r.distance_max > 5000;
@@ -324,7 +324,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
     { type: 'scatter', mode: 'lines+markers', name: 'I', x: D.map((d) => (km ? d / 1000 : d)), y: I, line: { color: c.doux, width: 1 },
       marker: { size: 9, color: PH.map((x) => (x !== null && x <= 0.05 ? PALETTE[1] : PALETTE[0])) },
       customdata: liste(cg.paires).map((n, i) => [n, valeurP(liste(cg.p)[i]), valeurP(PH[i])]),
-      hovertemplate: `%{x:.3~f} ${unite}<br>I = %{y:.4f}<br>${t('carte_paires')} : %{customdata[0]}<br>p = %{customdata[1]} (Holm : %{customdata[2]})<extra></extra>` },
+      hovertemplate: `%{x:.3~f} ${unite}<br>I = %{y:.4f}<br>${t('carte_paires')}${deuxPoints()}%{customdata[0]}<br>p = %{customdata[1]} (Holm${deuxPoints()}%{customdata[2]})<extra></extra>` },
     { type: 'scatter', mode: 'lines', name: t('autocorrelation_esperance'), x: D.map((d) => (km ? d / 1000 : d)), y: E,
       line: { color: c.doux, dash: 'dash', width: 1 }, hoverinfo: 'skip' }],
   { title: { text: `${t('autocorrelation_correlogramme')} · ${r.nom}` }, dragmode: 'zoom', showlegend: false,
@@ -337,7 +337,7 @@ async function rendreAutocorrelationSpatiale(conteneur, ctx, p, loc) {
   tracer(ctx, g2, [
     { type: 'scatter', mode: 'markers', name: 'γ', x: VD, y: liste(vg.gamma), customdata: NP,
       marker: { color: PALETTE[0], size: NP.map((n) => 5 + 10 * Math.sqrt(n / maxNP)) },
-      hovertemplate: `%{x:.3~f} ${unite}<br>γ = %{y:.4~g}<br>${t('carte_paires')} : %{customdata}<extra></extra>` },
+      hovertemplate: `%{x:.3~f} ${unite}<br>γ = %{y:.4~g}<br>${t('carte_paires')}${deuxPoints()}%{customdata}<extra></extra>` },
     { type: 'scatter', mode: 'lines', name: t('autocorrelation_variance'), x: [0, Math.max(...VD, 0)], y: [variance, variance],
       line: { color: c.doux, dash: 'dash', width: 1 }, hoverinfo: 'skip' }],
   { title: { text: `${t('autocorrelation_variogramme')} · ${r.nom}` }, dragmode: 'zoom', showlegend: false,
