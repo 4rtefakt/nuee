@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Un rapport, des modèles à l'article · Nuée</title>
+<meta name="description" content="Tutoriel Nuée : rédiger une étude dans un document, avec des valeurs qui suivent les modèles, les textes des méthodes et des résultats, des citations d'un fichier BibTeX, une figure de deux panneaux à la taille d'une revue, Word et PDF, et un fichier Quarto reproductible.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="rapport.html">
+<link rel="alternate" hreflang="en" href="../../en/tutorials/report.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/tutorials/report.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Tutoriel Nuée : rédiger une étude dans un document, avec des valeurs qui suivent les modèles, les textes des méthodes et des résultats, des citations d'un fichier BibTeX, une figure de deux panneaux à la taille d'une revue, Word et PDF, et un fichier Quarto reproductible. -->
+<h1>Un rapport, des modèles à l'article</h1>
+<p class="chapeau">Les prairies du tutoriel des cartes mises en forme : des valeurs qui suivent les modèles, les textes des méthodes et des résultats, des citations d'un fichier BibTeX, une figure de deux panneaux à la taille d'une revue, Word et PDF, et un fichier Quarto dont R recalcule les nombres.</p>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#1-un-nouveau-document">1. Un nouveau document</a></li>
+<li><a href="#2-citer-les-resultats">2. Citer les résultats</a></li>
+<li><a href="#3-des-citations-d-un-fichier-bibtex">3. Des citations d'un fichier BibTeX</a></li>
+<li><a href="#4-une-figure-a-la-taille-d-une-revue">4. Une figure à la taille d'une revue</a></li>
+<li><a href="#5-word-et-pdf">5. Word et PDF</a></li>
+<li><a href="#6-un-fichier-quarto-que-r-recalcule">6. Un fichier Quarto que R recalcule</a></li>
+<li><a href="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Avant de commencer.</strong> Ce tutoriel rédige l'étude du <a href="cartes.html">tutoriel des cartes</a>,
+sur ses données simulées : le projet des prairies avec ses coordonnées, l'altitude et ses deux
+modèles, M1 (la régression linéaire) et M2 (le modèle additif avec un lissage spatial). Si vous
+commencez ici, faites d'abord ses étapes 1 à 5. Téléchargez ensuite
+<a href="../../donnees/references.bib">references.bib</a> dans le dossier de prairies.csv : quatre références sur
+l'autocorrélation spatiale et les modèles additifs, telles que Zotero ou JabRef les exportent.</p>
+</div>
+<h2 id="1-un-nouveau-document">1. Un nouveau document</h2>
+<p><em>Fichier › Nouveau document</em> (ou clic droit sur le projet dans l'explorateur). Donnez-lui un titre,
+choisissez sa langue, qui règle l'écriture des nombres (0,46 en français, 0.46 en anglais) et celle
+du texte des méthodes, puis partez d'un <strong>Article</strong>, avec <strong>M2</strong> coché parmi les modèles à citer.</p>
+<figure><a class="clair-seul" href="../../images/fr/rapport-nouveau.png"><img src="../../images/fr/rapport-nouveau.png" alt="Nouveau document : le titre, Français, un article, M2 coché" width="560" height="366" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/rapport-nouveau.png"><img src="../../images/fr/sombre/rapport-nouveau.png" alt="Nouveau document : le titre, Français, un article, M2 coché" width="560" height="366" loading="lazy"></a><figcaption>Nouveau document : une page blanche, un article ou un rapport d'analyse, les modèles cochés déjà cités.</figcaption></figure>
+<p>Cliquez sur <strong>Créer le document</strong>. Il s'ouvre dans un onglet à lui : le texte à gauche, en Markdown
+(<code># Titre</code>, <code>*italique*</code>, <code>**gras**</code>, listes, tableaux), et son aperçu à droite, redessiné à mesure
+que vous tapez. L'article a ses titres (Introduction, Matériel et méthodes, Résultats, Discussion,
+Références), le texte des méthodes de M2, une phrase avec deux de ses valeurs, son texte des
+résultats et un graphique. Le document est gardé dans le projet et enregistré avec lui.</p>
+<h2 id="2-citer-les-resultats">2. Citer les résultats</h2>
+<p>Les résultats d'un modèle se citent entre doubles accolades ; l'aperçu montre leur valeur. Dans les
+résultats, écrivez :</p>
+<pre><code>La pente de la biomasse sur l'altitude est de {{M2.est.altitude}} g/m² par mètre (IC à 95 %
+{{M2.ic.altitude}}, {{M2.p.altitude}}). Le lissage spatial fait baisser l'AIC de {{M1.AIC}}
+à {{M2.AIC}} et monter le Q² en validation croisée de {{M1.Q2}} à {{M2.Q2}}
+({{ref:fig-effet}}).
+</code></pre>
+<p>L'aperçu donne :</p>
+<blockquote>
+<p>La pente de la biomasse sur l'altitude est de −0,848 g/m² par mètre (IC à 95 % [−1,110 ; −0,585],
+p &lt; 0,001). Le lissage spatial fait baisser l'AIC de 920,5 à 902,2 et monter le Q² en validation
+croisée de 0,31 à 0,46 (Figure 1).</p>
+</blockquote>
+<figure><a class="clair-seul" href="../../images/fr/rapport-document.png"><img src="../../images/fr/rapport-document.png" alt="Le document : à gauche les résultats en Markdown avec leurs références entre accolades, à droite l'aperçu avec les valeurs, la figure et les références" width="1440" height="792" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/rapport-document.png"><img src="../../images/fr/sombre/rapport-document.png" alt="Le document : à gauche les résultats en Markdown avec leurs références entre accolades, à droite l'aperçu avec les valeurs, la figure et les références" width="1440" height="792" loading="lazy"></a><figcaption>Le document : le texte avec ses références, et l'aperçu avec leurs valeurs, la figure et la liste des références.</figcaption></figure>
+<ul>
+<li>Une valeur : <code>{{M2.Q2}}</code>, <code>{{M1.AIC}}</code>, <code>{{M2.N}}</code> ; le coefficient d'une régression,
+<code>{{M2.coef.altitude}}</code> (l'estimation, son intervalle et p), ou ses parties, <code>est</code>, <code>ic</code> et <code>p</code>.
+Après deux-points, les décimales (<code>{{M2.Q2:3}}</code>) ou un pourcentage
+(<code>{{M2.deviance_expliquee:%}}</code>).</li>
+<li>Un bloc, seul sur sa ligne : le texte des méthodes <code>{{M2.methodes}}</code>, celui des résultats
+<code>{{M2.resultats}}</code>, un tableau <code>{{M2.table.coefficients | légende}}</code>, ou un graphique du modèle,
+comme dans sa fenêtre :
+<code>{{M2.effets.altitude #fig-effet | Effet de l'altitude sur la biomasse…}}</code>. Les figures et les
+tableaux sont numérotés dans l'ordre ; <code>#fig-effet</code> étiquette celle-ci, et <code>{{ref:fig-effet}}</code>
+écrit « Figure 1 » dans le texte.</li>
+<li>Taper <code>{{</code> liste les modèles du projet, puis ce qu'offre celui qu'on choisit, avec sa valeur
+actuelle ; <em>Insérer</em>, dans la barre d'outils, fait de même par des menus.</li>
+</ul>
+<p>Les valeurs suivent les modèles : réajustez M2 sur des données corrigées, et le document dit les
+nouveaux nombres. Une référence qui ne se résout pas est en rouge, avec la raison au survol.</p>
+<h2 id="3-des-citations-d-un-fichier-bibtex">3. Des citations d'un fichier BibTeX</h2>
+<p><em>Citer › Lier un fichier BibTeX ou CSL-JSON…</em> : choisissez <code>references.bib</code>. L'en-tête reçoit
+<code>bibliography: references.bib</code>, relatif au dossier du projet, comme Quarto le lit, et la barre
+d'état dit <em>references.bib : 4 références</em>. Les citations s'écrivent comme dans Quarto :</p>
+<ul>
+<li><code>[@legendre1993; @dormann2007]</code> donne (Legendre, 1993 ; Dormann et al., 2007) ;</li>
+<li><code>@hodges2010</code>, dans la phrase, Hodges et Reich (2010) ; <code>[voir @wood2017, chap. 5]</code>, avec un
+préfixe et une page.</li>
+</ul>
+<p>Taper <code>@</code> liste les références ; <em>Citer › Insérer une citation…</em> les propose avec une recherche :</p>
+<figure><a class="clair-seul" href="../../images/fr/rapport-citer.png"><img src="../../images/fr/rapport-citer.png" alt="Insérer une citation : les quatre références de references.bib, un champ de recherche et l'option de citer dans la phrase" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/rapport-citer.png"><img src="../../images/fr/sombre/rapport-citer.png" alt="Insérer une citation : les quatre références de references.bib, un champ de recherche et l'option de citer dans la phrase" width="900" height="680" loading="lazy"></a><figcaption>Insérer une citation : les références du document, et celles de Zotero quand il est ouvert sur cet ordinateur.</figcaption></figure>
+<p>La liste des références vient à la fin, sous le dernier titre quand c'est « Références », dans un
+style auteur–date ou numéroté (<em>Citer › Style des citations</em>). Avec Zotero ouvert sur cet
+ordinateur, ses bibliothèques sont cherchées aussi. Le texte des méthodes cite ses propres
+références (Nuée, R, mgcv, Wood 2003…), que cette liste ne contient pas : <em>Modèle › Texte pour la
+section Méthodes</em> les donne ; ajoutez celles que vous gardez à votre <code>.bib</code>.</p>
+<h2 id="4-une-figure-a-la-taille-d-une-revue">4. Une figure à la taille d'une revue</h2>
+<p>Un document montre les graphiques d'un modèle un par un. Une revue demande les figures en fichiers
+à part, à sa taille. Mettez la carte au premier plan, colorée par <strong>M2 · s(X_L93, Y_L93)</strong> comme à
+la fin du tutoriel des cartes, puis <em>Graphiques › Composer une figure…</em> : le compositeur prend le
+graphique du premier plan en panneau A ; <em>Ajouter un graphique ouvert…</em> : <strong>M2 · Effets</strong>,
+panneau B. Choisissez une largeur de <strong>174 mm</strong> (deux colonnes), une hauteur de 80 mm (décochez
+<em>d'après les panneaux</em>), un texte de 8 pt.</p>
+<figure><a class="clair-seul" href="../../images/fr/rapport-figure.png"><img src="../../images/fr/rapport-figure.png" alt="Le compositeur de figures : la carte du lissage spatial (A) et l'effet de l'altitude (B), 174 mm de large et 80 mm de haut" width="1124" height="640" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/rapport-figure.png"><img src="../../images/fr/sombre/rapport-figure.png" alt="Le compositeur de figures : la carte du lissage spatial (A) et l'effet de l'altitude (B), 174 mm de large et 80 mm de haut" width="1124" height="640" loading="lazy"></a><figcaption>Une figure de deux colonnes : le lissage sur la carte (A), l'effet de l'altitude (B), au texte de 8 pt.</figcaption></figure>
+<p><strong>Exporter…</strong> l'écrit en PDF ou SVG vectoriels, la page exactement de 174 × 80 mm, ou en PNG ou TIFF
+à 300 ou 600 points par pouce : 4110 × 1890 pixels à 600 points par pouce, le TIFF compressé par
+LZW, sans perte, comme les revues le demandent. La figure est gardée dans le projet (dans
+l'explorateur, sous <em>Figures</em>) et prend toujours le dernier ajustement de chaque modèle.</p>
+<h2 id="5-word-et-pdf">5. Word et PDF</h2>
+<p><em>Compiler › Word (.docx)…</em> écrit le document avec ses valeurs, sa figure et sa liste de références,
+dans les styles de Word (titres, légendes), pour continuer dans Word ; <em>PDF…</em>, des pages prêtes à
+envoyer ; <em>HTML…</em>, une seule page, graphiques compris. Le titre de l'en-tête YAML les coiffe ; une
+ligne <code>{{&lt; pagebreak &gt;}}</code> commence une nouvelle page.</p>
+<h2 id="6-un-fichier-quarto-que-r-recalcule">6. Un fichier Quarto que R recalcule</h2>
+<p><em>Compiler › Quarto (.qmd)…</em> écrit le document pour Quarto, qui le met en forme dans le style d'une
+revue (<code>csl:</code> dans l'en-tête). Ses résultats sont soit <strong>écrits en dur</strong>, comme Nuée les montre,
+soit <strong>reproductibles</strong> :</p>
+<figure><a class="clair-seul" href="../../images/fr/rapport-quarto.png"><img src="../../images/fr/rapport-quarto.png" alt="Quarto (.qmd) : les résultats écrits en dur, ou reproductibles, recalculés par R à partir des données brutes" width="560" height="234" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/rapport-quarto.png"><img src="../../images/fr/sombre/rapport-quarto.png" alt="Quarto (.qmd) : les résultats écrits en dur, ou reproductibles, recalculés par R à partir des données brutes" width="560" height="234" loading="lazy"></a><figcaption>Le fichier Quarto : les valeurs écrites en dur, ou recalculées par R quand Quarto le compile.</figcaption></figure>
+<p>Reproductible, le <code>.qmd</code> vient avec un dossier du même nom terminé par <code>_R</code> : l'export vers R de M1
+et de M2 (<em>Fichier › Exporter vers R</em>), chacun avec ses données en CSV, et <code>nuee.R</code>. Le premier
+bloc du <code>.qmd</code> relance les deux scripts ; chaque valeur devient une expression R qui lit la valeur
+recalculée et l'écrit comme Nuée :</p>
+<pre><code>La pente de la biomasse sur l'altitude est de `r nuee_coefficient(M2$coefficients, &quot;altitude&quot;, &quot;est&quot;)`
+</code></pre>
+<p>Corrigez une valeur dans un CSV, compilez à nouveau, et tous les nombres que R écrit suivent. Ce
+que les scripts ne recalculent pas reste écrit en dur, et le premier bloc le dit en commentaire :
+ici les textes des méthodes et des résultats, et l'effet de l'altitude, un graphique que le script
+ne trace pas (la barre d'état dit <em>3 des 10 références restent écrites en dur</em>). Avant d'écrire,
+Nuée relance les scripts et vérifie que chaque expression redonne la valeur qu'il montre. La
+compilation demande Quarto, et R avec ses paquets knitr et rmarkdown ; si Quarto est installé,
+<em>Compiler › Compiler avec Quarto</em> la lance depuis Nuée, en Word, PDF ou HTML.</p>
+<h2 id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<ul>
+<li>Le gabarit <strong>Rapport d'analyse</strong> écrit, pour chaque modèle coché, son résumé, ses graphiques et
+son texte des méthodes.</li>
+<li><code>csl: style.csl</code> dans l'en-tête donne à Quarto le style de citation d'une revue, copié à côté du
+<code>.qmd</code>.</li>
+<li><em>Fichier › Rapport du modèle</em> fait un rapport PDF ou Word d'un modèle, sans rédaction.</li>
+<li>Le guide : <a href="../guide/resultats.html">les documents, les citations et Quarto</a>,
+<a href="../guide/graphiques.html">les figures pour publication</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>
