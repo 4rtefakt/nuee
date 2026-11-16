@@ -1,8 +1,34 @@
 // What the interface can ask of the desktop app (window.bureau); absent in a browser.
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// a project's versions (versions.js, through main.js): an error thrown again here, its message in
+// the interface's language
+const version = (nom, ...args) => ipcRenderer.invoke(`versions-${nom}`, ...args).then((r) => {
+  if ('erreur' in r) throw new Error(r.erreur);
+  return r.valeur;
+});
+
 contextBridge.exposeInMainWorld('bureau', {
-  versions: { electron: process.versions.electron },
+  versions: {
+    electron: process.versions.electron,
+    // the versions of a project kept with git, sent to and received from GitHub or GitLab; each
+    // given the project file's absolute path
+    etat: (chemin) => version('etat', chemin),
+    activer: (chemin) => version('activer', chemin),
+    enregistrerVersion: (chemin, description) => version('enregistrerVersion', chemin, description),
+    liste: (chemin) => version('liste', chemin),
+    nommer: (chemin, oid, nom) => version('nommer', chemin, oid, nom),
+    retirerNom: (chemin, nom) => version('retirerNom', chemin, nom),
+    lire: (chemin, oid) => version('lire', chemin, oid),
+    restaurer: (chemin, oid) => version('restaurer', chemin, oid),
+    auteur: (a) => version('auteur', a),
+    distant: (chemin, url) => version('distant', chemin, url),
+    jeton: (hote, jeton) => version('jeton', hote, jeton),
+    verifierDistant: (chemin) => version('verifierDistant', chemin),
+    envoyer: (chemin) => version('envoyer', chemin),
+    recevoir: (chemin) => version('recevoir', chemin),
+    choisir: (chemin, cote) => version('choisir', chemin, cote),
+  },
   choisirFichier: (filtres) => ipcRenderer.invoke('choisir-fichier', filtres),
   choisirFichiers: (filtres) => ipcRenderer.invoke('choisir-fichiers', filtres),
   lirePressePapiers: () => ipcRenderer.invoke('lire-presse-papiers'),
