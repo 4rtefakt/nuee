@@ -89,6 +89,26 @@ module.exports = {
     const definitions = [].concat((await n.api('projet', { projet: m.projet })).modeles).filter((d) => d.nom === m.nom);
     verifier('numeroGarde', m2.numero === m.numero && definitions.length === 1 && definitions[0].numero === m.numero, { avant: m.numero, apres: m2.numero, definitions: definitions.length });
     await n.plotlyPret(coefficients, 1);
+    // ---- Edit the code from its summary in a window of its own: the dialog in the main window (app.js:
+    // demanderPrincipale), its fit followed in that window (ajustement_remplace), still one fit
+    const ongletResume = `__n.onglet(__n.t('resume'))`;
+    await n.cliquer(ongletResume);
+    await n.cliquer(`${ongletResume}.closest('.dv-groupview').querySelector('.actions-groupe button[title="' + __n.t('detacher') + '"]')`);
+    const fr = await n.fenetre('vue=resume');
+    await fr.cliquer(`__n.tous('button').find((b) => __n.norm(b.textContent) === __n.t('code_modifier'))`);
+    await n.attendre(`!!${boite} && !!${boite}.querySelector('.editeur-code .cm-content')`);
+    const CODE2b = `${CODE2}\n# edited from a window of its own`;
+    await n.evaluer(`(() => { const v = window.CM.EditorView.findFromDOM(${boite}.querySelector('.editeur-code .cm-editor'));
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: ${JSON.stringify(CODE2b)} } }); return true; })()`);
+    await n.bouton('ajuster');
+    await n.attendre('!__n.dialogue()', 180000);
+    const m3 = await n.attendre(`__n.api('etat').then((e) => { const x = [].concat(e.modeles).filter((y) => y.nom === ${JSON.stringify(m.nom)} && y.projet === ${JSON.stringify(m.projet)});
+      return x.length === 1 && x[0].code === ${JSON.stringify(CODE2b)} ? x[0] : null; })`);
+    const suivi = await fr.attendre(`location.search.includes(${JSON.stringify(`modele=${m3.id}`)}) && __n.tous('.resume').some((x) => __n.norm(x.textContent).includes('lme'))`).catch((e) => e.message);
+    verifier('modifierLeCodeDepuisSaFenetre', suivi === true && m3.numero === m.numero, suivi);
+    await fr.evaluer('window.close(), true').catch(() => {});
+    fr.fermer();
+    await n.plotlyPret(coefficients, 1);
 
     // ---- saved, then changed by a colleague in a copy
     const fichier = path.join(dossier, 'trout.nuee');

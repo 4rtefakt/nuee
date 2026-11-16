@@ -449,12 +449,14 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         }
       },
       adresse: () => f.evaluer('location.href'),
-      async cliquer(expression) {
+      async cliquer(expression, clics = 1) {
         const { x, y } = await f.attendre(`(() => { const e = ${expression}; if (!e || !e.getClientRects().length) return null; e.scrollIntoView({ block: 'nearest' });
           const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
         await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-        await s.envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
-        await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+        for (let k = 1; k <= clics; k += 1) {
+          await s.envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: k });
+          await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: k });
+        }
       },
       taper: (texte) => s.envoyer('Input.insertText', { text: texte }),
       // a key with Ctrl (Ctrl+Z: 'z', 'KeyZ', 90)

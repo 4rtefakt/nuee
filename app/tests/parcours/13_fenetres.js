@@ -57,6 +57,12 @@ module.exports = {
     await n.cliquer(`__n.onglet(${JSON.stringify(`${MODELE} · PLS`)})`);
     const f = await detacher(scores, 'vue=scores');
     await f.attendre(`location.search.includes(${JSON.stringify(`modele=${pls.id}`)}) && !!document.querySelector('#seul .js-plotly-plot')`);
+    // (a second main window, the PLS's page open in it too: Window › New window, a double-click on the fit)
+    await n.menu('m_fenetre', 'nouvelle_fenetre');
+    const w2 = await n.fenetre('fenetre=');
+    await w2.attendre(`!!${n.ligneModele(MODELE, true)}`);
+    await w2.cliquer(`(${n.ligneModele(MODELE, true)}).querySelector('.libelle')`, 2);
+    await w2.attendre(`${pagesDuModele} === 1`);
     const entetes = lignes[0].split(',');
     const [iNom, iNote] = [entetes.indexOf('fruit'), entetes.indexOf('taste_score')];
     const nouvelles = lignes.slice(1, 11).map((l, k) => {
@@ -76,6 +82,11 @@ module.exports = {
       && (() => { const g = document.querySelector('#seul .js-plotly-plot'); return !!(g && g.data); })() && document.title`).catch((e) => e.message);
     verifier('vueDetacheeSuitLeNouvelAjustement', typeof suit === 'string' && suit.includes(MODELE), suit);
     verifier('unePageDuModele', (await n.evaluer(pagesDuModele)) === 1, await n.evaluer(pagesDuModele));
+    // (the second main window: its page of the PLS follows the new fit, its scores with the 130 fruits)
+    const pageW2 = await w2.attendre(`${pagesDuModele} === 1 && __n.tous('.js-plotly-plot').some((g) => __n.points(g) >= 130)`).catch(() => false);
+    verifier('secondeFenetreGardeLaPage', !!pageW2, await w2.evaluer(pagesDuModele).catch(() => null));
+    await w2.evaluer('window.close(), true').catch(() => {});
+    w2.fermer();
 
     // ---- Move back to the main window: the scores of the new fit there
     await f.cliquer("[...document.querySelectorAll('#tete-seul button')].pop()");
