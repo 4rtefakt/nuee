@@ -68,8 +68,9 @@ envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
    *Réglages Système › Confidentialité et sécurité*, et confirmez. Nuée s'ouvre ensuite comme
    toute autre application.
 
-R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur
-le Mac n'est ni utilisé ni modifié. Les réglages sont dans `~/Library/Application Support/Nuee`.
+R est inclus, comme sous Windows : il n'y a rien d'autre à installer. Un R déjà présent sur le
+Mac n'est jamais modifié, et n'est utilisé que si vous le choisissez dans *Nuée › Réglages…*. Les
+réglages sont dans `~/Library/Application Support/Nuee`.
 Au démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre
 d'état ouvre sa page, dont le `.dmg` remplace l'application. Chaque changement est vérifié sur
 GitHub sur des Mac Apple silicon et Intel, depuis le `.dmg`, sur un Mac sans R.

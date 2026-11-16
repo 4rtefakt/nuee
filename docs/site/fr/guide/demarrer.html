@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Démarrer · Nuée</title>
-<meta name="description" content="Installer, ouvrir un tableau, enregistrer et retrouver son travail, l’explorateur, les menus, les fenêtres.">
+<meta name="description" content="Installer, ouvrir un tableau, enregistrer et retrouver son travail, le R utilisé par Nuée, l’explorateur, les menus, les fenêtres.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -62,6 +62,7 @@
 <li><a href="#ouvrir">Ouvrir</a></li>
 <li><a href="#enregistrer-et-retrouver-son-travail">Enregistrer et retrouver son travail</a></li>
 <li><a href="#si-le-moteur-r-s-arrete">Si le moteur R s'arrête</a></li>
+<li><a href="#le-r-utilise-par-nuee">Le R utilisé par Nuée</a></li>
 <li><a href="#l-explorateur">L'explorateur</a></li>
 <li><a href="#menus-et-barre-d-outils">Menus et barre d'outils</a></li>
 <li><a href="#fenetres">Fenêtres</a></li>
@@ -80,7 +81,7 @@
 <li><strong>Debian, Ubuntu et dérivées :</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb installe aussi R et les paquets R nécessaires. Nuée apparaît dans le menu des applications.</li>
 <li><strong>Autres distributions :</strong> Nuee-&lt;version&gt;-x86_64.AppImage (le rendre exécutable, puis le lancer) ou Nuee-&lt;version&gt;-x64.tar.gz (le décompresser, puis lancer ./nuee). Installer d'abord R, puis dans R : install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).</li>
 </ul>
-<p>Les projets .usp demandent python3. Pour un autre R que celui du PATH : lancer Nuée avec RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.</p>
+<p>Les projets .usp demandent python3. Pour un autre R que celui du PATH : Fichier › Réglages... (voir <a href="#le-r-utilise-par-nuee">Le R utilisé par Nuée</a>), ou lancer Nuée avec RSCRIPT=/chemin/vers/Rscript. Les réglages sont dans ~/.config/Nuee.</p>
 </section>
 <section id="ouvrir">
 <h2>Ouvrir</h2>
@@ -118,6 +119,12 @@ GeoPackage .gpkg (une couche de QGIS : voir Cartes et données spatiales)</pre>
 <h2>Si le moteur R s'arrête</h2>
 <p>L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la barre d'état le rappelle.</p>
 <p><strong>Aide › Quoi de neuf :</strong> les nouveautés de chaque version (affichées une fois après une mise à jour). La version installée (Nuee-Setup, l'application macOS ou les paquets Linux) cherche au démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est envoyé) et la signale dans la barre d'état ; sous macOS et Linux, un clic ouvre la page de la version. Sous Windows, un clic propose de mettre à jour : le programme d'installation est téléchargé et vérifié (son empreinte SHA-256 doit être celle que donne GitHub), puis Nuée se ferme (en proposant d'enregistrer les projets modifiés), l'installe et redémarre. Pour une installation pour tous les utilisateurs, Windows demande l'autorisation. Aide › Chercher une mise à jour fait de même à tout moment, même sans la recherche au démarrage ; Aide › Chercher une nouvelle version au démarrage arrête la recherche.</p>
+</section>
+<section id="le-r-utilise-par-nuee">
+<h2>Le R utilisé par Nuée</h2>
+<p><strong>Fichier › Réglages... :</strong> Nuée calcule avec son propre R (sous Windows et macOS, R 4.6.2 avec tous les paquets qu'il lui faut), le choix recommandé, ou avec un R déjà installé sur l'ordinateur, en version 4.3 ou plus récente. La liste montre ceux que les installateurs de R mettent aux endroits habituels : sous Windows, ceux que connaît le registre et ceux de Program Files ou de votre propre dossier Programs ; sous macOS, celui du CRAN et celui de Homebrew ; sous Linux, où Nuée prend par défaut le R de l'ordinateur trouvé dans le PATH, ceux de /opt/R. Parcourir... en ajoute un autre, par son dossier.</p>
+<p>Nuée lance une fois le R choisi pour le vérifier : sa version, et les paquets dont le moteur a besoin (httpuv, jsonlite, openxlsx, haven, readxl, RSQLite et ranger, et mgcv, nlme, MASS, rpart, cluster et foreign, parmi les paquets recommandés de R). « Les installer » installe ceux qui manquent depuis le CRAN, dans la bibliothèque de l'utilisateur de ce R, créée au besoin, en montrant ce que dit R pendant ce temps ; ou copiez la ligne affichée et lancez-la dans ce R (R ou RStudio). Avec un R antérieur à 4.4, les fichiers .rds et .RData ne s'ouvrent pas ; antérieur à 4.5, les empreintes des fichiers de données sont des MD5 et non des SHA-256 (voir <a href="donnees.html#etapes-des-donnees-et-mise-a-jour">Étapes des données et mise à jour</a>).</p>
+<p>Le bouton « Utiliser ce R » redémarre le moteur avec lui, et les projets ouverts se rouvrent avec leurs modèles, leurs vues et leurs changements (« Au prochain démarrage » attend). Les paquets et le .Renviron de ce R s'appliquent, pas votre .Rprofile, pour qu'il ne change pas les résultats. Si le R choisi ne démarre pas (supprimé, abîmé), Nuée calcule avec son propre R et le dit une fois. Une organisation peut choisir le R de tous ; les Réglages le montrent alors, sans le changer. Aide › Informations de diagnostic et Aide › À propos disent quel R est utilisé.</p>
 </section>
 <section id="l-explorateur">
 <h2>L'explorateur (à gauche)</h2>

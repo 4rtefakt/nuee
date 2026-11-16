@@ -11,6 +11,7 @@ const { fileURLToPath } = require('url');
 const { demanderZotero } = require('./zotero');
 const { creerVersions, magasinJetons } = require('./versions');
 const { creerComptes } = require('./comptes');
+const rInstalles = require('./r-installes');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -81,6 +82,23 @@ function trouverRscript() {
   ];
   return candidats.filter(Boolean).find((c) => fs.existsSync(c)) || 'Rscript';
 }
+
+// The R the engine runs on: RSCRIPT above all (developers); then the organisation's, a policy
+// (RHome under HKLM or HKCU\SOFTWARE\Policies\Nuee: an R's folder or its Rscript, as politique());
+// then the one chosen in File › Settings… (reglages.rscript); Nuée's own otherwise (on Linux, the
+// computer's: trouverRscript). { type: 'nuee', 'organisation', 'autre' or 'rscript', rscript (null:
+// none where it was set), chemin (as it was set) }. r-installes.js finds and checks the others.
+const rPropre = () => ({ type: 'nuee', rscript: trouverRscript(), chemin: null });
+const rOrganisation = () => (process.platform === 'win32' ? rInstalles.politiqueTexte('RHome') : null);
+function rVoulu() {
+  if (process.env.RSCRIPT) return { type: 'rscript', rscript: trouverRscript(), chemin: process.env.RSCRIPT };
+  const organisation = rOrganisation();
+  const chemin = organisation || reglages.rscript;
+  if (!chemin) return rPropre();
+  return { type: organisation ? 'organisation' : 'autre', rscript: rInstalles.rscriptDe(chemin), chemin };
+}
+let rUtilise = null;        // the R the engine runs on now (rVoulu's, with `repli` when Nuée's own took over)
+let rRepliASignaler = null;  // that fallback, until a window tells it (once: 'r-repli')
 
 // Quarto, if the computer has it: on the PATH, where its installer puts it, or the one RStudio
 // brings along; null otherwise (documents.js then compiles by itself).
@@ -170,7 +188,9 @@ function dossierTemporaireR() {
   }
 }
 
-function demarrerR(port) {
+// `r`: rVoulu's. repli: Nuée's own R takes over if this one stops before it is ready
+// (demarrerMoteur), so that stop isn't reported to the windows.
+function demarrerR(port, r, repli = false) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
     const env = { ...process.env, NUEE_JETON: jeton, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
@@ -179,23 +199,76 @@ function demarrerR(port) {
     // An installed copy runs the same engine whoever uses it: the researcher's own R setup stays
     // out (their .Rprofile could attach packages that hide the engine's functions), and the
     // packages that come with Nuée are found before those of their own R library, which stays
-    // available to the R console (library(vegan)…).
+    // available to the R console (library(vegan)…). Another R keeps its .Renviron and loads its own
+    // libraries: Nuée's packages are built for Nuée's R, and may not load in another version.
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
-    if (app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
+    if (r.type === 'nuee' && app.isPackaged && process.platform !== 'linux') env.R_LIBS = path.join(racine, 'R', 'library');
     // (the Rscript of Nuée.app starts the R of RHOME, or else the one CRAN's installer puts in
     // /Library/Frameworks, if the Mac has it)
-    const rscript = trouverRscript();
-    if (rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
-    serveur = spawn(rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
-    serveur.stdout.on('data', (d) => { journal += d; if (journal.includes('PRET')) resolve(); });
+    if (r.rscript === rscriptMac) env.RHOME = path.join(racine, 'R');
+    let pret = false;
+    serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
+    serveur.stdout.on('data', (d) => { journal += d; if (!pret && journal.includes('PRET')) { pret = true; resolve(); } });
     serveur.stderr.on('data', (d) => { journal += d; });
     serveur.on('exit', (code) => {
-      reject(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`));
+      reject(Object.assign(new Error(`R s'est arrêté (code ${code}).\n${journal.slice(-2000)}`), { fin: journal.slice(-1500) }));
       // once running, an unexpected stop is reported to the windows, which offer a restart
-      if (!quitter && !arretVoulu) BrowserWindow.getAllWindows().forEach((f) => f.webContents.send('moteur-arrete', journal.slice(-1500)));
+      if (!quitter && !arretVoulu && (pret || !repli)) BrowserWindow.getAllWindows().forEach((f) => f.webContents.send('moteur-arrete', journal.slice(-1500)));
     });
     serveur.on('error', reject);
   });
+}
+
+// The engine started on the R wanted (rVoulu). When that is another R than Nuée's own and it is
+// missing, or stops before it is ready, Nuée's own starts instead, and the user is told once: by
+// the first window that asks ('r-repli'), and not at the next starts while the same R fails
+// (reglages.rSignale; forgotten once it starts, or when the settings change).
+async function demarrerMoteur() {
+  const voulu = rVoulu();
+  if (voulu.type !== 'autre' && voulu.type !== 'organisation') {
+    await demarrerR(port, voulu);
+    rUtilise = voulu;
+    return;
+  }
+  let motif = 'absent';
+  if (voulu.rscript) {
+    try {
+      await demarrerR(port, voulu, true);
+      rUtilise = voulu;
+      if (reglages.rSignale) { delete reglages.rSignale; ecrireReglages(); }
+      return;
+    } catch (e) {
+      motif = e.fin || e.message;
+    }
+  }
+  journal = '';
+  const propre = rPropre();
+  await demarrerR(port, propre);
+  rUtilise = { ...propre, repli: { ...voulu, motif } };
+  if (reglages.rSignale !== voulu.chemin) {
+    rRepliASignaler = { ...decrireR(voulu), motif, plateforme: process.platform };
+    reglages.rSignale = voulu.chemin;
+    ecrireReglages();
+  }
+}
+
+// An R as Settings shows it, with its folder: its Rscript's, else as it was set (a folder, or an
+// Rscript that isn't there)
+const decrireR = (r) => (r ? { type: r.type, rscript: r.rscript, chemin: r.chemin,
+  dossier: r.rscript || /rscript(\.exe)?$/i.test(r.chemin || '') ? rInstalles.dossierDe(r.rscript || r.chemin) : r.chemin } : null);
+// What Settings shows (interface/reglages.js): the R in use and why, the one chosen, the
+// organisation's, Nuée's own
+function etatR() {
+  const organisation = rOrganisation();
+  const chemin = (c) => ({ rscript: rInstalles.rscriptDe(c), chemin: c });
+  return {
+    plateforme: process.platform,
+    utilise: rUtilise && { ...decrireR(rUtilise), repli: rUtilise.repli ? { ...decrireR(rUtilise.repli), motif: rUtilise.repli.motif } : null },
+    choisi: reglages.rscript ? decrireR({ type: 'autre', ...chemin(reglages.rscript) }) : null,
+    organisation: organisation ? decrireR({ type: 'organisation', ...chemin(organisation) }) : null,
+    rscript: process.env.RSCRIPT || null,
+    propre: decrireR(rPropre()),
+  };
 }
 
 // R and anything it started (on Linux and macOS, Rscript becomes R itself: stopping it is enough)
@@ -212,7 +285,7 @@ async function redemarrerR() {
   }
   arretVoulu = false;
   journal = '';
-  await demarrerR(port);
+  await demarrerMoteur();
 }
 
 // "Save and close": the window saves each modified project (asking where for new ones);
@@ -443,13 +516,20 @@ app.on('open-file', (e, chemin) => {
 // macOS: the menu bar at the top of the screen, besides the one the interface draws. Without
 // its Edit menu, ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z do nothing in text fields (the interface leaves them to
 // the system there, and takes them elsewhere: the menu only gets the keys the page didn't use).
-// Quit asks about unsaved projects, as File › Quit does. In the interface's language.
+// Quit asks about unsaved projects, as File › Quit does; Settings… opens File › Settings… in the
+// main window in front. In the interface's language.
 function menuMac(l) {
   const fr = l === 'fr';
   const quitter = () => { const f = BrowserWindow.getAllWindows().find(principale); if (f) fermerNuee(f); else app.quit(); };
+  const reglagesMac = () => {
+    const devant = BrowserWindow.getFocusedWindow();
+    const f = devant && principale(devant) ? devant : BrowserWindow.getAllWindows().find(principale);
+    if (f) { f.focus(); f.webContents.send('ouvrir-reglages'); }
+  };
   return Menu.buildFromTemplate([
     { label: TITRE, submenu: [
       { role: 'about', label: fr ? `À propos de ${TITRE}` : `About ${TITRE}` }, { type: 'separator' },
+      { label: fr ? 'Réglages…' : 'Settings…', accelerator: 'Cmd+,', click: reglagesMac }, { type: 'separator' },
       { role: 'services', label: 'Services' }, { type: 'separator' },
       { role: 'hide', label: fr ? `Masquer ${TITRE}` : `Hide ${TITRE}` }, { role: 'hideOthers', label: fr ? 'Masquer les autres' : 'Hide Others' },
       { role: 'unhide', label: fr ? 'Tout afficher' : 'Show All' }, { type: 'separator' },
@@ -649,10 +729,38 @@ function ipc() {
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
+  // File › Settings…, the R the engine runs on (interface/reglages.js, r-installes.js): what is set
+  // and in use, the Rs of this computer, one of them checked, its missing packages installed (one
+  // installation at a time; what R says meanwhile sent to the window that asked), the choice kept
+  // (null: Nuée's own; nothing changes while the organisation or RSCRIPT sets it), and a fallback to
+  // Nuée's own R told once
+  recevoir('r-etat', () => etatR());
+  recevoir('r-trouver', () => rInstalles.trouver());
+  recevoir('r-verifier', (_, chemin) => rInstalles.verifier(chemin));
+  let installation = null;
+  recevoir('r-installer', (e, chemin, paquets) => {
+    if (!installation) {
+      const fenetre = e.sender;
+      installation = rInstalles.installer(chemin, paquets, { surTexte: (s) => { if (!fenetre.isDestroyed()) fenetre.send('r-installation', s); } })
+        .finally(() => { installation = null; });
+    }
+    return installation;
+  });
+  recevoir('r-choisir', (_, chemin) => {
+    const rscript = chemin ? rInstalles.rscriptDe(chemin) : null;
+    if (!rOrganisation() && !process.env.RSCRIPT && (rscript || !chemin)) {
+      if (rscript) reglages.rscript = rscript; else delete reglages.rscript;
+      delete reglages.rSignale;
+      ecrireReglages();
+    }
+    return etatR();
+  });
+  recevoir('r-repli', () => { const r = rRepliASignaler; rRepliASignaler = null; return r; });
   recevoir('nouvelle-version', (_, maintenant) => nouvelleVersion(!!maintenant).catch((e) => ({ erreur: e.message })));
-  // for Aide › Informations de diagnostic (no paths, nothing personal)
+  // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where
   recevoir('diagnostic', () => ({ systeme: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
-    electron: process.versions.electron, chrome: process.versions.chrome, installe: app.isPackaged }));
+    electron: process.versions.electron, chrome: process.versions.chrome, installe: app.isPackaged,
+    r: rUtilise ? { type: rUtilise.type, repli: rUtilise.repli ? rUtilise.repli.type : null } : null }));
   // the check at start-up, on or off (null: not offered, see verificationPossible)
   recevoir('maj-auto', (_, oui) => {
     if (!verificationPossible()) return null;
@@ -704,7 +812,8 @@ const DERNIERE_VERSION = process.env.NUEE_SOURCE_MAJ || 'https://api.github.com/
 const sourceSure = (url) => !!process.env.NUEE_SOURCE_MAJ || String(url).startsWith('https://github.com/4rtefakt/nuee/releases/download/');
 // An organisation that deploys and updates Nuée itself turns the check and the one-click update
 // off for everyone (Group Policy, Intune…): DWORD DisableUpdateCheck = 1 under
-// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee.
+// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee. (The text
+// RHome there, the R every user's engine runs on, is read by r-installes.js: rVoulu.)
 // docs/deploiement.md
 function politique(nom) {
   if (process.platform !== 'win32') return null;
@@ -874,7 +983,7 @@ async function demarrer() {
   port = await portLibre(reglages.port || PORT_HABITUEL);
   if (port !== reglages.port) { reglages.port = port; ecrireReglages(); }
   try {
-    await demarrerR(port);
+    await demarrerMoteur();
   } catch (err) {
     const l = app.getLocale().startsWith('fr') ? 'fr' : 'en';  // before the interface: the system's language
     dialog.showErrorBox(TITRE, `${l === 'fr' ? 'Le moteur R n’a pas pu démarrer.' : 'The R engine couldn’t start.'}\n\n${err.message}${process.platform === 'linux' ? AIDE_R_LINUX[l] : ''}`);
