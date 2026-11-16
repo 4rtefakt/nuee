@@ -16,7 +16,10 @@
 //   given up after its time (shortened here), its files said out of reach;
 // - closing Nuée with unsaved projects ("Save and close"), asked twice (a second ×, the update): one
 //   question; the windows hidden while the projects' last versions go, then Nuée quits once, what the
-//   update runs just before; Cancel closes nothing, and the next request asks again.
+//   update runs just before; Cancel closes nothing, and the next request asks again;
+// - the organisation's policies: R code off when they say so and when they couldn't be read, then
+//   given so to the engine at start-up, read before it starts; NUEE_GREFFONS_ORGANISATION not taken
+//   by an installed copy on Windows; Help › Diagnostic information says whether they were read.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -260,10 +263,11 @@ async function reglagesEcrits(dossier) {
   verifier(ecritures === 2, 'et rien de plus ensuite', ecritures);
 }
 
-// The processes main.js starts, recorded
+// The processes main.js starts, recorded, and what they were given (options: their environment)
 function espionProcessus() {
   const enfants = [];
-  return { enfants, module: { ...childProcess, spawn: (...a) => { const c = childProcess.spawn(...a); enfants.push(c); return c; } } };
+  const options = [];
+  return { enfants, options, module: { ...childProcess, spawn: (...a) => { const c = childProcess.spawn(...a); enfants.push(c); options.push(a[2] || {}); return c; } } };
 }
 const fini = (p) => p.exitCode !== null || p.signalCode !== null;
 const DELAI_COURT = [['const DELAI_AUTRE_R = 90000;', 'const DELAI_AUTRE_R = 1500;']];
@@ -338,6 +342,52 @@ async function derniereSeance(dossier) {
     verifier(egal(await demander('seance-precedente'), []), 'donnés une fois');
   } catch (e) {
     verifier(false, 'regardés sans attendre', e.message);
+  }
+}
+
+// The organisation's policies as main.js reads them (r-installes.js: lirePolitiques): R code off when
+// they say so, and when they couldn't be read; NUEE_GREFFONS_ORGANISATION not taken by an installed
+// copy on Windows; Help › Diagnostic information says whether they were read
+async function lesPolitiques(dossier) {
+  console.log('Les politiques : lues, pas lues');
+  if (!process.getSystemVersion) process.getSystemVersion = () => os.release();  // (Electron's, for the diagnostic)
+  const variable = path.join(dossier, 'greffons de n’importe qui');
+  const avant = process.env.NUEE_GREFFONS_ORGANISATION;
+  process.env.NUEE_GREFFONS_ORGANISATION = variable;
+  try {
+    const p = espionProcessus();
+    const m = chargerMain(dossier, { child_process: p.module, './r-installes': { ...require('../r-installes'), lirePolitiques: async () => m.lues } });
+    m.ctx.trouverRscript = () => rscriptFactice(path.join(dossier, 'R-nuee'));
+    m.electron.app.isPackaged = true;  // (an installed copy)
+    const demander = demandeur(m);
+    const sansCode = process.env.NUEE_SANS_CODE === '1';
+    const etat = async (lues) => {
+      m.evaluer('politiques = __valeur; greffonsOrganisation = undefined', lues);
+      return { code: m.evaluer('codeInterdit()'), greffons: m.evaluer('dossierGreffonsOrganisation()'), diagnostic: (await demander('diagnostic')).politiques };
+    };
+    let e = await etat({ valeurs: {}, lues: true, par: 'reg' });
+    verifier(e.code === sansCode && e.greffons === (windows ? null : variable) && (windows ? egal(e.diagnostic, { lues: true, par: 'reg', valeurs: {} }) : e.diagnostic === null),
+      'lues, aucune : le code R permis ; NUEE_GREFFONS_ORGANISATION ignorée par une copie installée sous Windows, prise ailleurs', e);
+    e = await etat({ valeurs: { DisableCustomCode: 1, PluginsFolder: '\\\\serveur\\greffons', RHome: 'D:\\R' }, lues: true, par: 'powershell' });
+    verifier(e.code === true && e.greffons === (windows ? '\\\\serveur\\greffons' : variable)
+      && (!windows || egal(e.diagnostic, { lues: true, par: 'powershell', valeurs: { DisableCustomCode: 1, RHome: 'set', PluginsFolder: 'set' } })),
+    'DisableCustomCode : le code R retiré ; PluginsFolder, le dossier de l’organisation ; le diagnostic les dit, sans les chemins', e);
+    e = await etat({ valeurs: {}, lues: false, par: null });
+    verifier(e.code === true && (!windows || egal(e.diagnostic, { lues: false, par: null, valeurs: {} })), 'pas lues (reg.exe et PowerShell refusés) : le code R retiré quand même, et le diagnostic le dit', e);
+    // what the engine is given at start-up: the policies read first (demarrer); here, that they
+    // couldn't be. (The stand-in R, given R's --no-init-file as an installed copy gives it, stops at once.)
+    m.lues = { valeurs: {}, lues: false, par: null };
+    m.evaluer('politiques = { valeurs: {}, lues: true, par: "reg" }; greffonsOrganisation = undefined');
+    m.evaluer('demarrer()').catch(() => {});
+    for (let i = 0; i < 100 && !p.options.length; i += 1) await pause(50);
+    const env = (p.options[0] || {}).env || {};
+    verifier(m.evaluer('politiques.lues') === false && env.NUEE_SANS_CODE === '1' && (windows ? !('NUEE_GREFFONS_ORGANISATION' in env) : env.NUEE_GREFFONS_ORGANISATION === variable),
+      'au démarrage, lues d’abord : le moteur reçoit NUEE_SANS_CODE (et sous Windows pas la variable)', { NUEE_SANS_CODE: env.NUEE_SANS_CODE, NUEE_GREFFONS_ORGANISATION: env.NUEE_GREFFONS_ORGANISATION });
+    for (let i = 0; i < 100 && p.enfants.length && !fini(p.enfants[0]); i += 1) await pause(50);
+  } catch (e) {
+    verifier(false, 'les politiques', e.stack || e.message);
+  } finally {
+    if (avant === undefined) delete process.env.NUEE_GREFFONS_ORGANISATION; else process.env.NUEE_GREFFONS_ORGANISATION = avant;
   }
 }
 
@@ -417,6 +467,7 @@ async function principal() {
     await autreRJamaisPret(dossier);
     await derniereSeance(dossier);
     await fermerUneFois(dossier);
+    await lesPolitiques(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

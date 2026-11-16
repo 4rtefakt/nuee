@@ -87,6 +87,14 @@ Any tool that writes registry values sets them, as for the update check below. O
 Linux, which have no such policy, the environment variable `NUEE_SANS_CODE=1` (set for the
 session, by a profile script or launchd) turns R-code models off the same way.
 
+Nuée reads the policies with `reg.exe`, from the system's folder, or, where `reg.exe` doesn't run
+for users (the *Prevent access to registry editing tools* policy, an AppLocker or WDAC rule), with
+PowerShell's registry provider, which works in Constrained Language mode. If neither can read them,
+Nuée doesn't take them for unset: R-code models and plugins are turned off, as with
+`DisableCustomCode` = 1 (the plugins of `PluginsFolder` included, when that value couldn't be read
+either). *Help › Diagnostic information* says whether the policies were read, by which of the two,
+and which are set.
+
 ## Plugins
 
 A plugin (1.1) is an R function with a manifest, `plugin.json`, that adds a model type to Nuée:
@@ -118,7 +126,9 @@ can't install others, and the projects that carry another plugin show its models
 new version of one of your plugins (another `version` in its `plugin.json`) replaces the old one
 for everyone at their next start; the projects made with the old one keep their own copy, and
 say a newer one is installed. On macOS and Linux, the environment variable
-`NUEE_GREFFONS_ORGANISATION` (a folder) does the same.
+`NUEE_GREFFONS_ORGANISATION` (a folder) does the same. On Windows only the policy does: an
+installed copy ignores that variable, which any user could set to make a folder of their own
+yours.
 
 ## Deployment tools
 
@@ -481,5 +491,6 @@ or WDAC applies, allow the installer and the installed folder by hash or by path
 
 ## Reporting a problem
 
-*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, and
-which R is in use, to paste into a report. It includes no paths and nothing personal.
+*Help › Diagnostic information* gives the versions of Nuée, Electron, R and its packages, which R
+is in use and, on Windows, whether the policies could be read and which are set, to paste into a
+report. It includes no paths and nothing personal.

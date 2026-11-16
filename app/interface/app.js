@@ -758,11 +758,18 @@ const app = {
     // (which R, File › Settings…; not where it is)
     const quelR = d.r && { nuee: /^linux/.test(d.systeme) ? 'the computer’s (PATH)' : 'Nuée’s own', autre: 'another R of this computer (File › Settings)',
       organisation: 'another R of this computer (set by the organisation’s policy)', rscript: 'RSCRIPT' }[d.r.type];
+    // (the organisation's policies, Windows: read or not, by what, and those set)
+    const pol = d.politiques;
+    const politiques = pol && (!pol.lues
+      ? 'couldn’t be read (neither reg.exe nor PowerShell could): R-code models are off, and so are plugins other than the organisation’s'
+      : `read by ${pol.par === 'powershell' ? 'PowerShell (reg.exe couldn’t)' : 'reg.exe'}, ${Object.keys(pol.valeurs).length
+        ? Object.entries(pol.valeurs).map(([k, x]) => (x === 'set' ? `${k} set` : `${k} = ${x}`)).join(', ') : 'none set'}`);
     const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
       `System: ${d.systeme}`,
       d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
       `${v.R}, ${v.plateforme}, ${v.systeme}`,
       quelR ? `R used: ${quelR}${d.r.repli ? ` (the R ${d.r.repli === 'organisation' ? 'set by the organisation' : 'chosen in Settings'} couldn’t start)` : ''}` : null,
+      politiques ? `Policies: ${politiques}` : null,
       `R locale: ${v.locale}`,
       `R packages: ${Object.entries(v.paquets).map(([k, x]) => `${k} ${x}`).join(', ')}`,
       `Interface: ${langueActuelle()}`].filter(Boolean).join('\n');

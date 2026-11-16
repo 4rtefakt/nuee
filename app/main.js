@@ -52,18 +52,28 @@ const cookieR = () => `nuee_${port}`;
 // other code, whatever a window asks: opening a file never runs code from it (docs/deploiement.md).
 const secretCode = crypto.randomBytes(32).toString('hex');
 const APPROUVES_MAX = 10000;  // (the latest approvals: an older code is asked about again)
+// The organisation's policies (Windows: HKLM or HKCU\SOFTWARE\Policies\Nuee, the computer's winning;
+// r-installes.js: lirePolitiques), read once at start-up, before anything that depends on them
+// (demarrer): DisableUpdateCheck, DisableCustomCode, RHome, PluginsFolder. Until then, and when they
+// couldn't be read (reg.exe and PowerShell both refused), R-code models are off (codeInterdit).
+// docs/deploiement.md
+let politiques = { valeurs: {}, lues: process.platform !== 'win32', par: null };
+const politique = (nom) => (Object.hasOwn(politiques.valeurs, nom) ? politiques.valeurs[nom] : null);
+const textePolitique = (nom) => (typeof politique(nom) === 'string' ? politique(nom) : null);
 // Plugins (moteur/R/greffons.R): R code with a manifest, which becomes a model type. This user's are
 // installed in the settings' folder (greffons), where the engine writes them (installing one approves
 // it, as for R code: approuver-code); an organisation's, offered to everyone without asking, are in a
-// folder set by a policy (REG_SZ PluginsFolder under HKLM or HKCU\SOFTWARE\Policies\Nuee, read as RHome
-// is: r-installes.js) or, on any system, by the variable NUEE_GREFFONS_ORGANISATION; with
-// DisableCustomCode = 1 only those run. The engine is given both folders and Nuée's version (a plugin
-// says the oldest Nuée it works with). docs/deploiement.md
+// folder set by a policy (REG_SZ PluginsFolder) or, on macOS and Linux and from the sources, by the
+// variable NUEE_GREFFONS_ORGANISATION; with DisableCustomCode = 1 only those run. (An installed copy
+// on Windows ignores the variable: a user could set one, and make any folder the organisation's, whose
+// plugins would run without approval, DisableCustomCode or not.) The engine is given both folders and
+// Nuée's version (a plugin says the oldest Nuée it works with). docs/deploiement.md
 const dossierGreffons = () => path.join(app.getPath('userData'), 'greffons');
 let greffonsOrganisation;
 const dossierGreffonsOrganisation = () => {
   if (greffonsOrganisation === undefined) {
-    greffonsOrganisation = (process.platform === 'win32' ? rInstalles.politiqueTexte('PluginsFolder') : null) || process.env.NUEE_GREFFONS_ORGANISATION || null;
+    const variable = app.isPackaged && process.platform === 'win32' ? null : process.env.NUEE_GREFFONS_ORGANISATION;
+    greffonsOrganisation = (process.platform === 'win32' ? textePolitique('PluginsFolder') : null) || variable || null;
   }
   return greffonsOrganisation;
 };
@@ -121,7 +131,7 @@ function trouverRscript() {
 // computer's: trouverRscript). { type: 'nuee', 'organisation', 'autre' or 'rscript', rscript (null:
 // none where it was set), chemin (as it was set) }. r-installes.js finds and checks the others.
 const rPropre = () => ({ type: 'nuee', rscript: trouverRscript(), chemin: null });
-const rOrganisation = () => (process.platform === 'win32' ? rInstalles.politiqueTexte('RHome') : null);
+const rOrganisation = () => (process.platform === 'win32' ? textePolitique('RHome') : null);
 function rVoulu() {
   if (process.env.RSCRIPT) return { type: 'rscript', rscript: trouverRscript(), chemin: process.env.RSCRIPT };
   const organisation = rOrganisation();
@@ -944,10 +954,13 @@ function ipc() {
   // the policy turns R-code models off
   recevoir('approuver-code', (_, empreintes) => (codeInterdit() ? false : approuverCode(empreintes)));
   recevoir('nouvelle-version', (_, maintenant) => nouvelleVersion(!!maintenant).catch((e) => ({ erreur: e.message })));
-  // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where
+  // for Aide › Informations de diagnostic (no paths, nothing personal): which R, not where; on Windows,
+  // whether the policies were read, and by what, and those set (a folder's: only that it is)
   recevoir('diagnostic', () => ({ systeme: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
     electron: process.versions.electron, chrome: process.versions.chrome, installe: app.isPackaged,
-    r: rUtilise ? { type: rUtilise.type, repli: rUtilise.repli ? rUtilise.repli.type : null } : null }));
+    r: rUtilise ? { type: rUtilise.type, repli: rUtilise.repli ? rUtilise.repli.type : null } : null,
+    politiques: process.platform === 'win32' ? { lues: politiques.lues, par: politiques.par, valeurs: Object.fromEntries(rInstalles.NOMS_POLITIQUES
+      .filter((n) => politique(n) !== null).map((n) => [n, typeof politique(n) === 'string' ? 'set' : politique(n)])) } : null }));
   // the check at start-up, on or off (null: not offered, see verificationPossible)
   recevoir('maj-auto', (_, oui) => {
     if (!verificationPossible()) return null;
@@ -992,34 +1005,14 @@ const DERNIERE_VERSION = process.env.NUEE_SOURCE_MAJ || 'https://api.github.com/
 const sourceSure = (url) => !!process.env.NUEE_SOURCE_MAJ || String(url).startsWith('https://github.com/4rtefakt/nuee/releases/download/');
 // An organisation that deploys and updates Nuée itself turns the check and the one-click update
 // off for everyone (Group Policy, Intune…): DWORD DisableUpdateCheck = 1 under
-// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee. (The text
-// RHome there, the R every user's engine runs on, is read by r-installes.js: rVoulu.)
-// docs/deploiement.md
-function politique(nom) {
-  if (process.platform !== 'win32') return null;
-  for (const cle of ['HKLM\\SOFTWARE\\Policies\\Nuee', 'HKCU\\SOFTWARE\\Policies\\Nuee']) {
-    try {
-      const m = new RegExp(`${nom}\\s+REG_DWORD\\s+0x([0-9a-f]+)`, 'i')
-        .exec(execFileSync('reg', ['query', cle, '/v', nom], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }));
-      if (m) return parseInt(m[1], 16);
-    } catch { /* not set there */ }
-  }
-  return null;
-}
+// HKLM\SOFTWARE\Policies\Nuee (the computer, which wins) or HKCU\SOFTWARE\Policies\Nuee, among the
+// policies read at start-up (politiques). docs/deploiement.md
+const verificationPossible = () => app.isPackaged && !process.argv.includes('--lanceur-nas') && politique('DisableUpdateCheck') !== 1;
 // The same policy key turns R-code models off (DWORD DisableCustomCode = 1), as does the environment
 // variable NUEE_SANS_CODE=1 (any system): they aren't offered, and the engine refuses them
-// (NUEE_SANS_CODE, demarrerR). Read once per start.
-let codeRefuse;
-const codeInterdit = () => {
-  if (codeRefuse === undefined) codeRefuse = process.env.NUEE_SANS_CODE === '1' || politique('DisableCustomCode') === 1;
-  return codeRefuse;
-};
-let majInterdite;
-const verificationPossible = () => {
-  if (!app.isPackaged || process.argv.includes('--lanceur-nas')) return false;
-  if (majInterdite === undefined) majInterdite = politique('DisableUpdateCheck') === 1;
-  return !majInterdite;
-};
+// (NUEE_SANS_CODE, demarrerR). So do policies that couldn't be read: one that couldn't be read isn't
+// taken for one that isn't set.
+const codeInterdit = () => process.env.NUEE_SANS_CODE === '1' || politique('DisableCustomCode') === 1 || !politiques.lues;
 let versionTrouvee;  // checked once per start, for every window, and again from Aide › Chercher une mise à jour
 function chercherVersion() {
   return reseau.fetch(DERNIERE_VERSION, { headers: { Accept: 'application/vnd.github+json' } })
@@ -1140,6 +1133,7 @@ function enregistrerProgramme() {
 
 async function demarrer() {
   lireReglages();
+  politiques = await rInstalles.lirePolitiques();  // (first: the update check, the R and R code depend on them)
   seancePrecedente = [].concat(reglages.seance || []).filter((c) => typeof c === 'string' && c);
   // A new version (an update): Chromium's HTTP cache may still hold the interface of the version
   // before, which the engine served up to 0.9.5 without Cache-Control; Chromium kept it fresh for

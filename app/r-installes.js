@@ -9,7 +9,7 @@
 //   framework's Current link names, whichever of its Versions is given: that one only), and
 //   Homebrew's (/opt/homebrew, /usr/local);
 // - Linux: Posit's builds in /opt/R/<version> (the computer's own R, on the PATH, is the default).
-const { execFileSync, spawn } = require('child_process');
+const { execFile, execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -128,15 +128,93 @@ function rsDuRegistre(cles) {
   return res;
 }
 
-// A text value of Nuée's policies (Group Policy, Intune…): HKLM\SOFTWARE\Policies\Nuee, the
-// computer's, wins over HKCU's (main.js: politique, for the numbers); null when neither has it
-function politiqueTexte(nom, { exporter = exporterRegistre, env = process.env } = {}) {
-  for (const racine of ['HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER']) {
-    const cle = `${racine}\\SOFTWARE\\Policies\\Nuee`;
-    const v = (lireExportRegistre(exporter(cle), env)[cle] || {})[nom];
-    if (typeof v === 'string' && v.trim()) return v.trim();
+// ------------------------------------------------------------ the policies (Windows)
+
+// Nuée's policies (Group Policy, Intune…): the values of HKLM\SOFTWARE\Policies\Nuee (the computer's,
+// which win) and HKCU\SOFTWARE\Policies\Nuee, in the registry's 64-bit view, read once per start by
+// main.js: { valeurs: { name: value } (a REG_DWORD's number, a REG_SZ's text, a REG_EXPAND_SZ's with
+// its %variables% replaced; an empty text is no value), lues (both keys read, there or not), par
+// ('reg' or 'powershell': what read them) }. reg.exe first, the system's: `reg query` lists the keys of
+// Policies (its answer tells a key that isn't there from one it can't read), `reg export` writes
+// Nuée's in UTF-16 (a folder's accents kept). It doesn't run under "Prevent access to registry editing
+// tools", nor where AppLocker or WDAC keeps it from users: then PowerShell's registry provider. lues
+// false when neither could: main.js then turns R-code models off rather than ignore a policy it
+// couldn't read. `cle`: another key than Nuée's (the checks: tests/essai_r_installe.js).
+const NOMS_POLITIQUES = ['DisableUpdateCheck', 'DisableCustomCode', 'RHome', 'PluginsFolder'];
+const RACINES = ['HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER'];
+const programmeSysteme = (env, ...p) => path.win32.join(env.SystemRoot || env.windir || 'C:\\Windows', 'System32', ...p);
+
+// a program run to its end: its standard output, or null when it couldn't start or ended in error
+function sortieDe(programme, args) {
+  return new Promise((ok) => {
+    execFile(programme, args, { encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 16 * 1024 * 1024 }, (e, sortie) => ok(e ? null : String(sortie)));
+  });
+}
+
+// One root's key read by reg.exe: its values ({} when it isn't there), null when reg.exe can't tell
+async function politiquesParReg(racine, cle, { executer, env, temporaire }) {
+  const reg = programmeSysteme(env, 'reg.exe');
+  const chemin = `${racine}\\${cle}`;
+  const liste = await executer(reg, ['query', path.win32.dirname(chemin), '/reg:64']);
+  if (liste === null) return null;
+  if (!liste.split(/\r?\n/).some((l) => l.trim().toLowerCase() === chemin.toLowerCase())) return {};
+  const fichier = path.join(temporaire, `nuee-politiques-${process.pid}-${RACINES.indexOf(racine)}.reg`);
+  try {
+    if (await executer(reg, ['export', chemin, fichier, '/y', '/reg:64']) === null) return null;
+    const lues = Object.entries(lireExportRegistre(fs.readFileSync(fichier, 'utf16le'), env)).find(([k]) => k.toLowerCase() === chemin.toLowerCase());
+    return lues ? lues[1] : {};
+  } catch {
+    return null;
+  } finally {
+    fs.rmSync(fichier, { force: true });
   }
-  return null;
+}
+
+// Both keys read by PowerShell's registry provider: [HKLM's values, HKCU's] ({} when a key isn't
+// there), null when PowerShell can't read them. What it found goes to a file, in UTF-8 (its own output
+// follows the console's code page); cmdlets only, which the Constrained Language mode of WDAC and
+// AppLocker allows. (A REG_EXPAND_SZ comes with its %variables% replaced.)
+async function politiquesParPowerShell(cle, { executer, env, temporaire }) {
+  const fichier = path.join(temporaire, `nuee-politiques-${process.pid}.json`);
+  const cite = (s) => `'${s.replace(/'/g, "''")}'`;
+  const code = ["$ErrorActionPreference = 'Stop'", '$r = @{}',
+    "foreach ($h in 'HKLM', 'HKCU') {",
+    `  $k = $h + ':\\' + ${cite(cle)}`,
+    '  if (Test-Path -LiteralPath $k) { $r[$h] = Get-ItemProperty -LiteralPath $k | Select-Object -Property * -ExcludeProperty PSPath, PSParentPath, PSChildName, PSDrive, PSProvider } else { $r[$h] = @{} }',
+    '}',
+    `ConvertTo-Json -InputObject $r -Compress | Set-Content -LiteralPath ${cite(fichier)} -Encoding UTF8`].join('\n');
+  try {
+    if (await executer(programmeSysteme(env, 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', code]) === null) return null;
+    const lu = JSON.parse(fs.readFileSync(fichier, 'utf8').replace(/^\uFEFF/, ''));
+    return [lu.HKLM, lu.HKCU].map((v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {}));
+  } catch {
+    return null;
+  } finally {
+    fs.rmSync(fichier, { force: true });
+  }
+}
+
+async function lirePolitiques({ plateforme = process.platform, cle = 'SOFTWARE\\Policies\\Nuee', executer = sortieDe, env = process.env, temporaire = os.tmpdir() } = {}) {
+  if (!surWindows(plateforme)) return { valeurs: {}, lues: true, par: null };
+  const o = { executer, env, temporaire };
+  let cles = [];
+  for (const racine of RACINES) cles.push(await politiquesParReg(racine, cle, o));
+  let par = 'reg';
+  if (cles.includes(null)) {
+    const ps = await politiquesParPowerShell(cle, o);
+    if (ps) { cles = ps; par = 'powershell'; }
+  }
+  // (HKCU's, then HKLM's over them; a policy's name in any case)
+  const valeurs = {};
+  for (const c of [...cles].reverse()) {
+    for (const [nom, v] of Object.entries(c || {})) {
+      const n = NOMS_POLITIQUES.find((x) => x.toLowerCase() === nom.toLowerCase()) || nom;
+      if (typeof v === 'number' && Number.isFinite(v)) valeurs[n] = v;
+      else if (typeof v === 'string' && v.trim()) valeurs[n] = v.trim();
+    }
+  }
+  const lues = !cles.includes(null);
+  return { valeurs, lues, par: lues ? par : null };
 }
 
 // ------------------------------------------------------------ the Rs found
@@ -287,5 +365,5 @@ async function installer(chemin, paquets, { plateforme = process.platform, env =
 
 module.exports = {
   PAQUETS, PAQUETS_MOTEUR, PAQUETS_RECOMMANDES, VERSION_MINIMALE, comparerVersions, rscriptDe, dossierDe, memeChemin,
-  lireExportRegistre, exporterRegistre, rsDuRegistre, politiqueTexte, trouver, lancer, arreter, ligneInstallation, verifier, installer,
+  lireExportRegistre, exporterRegistre, rsDuRegistre, NOMS_POLITIQUES, lirePolitiques, trouver, lancer, arreter, ligneInstallation, verifier, installer,
 };
