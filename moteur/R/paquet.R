@@ -214,12 +214,22 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
   ecarts <- character(0)
   principaux <- which(vapply(modeles, function(x) is.null(x$erreur) && !est_autre_analyse(x$definition), TRUE))
   seance <- character(0)
+  ecrire_seance <- function(k) tryCatch(ecrire_script_seance(projet, lapply(modeles[k], `[[`, "definition"), lapply(modeles[k], `[[`, "modele"),
+                                                             file.path(tmp, "seance.R"), "moteur", version = version, langue = langue), error = function(e) e)
   if (length(principaux)) {
-    r <- tryCatch(ecrire_script_seance(projet, lapply(modeles[principaux], `[[`, "definition"), lapply(modeles[principaux], `[[`, "modele"),
-                                       file.path(tmp, "seance.R"), "moteur", version = version, langue = langue), error = function(e) e)
+    r <- ecrire_seance(principaux)
+    if (inherits(r, "error")) {
+      # (un modèle dont le script ne s'écrit pas : nommé avec son erreur, les autres sans lui)
+      for (k in principaux) {
+        seul <- ecrire_seance(k)
+        if (inherits(seul, "error")) infos[[k]]$erreur <- conditionMessage(seul)
+      }
+      principaux <- principaux[vapply(infos[principaux], function(i) is.null(i$erreur), TRUE)]
+      r <- if (length(principaux)) ecrire_seance(principaux)
+    }
     if (inherits(r, "error")) {
       for (k in principaux) infos[[k]]$erreur <- conditionMessage(r)
-    } else {
+    } else if (!is.null(r)) {
       seance <- lire_lignes_paquet(r$script)
       for (j in seq_along(principaux)) infos[[principaux[j]]]$objet <- r$noms[j]
       if (!is.null(r$ecart)) ecarts <- c(ecarts, r$ecart)
@@ -271,7 +281,7 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
                    "Its data are in the script: it reads no file. Run it with Rscript analysis.R (its plots then go to Rplots.pdf), or in R or RStudio (source). Each model keeps its results under its name:")),
     paste0("#   ", vapply(faits, description, "")),
     if (length(sans)) c(commentaire(tx("Pas dans ce script :", "Not in this script:")),
-                        unlist(lapply(sans, function(i) commentaire(sprintf(tx("%s : %s", "%s: %s"), i$nom, i$erreur), retrait = "  ")))),
+                        unlist(lapply(sans, function(i) sub("^# ", "#   ", commentaire(sprintf(tx("%s : %s", "%s: %s"), i$nom, i$erreur)))))),
     commentaire(sprintf(tx("Écrit avec %s.", "Written with %s."), texte_paquets(paquets$paquet, langue, versions = TRUE))),
     commentaire(tx("Dans RStudio, Ctrl+Maj+O affiche ses parties.", "In RStudio, Ctrl+Shift+O shows its parts.")))
   ecrire_texte_paquet(chemin, c(entete, corps))
@@ -476,7 +486,7 @@ lignes_readme <- function(meta, langue, version, contenu) {
       paste0(sprintf(tx("%s a été écrit avec R %s", "%s was written with R %s"), code(ct$script), r_version),
              if (!nrow(ct$paquets)) tx(" et n'utilise que R.", " and uses R alone.")
              else paste0(tx(" et utilise ", " and uses "),
-                         paste(c(if (nrow(avec_r)) sprintf(tx("%s, livrés avec R", "%s, which come with R"), versions(avec_r)),
+                         paste(c(if (nrow(avec_r)) sprintf(if (nrow(avec_r) > 1) tx("%s, livrés avec R", "%s, which come with R") else tx("%s, livré avec R", "%s, which comes with R"), versions(avec_r)),
                                  if (nrow(a_installer)) sprintf(tx("%s, à installer : %s", "%s, to install: %s"), versions(a_installer),
                                                                 code(sprintf("install.packages(%s)", paste(sprintf("\"%s\"", a_installer$paquet), collapse = ", "))))),
                                collapse = tx(" ; ", "; ")), ".")), "",
