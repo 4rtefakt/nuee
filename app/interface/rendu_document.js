@@ -252,7 +252,9 @@ function htmlReference(tok, r, libelles) {
     case 'texte':
       return `<div class="ref-texte" title="${brut}">${r.paragraphes.map((p) => `<p>${echapper(p)}</p>`).join('')}</div>`;
     default:
-      return `<span class="ref" title="${brut}">${echapper(r.texte)}</span>`;
+      // (in the preview, a value an update of the data changed: the one before on hover, documents.js)
+      return r.changement ? `<span class="ref ref-changee" title="${echapper(r.changement)}" data-ref="${brut}">${echapper(r.texte)}</span>`
+        : `<span class="ref" title="${brut}">${echapper(r.texte)}</span>`;
   }
 }
 

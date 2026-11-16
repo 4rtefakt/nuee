@@ -158,6 +158,8 @@ export function rendreExplorateur(conteneur, app) {
             { libelle: t('ajouter_colonnes'), icone: 'file-spreadsheet', action: () => app.ajouterColonnes(p.id) },
             { libelle: t('raster_valeurs'), icone: 'layers', action: () => app.valeursRaster(p.id) },
             { libelle: t('resumer_groupes'), icone: 'sigma', action: () => app.resumerGroupes(p.id) },
+            { libelle: t('etapes_donnees'), icone: 'list', action: () => app.etapesDonnees(p.id) },
+            { libelle: t('etapes_mettre_a_jour'), icone: 'refresh-cw', action: () => app.miseAJourDonnees(p.id) },
             { libelle: t('nouveau_modele'), icone: 'file-plus', action: () => app.nouveauModele(p.id) },
             { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) }] }),
         p.historique ? noeud({ cle: `${p.id}/historique`, niveau: 2, ic: 'history', libelle: [t('historique'), el('span', { class: 'compte' }, p.historique)],

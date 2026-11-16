@@ -499,6 +499,93 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-unites .description-variable { width: 30em; }
 .tableau td.ancre { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* The data's source and steps, Update the data (etapes.js): a file read and its state, the steps,
+   an update's preview by section, its progress, and the status bar's notice of a changed file */
+.dialogue-etapes, .dialogue-maj { flex: 1; min-height: 0; overflow: auto; gap: 2px; }
+.dialogue-etapes h3, .dialogue-maj h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texte-doux); margin: 12px 0 5px; }
+.dialogue-etapes h3:first-child, .dialogue-maj h3:first-child { margin-top: 2px; }
+.fiche-fichier { border: 1px solid var(--bord); border-radius: 6px; padding: 6px 10px; background: var(--fond-barre); margin-bottom: 6px; }
+.fiche-fichier.changee { border-color: var(--attention); }
+.fiche-fichier.introuvable { border-color: var(--erreur); }
+.fiche-fichier p { margin: 2px 0; }
+.fiche-fichier .ligne { gap: 6px; }
+.fiche-fichier .ligne > .icone { color: var(--accent); }
+.fiche-fichier.grand b { font-size: 14px; }
+.chemin-fichier { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 11.5px; color: var(--texte-doux); overflow-wrap: anywhere; user-select: text; }
+.note.attention { color: var(--attention); }
+.etat-fichier { display: inline-block; font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid currentColor; font-weight: 600; white-space: nowrap; }
+.etat-fichier.lue { color: var(--ok); }
+.etat-fichier.changee { color: var(--attention); }
+.etat-fichier.introuvable { color: var(--erreur); }
+.defile-etapes { border: 1px solid var(--grille); border-radius: 4px; overflow-x: auto; }
+.tableau.liste-etapes { width: 100%; }
+.liste-etapes td:last-child { text-align: right; }
+.liste-etapes .etape { gap: 6px; }
+.liste-etapes .etape > .icone { color: var(--accent); }
+.liste-etapes .etape .doux { font-size: 11.5px; }
+.liste-etapes th { cursor: default; }
+.fichier-etape { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.message-etapes:empty { display: none; }
+.retrait-etape { border: 1px solid var(--bord); border-radius: 6px; padding: 6px 10px; margin: 4px 0 8px; background: var(--fond-barre); }
+.retrait-etape > p { margin: 2px 0 6px; }
+.fichier-maj .ligne { flex-wrap: wrap; gap: 6px 10px; margin: 4px 0; }
+.fichier-maj .champ { color: var(--texte); }
+.fichier-maj .table-maj { align-items: flex-start; }
+.fichier-maj .liste-tables { width: auto; }
+.apercu-maj { min-height: 6em; }
+.resume-maj { font-weight: 600; margin: 4px 0 8px; }
+.resume-maj.rien { color: var(--ok); }
+.fichier-lu { margin: 2px 0; font-size: 11.5px; overflow-wrap: anywhere; }
+.sections-maj { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; align-items: start; }
+.section-maj { border: 1px solid var(--grille); border-left: 3px solid var(--ligne-graphe); border-radius: 4px; padding: 4px 10px 6px; background: var(--fond-barre); }
+.section-maj h4 { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; font-size: 12.5px; }
+.section-maj h4 .icone { width: 14px; height: 14px; color: var(--texte-doux); }
+.section-maj ul { margin: 0; padding-left: 16px; }
+.section-maj li { margin: 2px 0; overflow-wrap: anywhere; }
+.section-maj li.attention { color: var(--attention); }
+.section-maj li.erreur { color: var(--erreur); }
+.section-maj.nouveau { border-left-color: var(--ok); }
+.section-maj.nouveau h4 .icone { color: var(--ok); }
+.section-maj.absent { border-left-color: var(--attention); }
+.section-maj.absent h4 .icone { color: var(--attention); }
+.section-maj.change { border-left-color: var(--accent); }
+.section-maj.change h4 .icone { color: var(--accent); }
+.choix-maj { margin-top: 10px; display: flex; flex-direction: column; gap: 3px; }
+.choix-maj h4 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; }
+.choix-maj h4 .icone { width: 14px; height: 14px; color: var(--ok); }
+.choix-maj .note { margin: 0 0 2px; }
+.choix-maj .champ, .version-maj .champ { color: var(--texte); }
+.version-maj { margin-top: 10px; }
+.version-maj .note { margin: 2px 0 0 22px; }
+.progression-maj { min-width: min(32em, 80vw); }
+.progression-maj .etape-maj { margin: 4px 0 8px; font-weight: 600; }
+.barre-maj { width: 100%; height: 10px; accent-color: var(--accent); }
+.progression-maj .note { min-height: 1.4em; }
+#statut .avis-donnees { display: inline-flex; align-items: center; gap: 2px; }
+#statut .avis-donnees a { display: inline-flex; align-items: center; gap: 4px; color: var(--attention); font-weight: 600; text-decoration: none; }
+#statut .avis-donnees a:hover { text-decoration: underline; }
+/* What changed after an update of the data (changements.js): the data, then the values cited in
+   the documents, each a button that opens its document there; in a document's preview, those
+   values marked until Hide changes (documents.js) */
+.modele-change.donnees-change, .modele-change.documents-change { border-left: 3px solid var(--accent); }
+.modele-change h3 > .icone { color: var(--accent); }
+.documents-change h4 { margin: 6px 0 2px; font-size: 12.5px; }
+.valeurs-change { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.valeur-change { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; border-color: transparent; background: transparent; padding: 3px 6px; }
+.valeur-change:hover:not(:disabled) { background: var(--survol); border-color: var(--grille); }
+.valeur-change .avant-apres { font-variant-numeric: tabular-nums; }
+.valeur-change .avant-apres s { color: var(--texte-doux); }
+.valeur-change .perime { color: var(--attention); font-size: 11.5px; }
+.valeur-change .phrase-valeur { color: var(--texte-doux); font-size: 12px; white-space: normal; }
+.valeur-change mark, .apercu-document .ref-changee { background: color-mix(in srgb, var(--attention) 24%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.apercu-document .ref-changee { border-bottom: 1px solid var(--attention); cursor: help; }
+.apercu-document .ref-changee.montree { outline: 2px solid var(--attention); outline-offset: 1px; }
+.changements-document { display: flex; align-items: center; gap: 8px; padding: 4px 8px; margin-bottom: 4px; font-size: 12px; border: 1px solid var(--attention); border-radius: 4px;
+  background: color-mix(in srgb, var(--attention) 8%, var(--fond-panneau)); }
+.changements-document > .icone { color: var(--attention); }
+.changements-document button { margin-left: auto; }
+.changements-document[hidden] { display: none; }
+
 /* File › Versions (versions.js): the list of versions, newest first, each with its actions; Send and
    receive below; an old version opened read-only, in the explorer and on its tabs */
 .versions { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }

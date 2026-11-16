@@ -2070,6 +2070,47 @@ groupe (l'habitat d'un secteur, le site d'un secteur) est gardé, avec cette val
 sont laissés de côté, et la barre d'état les nomme. Le nouveau projet n'a pas encore de
 fichier : l'enregistrer (Ctrl+S).
 
+Étapes des données et mise à jour
+---------------------------------
+Un projet fait d'un fichier de données garde ce fichier, sa source : où il est (et son chemin
+depuis le dossier du projet, si bien qu'un dossier déplacé avec ses données les retrouve), sa
+table ou sa feuille, les choix de l'import sur ses colonnes, et sa taille, sa date et son
+empreinte quand il a été lu. Chaque changement fait à ses données dans Nuée est gardé en étape,
+écrite avec les noms des variables et les identifiants des observations : une valeur modifiée,
+Chercher et remplacer, les catégories, une Nouvelle variable, des colonnes d'un tableau (avec le
+fichier de ce tableau), des valeurs de rasters, des cellules collées, les unités et
+descriptions, les coordonnées, une classe d'une sélection, des scores ou des groupes de
+k-moyennes en variables.
+Édition › Étapes des données (ou clic droit sur les données du projet) : la source (trouvée,
+modifiée depuis sa lecture, ou introuvable) et les étapes, chacune avec sa date et les fichiers
+qu'elle a lus. Retirer relit la source et rejoue les autres étapes, en un seul changement
+qu'annule Ctrl+Z ; une source modifiée depuis sa lecture est lue telle qu'elle est maintenant.
+Quand les données ont changé hors des étapes (dans la console R, ou avec une version de Nuée
+d'avant la 1.1), le dialogue le dit : les mettre à jour reprendrait celles que la source et les
+étapes donnent.
+Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
+suivante, dont les colonnes peuvent venir dans un autre ordre ou avec de nouvelles. Les étapes y
+sont rejouées, puis ses lignes rapportées aux observations du projet par leurs identifiants et
+ses colonnes aux variables par leurs noms, si bien que chaque modèle garde sa définition. Avant
+que rien ne change, le dialogue montre ce qui changera : les nouvelles observations, variables
+et catégories, celles qui ne sont plus dans le fichier (elles quittent le projet et ses
+modèles), les cellules changées, les variables calculées de nouveau d'après leur formule, chaque
+étape rejouée, sautée (une observation ou une variable qu'elle nomme n'est plus là) ou en
+erreur, avec sa raison, les modèles qui ne peuvent plus être ajustés et ce qui leur manque, un
+modèle dont la catégorie de référence n'a plus d'observation, et comment le fichier a été lu
+(sans colonne qui nomme les observations, elles se retrouvent par leur numéro de ligne). Un
+modèle qui laisse de côté des observations demande s'il prend les nouvelles (coché). Mettre à
+jour remplace les données en un seul changement (Ctrl+Z l'annule, la source et les étapes
+comprises) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
+projet est ajusté à nouveau, avec une barre de progression et Arrêter, et Ce qui a changé
+compare leurs résultats clés avant et après. Il montre aussi ce que la mise à jour a fait aux
+données, et les valeurs citées dans les documents qui ont changé, chacune avec sa phrase (un
+clic ouvre le document à cet endroit) ; dans l'aperçu de chaque document, ces valeurs sont
+marquées, celle d'avant au survol, jusqu'à Cacher les changements.
+Quand le fichier source d'un projet change (une nouvelle année ajoutée), la barre d'état le dit,
+à l'ouverture du projet et quand Nuée revient au premier plan ; son lien ouvre Mettre à jour les
+données.
+
 Modifier les données, créer des variables
 -----------------------------------------
 Dans la vue Données, double-cliquer une case pour la modifier (Entrée pour garder, Échap pour

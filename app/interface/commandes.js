@@ -67,6 +67,9 @@ export function creerCommandes(app) {
     atelier_categories: { icone: 'tag', actif: () => { const p = app.projet(app.projetActif()); return !!p && p.variables.some((v) => v.qualitative); },
       action: () => app.categoriesVariable(app.projetActif()) },
     atelier_variables: { icone: 'ruler', actif: () => !!app.projetActif(), action: () => app.variablesProjet(app.projetActif()) },
+    // the data's source and steps, and the data read again from it or from next year's file (etapes.js)
+    etapes_donnees: { icone: 'list', actif: () => !!app.projetActif(), action: () => app.etapesDonnees(app.projetActif()) },
+    etapes_mettre_a_jour: { icone: 'refresh-cw', actif: () => !!app.projetActif(), action: () => app.miseAJourDonnees(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
     // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
@@ -167,7 +170,7 @@ export function menus(app, C) {
       .concat(app.bureau ? ['-', it('quitter')] : []) },
     { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
-      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
+      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
     { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
     { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',

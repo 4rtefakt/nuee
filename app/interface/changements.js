@@ -3,10 +3,12 @@
 // resultats_cles and comparer_resultats) and shown in a panel: the models with notable changes
 // first, their sentences, a table of the results that changed, then the models of one side only.
 //   resumerProjet(app, pid, { surProgression })      → { modeles: [{ nom, numero, type, entrees }] }
-//   afficherChangements(app, { titre, pid, avant, apres })   the panel, and what it shows
+//   afficherChangements(app, { titre, pid, avant, apres, donnees, documents })   the panel, and what it shows
 // Both summaries and their comparison are asked in the interface's language: an entry's label comes
-// in the language of its resultats_cles request.
-import { t, langueActuelle } from './i18n.js';
+// in the language of its resultats_cles request. After an update of the data (etapes.js), the panel
+// also shows what the update did to the data (`donnees`) and the values cited in the project's
+// documents that changed (`documents`).
+import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, entreNombres } from './ui.js';
 import { demander } from './api.js';
 import { VUES } from './panneaux.js';
@@ -58,10 +60,13 @@ export async function resumerProjet(app, pid, { surProgression } = {}) {
 
 // The comparison of two summaries (resumerProjet), model by model, shown in a panel of the project
 // `pid`, titled `titre`; it opens at once and fills in as the engine answers. Resolves to what it
-// shows: { id, titre, pid, modeles: [{ nom, numero, type, comparaison | erreur }], avantSeul, apresSeul }.
-export async function afficherChangements(app, { titre, pid, avant, apres }) {
+// shows: { id, titre, pid, modeles: [{ nom, numero, type, comparaison | erreur }], avantSeul, apresSeul,
+// donnees, documents }. After an update of the data (etapes.js): `donnees`, its report as
+// etapes_texte.js reads it ({ resume, rien, sections, fichier }); `documents`, the documents whose cited
+// values changed ([{ id, titre, valeurs: [{ debut, fin, brut, avant, apres, phrase, perime }] }]).
+export async function afficherChangements(app, { titre, pid, avant, apres, donnees = null, documents = null }) {
   const id = `C${++compteur}-${Date.now().toString(36)}`;
-  const c = { id, titre, pid, enCours: true, modeles: [], avantSeul: [], apresSeul: [] };
+  const c = { id, titre, pid, enCours: true, modeles: [], avantSeul: [], apresSeul: [], donnees, documents };
   COMPARAISONS.set(id, c);
   while (COMPARAISONS.size > GARDEES) COMPARAISONS.delete(COMPARAISONS.keys().next().value);
   app.ouvrirVue('changements', null, { comparaison: id }, pid);
@@ -129,7 +134,8 @@ function rendreChangements(app, conteneur, loc) {
     return;
   }
   if (c.enCours) {
-    conteneur.replaceChildren(el('div', { class: 'changements' }, el('h2', {}, t('changements_titre', { titre: c.titre })), el('p', { class: 'infos attente' }, t('changements_calcul'))));
+    conteneur.replaceChildren(el('div', { class: 'changements' }, el('h2', {}, t('changements_titre', { titre: c.titre })), el('p', { class: 'infos attente' }, t('changements_calcul')),
+      el('div', { class: 'defile' }, sectionsMiseAJour(app, c))));
     return;
   }
   loc.ouverts = loc.ouverts || {};
@@ -137,6 +143,7 @@ function rendreChangements(app, conteneur, loc) {
   const notables = tries.filter((m) => m.comparaison && [].concat(m.comparaison.phrases || []).length).length;
   const compares = tries.filter((m) => m.comparaison).length;
   const corps = el('div', { class: 'defile' },
+    sectionsMiseAJour(app, c),
     !c.modeles.length && !c.avantSeul.length && !c.apresSeul.length ? el('p', { class: 'note' }, t('changements_aucun_modele')) : null,
     tries.map((m) => sectionModele(m, loc, () => rendreChangements(app, conteneur, loc))),
     c.avantSeul.length || c.apresSeul.length ? el('section', { class: 'modele-change seul-cote' },
@@ -150,6 +157,37 @@ function rendreChangements(app, conteneur, loc) {
 }
 
 const listeNoms = (modeles) => modeles.map((m, i) => [i ? ', ' : '', m.nom, m.type ? el('span', { class: 'doux' }, ` (${m.type})`) : null]);
+
+// An update's report in sections, as etapes_texte.js reads it (lireRapport): each a heading and its
+// lines. Also the preview of Update the data (etapes.js).
+const ICONES_SECTIONS = { nouveau: 'circle-plus', absent: 'circle-minus', change: 'pencil', etapes: 'list', modeles: 'box', lecture: 'file-input' };
+export function sectionsRapport(lu) {
+  return el('div', { class: 'sections-maj' }, [].concat(lu.sections || []).map((s) => el('section', { class: `section-maj ${s.cle}` },
+    el('h4', {}, icone(ICONES_SECTIONS[s.cle] || 'info'), s.titre),
+    el('ul', {}, [].concat(s.lignes || []).map((l) => el('li', { class: l.classe || '' }, l.texte))))));
+}
+
+// After an update of the data, before the models: what it did to the data, then the values cited
+// in the documents that changed, each with its sentence; a click opens the document there.
+function sectionsMiseAJour(app, c) {
+  const d = c.donnees;
+  const docs = [].concat(c.documents || []);
+  return [
+    d ? el('section', { class: 'modele-change donnees-change' }, el('h3', {}, icone('database'), t('changements_donnees')),
+      d.fichier ? el('p', { class: 'doux fichier-lu' }, t('changements_fichier', { chemin: d.fichier })) : null,
+      el('p', { class: `resume-maj${d.rien ? ' rien' : ''}` }, d.resume), sectionsRapport(d)) : null,
+    docs.length ? el('section', { class: 'modele-change documents-change' },
+      el('h3', {}, icone('file-text'), t('changements_documents'), el('span', { class: 'doux compte-change' },
+        t('changements_documents_compte', { n: docs.reduce((n, x) => n + x.valeurs.length, 0) }))),
+      docs.map((x) => el('div', { class: 'document-change' }, el('h4', {}, x.titre || t('document_sans_titre')),
+        el('ul', { class: 'valeurs-change' }, x.valeurs.map((v) => el('li', {},
+          el('button', { class: 'valeur-change', title: t('changements_ouvrir_document'), onclick: () => app.montrerDansDocument(c.pid, x.id, v) },
+            el('span', { class: 'avant-apres' }, v.perime ? [el('b', {}, v.avant), ' ', el('span', { class: 'perime' }, t('changements_valeur_perimee', { nom: v.modele }))]
+              : [el('s', {}, v.avant || '—'), ' → ', el('b', {}, v.apres || '—')]),
+            el('span', { class: 'phrase-valeur' }, entreGuillemets(v.phrase.avant, el('mark', {}, v.perime ? v.avant : v.apres), v.phrase.apres))))))))) : null,
+  ];
+}
+const entreGuillemets = (...x) => (langueActuelle() === 'fr' ? ['« ', ...x, ' »'] : ['“', ...x, '”']);
 
 // A model's part: its sentences, then the table of what changed (shown when a change is notable,
 // folded otherwise), or what kept it from being compared.
@@ -193,3 +231,16 @@ function ligneEntree(e) {
     el('td', { class: 'num' }, ecartResultat(e)),
     el('td', {}, drapeauxEntree(e).map((d) => el('span', { class: `badge drapeau-change ${d}` }, t(`changements_d_${d}`)))));
 }
+
+// (the parts an update of the data adds: sectionsMiseAJour)
+ajouterTextes({
+  changements_donnees: 'Les données', changements_fichier: 'Lues dans {chemin}',
+  changements_documents: 'Les valeurs citées dans les documents', changements_documents_compte: '{n} changée(s)',
+  changements_ouvrir_document: 'Ouvrir le document à cet endroit',
+  changements_valeur_perimee: 'pas mise à jour : {nom} n’a pas pu être ajusté à nouveau',
+}, {
+  changements_donnees: 'The data', changements_fichier: 'Read from {chemin}',
+  changements_documents: 'Values cited in the documents', changements_documents_compte: '{n} changed',
+  changements_ouvrir_document: 'Open the document there',
+  changements_valeur_perimee: 'not updated: {nom} couldn’t be fitted again',
+});

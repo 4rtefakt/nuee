@@ -16,7 +16,8 @@ import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
 import { zip } from './zip.js';
-import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
+import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS,
+  referencesDansTexte } from './rendu_document.js';
 import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES,
   elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
@@ -103,6 +104,10 @@ export function installerDocuments(app) {
     // a model's view a document can show as a figure (the explorer offers to insert it)
     figureDocument: (m, v) => partiesModele(m).some((x) => x.cle === v && x.vue),
     viderDocuments: (pid) => Promise.all([...ouverts].filter((s) => !pid || s.pid === pid).map((s) => s.enregistrer())),
+    // after an update of the data (etapes.js): the values it changed marked in the documents'
+    // previews, and one of them shown in its document
+    marquerChangements: (pid, documents, date) => marquerChangements(pid, documents, date),
+    montrerDansDocument: (pid, id, valeur) => montrerDansDocument(app, pid, id, valeur),
     // a document written in another window: shown again here, unless it is being written here too
     surDocument: (msg) => { for (const s of ouverts) if (s.pid === msg.projet && s.id === msg.id && !s.modifie) s.recharger(); },
   });
@@ -196,7 +201,16 @@ function creerEditeur(app, conteneur, pid, d, loc) {
   const hote = el('div', { class: 'editeur-document' });
   s.apercu = el('div', { class: 'apercu-document', 'aria-live': 'polite' });
   corps.append(hote, s.apercu);
-  cadre.append(corps);
+  // (the values an update of the data changed, marked in the preview: how many, and Hide changes)
+  s.bandeChangements = el('div', { class: 'changements-document', hidden: true });
+  s.majChangements = (n) => {
+    const m = changementsValeurs.get(`${pid}|${s.id}`);
+    s.bandeChangements.hidden = !n || !m;
+    if (!n || !m) return;
+    s.bandeChangements.replaceChildren(icone('refresh-cw'), el('span', {}, t('document_changements', { n, date: m.date })),
+      el('button', { onclick: () => { changementsValeurs.delete(`${pid}|${s.id}`); s.rafraichir(); } }, t('document_cacher_changements')));
+  };
+  cadre.append(s.bandeChangements, corps);
   s.construireBarre();
   conteneur.replaceChildren(cadre);
 
@@ -338,7 +352,97 @@ function creerEditeur(app, conteneur, pid, d, loc) {
     s.vue.destroy();
   };
   s.rafraichir();
+  // (opened to show a value that changed: montrerDansDocument)
+  const v = aMontrer.get(`${pid}|${s.id}`);
+  if (v) { aMontrer.delete(`${pid}|${s.id}`); montrerValeur(s, v); }
   return s;
+}
+
+// ------------------------------------------------------------ the values an update changed
+
+// The values an update of the data changed in each document (etapes.js: valeursChangees), by the
+// text of their reference: marked in its preview, the value before on hover, until Hide changes.
+// This session only: a document reopened later still shows them, none after Nuée closes.
+const changementsValeurs = new Map();
+const aMontrer = new Map();  // the value to show in a document being opened (montrerDansDocument)
+const normeRef = (x) => String(x).replace(/\s+/g, ' ');
+
+function marquerChangements(pid, documents, date) {
+  for (const cle of [...changementsValeurs.keys()]) if (cle.startsWith(`${pid}|`)) changementsValeurs.delete(cle);
+  for (const d of [].concat(documents || [])) {
+    const valeurs = new Map(d.valeurs.filter((v) => !v.perime && v.avant && v.apres).map((v) => [normeRef(v.brut), v.avant]));
+    if (valeurs.size) changementsValeurs.set(`${pid}|${d.id}`, { date, valeurs });
+  }
+  for (const s of ouverts) if (s.pid === pid) s.rafraichir();
+}
+
+// A value of What changed shown in its document (changements.js): the document opened or brought
+// to the front, its reference selected in the text (found again by its text if the text changed
+// since), the value brought into view in the preview.
+function montrerDansDocument(app, pid, id, v) {
+  app.ouvrirVue('document', null, { doc: id, curseur: v.debut }, pid);
+  const s = ouvert(pid, id);
+  if (s) montrerValeur(s, v); else aMontrer.set(`${pid}|${id}`, v);
+}
+function montrerValeur(s, v) {
+  const texte = s.vue.state.doc.toString();
+  let debut = v.debut;
+  if (texte.slice(v.debut, v.fin) !== v.brut) debut = texte.indexOf(v.brut);
+  if (debut >= 0) s.vue.dispatch({ selection: { anchor: debut, head: debut + v.brut.length }, scrollIntoView: true });
+  s.vue.focus();
+  s.montrer = { brut: normeRef(v.brut), jusque: Date.now() + 2500 };
+  amenerValeur(s);
+}
+// The value to show, in the middle of the preview and outlined for a moment: once the editor has
+// scrolled (the preview follows it), and again on each preview drawn meanwhile (a document brought
+// to the front draws its preview again).
+function amenerValeur(s) {
+  if (!s.montrer) return;
+  if (Date.now() > s.montrer.jusque) { s.montrer = null; return; }
+  const { brut } = s.montrer;
+  setTimeout(() => {
+    const x = [...s.apercu.querySelectorAll('.ref-changee')].find((e) => normeRef(e.dataset.ref) === brut);
+    if (!x) return;
+    x.scrollIntoView({ block: 'center' });
+    x.classList.add('montree');
+    setTimeout(() => x.classList.remove('montree'), 1600);
+  }, 150);
+}
+
+// The values each document of the project cites, as its preview writes them now (in the
+// document's language, from each model's latest fit; a model not fitted isn't fitted for this),
+// with where each reference stands in its text: [{ id, titre, texte, valeurs: [{ debut, fin, brut,
+// modele, texte }] }]. Plots, tables, texts and references that can't be resolved are left out.
+// (etapes.js, before and after an update of the data, for What changed.)
+export async function valeursCitees(app, pid) {
+  const p = app.projet(pid);
+  const docs = [].concat((p && p.documents) || []);
+  if (!docs.length) return [];
+  await chargerEditeur();
+  await app.viderDocuments(pid);  // (what is being typed goes in first)
+  const noms = p.modeles.map((d) => d.nom).concat(app.modelesDe(pid).map((m) => m.nom));
+  const s = { pid, calculs: new Map() };
+  const resultat = [];
+  for (const x of docs) {
+    const d = await demander('document', { projet: pid, id: x.id });
+    const texte = d.texte || '';
+    const { brut, corps } = lireEntete(texte);
+    const analyse = analyser(md, texte);
+    const langue = d.langue || langueActuelle();
+    const valeurs = [];
+    for (const r of referencesDansTexte(corps, analyse)) {
+      const ref = analyse.refs[r.i].meta.ref;
+      const c = /^ref:/.test(ref.cible) ? null : separerCible(ref.cible, noms);
+      if (!c || (c.chemin[0] === 'methodes' && c.chemin.length <= 2) || (c.chemin[0] === 'resultats' && c.chemin.length === 1) || c.chemin[0] === 'table') continue;
+      const m = await modelePour(app, s, c.modele, false).catch(() => null);
+      const vue = m && partiesModele(m).find((y) => y.cle === c.chemin[0] && y.vue);
+      if (!m || (vue && (c.chemin.length === 1 || vue.variantes))) continue;
+      const f = formeReference(m, c.chemin, ref);
+      if (!f.erreur) valeurs.push({ debut: brut.length + r.debut, fin: brut.length + r.fin, brut: r.brut, modele: c.modele, texte: texteForme(f, langue) });
+    }
+    resultat.push({ id: x.id, titre: d.titre || x.titre || '', texte, valeurs });
+  }
+  return resultat;
 }
 
 // ------------------------------------------------------------ references resolved
@@ -468,10 +572,21 @@ async function mettreAJour(app, s) {
 
 function dessinerApercu(s, analyse, resolus, texte, citations) {
   const haut = s.apercu.scrollTop;
-  // (the plots as blob: addresses, not their whole PNG in the page at every keystroke)
-  const pourApercu = resolus.map((r) => (r && r.genre === 'figure' ? { ...r, image: urlApercu(s, r.image) } : r));
+  // (the plots as blob: addresses, not their whole PNG in the page at every keystroke; a value an
+  // update of the data changed, marked with the one before: marquerChangements)
+  const marques = changementsValeurs.get(`${s.pid}|${s.id}`);
+  let changees = 0;
+  const pourApercu = resolus.map((r, i) => {
+    if (r && r.genre === 'figure') return { ...r, image: urlApercu(s, r.image) };
+    const avant = marques && r && r.genre === 'valeur' ? marques.valeurs.get(normeRef(analyse.refs[i].meta.brut)) : undefined;
+    if (avant === undefined || avant === r.texte) return r;
+    changees += 1;
+    return { ...r, changement: t('document_valeur_avant', { valeur: avant, date: marques.date }) };
+  });
   s.apercu.innerHTML = versHTML(md, analyse, pourApercu, libelles(s.langue), citations);
   s.apercu.scrollTop = haut;
+  s.majChangements(changees);
+  amenerValeur(s);
   s.erreurs = new Set(analyse.refs.filter((_, i) => resolus[i] && resolus[i].erreur).map((tok) => tok.meta.brut));
   s.citesInconnues = new Set(citations ? citations.inconnues : []);
   s.versionErreurs += 1;
@@ -1425,6 +1540,8 @@ function dialogueAideDocument() {
 ajouterTextes({
   document: 'Document', documents: 'Documents', nouveau_document: 'Nouveau document…', creer_document: 'Créer le document',
   document_sans_titre: 'Sans titre', document_titre: 'Titre', document_langue: 'Langue', document_copie: 'copie', ok: 'OK',
+  document_changements: '{n} valeur(s) changée(s) par la mise à jour des données du {date} (survolez-les pour voir celle d’avant).',
+  document_cacher_changements: 'Cacher les changements', document_valeur_avant: 'Avant la mise à jour des données du {date} : {valeur}',
   document_langue_aide: 'La langue du document : ses nombres (0,65 ou 0.65), « Figure », « Tableau » et le texte des méthodes',
   document_gabarit: 'Départ', document_gabarit_vide: 'Document vide', document_gabarit_article: 'Article (introduction, méthodes, résultats, discussion)',
   document_gabarit_rapport: 'Rapport d’analyse (pour chaque modèle : résumé, graphiques, méthodes)',
@@ -1505,6 +1622,8 @@ ajouterTextes({
 }, {
   document: 'Document', documents: 'Documents', nouveau_document: 'New document…', creer_document: 'Create the document',
   document_sans_titre: 'Untitled', document_titre: 'Title', document_langue: 'Language', document_copie: 'copy', ok: 'OK',
+  document_changements: '{n} value(s) changed by the data update of {date} (hover over them to see the one before).',
+  document_cacher_changements: 'Hide changes', document_valeur_avant: 'Before the data update of {date}: {valeur}',
   document_langue_aide: 'The document’s language: its numbers (0,65 or 0.65), “Figure”, “Table” and the Methods text',
   document_gabarit: 'Start from', document_gabarit_vide: 'Blank document', document_gabarit_article: 'Article (introduction, methods, results, discussion)',
   document_gabarit_rapport: 'Analysis report (for each model: summary, plots, methods)',

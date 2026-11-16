@@ -35,6 +35,7 @@ import { nomFichier } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
+import { installerEtapes } from './etapes.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -397,7 +398,8 @@ const app = {
     app.rafraichirExplorateur();
     majEtat();
   },
-  // The status bar drawn again (versions.js, its indicator once the file's state is known).
+  // The status bar drawn again (versions.js, its indicator once the file's state is known;
+  // etapes.js, the notice of a data file that changed).
   majStatut: () => majEtat(),
 
   quitter: () => bureau && bureau.quitter(),
@@ -417,6 +419,36 @@ const app = {
     const res = await demander('ajuster', { projet: pid, numero, A });
     if (!etat.projets[pid]) return res.id;
     etat.modeles[res.id] = res;
+    await rafraichirProjet(pid);
+    diffuser('modeles');
+    majEtat();
+    return res.id;
+  },
+  // A model of the project fitted again on its data as they are now (Edit › Update the data:
+  // etapes.js), its definition unchanged. Not fitted in this session: fitted without opening its
+  // views (calculerDiscret). Fitted there: the new fit takes the place of those fits, which leave
+  // the session (their results were those of the data before): their page shows it, with its
+  // layout and its views' settings, and the selection and highlighted variables go with it. The
+  // new fit's id.
+  async ajusterDeNouveau(pid, numero) {
+    const anciens = app.modelesDe(pid).filter((m) => m.numero === numero);
+    if (!anciens.length) return app.calculerDiscret(pid, numero);
+    const rang = (id) => Number(String(id).replace(/\D/g, '')) || 0;
+    const dernier = anciens.reduce((a, b) => (rang(b.id) > rang(a.id) ? b : a));
+    // (with the number of components of its latest fit: a .usp model's changed in the session stays)
+    const res = await demander('ajuster', { projet: pid, numero, A: dernier.A || undefined });
+    etat.modeles[res.id] = res;
+    const dans = new Set([].concat(res.observations.uid || []));
+    for (const m of anciens) {
+      if (etat.selection[m.id] && !etat.selection[res.id]) etat.selection[res.id] = etat.selection[m.id].filter((u) => dans.has(u));
+      for (const k of ['variables', 'choixVIP']) if (etat[k][m.id] && !etat[k][res.id]) etat[k][res.id] = etat[k][m.id];
+      if (etat.replies.has(`${pid}/m/${m.id}`)) etat.replies.add(`${pid}/m/${res.id}`);  // (folded in the explorer, it stays so)
+      remplacerPage(m.id, res.id);
+      const n = (etat.noeud || '').split('/');
+      if (n[1] === 'm' && n[2] === m.id) { n[2] = res.id; etat.noeud = n.join('/'); }
+      await demander('supprimer_modele', { modele: m.id }).catch(() => {});
+      oublierModele(m.id);
+    }
     await rafraichirProjet(pid);
     diffuser('modeles');
     majEtat();
@@ -509,6 +541,7 @@ const app = {
     const r = await occupe(() => demander('annuler', { projet: pid }));
     projetChange(r.projet);
     statut(t('annule', { quoi: r.etiquette }));
+    if (app.verifierSource) app.verifierSource(pid);  // (an update undone: the source read before, which may have changed since)
   },
   async noterModele(id, note) {
     let r;
@@ -849,9 +882,12 @@ const app = {
   categoriesVariable: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueCategories(app, p, uid); },
   variablesProjet: (pid, uid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialogueVariables(app, p, uid); },
   // one of its changes (the request `nom`), undone by a single Ctrl+Z; the views of the data are drawn again
+  // (an answer that is a report holds the project's summary under `projet`: mettre_a_jour,
+  // retirer_etape; one that asks which table of a file to read, none: nothing changed)
   async changerDonnees(nom, pid, q) {
     const res = await occupe(() => demander(nom, { projet: pid, ...q }));
-    projetChange(res);
+    const resume = res.projet && res.projet.id ? res.projet : res.id ? res : null;
+    if (resume) projetChange(resume);
     return res;
   },
   occupe: (f) => occupe(f),
@@ -985,6 +1021,7 @@ installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app
 installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
 installerVersions(app);  // (File › Versions and What changed: their views, app.versions, the status bar's indicator...)
 const C = creerCommandes(app);
+installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 
 // ------------------------------------------------------------ state helpers
 
@@ -1147,6 +1184,7 @@ async function apresOuverture(res, session = null) {
   app.rafraichirExplorateur();
   majEtat();
   document.title = `${t('titre')} — ${res.nom}`;
+  if (app.verifierSource) app.verifierSource(res.id);  // (its data file changed since it was read: a notice, etapes.js)
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
   // a table (a project without models): its data open, in front, so that the menus act on it
   // (New model, Which analysis?, Save) rather than on the model shown before
@@ -1566,6 +1604,42 @@ function ouvrirPage(id) {
   return { page, interne: pages.get(id) };
 }
 
+// The page of model `ancien` made again for model `nouveau`, a fit of the same definition
+// (app.ajusterDeNouveau): beside it among the tabs, in front if it was, with its views, their
+// layout and their settings, as a saved session brings them back (dispositionsAttente,
+// locInitial). The caller then closes the old one. Without a page, nothing.
+function remplacerPage(ancien, nouveau) {
+  const page = dock && dock.getPanel(`page:${ancien}`);
+  const interne = pages.get(ancien);
+  // (two fits of the definition in the session, each with its page: the first one's page is kept)
+  if (!page || !interne || dock.getPanel(`page:${nouveau}`)) return;
+  const m = etat.modeles[nouveau];
+  const ids = new Map();
+  for (const e of etat.panneaux.values()) {
+    if (e.params.modele !== ancien) continue;
+    const cle = `${e.vue}:${nouveau}${suffixeVue(e.vue, e.loc)}`;
+    ids.set(e.id, cle);
+    etat.locInitial[cle] = locEnregistrable(e.loc);
+  }
+  const disposition = remplacerIds(interne.toJSON(), (s) => ids.get(s));
+  for (const p of Object.values(disposition.panels || {})) p.params = { modele: nouveau, projet: m.projet };
+  dispositionsAttente[nouveau] = disposition;
+  const rang = page.group ? page.group.panels.indexOf(page) : -1;
+  try {
+    restauration = true;
+    dock.addPanel({ id: `page:${nouveau}`, component: 'page', title: titrePage(m), params: { modele: nouveau, projet: m.projet },
+      position: { referencePanel: page.id, direction: 'within', ...(rang >= 0 ? { index: rang } : {}) }, inactive: dock.activePanel !== page });
+  } finally {
+    restauration = false;
+    delete dispositionsAttente[nouveau];
+    for (const cle of ids.values()) delete etat.locInitial[cle];
+  }
+  if (derniers.has(ancien) && ids.has(derniers.get(ancien))) derniers.set(nouveau, ids.get(derniers.get(ancien)));
+  dimensionnerPage(nouveau);
+  // (a layout that couldn't be read: the page's usual views)
+  if (!pages.get(nouveau) || !pages.get(nouveau).panels.length) vuesParDefaut(nouveau);
+}
+
 // The panels of both kinds of dock: a view (drawn by panneaux.js) or a model's page.
 function composantVue(options) {
   const element = el('div', { class: 'panneau' + (options.name === 'explorateur' ? ' explorateur' : '') });
@@ -1849,6 +1923,8 @@ function majEtat() {
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
         icone('download'), t(etat.nouvelleVersion.installateur ? 'nouvelle_version_maj' : 'nouvelle_version', { v: etat.nouvelleVersion.version })),
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
+    // (a project's data file changed since it was read: etapes.js)
+    !VUE_SEULE && app.avisDonnees ? app.avisDonnees() : null,
     // (the active project's versions to send and to get: versions.js)
     !VUE_SEULE && app.indicateurVersions ? app.indicateurVersions() : null,
     m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
