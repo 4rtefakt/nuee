@@ -79,6 +79,8 @@ source(file.path(racine, "moteur", "console.R"), encoding = "UTF-8")  # journal 
 # Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json : le
 # programme compilé sous Windows, le script Python ailleurs (python3 sous Linux).
 convertir_usp <- function(chemin) {
+  if (dans_navigateur()) refus_navigateur("Les fichiers .usp", ".usp files", traduire("leur convertisseur est un programme, que le navigateur ne lance pas",
+                                                                                     "their converter is a program, which the browser doesn't run"))
   dossier <- file.path(tempdir(), nouvel_id("usp"))
   dir.create(dossier)
   exe <- Sys.getenv("CONVERTISSEUR_USP", file.path(racine, "outils", "export_project.exe"))
@@ -1148,8 +1150,9 @@ DEMANDES <- list(
   # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
   # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
   # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
-  # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
-  # elle est effacée quand Nuée se ferme.
+  # (q$lu), des changements à enregistrer (q$modifie = FALSE : aucun, la copie d'un projet du
+  # navigateur qui n'en avait pas). Jamais la copie elle-même comme fichier du projet : elle est
+  # effacée quand Nuée se ferme.
   ouvrir = function(q) {
     r <- ouvrir_fichier(q$chemin, table = q$table, brut = isTRUE(q$brut), collecte = isTRUE(q$collecte), kobo = q$kobo)
     if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir) || !is.null(r$kobo)) return(r)
@@ -1157,7 +1160,7 @@ DEMANDES <- list(
     p$nom <- q$nom %||% basename(q$origine %||% p$nom)
     p$chemin <- q$origine
     p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
-    p$modifie <- TRUE
+    p$modifie <- !isFALSE(q$modifie)
     etat$projets[[p$id]] <- p
     resume_projet(p)
   },
@@ -1570,8 +1573,10 @@ repondre <- function(statut, contenu) {
                                                      na = "null", null = "null", digits = NA, force = TRUE))))
 }
 
-# Une demande qui échoue : son message (un fichier changé depuis sa lecture : 409, avec sa date).
+# Une demande qui échoue : son message (un fichier changé depuis sa lecture : 409, avec sa date ;
+# dans le navigateur, un paquet qui y manque : navigateur.R).
 reponse_erreur <- function(nom, e) {
+  e <- erreur_navigateur(e)
   tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
   if (inherits(e, "conflit_fichier")) return(repondre(409L, list(erreur = conditionMessage(e), conflit = TRUE, date = e$date)))
   repondre(400L, list(erreur = conditionMessage(e)))

@@ -5,21 +5,22 @@
 // Files the user opens are written into webR's file system; files the engine writes (a project
 // saved, an export) are downloaded from it. Nothing leaves the page.
 import { langueActuelle } from './i18n.js';
+import { PAQUETS_WEBR, SANS_WEBR } from './paquets_webr.js';
 
-// the R packages the engine uses (moteur/R), from webR's repository
-const PAQUETS = ['jsonlite', 'haven', 'openxlsx', 'readxl', 'foreign', 'mgcv', 'nlme', 'vegan', 'MASS', 'rpart', 'cluster',
-  'trend', 'Kendall', 'modifiedmk', 'missMDA', 'EnvStats', 'irlba', 'estimability', 'zip', 'knitr'];
 const TEXTES = {
   fr: { r: 'Démarrage de R dans le navigateur…', fichiers: 'Fichiers du moteur…', paquet: 'Paquets R : {p} ({i}/{n})', moteur: 'Chargement du moteur…',
-    note: 'Nuée calcule dans cet onglet : vos données ne le quittent pas. La première visite télécharge R et ses paquets (une minute environ).' },
+    note: 'Nuée calcule dans cet onglet : vos données ne le quittent pas. La première visite télécharge R et ses paquets (une minute environ).',
+    echec: 'R n’a pas pu démarrer dans ce navigateur : {e}' },
   en: { r: 'Starting R in the browser…', fichiers: 'Engine files…', paquet: 'R packages: {p} ({i}/{n})', moteur: 'Loading the engine…',
-    note: 'Nuée computes in this tab: your data never leaves it. The first visit downloads R and its packages (about a minute).' },
+    note: 'Nuée computes in this tab: your data never leaves it. The first visit downloads R and its packages (about a minute).',
+    echec: 'R couldn’t start in this browser: {e}' },
 };
 const texte = (cle, v = {}) => (TEXTES[langueActuelle()] || TEXTES.fr)[cle].replace(/\{(\w+)\}/g, (_, k) => v[k]);
 
 // A veil over the interface while R starts, with what it is doing.
 function voile() {
   const fond = document.createElement('div');
+  fond.className = 'voile-webr';
   fond.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;'
     + 'background:color-mix(in srgb, Canvas 88%, transparent);color:CanvasText;font:15px/1.5 system-ui,sans-serif;backdrop-filter:blur(2px)';
   const boite = document.createElement('div');
@@ -44,13 +45,20 @@ function voile() {
 }
 
 // webR's file system: folders made along the way
-async function ecrireFichier(webR, chemin, octets) {
+async function creerDossiers(webR, chemin) {
   const parties = chemin.split('/').filter(Boolean);
-  for (let i = 1; i < parties.length; i += 1) {
+  for (let i = 1; i <= parties.length; i += 1) {
     try { await webR.FS.mkdir(`/${parties.slice(0, i).join('/')}`); } catch { /* already there */ }
   }
+}
+async function ecrireFichier(webR, chemin, octets) {
+  await creerDossiers(webR, chemin.split('/').slice(0, -1).join('/'));
   await webR.FS.writeFile(chemin, octets);
 }
+
+// The packages to install: PAQUETS_WEBR, less those of ?sans=a,b (to see the browser version
+// without them: their features say they need the desktop application)
+const sansPaquets = () => (new URLSearchParams(location.search).get('sans') || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 // One webR with the engine. The main one answers the interface's requests: every package, and
 // the request layer (serveur.R). The others (`aide`) take pieces of long requests: the engine
@@ -62,7 +70,7 @@ async function nouveauR(progres = () => {}, aide = false) {
   progres(texte('r'), 0.02);
   await webR.init();
   // what R prints outside of a request (warnings...) goes to the console, not into a queue
-  (async () => { for (;;) { const m = await webR.read(); if (m.type === 'stderr') console.warn('[R]', m.data); } })();
+  (async () => { for (;;) { const m = await webR.read(); if (m.type === 'stderr') console.warn('[R]', m.data); if (m.type === 'closed') break; } })();
   progres(texte('fichiers'), 0.08);
   fichiersMoteur ||= (async () => {
     const liste = await (await fetch('./moteur-fichiers.json')).json();
@@ -71,15 +79,27 @@ async function nouveauR(progres = () => {}, aide = false) {
   for (const [f, octets] of await fichiersMoteur) await ecrireFichier(webR, `/nuee/${f}`, octets);
   if (aide) {
     await webR.evalRVoid('setwd("/nuee"); source("moteur/charger.R", encoding = "UTF-8")');
-    return webR;
+    return { webR, absents: [] };
   }
-  for (const [i, p] of PAQUETS.entries()) {
-    progres(texte('paquet', { p, i: i + 1, n: PAQUETS.length }), 0.1 + 0.85 * (i / PAQUETS.length));
-    await webR.installPackages([p], { quiet: true });
+  // each package on its own: one webR can't install leaves only its features out
+  const sans = sansPaquets();
+  const absents = [...Object.keys(SANS_WEBR)];
+  const paquets = PAQUETS_WEBR.filter((p) => !sans.includes(p));
+  absents.push(...PAQUETS_WEBR.filter((p) => sans.includes(p)));
+  for (const [i, p] of paquets.entries()) {
+    progres(texte('paquet', { p, i: i + 1, n: paquets.length }), 0.1 + 0.85 * (i / paquets.length));
+    try {
+      await webR.installPackages([p], { quiet: true });
+    } catch (e) {
+      console.warn(`Nuée : le paquet R ${p} n'a pas pu être installé`, e);
+      absents.push(p);
+    }
   }
   progres(texte('moteur'), 0.97);
-  await webR.evalRVoid('setwd("/nuee"); Sys.setenv(NUEE_NAVIGATEUR = "1"); source("moteur/serveur.R", encoding = "UTF-8")');
-  return webR;
+  // (navigateur.R: what needs a package left out says it needs the desktop application)
+  await webR.evalRVoid('options(nuee.navigateur = TRUE, nuee.paquets_absents = absents[nzchar(absents)]); setwd("/nuee"); Sys.setenv(NUEE_NAVIGATEUR = "1"); source("moteur/serveur.R", encoding = "UTF-8")',
+    { env: { absents: absents.length ? absents : [''] } });
+  return { webR, absents };
 }
 
 // The requests that can be shared out (TRAVAUX in serveur.R), from how many pieces; and how many
@@ -100,17 +120,20 @@ async function traiter(r, fonction, env) {
 
 export async function demarrer() {
   const v = voile();
-  let webR;
+  let principal;
   try {
-    webR = await nouveauR((t, part) => v.dire(t, part));
-  } finally {
-    v.retirer();
+    principal = await nouveauR((t, part) => v.dire(t, part));
+  } catch (e) {
+    v.dire(texte('echec', { e: e.message }));
+    throw e;
   }
+  v.retirer();
+  const { webR, absents } = principal;
   // the other R, started once the interface is up (null: none, or they failed to start)
   let aides = null;
   if (nAides() > 0) {
     aides = new Promise((ok) => setTimeout(ok, 2000))
-      .then(() => Promise.all(Array.from({ length: nAides() }, () => nouveauR(() => {}, true))))
+      .then(() => Promise.all(Array.from({ length: nAides() }, () => nouveauR(() => {}, true).then((x) => x.webR))))
       .catch((e) => { console.warn('Nuée : calcul partagé indisponible', e); return null; });
   }
   // a long request shared out: prepared here, its pieces in the other R and here, put together here
@@ -149,6 +172,8 @@ export async function demarrer() {
       }
       return traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
     },
+    // the packages the browser version doesn't have (SANS_WEBR, ?sans=, failed installs)
+    absents: () => absents,
     // (for measuring: the main R, the others, a shareable request with k of them, 0: alone)
     r: () => webR,
     aides: () => aides,
@@ -157,13 +182,24 @@ export async function demarrer() {
       if (!autres.length) return traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
       return partager(nom, corps, langue, autres);
     },
-    // a file chosen in the page, written into webR's file system: its path there
+    // a file chosen in the page, written into webR's file system: its path there; several, in
+    // one folder
     async deposer(fichier) {
-      depot += 1;
-      const chemin = `/depots/${depot}/${fichier.name.replace(/[/\\]/g, '_')}`;
-      await ecrireFichier(webR, chemin, new Uint8Array(await fichier.arrayBuffer()));
-      return chemin;
+      return (await this.deposerEnsemble([fichier]))[0];
     },
+    async deposerEnsemble(fichiers) {
+      depot += 1;
+      return Promise.all(fichiers.map(async (fichier) => {
+        const chemin = `/depots/${depot}/${fichier.name.replace(/[/\\]/g, '_')}`;
+        await ecrireFichier(webR, chemin, new Uint8Array(await fichier.arrayBuffer()));
+        return chemin;
+      }));
+    },
+    // webR's files: those the engine wrote (an export, a recovery copy), and back (secours_navigateur.js)
+    lireFichier: (chemin) => webR.FS.readFile(chemin),
+    ecrireFichier: (chemin, octets) => ecrireFichier(webR, chemin, octets),
+    supprimerFichier: (chemin) => webR.FS.unlink(chemin).catch(() => {}),
+    creerDossier: (chemin) => creerDossiers(webR, chemin),
     // a file the engine wrote, downloaded under its name
     async telecharger(chemin) {
       const octets = await webR.FS.readFile(chemin);

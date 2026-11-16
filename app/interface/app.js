@@ -2,7 +2,8 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire } from './i18n.js';
-import { demander, televerser, deposer, telechargerFichier, bureau } from './api.js';
+import { demander, televerser, deposer, telechargerFichier, bureau, MOTEUR_WEBR } from './api.js';
+import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, fermerMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, BARRE_OUTILS, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
@@ -263,7 +264,7 @@ const app = {
     await apresOuverture(res);
     if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
-    else {
+    else if (!MOTEUR_WEBR) {  // (in the browser version, a file's path is R's in the tab: gone with it)
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
       ecrire('recents', JSON.stringify(recents));
     }
@@ -295,7 +296,7 @@ const app = {
       r = await occupe(() => demander('enregistrer', { ...q, ecraser: true }));
     }
     if (!bureau && !chemin) telecharger(r.chemin);
-    statut(`${t('enregistre')} ${r.chemin}`);
+    statut(`${t('enregistre')} ${bureau ? r.chemin : r.chemin.split('/').pop()}`);  // (downloaded under its name)
     await rafraichirProjet(pid);
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
@@ -364,6 +365,7 @@ const app = {
   // written): the explorer and the status bar, no panel drawn again.
   majProjet(res) {
     projetRecu(res);
+    copierBientot(res.id);
     app.rafraichirExplorateur();
     majEtat();
   },
@@ -840,6 +842,8 @@ const app = {
 
   // (loc: the settings the view starts with, a document's: which one it shows)
   ouvrirFenetreVue(vue, id, pid, loc = null) {
+    // (the browser version: another window would start an R of its own, without the projects)
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     const m = id ? etat.modeles[id] : null;
     const q = new URLSearchParams({ vue, modele: id || '', projet: pid || (m && m.projet) || '', de: ID_FENETRE, ...(loc ? { loc: JSON.stringify(loc) } : {}) });
     window.open('./?' + q, '_blank', 'popup,width=1000,height=720');
@@ -851,6 +855,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, suffixeVue(e.vue, e.loc) ? e.loc : null);
     p.api.close();
   },
@@ -873,6 +878,7 @@ const app = {
   },
 
   nouvelleFenetre() {
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     window.open('./?fenetre=' + Math.random().toString(36).slice(2, 8), '_blank', 'popup,width=1300,height=850');
   },
   focusFenetre: (id) => bureau && bureau.focusFenetre(id),
@@ -1078,6 +1084,7 @@ function apresExport(r) {
 
 async function apresOuverture(res, session = null) {
   projetRecu(res);
+  copierBientot(res.id);
   etat.noeud = res.id;
   diffuser('modeles');
   app.rafraichirExplorateur();
@@ -1086,7 +1093,7 @@ async function apresOuverture(res, session = null) {
   if (dock && (session || res.session)) await restaurerSession(res.id, session);
 }
 
-// ------------------------------------------------------------ recovery copies (desktop app)
+// ------------------------------------------------------------ recovery copies
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
@@ -1095,11 +1102,13 @@ async function apresOuverture(res, session = null) {
 // replace one of an earlier stop, and those of an earlier stop that haven't been recovered or
 // set aside yet (secoursEnAttente). A project whose copy fails this time keeps its last one.
 // One main window writes them: the first one open (several main windows share the projects).
-const LANCEMENT = Date.now().toString(36);
+// The browser version (sauvegarderSecoursNavigateur) keeps them in the browser's storage.
+const LANCEMENT = MOTEUR_WEBR ? ONGLET : Date.now().toString(36);
 let moteurs = 0;  // engines started by this launch: each numbers its projects from P1
 let secoursEnAttente = [];
 const derniersSecours = new Map();
 async function sauvegarderSecours() {
+  if (MOTEUR_WEBR) return sauvegarderSecoursNavigateur();
   if (!bureau || VUE_SEULE || !dock) return;
   try {
     const principales = (await bureau.fenetres()).filter((f) => f.principale).sort((a, b) => a.id - b.id);
@@ -1122,10 +1131,79 @@ async function sauvegarderSecours() {
   } catch { /* tried again two minutes later */ }
 }
 
+// The browser version (secours_navigateur.js): a project lives in the tab (one saved there was
+// downloaded, which the next visit doesn't open by itself), so every open project has its copy,
+// in the browser's storage: written again 3 s after a change of the project (aCopier), at each
+// minute when it has unsaved changes, and on each pass when its session changed (views, models);
+// a pass also when the tab is hidden. The index follows the projects opened and closed
+// (indexPerime). Closing or reloading the tab before a change is copied asks first.
+const aCopier = new Set();
+let indexPerime = false;
+const empreintes = new Map();  // project -> what its last copy held
+let copieEnCours = null;
+let encoreUneCopie = false;
+let minuterieCopie = null;
+let copieImpossibleDite = false;
+function copierBientot(pid = null) {
+  if (!MOTEUR_WEBR || VUE_SEULE) return;
+  if (pid) aCopier.add(pid); else indexPerime = true;
+  clearTimeout(minuterieCopie);
+  minuterieCopie = setTimeout(sauvegarderSecours, 3000);
+}
+async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
+  if (VUE_SEULE || !dock) return;
+  if (copieEnCours) { encoreUneCopie = true; return; }
+  clearTimeout(minuterieCopie);
+  const changes = new Set(aCopier);
+  aCopier.clear();
+  indexPerime = false;
+  copieEnCours = (async () => {
+    const dossier = await secoursNavigateur.secoursDossier();
+    const entrees = [];
+    for (const p of Object.values(etat.projets)) {
+      const fichier = `${dossier}/${LANCEMENT}-${moteurs}-${p.id}.json`;
+      const session = JSON.stringify(collecterSession(p.id));
+      const empreinte = JSON.stringify([p.revision, p.modifie, p.nom, session]);
+      if (changes.has(p.id) || (chaqueMinute && p.modifie) || empreintes.get(p.id) !== empreinte) {
+        try {
+          await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session, version: VERSION });
+          await secoursNavigateur.garder(fichier);
+          // (no file: the next visit reopens it as the project it was, unsaved changes or not)
+          derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: null, lu: null, modifie: !!p.modifie, date: new Date().toISOString() });
+          empreintes.set(p.id, empreinte);
+        } catch {  // (tried again at the next change, or in a minute; said once: storage full, or refused)
+          aCopier.add(p.id);
+          if (!copieImpossibleDite) { copieImpossibleDite = true; statut(t('secours_navigateur_impossible'), true); }
+        }
+      }
+      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
+    }
+    await secoursNavigateur.secoursIndex(entrees);
+  })().catch(() => { for (const c of changes) aCopier.add(c); indexPerime = true; });
+  await copieEnCours;
+  copieEnCours = null;
+  if (encoreUneCopie) { encoreUneCopie = false; sauvegarderSecoursNavigateur(); }
+}
+if (MOTEUR_WEBR && !VUE_SEULE) {
+  // (a document's text or a figure: changed without a new summary of its project)
+  window.addEventListener('nuee-demande', (e) => {
+    if (/^(document|figure)_(enregistrer|supprimer)$/.test(e.detail.nom)) copierBientot(e.detail.corps && e.detail.corps.projet);
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sauvegarderSecours(); });
+  window.addEventListener('beforeunload', (e) => {
+    if (!aCopier.size && !indexPerime && !copieEnCours) return;
+    sauvegarderSecours();
+    e.preventDefault();
+    e.returnValue = '';  // (the browser's own question: leave, or stay while the copy is written)
+  });
+}
+
 // The copies of an earlier stop: reopened as the projects they hold (their name, the file they
 // save to, if any, and unsaved changes), or set aside (deleted). Closing the question without
-// answering keeps them, to be offered again next time.
+// answering keeps them, to be offered again next time. In the browser version, those of the tabs
+// closed since this browser last opened Nuée.
 async function proposerRecuperation() {
+  if (MOTEUR_WEBR) return proposerRecuperationNavigateur();
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
   try { entrees = await bureau.secoursListe(); } catch { entrees = []; }
@@ -1152,13 +1230,47 @@ async function proposerRecuperation() {
       } }] });
 }
 
+// The browser version: the copies of the tabs closed since (secours_navigateur.js), each with
+// whether it had unsaved changes, reopened as those projects or set aside (deleted); the
+// recovered ones get copies of their own before the old ones go, but those that couldn't be read
+// (kept for another try). Closing the question keeps them all.
+async function proposerRecuperationNavigateur() {
+  if (VUE_SEULE) return;
+  let entrees = [];
+  try { entrees = await secoursNavigateur.secoursListe(); } catch { entrees = []; }
+  if (!entrees.length) return;
+  const onglets = [...new Set(entrees.map((e) => e.onglet))];
+  const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  dialogue({ titre: t('recuperation'),
+    contenu: el('div', {}, el('p', {}, t('recuperation_question_navigateur')),
+      el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}${e.modifie ? ` (${t('recuperation_non_enregistre')})` : ''}`)))),
+    boutons: [
+      { libelle: t('ignorer'), action: () => { onglets.forEach((o) => secoursNavigateur.oublier(o)); return true; } },
+      { libelle: t('recuperer'), principal: true, action: () => {
+        (async () => {
+          const illisibles = [];
+          for (const e of entrees) {
+            try {
+              await secoursNavigateur.rendre(e);
+              await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine: null, nom: e.nom, lu: null, modifie: e.modifie !== false })));
+            } catch { illisibles.push(e); }
+            secoursNavigateur.effacerDansR(e);
+          }
+          await sauvegarderSecours();
+          for (const o of onglets) await secoursNavigateur.oublier(o, illisibles.filter((e) => e.onglet === o));
+          if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
+        })();
+        return true;
+      } }] });
+}
+
 // ------------------------------------------------------------ the R engine stopped
 
 let moteurArrete = false;
 function signalerMoteurArrete() {
   if (moteurArrete || VUE_SEULE) return;
   moteurArrete = true;
-  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t('moteur_navigateur')),
+  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t(MOTEUR_WEBR ? 'moteur_webr_arrete' : 'moteur_navigateur')),
     boutons: bureau ? [{ libelle: t('plus_tard'), action: () => { moteurArrete = false; return true; } },
       { libelle: t('redemarrer_moteur'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }]
       : [{ libelle: t('fermer'), principal: true, action: () => { moteurArrete = false; return true; } }] });
@@ -1320,6 +1432,7 @@ function projetRecu(res) {
 // and label lists, and the views that keep a copy of its data when the data changed.
 function projetChange(res) {
   projetRecu(res);
+  copierBientot(res.id);
   app.rafraichirExplorateur();
   rafraichirModele(null);
   diffuser('modeles');
@@ -1342,6 +1455,7 @@ async function garder(res) {
   etat.noeud = `${res.projet}/m/${res.id}`;
   etat.replies.delete(`${res.projet}/calcules`);
   await rafraichirProjet(res.projet);
+  copierBientot(res.projet);
   diffuser('modeles');
   majEtat();
 }
@@ -1364,6 +1478,7 @@ function oublierProjet(pid) {
     const e = etat.panneaux.get(p.id);
     if ((e && e.params.projet === pid) || (estPage(p) && !etat.modeles[p.id.slice(5)])) p.api.close();
   }
+  copierBientot();  // (its copy leaves the index)
   app.rafraichirExplorateur();
   majEtat();
 }
@@ -1903,6 +2018,7 @@ async function demarrerPrincipal() {
     quoiDeNeuf();
     proposerRecuperation();
     if (bureau) setInterval(sauvegarderSecours, 120000);
+    if (MOTEUR_WEBR) setInterval(() => sauvegarderSecoursNavigateur(true), 60000);
   }
   if (bureau && bureau.langue) bureau.langue(langueActuelle());  // for the dialogs of the desktop app
   if (bureau && bureau.majAuto) {  // a newer version on GitHub: a link in the status bar, and the update
@@ -1954,3 +2070,6 @@ document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' :
 document.documentElement.lang = langueActuelle();
 document.title = t('titre');
 if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
+
+// (for the checks that use the page as a person would: import('./app.js'), tests/essai_navigateur.mjs)
+export { app };

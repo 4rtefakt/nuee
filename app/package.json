@@ -26,7 +26,9 @@
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "lucide-static": "^1.66.0",
-    "markdown-it": "^15.0.3"
+    "markdown-it": "^15.0.3",
+    "playwright-core": "1.65.1",
+    "webr": "0.6.1"
   },
   "dependencies": {
     "dockview-core": "^8.8.3",
