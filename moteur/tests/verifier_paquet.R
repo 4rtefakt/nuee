@@ -1,15 +1,15 @@
 # Vérifie le paquet de reproductibilité (moteur/R/paquet.R) sur le projet d'exemple, en français
 # (vergers.json) puis en anglais (orchards.json) : ses quatre modèles de composantes, avec une
-# régression, un arbre de décision, un modèle qui ne peut pas être refait, des unités et des
-# descriptions, et en français un document reproductible (document_reproductible.R). Ce que
+# régression, un arbre de décision, des k-moyennes, un modèle qui ne peut pas être refait, des unités
+# et des descriptions, et en français un document reproductible (document_reproductible.R). Ce que
 # l'archive contient : un dossier à son nom, le projet relu (ses données, ses modèles, les réponses
 # du dialogue), les données en CSV et leur dictionnaire, le script R, le document et ses fichiers, le
 # README, la licence et son texte, CITATION.cff et codemeta.json ; le script R lancé dans une session
 # R neuve (Rscript --vanilla, sans le moteur), qui redonne les nombres du moteur pour chaque modèle,
 # et le document refait de là ; les empreintes du manifeste, recalculées ici par un SHA-256 écrit à
 # part (FIPS 180-4), vérifié d'abord sur ses exemples publiés. Puis les réponses du dialogue refusées
-# (titre, auteurs, ORCID, licence), en français et en anglais, et les chemins qu'un document ne peut
-# pas donner.
+# (titre, auteurs, ORCID, licence), en français et en anglais, un modèle dont le script ne s'écrit
+# pas (les autres refaits sans lui), et les chemins qu'un document ne peut pas donner.
 #   Rscript moteur/tests/verifier_paquet.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -109,11 +109,13 @@ ecrire <- function(langue) {
                                  list(variable = u(if (fr) "poids" else "weight"), unite = "g")))
   note <- if (fr) "note_gout" else "taste_score"
   d_lm <- definir_modele(p, "LM", x = u(sucre, if (fr) "acidite" else "acidity", if (fr) "variete" else "variety"), y = u(note), echelle = "none", nom = "M5", titre = if (fr) "Note et sucre" else "Score and sugar")
-  d_arbre <- definir_modele(p, "TREE", x = u(sucre, if (fr) "fermete" else "firmness", if (fr) "acidite" else "acidity", if (fr) "amidon" else "starch"), y = u(note), echelle = "none", nom = "M6")
-  for (d in list(d_lm, d_arbre)) { d$app <- TRUE; d$number <- length(p$models) + 1; p$models <- c(p$models, list(d)) }
+  x4 <- u(sucre, if (fr) "fermete" else "firmness", if (fr) "acidite" else "acidity", if (fr) "amidon" else "starch")
+  d_arbre <- definir_modele(p, "TREE", x = x4, y = u(note), echelle = "none", nom = "M6")
+  d_km <- definir_modele(p, "KMEANS", x = x4, echelle = "UV", options = list(k = 3), nom = "M7")
+  for (d in list(d_lm, d_arbre, d_km)) { d$app <- TRUE; d$number <- length(p$models) + 1; p$models <- c(p$models, list(d)) }
   modeles <- lapply(seq_along(p$models), function(i) list(id = sprintf("m%d", i), definition = p$models[[i]], modele = ajuster(p, p$models[[i]]), erreur = NULL))
   # (un modèle qui ne peut pas être refait : une catégorie qu'il a vue a changé)
-  perime <- list(id = "m7", definition = list(name = "M7", type = "PLS"), modele = NULL, erreur = if (fr) "les catégories de variete ont changé" else "the categories of variety changed")
+  perime <- list(id = "m8", definition = list(name = "M8", type = "PLS"), modele = NULL, erreur = if (fr) "les catégories de variete ont changé" else "the categories of variety changed")
   list(p = p, modeles = modeles, perime = perime)
 }
 
@@ -173,8 +175,8 @@ for (langue in c("fr", "en")) {
   dir.create(dirname(zip), recursive = TRUE, showWarnings = FALSE)
   r <- ecrire_paquet(p, c(x$modeles, list(x$perime)), zip, meta, documents, langue, "essai", session = "{\"version\":2}")
   verifier("l'archive est écrite, et chaque modèle y a son nom, sauf celui qui ne peut pas être refait",
-           file.exists(zip) && identical(vapply(r$modeles, function(i) i$objet %||% NA_character_, ""), c(paste0("M", 1:6), NA)) &&
-             identical(r$modeles[[7]]$erreur, x$perime$erreur) && !length(r$ecarts))
+           file.exists(zip) && identical(vapply(r$modeles, function(i) i$objet %||% NA_character_, ""), c(paste0("M", 1:7), NA)) &&
+             identical(r$modeles[[8]]$erreur, x$perime$erreur) && !length(r$ecarts))
   ici <- file.path(dossier, langue, "contenu")
   utils::unzip(zip, exdir = ici)
   base <- tx("Mon paquet", "My package")
@@ -192,7 +194,7 @@ for (langue in c("fr", "en")) {
   # le projet
   q <- lire_projet(file.path(racine, paste0(nom, ".nuee")))
   verifier("le projet relu : les mêmes données, les mêmes modèles, les unités, les réponses du dialogue, la disposition de l'interface",
-           identical(q$donnees, p$donnees) && identical(vapply(q$models, `[[`, "", "name"), paste0("M", 1:6)) &&
+           identical(q$donnees, p$donnees) && identical(vapply(q$models, `[[`, "", "name"), paste0("M", 1:7)) &&
              identical(unite_variable(q, tx("sucre", "sugar")), "°Brix") && identical(metadonnees_gardees(q$paquet), meta) && identical(q$session, "{\"version\":2}"))
   # les données et leur dictionnaire
   tab <- tableau_projet(p)
@@ -211,10 +213,10 @@ for (langue in c("fr", "en")) {
   # le script, dans une session R neuve : les nombres du moteur pour chaque modèle
   script <- file.path(racine, tx("analyse.R", "analysis.R"))
   texte <- readLines(script, encoding = "UTF-8")
-  verifier("le script : chaque modèle sous son nom, l'arbre dans un environnement à lui, ses données dedans, rien du moteur",
-           any(grepl("^M6 <- local\\(\\{$", texte)) && !any(grepl("^M[1-5] <- local", texte)) && !any(grepl("charger\\.R|load\\.R|read\\.csv|readRDS", texte)) &&
-             any(grepl(tx("Pas dans ce script", "Not in this script"), texte)) && any(grepl("M7", texte)))
-  s <- lancer(script, paste0("M", 1:6), racine)
+  verifier("le script : chaque modèle sous son nom, l'arbre et les k-moyennes chacun dans un environnement à lui, ses données dedans, rien du moteur",
+           all(c("M6 <- local({", "M7 <- local({") %in% texte) && !any(grepl("^M[1-5] <- local", texte)) && !any(grepl("charger\\.R|load\\.R|read\\.csv|readRDS", texte)) &&
+             any(grepl(tx("Pas dans ce script", "Not in this script"), texte)) && any(grepl("M8", texte)))
+  s <- lancer(script, paste0("M", 1:7), racine)
   if (!length(s)) {
     verifier(sprintf("le script tourne dans une session neuve (%s)", paste(utils::tail(attr(s, "messages"), 4), collapse = " / ")), FALSE)
   } else {
@@ -245,9 +247,15 @@ for (langue in c("fr", "en")) {
     verifier("M6 (arbre, dans son environnement) : sa table d'élagage, ses valeurs ajustées et sa validation croisée sont celles du moteur",
              meme(ma$complet$cptable, ra[[nom_classement("elagage", langue)]]) && meme(ma$ajuste, ra[[nom_classement("ajuste", langue)]]) &&
                meme(ma$vc$prediction, ra[[nom_classement("vc", langue)]]))
-    # (et ce que l'export vers R vérifie de la régression et de l'arbre, sur ce que la session neuve a calculé)
+    mk <- x$modeles[[7]]$modele
+    rk <- s$M7
+    verifier("M7 (k-moyennes, tirées au hasard d'une graine, dans son environnement) : ses groupes, ses centres et son R² sont ceux du moteur",
+             identical(as.numeric(rk[[nom_classement("groupe", langue)]]), as.numeric(mk$groupe)) && meme(mk$r2, rk[[nom_classement("r2", langue)]]) &&
+               meme(mk$centres, rk[[nom_classement("resultat", langue)]][[nom_classement("centres", langue)]]))
+    # (et ce que l'export vers R vérifie de la régression, de l'arbre et des k-moyennes, sur ce que la session neuve a calculé)
     tab_s <- tableau_script(p, ids_script(list(x$modeles[[5]]$definition), p))
-    ecarts <- c(ecart_regression(plan_modele(p, x$modeles[[5]]$definition, ml, tab_s), ml, list2env(rl), langue) %||% "", ecart_arbre(ma, list2env(ra), langue) %||% "")
+    ecarts <- c(ecart_regression(plan_modele(p, x$modeles[[5]]$definition, ml, tab_s), ml, list2env(rl), langue) %||% "", ecart_arbre(ma, list2env(ra), langue) %||% "",
+                ecart_kmeans(mk, list2env(rk), langue) %||% "")
     verifier(sprintf("et ce que l'export vers R en compare : aucun écart%s", if (any(nzchar(ecarts))) sprintf(" ; %s", paste(ecarts[nzchar(ecarts)], collapse = " | ")) else ""),
              !any(nzchar(ecarts)))
   }
@@ -273,7 +281,7 @@ for (langue in c("fr", "en")) {
   readme <- readLines(file.path(racine, "README.md"), encoding = "UTF-8")
   verifier("le README : le titre, les auteurs et leur ORCID, chaque modèle, celui qui n'est pas refait, comment le relancer (R, rpart et sa version), l'ouvrir dans Nuée, vérifier les fichiers, le citer",
            readme[1] == paste("#", meta$titre) && any(grepl(meta$auteurs[[1]]$orcid, readme, fixed = TRUE)) &&
-             all(vapply(paste0("**M", 1:6, "**"), function(m) any(grepl(m, readme, fixed = TRUE)), TRUE)) && any(grepl("**M7**", readme, fixed = TRUE)) &&
+             all(vapply(paste0("**M", 1:7, "**"), function(m) any(grepl(m, readme, fixed = TRUE)), TRUE)) && any(grepl("**M8**", readme, fixed = TRUE)) &&
              any(grepl(sprintf("rpart %s", utils::packageDescription("rpart")$Version), readme, fixed = TRUE)) &&
              any(grepl(tx("`Rscript analyse.R`", "`Rscript analysis.R`"), readme, fixed = TRUE)) && any(grepl("https://nuee.io", readme, fixed = TRUE)) &&
              any(grepl("sha256sum -c MANIFEST.sha256", readme, fixed = TRUE)) && any(grepl("10.5281/zenodo.24263014", readme, fixed = TRUE)) &&
@@ -326,8 +334,15 @@ for (langue in c("fr", "en")) {
            all(mapply(function(m, a) grepl(a, m, fixed = TRUE), messages, attendus_refus)) && identical(refus(base), ""))
 }
 options(nuee.langue = "fr")
-p <- ecrire("fr")$p
+x <- ecrire("fr")
+p <- x$p
 meta <- metadonnees_paquet(meta_fr)
+# un modèle dont le script ne s'écrit pas (ici, sans ses résultats) : nommé avec son erreur, les autres refaits sans lui
+casse <- x$modeles[1:2]
+casse[[2]]$modele <- list()
+r <- ecrire_paquet(p, casse, file.path(dossier, "casse.zip"), meta, list(), "fr", "essai")
+verifier("un modèle dont le script ne s'écrit pas : nommé avec son erreur, l'autre toujours refait",
+         identical(r$modeles[[1]]$objet, "M1") && is.null(r$modeles[[2]]$objet) && is.character(r$modeles[[2]]$erreur) && nzchar(r$modeles[[2]]$erreur))
 refuse <- function(doc) tryCatch({ ecrire_paquet(p, list(), file.path(dossier, "refus.zip"), meta, list(doc), "fr", "essai"); FALSE }, error = function(e) TRUE)
 dehors <- file.path(dossier, "dehors.txt")
 writeLines("x", dehors)

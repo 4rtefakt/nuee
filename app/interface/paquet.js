@@ -107,7 +107,7 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
       d.fermer();
       const r = await ecrirePaquet(app, p.id, meta, chemin);
       if (!bureau) window.location.href = `/api/fichier?chemin=${encodeURIComponent(r.chemin)}`;
-      app.statut(t('paquet_ecrit', { chemin: r.chemin, n: [].concat(r.fichiers).length }));
+      app.statut(t(bureau ? 'paquet_ecrit' : 'paquet_telecharge', { chemin: r.chemin, n: [].concat(r.fichiers).length }));
       const x = remarques(r);
       if (x) dialogue({ titre: t('paquet_remarques_titre'), contenu: x, boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
     })().catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true));
@@ -266,7 +266,8 @@ ajouterTextes({
   paquet_orcid_faux: 'Ce n’est pas un ORCID : {orcid}. Un ORCID a 16 chiffres, comme 0000-0002-1825-0097, dont le dernier (parfois X) vérifie les autres.',
   paquet_ajustement: 'Paquet : ajustement de {nom}…', paquet_document: 'Paquet : le document « {nom} »…',
   paquet_ecriture: 'Paquet : ses scripts refaits et vérifiés, ses fichiers écrits…',
-  paquet_ecrit: 'Paquet de reproductibilité écrit : {chemin} ({n} fichiers).', paquet_remarques_titre: 'Le paquet est écrit, avec des remarques',
+  paquet_ecrit: 'Paquet de reproductibilité écrit : {chemin} ({n} fichiers).', paquet_telecharge: 'Paquet de reproductibilité téléchargé ({n} fichiers).',
+  paquet_remarques_titre: 'Le paquet est écrit, avec des remarques',
   paquet_non_refaits: 'Pas refaits par son script R :', paquet_ecarts: 'Son script ne redonne pas exactement les résultats de Nuée pour :',
   paquet_remarques_documents: 'Documents :', paquet_remarques_readme: 'Le README du paquet le dit aussi.',
   paquet_document_absent: '« {nom} » n’est pas dans le paquet : {erreur}', paquet_document_erreurs: '« {nom} » : {n} référence(s) ne se résolvent pas, écrites comme dans l’aperçu',
@@ -308,7 +309,8 @@ ajouterTextes({
   paquet_orcid_faux: 'This isn’t an ORCID: {orcid}. An ORCID has 16 digits, as 0000-0002-1825-0097, the last one (sometimes X) checking the others.',
   paquet_ajustement: 'Package: fitting {nom}…', paquet_document: 'Package: the document “{nom}”…',
   paquet_ecriture: 'Package: its scripts redone and checked, its files written…',
-  paquet_ecrit: 'Reproducibility package written: {chemin} ({n} files).', paquet_remarques_titre: 'The package is written, with remarks',
+  paquet_ecrit: 'Reproducibility package written: {chemin} ({n} files).', paquet_telecharge: 'Reproducibility package downloaded ({n} files).',
+  paquet_remarques_titre: 'The package is written, with remarks',
   paquet_non_refaits: 'Not redone by its R script:', paquet_ecarts: 'Its script doesn’t give back Nuée’s results exactly for:',
   paquet_remarques_documents: 'Documents:', paquet_remarques_readme: 'The package’s README says so too.',
   paquet_document_absent: '“{nom}” isn’t in the package: {erreur}', paquet_document_erreurs: '“{nom}”: {n} reference(s) can’t be resolved, written as in the preview',
