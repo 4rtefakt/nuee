@@ -420,9 +420,10 @@ entrees_indval <- function(projet, d, m) {
                                                              m$valeur[i], p = m$p_ajuste[i], n = presences[[i]], classe = groupes[i], genre = "f")))
 }
 
-# TRIM (trim.R) : les pentes globales (multiplicatives, leur intervalle, leur valeur p, leur classe), les
-# indices des totaux imputés (± 1,96 erreur-type, comme la vue), les pentes d'un modèle 2 entre ses
-# points de changement, les tests de Wald, l'ajustement, σ² et ρ.
+# TRIM (trim.R) : la pente globale des totaux imputés, celle que TRIM rapporte (multiplicative, son
+# intervalle, sa valeur p, sa classe ; celle des totaux du modèle, presque la même, n'en dirait pas
+# plus), les indices des totaux imputés (± 1,96 erreur-type, comme la vue), les pentes d'un modèle 2
+# entre ses points de changement, les tests de Wald, l'ajustement, σ² et ρ.
 entrees_trim <- function(projet, d, m) {
   fr <- !identical(getOption("nuee.langue"), "en")
   g <- nom_resultat
@@ -439,7 +440,6 @@ entrees_trim <- function(projet, d, m) {
             entree_resultat("sites", traduire("Nombre de sites", "Number of sites"), "ajustement", m$I, forme = "entier"),
             entree_resultat("temps", traduire("Nombre de temps", "Number of times"), "ajustement", m$J, forme = "entier"),
             pente("pente", "imputee", traduire("Pente globale (totaux imputés)", "Overall slope (imputed totals)")),
-            pente("pente.modele", "modele", traduire("Pente globale (totaux du modèle)", "Overall slope (model totals)")),
             entree_resultat("sigma2", traduire("Surdispersion σ²", "Overdispersion σ²"), "ajustement", m$sigma2, genre = "f"),
             entree_resultat("rho", traduire("Autocorrélation ρ d'un temps au suivant", "Serial correlation ρ"), "ajustement", m$rho, genre = "f"),
             entree_resultat("AIC", "AIC", "ajustement", a$AIC),
@@ -509,7 +509,8 @@ entrees_distance <- function(projet, d, m) {
 }
 
 # Une forêt aléatoire (forets.R) : son erreur hors du sac et sa validation croisée, l'importance par
-# permutation de chaque variable.
+# permutation de chaque variable, et la plus importante (une catégorie : qu'une autre la remplace se
+# dit, quand les importances, sans intervalle, n'ont pas de drapeau).
 entrees_forest <- function(projet, d, m) {
   g <- nom_resultat
   qualite <- if (m$classement) {
@@ -522,13 +523,15 @@ entrees_forest <- function(projet, d, m) {
   }
   im <- m$importance
   c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier")), qualite,
+    list(entree_resultat("variable_principale", traduire("Variable la plus importante (permutation)", "Most important variable (permutation)"), "estimations",
+                         classe = im$variable[which.max(im$permutation)], genre = "f")),
     lapply(seq_len(nrow(im)), function(i) entree_resultat(paste0("importance.", im$variable[i]), sprintf(traduire("Importance de %s (permutation)", "Importance of %s (permutation)"), g(im$variable[i])),
                                                           "variables", im$permutation[i], genre = "f")),
     entrees_jeu_test(m$test))
 }
 
 # Des arbres boostés (boosting.R) : le nombre d'arbres retenu, la déviance expliquée, R² et Q² d'une
-# réponse normale, l'AUC d'une présence, l'influence relative de chaque variable.
+# réponse normale, l'AUC d'une présence, l'influence relative de chaque variable et la plus influente.
 entrees_boost <- function(projet, d, m) {
   g <- nom_resultat
   q <- m$qualite
@@ -543,7 +546,9 @@ entrees_boost <- function(projet, d, m) {
          entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", q[["Q2"]]),
          entree_resultat("RMSEcv", "RMSEcv", "ajustement", q[["RMSEcv"]]),
          entree_resultat("AUC", "AUC", "ajustement", q[["auc"]]),
-         entree_resultat("AUC_vc", traduire("AUC en validation croisée", "Cross-validated AUC"), "ajustement", q[["auc_vc"]])),
+         entree_resultat("AUC_vc", traduire("AUC en validation croisée", "Cross-validated AUC"), "ajustement", q[["auc_vc"]]),
+         entree_resultat("variable_principale", traduire("Variable la plus influente", "Most influential variable"), "estimations",
+                         classe = if (sum(im$influence) > 0) im$variable[which.max(im$influence)], genre = "f")),
     lapply(seq_len(nrow(im)), function(i) entree_resultat(paste0("influence.", im$variable[i]), sprintf(traduire("Influence relative de %s", "Relative influence of %s"), g(im$variable[i])),
                                                           "variables", im$pourcentage[i] / 100, forme = "pourcentage", genre = "f")),
     entrees_jeu_test(m$test))
@@ -660,10 +665,11 @@ axes_retournes <- function(avant, apres) {
   }, unique(ap[!is.na(ap)]))
 }
 
-# Deux nombres (ou plus : une valeur et son intervalle) écrits comme le texte des résultats, avec assez
-# de chiffres pour que l'ancienne et la nouvelle valeur ne s'écrivent pas pareil quand elles diffèrent
-# (3 chiffres significatifs, jusqu'à 6 ; un pourcentage à une décimale, jusqu'à 3). Rend une fonction
-# qui écrit un nombre à cette précision.
+# L'écriture d'une ancienne valeur `a` et d'une nouvelle `b` (et de leurs intervalles), comme le texte
+# des résultats l'écrit : 3 chiffres significatifs, ou plus (6 au plus) pour que leur écart se lise,
+# son premier chiffre au moins, sans qu'un arrondi le grossisse (un AIC de 1234,5 à 1236,8 : de 1235 à
+# 1237, pas de 1230 à 1240) ; un pourcentage à une décimale, ou plus de même. Rend une fonction qui
+# écrit un nombre à cette précision.
 ecriture_resultat <- function(a, b, forme, fr) {
   ecrire <- function(k) function(x) {
     if (identical(forme, "entier")) return(formatC(round(x), format = "d"))
@@ -671,8 +677,11 @@ ecriture_resultat <- function(a, b, forme, fr) {
     nombre_resultat(x, fr, k)
   }
   if (is.null(a) || is.null(b) || a == b) return(ecrire(3))
-  for (k in 3:6) if (!identical(ecrire(k)(a), ecrire(k)(b))) return(ecrire(k))
-  ecrire(6)
+  ecart <- abs(b - a)
+  k <- if (identical(forme, "pourcentage")) 2 + max(1, -floor(log10(100 * ecart))) else floor(log10(max(abs(a), abs(b)))) + 1 - floor(log10(ecart))
+  k <- max(3, min(6, k))
+  for (j in k:6) if (!identical(ecrire(j)(a), ecrire(j)(b))) return(ecrire(j))
+  ecrire(k)
 }
 
 # Le sujet d'une phrase : le libellé de l'entrée avec son article (« le coefficient de « x » »,
@@ -728,25 +737,34 @@ comparer_entree <- function(a, b, fr, retournes = character(0)) {
   hors_ic <- deux && !is.null(a$ic) && (vb < a$ic[1] || vb > a$ic[2])
 
   # l'importance : des points pour chaque drapeau (un changement de signe compte plus quand la valeur
-  # est significative d'un côté au moins), et l'ampleur du changement (en points de pourcentage, en
-  # demi-largeurs de l'ancien intervalle, ou relative), fois le poids du groupe ; 0 sans changement
+  # est significative d'un côté au moins), et l'ampleur du changement (en demi-largeurs de l'ancien
+  # intervalle ; sans intervalle, l'écart d'un pourcentage ou d'une valeur qui reste entre -1 et 1, un
+  # R², un Q², une corrélation, dont le rapport grossirait les petits écarts autour de 0 ; sinon l'écart
+  # relatif), fois le poids du groupe ; 0 sans changement
   poids <- if (identical(e$cle, "coef.(Intercept)")) 0.3 else if (e$groupe %in% names(POIDS_GROUPES_RESULTATS)) POIDS_GROUPES_RESULTATS[[e$groupe]] else 0.5
+  petite <- deux && (identical(e$forme, "pourcentage") || max(abs(va), abs(vb)) <= 1)
   ampleur <- if (!deux || !change) 0
-             else if (identical(e$forme, "pourcentage")) min(3, 20 * abs(ecart))
              else if (!is.null(a$ic)) { demi <- diff(a$ic) / 2; if (demi > 0) min(3, abs(ecart) / demi) else 3 }
+             else if (petite) min(3, 20 * abs(ecart))
              else if (!is.null(relatif)) min(3, 10 * abs(relatif)) else 3
-  points <- 4 * (nouveau || disparu) + (if (signe) (if (isTRUE(sa) || isTRUE(sb)) 6 else 1.5) else 0) + 5 * seuil + 3 * hors_ic + 5 * categorie + ampleur
+  signe_fort <- signe && (isTRUE(sa) || isTRUE(sb) || (is.na(sa) && is.na(sb)))
+  # (le groupe d'une espèce indicatrice ni avant ni après : celui de sa plus grande valeur, sans portée)
+  categorie_forte <- categorie && !(e$groupe %in% c("variables", "especes") && isFALSE(sa) && isFALSE(sb))
+  points <- 4 * (nouveau || disparu) + (if (signe) (if (signe_fort) 6 else 1.5) else 0) + 5 * seuil + 3 * hors_ic + (if (categorie) (if (categorie_forte) 5 else 1.5) else 0) + ampleur
   importance <- if (change) round(poids * points, 4) else 0
 
-  # une phrase pour un changement qui compte : un drapeau, un nombre entier qui change (n, A…), ou,
-  # sans intervalle, un pourcentage qui bouge de 2 points ou une valeur de 10 % (25 % pour la
-  # statistique d'un test) ; pas pour les composantes, que l'ajustement résume, ni pour l'ordonnée à
-  # l'origine, ni pour les résultats d'un fichier
+  # une phrase pour un changement qui compte : un drapeau (un changement de signe, ou de la catégorie
+  # d'une variable, quand la valeur est significative d'un côté au moins : sinon ils étaient déjà
+  # incertains), un nombre entier qui change (n, A…), ou, sans intervalle, un pourcentage qui bouge de
+  # 2 points, une valeur entre -1 et 1 de 0,05, une autre de 10 % (25 % pour la statistique d'un test) ;
+  # pas pour les composantes, que l'ajustement résume, ni pour l'ordonnée à l'origine, ni pour les
+  # résultats d'un fichier
   test <- !is.null(a$p) || !is.null(b$p)
   notable <- change && !(e$groupe %in% c("composantes", "stocke")) && !identical(e$cle, "coef.(Intercept)") &&
-    (nouveau || disparu || signe || seuil || hors_ic || categorie || identical(e$forme, "entier") ||
+    (nouveau || disparu || signe_fort || seuil || hors_ic || categorie_forte || identical(e$forme, "entier") ||
        (deux && is.null(a$ic) && !(e$groupe %in% c("variables", "especes")) &&
-          (if (identical(e$forme, "pourcentage")) abs(ecart) >= 0.02 else !is.null(relatif) && abs(relatif) >= (if (test) 0.25 else 0.1))))
+          (if (identical(e$forme, "pourcentage")) abs(ecart) >= 0.02 else if (petite) abs(ecart) >= 0.05
+           else !is.null(relatif) && abs(relatif) >= (if (test) 0.25 else 0.1))))
   x <- list(cle = e$cle, libelle = e$libelle, groupe = e$groupe, alias = e$alias, forme = e$forme,
             avant = va, apres = vb, ic_avant = a$ic, ic_apres = b$ic, p_avant = a$p, p_apres = b$p, n_avant = a$n, n_apres = b$n,
             classe_avant = a[["classe"]], classe_apres = b[["classe"]], classe_texte_avant = a[["classe_texte"]], classe_texte_apres = b[["classe_texte"]],
@@ -818,7 +836,8 @@ phrases_variables <- function(xs, fr) {
       if (grepl("^.[[:lower:]]", l)) paste0(tolower(substr(l, 1, 1)), substring(l, 2)) else l
     }, "")
     reste <- length(ici) - length(noms)
-    liste <- paste0(paste(noms, collapse = if (fr) " ; " else "; "), if (reste > 0) sprintf(if (fr) " et %d autres" else " and %d others", reste) else "")
+    autres <- if (reste == 1) (if (fr) " et 1 autre" else " and 1 other") else if (reste > 1) sprintf(if (fr) " et %d autres" else " and %d others", reste) else ""
+    liste <- paste0(paste(noms, collapse = if (fr) " ; " else "; "), autres)
     list(texte = sprintf(drapeaux[[f]][if (fr) 1 else 2], length(ici), liste), cles = I(vapply(ici, `[[`, "", "cle")), importance = max(vapply(ici, `[[`, 0, "importance")))
   }))
 }
