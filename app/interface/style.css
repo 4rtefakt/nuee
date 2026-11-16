@@ -5,14 +5,14 @@
 :root, :root[data-theme="clair"] {
   --fond: #eef0f3; --fond-panneau: #ffffff; --fond-barre: #f8f9fb; --texte: #1f2328; --texte-doux: #5f6773;
   --bord: #d9dce1; --bord-champ: #848a94; --grille: #eceef1; --survol: #eef1f6; --accent: #2d6cb0; --accent-doux: #e3edf8; --principal: var(--accent);
-  --ligne-choisie: #fde8e4; --erreur: #b3261e; --ok: #2d7931; --attention: #9b5c00; --ligne-graphe: #9bb5d6;
+  --ligne-choisie: #fde8e4; --selection: #e4572e; --erreur: #b3261e; --ok: #2d7931; --attention: #9b5c00; --ligne-graphe: #9bb5d6;
   --ombre: 0 8px 24px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .08);
   color-scheme: light;
 }
 :root[data-theme="sombre"] {
   --fond: #15171b; --fond-panneau: #1d2025; --fond-barre: #1a1c21; --texte: #e4e6ea; --texte-doux: #9aa2ad;
   --bord: #33373f; --bord-champ: #656b75; --grille: #2b2f36; --survol: #262a31; --accent: #6aa5ea; --accent-doux: #22344b; --principal: #2f6fb5;
-  --ligne-choisie: #4a2b27; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
+  --ligne-choisie: #4a2b27; --selection: #e4572e; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
   --ombre: 0 8px 24px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
   color-scheme: dark;
 }
@@ -135,6 +135,8 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .tableau .num { text-align: right; }
 .tableau tbody tr:hover td { background: var(--survol); }
 .tableau tr.choisie td { background: var(--ligne-choisie); }
+/* not by its tint alone (1.2:1): a bar at the start of a chosen row, of the plots' selection colour */
+.tableau tr.choisie td:first-child { box-shadow: inset 3px 0 0 var(--selection); }
 .tableau.compact { width: auto; min-width: 0; }
 .marque { margin-left: 4px; font-weight: 700; }
 .marque.egal { color: var(--ok); }
@@ -153,7 +155,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .arbre { user-select: none; }
 .noeud { display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: default; white-space: nowrap; }
 .noeud:hover { background: var(--survol); }
-.noeud.actif { background: var(--accent-doux); }
+.noeud.actif { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .noeud:focus { outline: none; }
 .noeud:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* read by screen readers, not shown */
@@ -187,7 +189,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .palette-saisie { margin: 10px; padding: 7px 10px; font-size: 14px; }
 .palette-liste { max-height: 55vh; overflow-y: auto; padding: 0 6px 6px; }
 .palette-item { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
-.palette-item.actuel { background: var(--accent-doux); }
+.palette-item.actuel { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .palette-item.inactif { opacity: .45; cursor: default; }
 .palette-chemin { color: var(--texte-doux); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-item .raccourci { color: var(--texte-doux); font-size: 12px; }
@@ -483,7 +485,7 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-panneau:hover { background: var(--survol); }
 .ligne-panneau .lettre-panneau { flex: none; min-width: 2.1em; text-align: center; background: var(--accent-doux); color: var(--accent); border-radius: 3px; padding: 0 3px; }
 .ligne-panneau .nom-panneau { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); }
+.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); text-decoration: line-through; }  /* (left out of the figure) */
 .ligne-panneau select { max-width: 7.5em; }
 .apercu-figure { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--fond); }
 .feuille-figure { background: #ffffff; box-shadow: var(--ombre); line-height: 0; max-width: 100%; transition: opacity .15s; }
