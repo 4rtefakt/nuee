@@ -16,6 +16,7 @@ import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES, FORMAT } from './panneaux.js';
 import { partiesModele } from './rapport.js';
+import { vuesDe } from './explorateur.js';
 import { PX_PAR_PT, LARGEURS, STYLES_LETTRES, COINS, GRILLE_MAX, completer, grilleProposee, disposer, enPixels, lettre, placeLettre, adapterFigure,
   composerSVG, pagePDF, pixelsImage, carteEnPlan, cadrer, tuilesPour, adresseTuile, placeTuile } from './composition.js';
 import { ecrirePNG, ecrireTIFF } from './images.js';
@@ -100,6 +101,10 @@ function panneauDeVue(app, e) {
   if (e.graphe && e.graphe._zoom) pn.zoom = JSON.parse(JSON.stringify(e.graphe._zoom));
   return pn;
 }
+
+// (plots a model's report leaves out that a figure can take: spectra's profiles, the dendrogram,
+// class models' Coomans plot)
+const PLUS_QUE_LE_RAPPORT = ['profils', 'dendrogramme', 'coomans'];
 
 // A model's view that isn't open, as a panel: its usual settings, the shape of a plot on screen.
 function panneauSansVue(m, vue) {
@@ -581,7 +586,8 @@ function creerComposeur(app, conteneur, pid, f) {
     const option = (valeur, libelle) => el('option', { value: valeur }, libelle);
     const groupes = modelesAjustes(app, s.pid).map((m) => {
       const vues = [...new Set(partiesModele(m).filter((x) => x.vue).map((x) => x.vue))]
-        .concat(ouvertesIci.filter((e) => e.params.modele === m.id).map((e) => e.vue)).filter((v, i, l) => VUES[v] && l.indexOf(v) === i);
+        .concat(vuesDe(m).filter((v) => PLUS_QUE_LE_RAPPORT.includes(v)), ouvertesIci.filter((e) => e.params.modele === m.id).map((e) => e.vue))
+        .filter((v, i, l) => VUES[v] && l.indexOf(v) === i);
       return vues.length ? el('optgroup', { label: `${app.plusieursProjets() ? `${app.nomProjetCourt(s.pid)} · ` : ''}${m.nom} · ${m.type}` },
         vues.map((v) => (ouverte(m, v) ? option(`o:${ouverte(m, v).id}`, `${t(v)} (${t('figure_ouverte')})`) : option(`m:${m.id}:${v}`, t(v))))) : null;
     }).filter(Boolean);
