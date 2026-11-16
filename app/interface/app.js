@@ -447,8 +447,9 @@ const app = {
       remplacerPage(m.id, res.id);
       const n = (etat.noeud || '').split('/');
       if (n[1] === 'm' && n[2] === m.id) { n[2] = res.id; etat.noeud = n.join('/'); }
-      await demander('supprimer_modele', { modele: m.id }).catch(() => {});
+      // (its page closed at once, so that its tab and the new one's never show together)
       oublierModele(m.id);
+      await demander('supprimer_modele', { modele: m.id }).catch(() => {});
     }
     await rafraichirProjet(pid);
     diffuser('modeles');
@@ -543,6 +544,8 @@ const app = {
     projetChange(r.projet);
     statut(t('annule', { quoi: r.etiquette }));
     if (app.verifierSource) app.verifierSource(pid);  // (an update undone: the source read before, which may have changed since)
+    // (an update of the data or a step removed, undone: the models fitted again on the data back, etapes.js)
+    if (app.apresAnnulation) await app.apresAnnulation(pid, r);
   },
   async noterModele(id, note) {
     let r;

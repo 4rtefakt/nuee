@@ -556,13 +556,10 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .tableau.liste-etapes { width: 100%; }
 .liste-etapes td:last-child { text-align: right; }
 .liste-etapes .etape { gap: 6px; }
-.liste-etapes .etape > .icone { color: var(--accent); }
-.liste-etapes .etape .doux { font-size: 11.5px; }
 .liste-etapes th { cursor: default; }
 .fichier-etape { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
-.message-etapes:empty { display: none; }
-.retrait-etape { border: 1px solid var(--bord); border-radius: 6px; padding: 6px 10px; margin: 4px 0 8px; background: var(--fond-barre); }
-.retrait-etape > p { margin: 2px 0 6px; }
+.etape-retiree { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.genre-etape { display: inline-flex; color: var(--accent); }
 .fichier-maj .ligne { flex-wrap: wrap; gap: 6px 10px; margin: 4px 0; }
 .fichier-maj .champ { color: var(--texte); }
 .fichier-maj .table-maj { align-items: flex-start; }
