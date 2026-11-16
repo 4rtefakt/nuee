@@ -33,6 +33,7 @@ import { installerFigures } from './figures.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
+import { messagesDock, ongletDock } from './accessibilite.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -907,6 +908,7 @@ const app = {
     changerLangueTexte(l);
     if (bureau && bureau.langue) bureau.langue(l);
     if (propager) diffuser('langue', { l });
+    for (const d of tousDocks()) d.updateOptions({ messages: messagesDock() });
     toutRedessiner();
   },
   zoom: (d) => bureau && bureau.zoom(d),
@@ -1547,29 +1549,85 @@ function actionsGroupe(groupe) {
     element,
     init() {
       element.append(
-        el('button', { class: 'icone-seule', title: t('detacher'), onclick: () => groupe.activePanel && app.detacher(groupe.activePanel.id) }, icone('external-link')),
-        el('button', { class: 'icone-seule', title: t('agrandir'), onclick: () => (groupe.api.isMaximized() ? groupe.api.exitMaximized() : groupe.api.maximize()) }, icone('maximize-2')));
+        el('button', { class: 'icone-seule', title: t('detacher'), 'aria-label': t('detacher'), onclick: () => groupe.activePanel && app.detacher(groupe.activePanel.id) }, icone('external-link')),
+        el('button', { class: 'icone-seule', title: t('agrandir'), 'aria-label': t('agrandir'), onclick: () => (groupe.api.isMaximized() ? groupe.api.exitMaximized() : groupe.api.maximize()) }, icone('maximize-2')));
     },
     dispose() {},
   };
 }
 
+// (a tab's menu: menuOnglet, below; its tab: accessibilite.js, ongletDock)
 function optionsDock() {
-  const agrandir = (group) => ({ label: group.api.isMaximized() ? t('restaurer') : t('agrandir'),
-    action: () => (group.api.isMaximized() ? group.api.exitMaximized() : group.api.maximize()) });
-  const fermer = (panel, group) => [{ label: t('fermer_panneau'), action: () => panel.api.close() },
-    { label: t('fermer_autres'), action: () => group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()) }];
   return {
     theme: app.themeSombre() ? DV.themeDark : DV.themeLight,
     createComponent: (options) => (options.name === 'page' ? composantPage(options) : composantVue(options)),
+    createTabComponent: () => ongletDock(),
+    defaultTabComponent: 'onglet',
     createRightHeaderActionComponent: actionsGroupe,
-    getTabContextMenuItems: ({ panel, group }) => {
-      if (panel.id === 'explorateur') return [{ label: t('fermer_panneau'), action: () => panel.api.close() }];
-      if (estPage(panel)) return [agrandir(group), 'separator', ...fermer(panel, group)];
-      return [{ label: t('detacher'), action: () => app.detacher(panel.id) }, agrandir(group), 'separator', ...fermer(panel, group)];
-    },
+    messages: messagesDock(),
   };
 }
+
+// A tab's menu, from the mouse or the keyboard (Shift+F10 or the menu key on a tab): ui.js's menus,
+// which the keyboard goes through, rather than dockview's. After a tab is closed, the keyboard is on
+// its group's tab in front.
+function menuOnglet(e) {
+  const onglet = e.target.closest && e.target.closest('.dv-tab');
+  const marque = onglet && onglet.querySelector('[data-panneau]');
+  const panel = marque && trouverPanneau(marque.dataset.panneau);
+  if (!panel) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const group = panel.api.group;
+  const d = tousDocks().find((x) => x.groups.includes(group));
+  const ensuite = () => setTimeout(() => focusOnglet(group.element && group.element.isConnected ? group : d && d.activeGroup));
+  const agrandir = { libelle: group.api.isMaximized() ? t('restaurer') : t('agrandir'),
+    action: () => (group.api.isMaximized() ? group.api.exitMaximized() : group.api.maximize()) };
+  const fermer = [{ libelle: t('fermer_panneau'), action: () => { panel.api.close(); ensuite(); } },
+    { libelle: t('fermer_autres'), action: () => { group.panels.filter((x) => x.id !== panel.id).forEach((x) => x.api.close()); ensuite(); } }];
+  menuContextuel(e.clientX, e.clientY, panel.id === 'explorateur' ? [fermer[0]] : estPage(panel) ? [agrandir, '-', ...fermer]
+    : [{ libelle: t('detacher'), action: () => app.detacher(panel.id) }, agrandir, '-', ...fermer]);
+}
+
+// The tab in front of a group, with the keyboard on it (its tab list's one Tab stop)
+function focusOnglet(group) {
+  const o = group && group.element && group.element.querySelector('.dv-tab[aria-selected="true"]');
+  if (o) o.focus();
+}
+
+// The group of panels the keyboard is in (the innermost: a view's, in a model's page), else the
+// main dock's active group.
+function groupeEnCours() {
+  const a = document.activeElement;
+  const dedans = tousDocks().flatMap((d) => d.groups).filter((g) => g.element && g.element.contains(a));
+  dedans.sort((x, y) => (x.element.contains(y.element) ? 1 : -1));
+  return dedans[0] || (dock && dock.activeGroup) || null;
+}
+
+// Ctrl+Tab and Ctrl+Shift+Tab: the next or previous tab of the group in use comes to the front.
+app.ongletVoisin = (sens) => {
+  const g = groupeEnCours();
+  if (!g || g.panels.length < 2) return;
+  const i = g.panels.indexOf(g.activePanel);
+  g.panels[(i + sens + g.panels.length) % g.panels.length].api.setActive();
+  setTimeout(() => focusOnglet(g));
+};
+
+// F6 and Shift+F6: from area to area of the window, the toolbar, each group of panels as laid out
+// (on its tab in front), the status bar. (The menu bar is Alt's or F10's.)
+app.regionVoisine = (sens) => {
+  const visible = (x) => x && x.getClientRects().length > 0;
+  const groupes = tousDocks().flatMap((d) => d.groups).map((g) => g.element)
+    .filter((x) => visible(x) && !x.querySelector('.dv-groupview'))
+    .sort((x, y) => (x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  const regions = [document.getElementById('barre-outils'), ...groupes, document.getElementById('statut')].filter(visible);
+  let i = regions.findIndex((r) => r.contains(document.activeElement));
+  if (i < 0) i = sens > 0 ? -1 : regions.length;  // (from outside them: the first area, or the last)
+  const r = regions[(i + sens + regions.length) % regions.length];
+  const cible = r.matches('.dv-groupview') ? r.querySelector('.dv-tab[aria-selected="true"]')
+    : r.querySelector('[tabindex="0"]:not(:disabled)') || r.querySelector('button:not(:disabled), select, a[href]');
+  if (cible) cible.focus();
+};
 
 // ------------------------------------------------------------ panels
 
@@ -1719,13 +1777,30 @@ function rendreMenus() {
   } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
 }
 
+// The toolbar is one Tab stop: left and right (Home, End) go from button to button.
 function rendreBarreOutils() {
   const barre = document.getElementById('barre-outils');
-  barre.replaceChildren(...BARRE_OUTILS.map((groupe) => el('div', { class: 'groupe-outils' }, groupe.map((id) => {
+  barre.setAttribute('aria-label', t('barre_outils'));
+  barre.replaceChildren(...BARRE_OUTILS.map((groupe) => el('div', { class: 'groupe-outils', role: 'group' }, groupe.map((id) => {
     const c = C[id];
-    return el('button', { class: 'outil', 'data-commande': id, title: t(id) + (c.raccourci ? ` (${afficherRaccourci(c.raccourci)})` : ''),
+    return el('button', { class: 'outil', 'data-commande': id, title: t(id) + (c.raccourci ? ` (${afficherRaccourci(c.raccourci)})` : ''), tabindex: -1,
+      'aria-keyshortcuts': c.raccourci ? c.raccourci.replace('Ctrl', 'Control').replace('=', 'Plus') : null,
       onclick: () => { if (!c.actif || c.actif()) c.action(); } }, icone(c.icone || ICONES_VUES[id]), el('span', {}, t('court_' + id)));
   }))));
+  if (!barre._clavier) {
+    barre._clavier = true;
+    barre.addEventListener('keydown', (e) => {
+      const boutons = [...barre.querySelectorAll('.outil:not(:disabled)')];
+      const i = boutons.indexOf(document.activeElement);
+      if (i < 0) return;
+      const k = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: boutons.length - 1 }[e.key];
+      if (k === undefined) return;
+      e.preventDefault();
+      const b = boutons[(k + boutons.length) % boutons.length];
+      barre.querySelectorAll('.outil').forEach((x) => { x.tabIndex = x === b ? 0 : -1; });
+      b.focus();
+    });
+  }
   majBarreOutils();
 }
 
@@ -1734,6 +1809,12 @@ function majBarreOutils() {
     const c = C[b.dataset.commande];
     b.disabled = c.actif ? !c.actif() : false;
   });
+  // (the toolbar's Tab stop on an enabled button)
+  const boutons = [...document.querySelectorAll('#barre-outils .outil')];
+  if (boutons.length && !boutons.some((b) => b.tabIndex === 0 && !b.disabled)) {
+    const b = boutons.find((x) => !x.disabled) || boutons[0];
+    boutons.forEach((x) => { x.tabIndex = x === b ? 0 : -1; });
+  }
 }
 
 function majEtat() {
@@ -1835,7 +1916,7 @@ document.addEventListener('keydown', (e) => {
   const cellules = combo === 'Ctrl+V' && !saisie && e.target.closest && e.target.closest('[data-coller-cellules]');
   if (cellules && cellules._collerCellules) { e.preventDefault(); cellules._collerCellules(); return; }
   const edition = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X'];
-  if (saisie && !/^F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
+  if (saisie && !/^(Shift\+)?F\d+$/.test(combo) && (!combo.startsWith('Ctrl') || edition.includes(combo))) return;
   const c = Object.values(C).find((x) => x.raccourci === combo);
   if (!c) return;
   if (c.actif && !c.actif()) return;
@@ -1875,6 +1956,7 @@ async function demarrerPrincipal() {
   rendreMenus();
   rendreBarreOutils();
   dock = DV.createDockview(document.getElementById('dock'), optionsDock());
+  document.getElementById('dock').addEventListener('contextmenu', menuOnglet);
   dock.onDidActivePanelChange(() => {
     const a = dock.activePanel;
     if (a && !EXTERNES.includes(a.id)) dernierContenu = a.id;

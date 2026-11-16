@@ -108,6 +108,11 @@ export function creerCommandes(app) {
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },
     detacher: { icone: 'external-link', raccourci: 'Ctrl+Shift+D', actif: () => !!app.panneauActif(), action: () => app.detacher() },
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
+    // the keyboard from tab to tab of the group in use, and from area to area (app.js; accessibilite.js's strings)
+    onglet_suivant: { raccourci: 'Ctrl+Tab', action: () => app.ongletVoisin(1) },
+    onglet_precedent: { raccourci: 'Ctrl+Shift+Tab', action: () => app.ongletVoisin(-1) },
+    region_suivante: { raccourci: 'F6', action: () => app.regionVoisine(1) },
+    region_precedente: { raccourci: 'Shift+F6', action: () => app.regionVoisine(-1) },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
     chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
@@ -172,7 +177,8 @@ export function menus(app, C) {
       it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
       '-', it('figure_composer')] },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
-    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
+    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('onglet_suivant'), it('onglet_precedent'),
+      it('region_suivante'), it('region_precedente'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
