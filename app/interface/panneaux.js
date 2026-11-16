@@ -141,7 +141,7 @@ export function tracer(ctx, div, traces, layout = {}) {
   const repousser = !!F.repousser && traces.some(aEtiquettes);
   const generation = (div._generationEtiquettes || 0) + 1;
   div._generationEtiquettes = generation;
-  const cleEtiquettes = repousser ? JSON.stringify([etiquettesDe(traces, lay), div.clientWidth, div.clientHeight, lay.xaxis.range, lay.yaxis.range, F.taille, F.police]) : null;
+  const cleEtiquettes = repousser ? JSON.stringify([etiquettesDe(traces, lay), div.clientWidth, div.clientHeight, lay.xaxis.range, lay.yaxis.range, lay.font, F.taille, F.police]) : null;
   // (a view draws a new plot each time: the one it replaces holds the labels' places too)
   const precedent = div._repousse || (avant && avant !== div ? avant._repousse : null);
   const deja = repousser && precedent && precedent.cle === cleEtiquettes ? precedent.annotations : null;
