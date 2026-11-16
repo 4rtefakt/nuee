@@ -540,6 +540,7 @@ phrase_paire <- function(r, i) {
   # (au moins deux décimales, trois chiffres significatifs pour une petite valeur : 0,0614)
   nb <- function(x, ref = x) {
     if (is.na(x)) return("NA")
+    if (is.infinite(x)) return(if (x > 0) "∞" else "−∞")  # (une borne sur l'échelle de la réponse, exp() d'une catégorie sans comptage)
     a <- abs(ref)
     dec <- if (is.finite(a) && a > 0) max(2, 2 - floor(log10(a))) else 2
     formatC(if (round(x, dec) == 0) 0 else x, format = "f", digits = min(dec, 8), decimal.mark = marque)
