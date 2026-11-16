@@ -367,6 +367,7 @@ ajustement_environnement <- function(S, Xq, facteurs, P) {
     p <- rep(NA_real_, ncol(Xq))
     if (B) {
       perm <- vapply(seq_len(B), function(b) {
+        verifier_arret()
         Xp <- scale(Xq[P[b, ], , drop = FALSE], scale = FALSE)
         correlations_colonnes(qr.fitted(Q, Xp), Xp)^2
       }, numeric(ncol(Xq)))
@@ -383,7 +384,7 @@ ajustement_environnement <- function(S, Xq, facteurs, P) {
     lignes <- lapply(names(facteurs), function(nom) {
       f <- droplevels(facteurs[[nom]])
       r2 <- 1 - intra(f) / totale
-      p <- if (B) valeur_p_superieure(vapply(seq_len(B), function(b) 1 - intra(f[P[b, ]]) / totale, 0), r2) else NA_real_
+      p <- if (B) valeur_p_superieure(vapply(seq_len(B), function(b) { verifier_arret(); 1 - intra(f[P[b, ]]) / totale }, 0), r2) else NA_real_
       list(variable = nom, r2 = r2, p = p, niveaux = levels(f), n = as.vector(table(f)))
     })
     facteurs_fit <- lignes
@@ -490,6 +491,7 @@ nmds_noyau <- function(D, k, departs, graine) {
     meilleur <- 0
     retrouvee <- 0
     for (i in seq_len(departs)) {
+      verifier_arret()
       s <- MASS::isoMDS(dis, matrix(stats::runif(n * k), n, k), k = k, maxit = 200, tol = 1e-7, trace = FALSE)
       stress <- c(stress, s$stress)
       if (s0$stress - s$stress > -EPS) {
@@ -591,6 +593,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
     F0 <- (ss / ddl) / ((totale - ajuste) / ddl_res)
     Fp <- matrix(NA_real_, B, length(gardes))
     for (b in seq_len(B)) {
+      verifier_arret()
       cb <- contributions(B0, P[b, ])
       fb <- sum(cb)
       Fp[b, ] <- (vapply(gardes, function(g) sum(cb[termes == g]), 0) / ddl) / ((totale - fb) / ddl_res)
@@ -606,6 +609,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
     F0 <- (ss / ddl) / ((totale - ajuste) / ddl_res)
     Fp <- matrix(NA_real_, B, length(testables))
     for (b in seq_len(B)) {
+      verifier_arret()
       fb <- sum(contributions(B0, P[b, ]))
       Fp[b, ] <- vapply(seq_along(bases), function(j) ((fb - sum(contributions(bases[[j]], P[b, ]))) / ddl[j]) / ((totale - fb) / ddl_res), 0)
       Fp_modele[b] <- (fb / r) / ((totale - fb) / ddl_res)
@@ -614,6 +618,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
                          p = if (B) vapply(seq_along(testables), function(j) valeur_p_superieure(Fp[, j], F0[j]), 0) else NA_real_, stringsAsFactors = FALSE)
   } else {
     for (b in seq_len(B)) {
+      verifier_arret()
       fb <- sum(contributions(B0, P[b, ]))
       Fp_modele[b] <- (fb / r) / ((totale - fb) / ddl_res)
     }
@@ -690,6 +695,7 @@ dispersion_noyau <- function(D, groupe, type = "centroide", P = NULL) {
     res <- qr.resid(Qm, z)
     n <- length(z)
     Fp <- vapply(seq_len(B), function(b) {
+      verifier_arret()
       rb <- res[P[b, ]]
       f <- qr.fitted(Qm, rb)
       ((sum((f - mean(f))^2)) / (k - 1)) / (sum(qr.resid(Qm, rb)^2) / (n - k))
@@ -848,6 +854,7 @@ mantel_noyau <- function(Dy, Dx, methode, P, Dz = NULL) {
   B <- nrow(P)
   perm <- perm_p <- numeric(B)
   for (b in seq_len(B)) {
+    verifier_arret()
     p <- P[b, ]
     yb <- Ry[cbind(p[pr$i], p[pr$j])]
     perm[b] <- stats::cor(yb, x)
@@ -905,6 +912,7 @@ correlogramme_noyau <- function(Dy, Dx, methode, P, classes = 0) {
     # (permuter les observations de la matrice d'appartenance par p, c'est permuter celles de Dy par
     # order(p) : une permutation pour toutes les classes à la fois)
     for (b in seq_len(B)) {
+      verifier_arret()
       q <- order(P[b, ])
       perm[b, ] <- stats::cor(M, Ry[cbind(q[pr$i], q[pr$j])])
     }

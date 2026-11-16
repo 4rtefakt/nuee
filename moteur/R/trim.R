@@ -703,6 +703,7 @@ pas_a_pas_trim <- function(t, cp, r) {
   fit <- estimer_trim(t, dessins_trim(t, 2, cp), r$surdispersion, r$correlation)
   etapes <- list()
   for (tour in 1:100) {
+    verifier_arret()
     sorti <- FALSE
     if (any(actifs)) {
       # (les changements de pente seulement : un dernier point au premier temps, sans covariable,

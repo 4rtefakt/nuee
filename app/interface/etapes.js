@@ -366,9 +366,10 @@ const LIBELLES = {
     finiSauf: 'etapes_retrait_fini_sauf' },
 };
 
-// The progress of an update, in a dialog: what is being done, a bar, and Stop: no more models
-// fitted again after the one being fitted (before the data change, no update at all). Closing the
-// dialog stops the same way.
+// The progress of an update, in a dialog: what is being done, a bar, and Stop: the model being
+// fitted stopped too (moteur/R/arret.R, the stop of the status bar), and no more models fitted again
+// (before the data change, no update at all). Closing the dialog fits no more models either, the one
+// being fitted finishing.
 function progression(titre) {
   const etape = el('p', { class: 'etape-maj' });
   const barre = el('progress', { class: 'barre-maj' });
@@ -382,6 +383,7 @@ function progression(titre) {
     arret = true;
     bouton.disabled = true;
     bouton.textContent = t('etapes_arret_demande');
+    if (bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
   }
   return {
     arrete: () => arret,
@@ -413,7 +415,10 @@ async function reajusterTout(app, pid, pr, modeles) {
     if (pr.arrete()) break;
     pr.montrer(t('etapes_p_reajuster', { n: k + 1, total: modeles.length }), k, modeles.length, { note: `${m.nom} · ${m.type}` });
     if (m.bloque) continue;
-    try { refaits.set(m.numero, { id: await app.ajusterDeNouveau(pid, m.numero) }); } catch (e) { refaits.set(m.numero, { erreur: e.message }); }
+    try { refaits.set(m.numero, { id: await app.ajusterDeNouveau(pid, m.numero) }); } catch (e) {
+      refaits.set(m.numero, { erreur: e.message });
+      if (e.reponse && e.reponse.arrete) break;  // (Stop, of the status bar or of the dialog: no more models)
+    }
   }
   return refaits;
 }
@@ -427,6 +432,7 @@ async function reajusterTout(app, pid, pr, modeles) {
 async function executer(app, pid, { demande, parametres, textes, quand, version, etape = null }) {
   const p = app.projet(pid);
   const pr = progression(t(textes.titre, { nom: p.nom, etape }));
+  let change = false;
   try {
     if (version) {
       pr.montrer(t('etapes_p_version'), null, null, { arretable: false });
@@ -441,6 +447,7 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     pr.montrer(t(textes.donnees), null, null, { arretable: false });
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
+    change = true;
     noterRemplacement(pid, r);
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
@@ -459,6 +466,8 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
       : t(textes.fini, { n: modeles.length, etape }), restes.length > 0);
   } catch (e) {
     pr.fermer();
+    // (Stop, of the status bar, before the data changed: nothing changed, the engine stopped there)
+    if (e.reponse && e.reponse.arrete && !change) { app.statut(t('etapes_p_arrete_avant')); return; }
     // (the source changed between the preview and the removal: an update first)
     if (e.reponse && e.reponse.source_modifiee) {
       if (await confirmer(t('etapes_retirer_titre'), e.message, null, t('etapes_mettre_a_jour'))) app.miseAJourDonnees(pid);

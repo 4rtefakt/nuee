@@ -864,3 +864,13 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
 .barre-code > .icone { color: var(--attention); }
 .montrer-code section { margin-bottom: 10px; }
 .montrer-code h4 { margin: 6px 0 2px; font-size: 13px; }
+
+/* Stop (app.js: majArret): over the status bar, after the engine's state, and above a dialog's shade
+   too (New model fits with its dialog open); its own element beside #appli, which a dialog doesn't
+   make inert */
+#arret-calcul { position: fixed; bottom: 2px; left: 10px; z-index: 950; }
+#arret-calcul[hidden] { display: none; }
+#arret-calcul button { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 12px; min-height: 22px;
+  color: var(--erreur); border-color: var(--erreur); background: var(--fond-panneau); box-shadow: var(--ombre); }
+#arret-calcul button:disabled { opacity: .8; color: var(--texte-doux); border-color: var(--bord); }
+#arret-calcul .icone { width: 14px; height: 14px; }

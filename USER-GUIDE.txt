@@ -155,8 +155,21 @@ project; for a model made in the application, a checkbox removes it as well (und
 
 If the R engine stops
 ---------------------
-The application says so and offers to restart it; you can also do it yourself (Help ›
-Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
+A computation that takes more than a second and a half gets Stop in the status bar (above a
+dialog too, such as New model fitting). Stop ends it between two of its rounds, and nothing
+changes: the model isn't added, the data aren't changed, the view says "Computation stopped".
+The long loops stop this way: permutations (of a PLS, a PERMANOVA, a dispersion test, Mantel's
+test and its correlogram, indicator species, an RDA's tests, the variables fitted to an
+ordination's axes, Moran's I), the AIC selection's models, an NMDS's random starts, the power
+simulations, the cross-validation rounds (PCA, PLS, OPLS, linear models, GAMs, trees, random
+forests, boosted trees), boosted trees one tree at a time, a tree's stability draws, TRIM's
+stepwise selection of change points, iPLS's intervals, One model per response, k-means' choice
+of k, and the steps replayed by Update the data. What can't be stopped before it ends: a single
+fit in compiled code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's
+estimation), the R console's code and an R-code model's code; Stop then says so, and Help ›
+Restart the R engine remains. During Update the data, its own Stop stops the model being fitted
+too. The application says when the engine stops and offers to restart it; you can also do it
+yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
 views, from their recovery copy if they had changes, otherwise from the file they save to;
 changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
 the engine no longer answers keeps the recovery copies, offered at the next start. After a

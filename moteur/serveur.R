@@ -40,6 +40,9 @@ Sys.unsetenv("NUEE_JETON")  # ni la console ni les programmes qu'elle lance n'en
 # navigateur), sans secret, le moteur garde celles que l'interface lui donne, le temps de la séance.
 SECRET_CODE <- Sys.getenv("NUEE_CODE_SECRET")
 Sys.unsetenv("NUEE_CODE_SECRET")
+# Arrêter un long calcul : le fichier que l'application écrit quand on appuie sur Arrêter (main.js), que
+# les longues boucles regardent (arret.R : verifier_arret) ; lancé à la main, sans lui, rien ne s'arrête.
+options(nuee.arret = Sys.getenv("NUEE_ARRET"))
 COOKIE <- paste0("nuee_", port)  # les cookies ne distinguent pas les ports : un nom par serveur
 HOTES <- sprintf(c("127.0.0.1:%d", "localhost:%d"), port)
 
@@ -918,7 +921,7 @@ renommer_variable_demande <- function(q) {
   info$documents <- I(attr(docs, "changes"))
   info$references <- attr(docs, "n")
   if (info$references) info$phrases <- I(c(info$phrases, sprintf(traduire("%d référence(s) des documents suivent.", "%d reference(s) in the documents follow."), info$references)))
-  vus <- Filter(function(e) identical(e$projet, avant$id) && as.character(info$variable) %in% names(e$variables), etat$modeles)
+  vus <- Filter(function(e) identical(e$projet, avant$id) && nom_numero(info$variable) %in% names(e$variables), etat$modeles)
   info$ajustes <- I(unique(as.numeric(unlist(lapply(vus, function(e) e$definition$number)))))
   if (isTRUE(q$apercu)) return(list(renommage = info))
   if (length(info$documents)) n$documents <- lapply(seq_along(docs), function(k) docs[[k]])
@@ -2247,6 +2250,20 @@ fini <- function(x) {
   x
 }
 
+# Une demande faite (la fonction `f` de DEMANDES, sur ses paramètres `q`), qu'Arrêter peut interrompre
+# (arret.R) : list(reponse) ; NULL quand elle a été arrêtée, la séance remise alors telle qu'elle était
+# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part.
+faire_demande <- function(f, q) {
+  garde <- function() setdiff(ls(etat, all.names = TRUE), c("journal", "n_journal"))
+  avant <- mget(garde(), envir = etat)
+  arretee <- FALSE
+  r <- withRestarts(f(q), arreter_calcul = function() arretee <<- TRUE)
+  if (!arretee) return(list(reponse = r))
+  rm(list = setdiff(garde(), names(avant)), envir = etat)
+  for (n in names(avant)) assign(n, avant[[n]], envir = etat)
+  NULL
+}
+
 repondre <- function(statut, contenu) {
   list(status = statut, headers = list("Content-Type" = "application/json; charset=utf-8"),
        body = enc2utf8(as.character(jsonlite::toJSON(fini(contenu), auto_unbox = TRUE, dataframe = "columns",
@@ -2267,6 +2284,8 @@ appli <- list(
     }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
+    # (un Arrêter d'avant cette demande, venu quand plus rien ne calculait, ne l'arrête pas : arret.R)
+    if (nzchar(getOption("nuee.arret", ""))) unlink(getOption("nuee.arret"))
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -2299,7 +2318,12 @@ appli <- list(
         stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
                       "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
       }
-      r <- f(q)
+      fait <- faire_demande(f, q)
+      if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
+        tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
+        return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
+      }
+      r <- fait$reponse
       tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
       repondre(200L, r)
     }, error = function(e) {
@@ -2310,6 +2334,7 @@ appli <- list(
       # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
       if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
       if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
+      if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
       repondre(400L, list(erreur = conditionMessage(e)))
     })
   },

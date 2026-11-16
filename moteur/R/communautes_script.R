@@ -106,7 +106,7 @@ nom_element <- function(nom) {
 # colonnes de getParseData y sont des caractères, comme pour substr : la séance est en UTF-8, comme
 # le moteur le demande, serveur.R.)
 code_definition_moteur <- function(nom, langue) {
-  lignes <- definition_moteur(nom)$lignes
+  lignes <- sans_arret(definition_moteur(nom)$lignes)  # (Arrêter, arret.R : le script s'arrête dans R par Échap)
   pd <- utils::getParseData(parse(text = lignes, keep.source = TRUE, encoding = "UTF-8"), includeText = TRUE)
   avant <- cumsum(c(0, nchar(lignes) + 1))  # (les caractères avant chaque ligne, les lignes jointes par "\n")
   debut <- function(i) avant[pd$line1[i]] + pd$col1[i]

@@ -172,8 +172,23 @@ aussi (annulable).
 
 Si le moteur R s'arrête
 -----------------------
-L'application le signale et propose de le redémarrer ; on peut aussi le faire soi-même
-(Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
+Un calcul qui dure plus d'une seconde et demie a Arrêter dans la barre d'état (au-dessus d'un
+dialogue aussi, comme Nouveau modèle qui ajuste). Arrêter l'interrompt entre deux de ses tours,
+et rien ne change : le modèle ne s'ajoute pas, les données ne changent pas, la vue dit « Calcul
+arrêté ». Les longues boucles s'arrêtent ainsi : les permutations (d'une PLS, d'une PERMANOVA,
+d'un test de dispersion, du test de Mantel et de son corrélogramme, des espèces indicatrices, des
+tests d'une RDA, des variables ajustées aux axes d'une ordination, de l'I de Moran), les modèles
+de la sélection par l'AIC, les départs aléatoires d'un NMDS, les simulations de la puissance, les
+tours des validations croisées (ACP, PLS, OPLS, modèles linéaires, GAM, arbres, forêts
+aléatoires, arbres boostés), les arbres boostés arbre par arbre, les tirages de la stabilité d'un
+arbre, la sélection pas à pas des points de changement de TRIM, les intervalles d'iPLS, Un modèle
+par réponse, le choix de k des k-moyennes, et les étapes que rejoue Mettre à jour les données. Ce
+qui ne s'arrête pas avant sa fin : un ajustement seul en code compilé (un modèle mixte, un GAM, les
+arbres d'une forêt aléatoire, l'échantillonnage par distances, l'estimation de TRIM), le code de
+la console R et celui d'un modèle de code R ; Arrêter le dit alors, et Aide › Redémarrer le moteur
+R reste. Pendant Mettre à jour les données, son propre Arrêter interrompt aussi le modèle en train
+d'être ajusté. L'application signale l'arrêt du moteur et propose de le redémarrer ; on peut aussi
+le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
 modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon
 depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de
 secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde

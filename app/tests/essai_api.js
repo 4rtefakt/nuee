@@ -86,7 +86,10 @@ async function principal() {
   // the session token, as main.js gives it to R and to its windows
   const jeton = require('crypto').randomBytes(32).toString('hex');
   const cookie = `nuee_${port}=${jeton}`;
-  const serveur = spawn(rscript, [path.join(depot, 'moteur', 'serveur.R'), String(port), interfaceDir], { windowsHide: true, env: { ...process.env, NUEE_JETON: jeton } });
+  // (NUEE_ARRET: the file Stop writes, as main.js gives it: moteur/R/arret.R)
+  const fichierArret = path.join(dossier, 'arreter');
+  const serveur = spawn(rscript, [path.join(depot, 'moteur', 'serveur.R'), String(port), interfaceDir], { windowsHide: true,
+    env: { ...process.env, NUEE_JETON: jeton, NUEE_ARRET: fichierArret } });
   let sortie = '';
   await new Promise((resolve, reject) => {
     serveur.stdout.on('data', (d) => { sortie += d; if (sortie.includes('PRET')) resolve(); });
@@ -203,6 +206,23 @@ async function principal() {
       verifier((await api('contributions', { modele: pls.id, observations: [3] })).contribution.length === 6, 'contributions');
       const b = await api('biplot', { modele: pls.id });
       verifier(Array.isArray(b.c[0]) && b.t.length === 2, 'biplot');
+    });
+    await etape('Arrêter : une longue demande arrêtée rend « arrêtée », la séance inchangée ; le fichier effacé à la demande suivante', async () => {
+      const avant = await api('etat');
+      const debut = Date.now();
+      // (999 permutations of the PLS, each model fitted again and cross-validated: several seconds;
+      // Stop written once the engine computes, as main.js writes it)
+      const longue = fetch(`http://127.0.0.1:${port}/api/permutations`, { method: 'POST', body: JSON.stringify({ modele: pls.id, n: 999 }), headers: { Cookie: cookie } })
+        .then(async (r) => ({ statut: r.status, j: await r.json(), duree: Date.now() - debut }));
+      await new Promise((ok) => { setTimeout(ok, 700); });
+      fs.writeFileSync(fichierArret, String(Date.now()));
+      const r = await longue;
+      verifier(r.statut === 400 && r.j.arrete === true && /arrêté/.test(r.j.erreur), `réponse : HTTP ${r.statut} ${JSON.stringify(r.j).slice(0, 200)} en ${r.duree} ms`);
+      verifier(r.duree < 700 + 3000, `arrêtée en ${r.duree} ms`);
+      const apres = await api('etat');
+      verifier(!fs.existsSync(fichierArret), 'le fichier d’arrêt effacé par la demande suivante');
+      verifier(JSON.stringify(apres.projets) === JSON.stringify(avant.projets) && apres.modeles.length === avant.modeles.length, 'la séance telle qu’elle était');
+      verifier((await api('permutations', { modele: pls.id, n: 3 })).points.R2.length === 4, 'la demande suivante se fait');
     });
     await etape('statistiques des variables, vérification des données', async () => {
       const s = await api('statistiques_variables', { projet: p.id });

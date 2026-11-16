@@ -205,6 +205,7 @@ simuler_puissance <- function(lu, pd, pente, alpha, annees, unites, n, graine = 
   set.seed(graine, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
   debut <- proc.time()[["elapsed"]]
   p <- vapply(seq_len(n), function(k) {
+    verifier_arret()
     cadre$y <- tirer_simulation(cadre, lu$L, lu$variances, lu$sigma2, lu$phi, pente)
     p_simulation(cadre, lu$L, lu$car1)
   }, 0)

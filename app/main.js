@@ -195,12 +195,25 @@ function dossierTemporaireR() {
   }
 }
 
+// Stop, in the status bar (interface/app.js): R, one process, reads no request while it computes,
+// so the stop is a file of this run's R folder (the one given to the R running), which its long
+// loops look at between two rounds and which it removes at the next request (moteur/R/arret.R). A
+// new R starts without it.
+let fichierArret = null;
+function arreterCalcul() {
+  if (!fichierArret) return false;
+  fs.writeFileSync(fichierArret, String(Date.now()));
+  return true;
+}
+
 // `r`: rVoulu's. repli: Nuée's own R takes over if this one stops before it is ready
 // (demarrerMoteur), so that stop isn't reported to the windows.
 function demarrerR(port, r, repli = false) {
   return new Promise((resolve, reject) => {
     dossierTemporaireR();
-    const env = { ...process.env, NUEE_JETON: jeton, NUEE_CODE_SECRET: secretCode, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
+    fichierArret = path.join(temporaireR, 'arreter');
+    try { fs.rmSync(fichierArret, { force: true }); } catch { /* none */ }
+    const env = { ...process.env, NUEE_JETON: jeton, NUEE_CODE_SECRET: secretCode, NUEE_ARRET: fichierArret, TMPDIR: temporaireR, TMP: temporaireR, TEMP: temporaireR };
     // (R-code models turned off for everyone by the organisation: the engine refuses them too)
     if (codeInterdit()) env.NUEE_SANS_CODE = '1'; else delete env.NUEE_SANS_CODE;
     const conv = path.join(racine, 'outils', process.platform === 'win32' ? 'export_project.exe' : 'export_project');
@@ -764,6 +777,7 @@ function ipc() {
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }
   });
+  recevoir('arreter-calcul', () => arreterCalcul());
   // File › Settings…, the R the engine runs on (interface/reglages.js, r-installes.js): what is set
   // and in use, the Rs of this computer, one of them checked, its missing packages installed (one
   // installation at a time; what R says meanwhile sent to the window that asked), the choice kept
