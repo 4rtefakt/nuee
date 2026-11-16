@@ -189,6 +189,12 @@ test_deux_variables <- function(projet, x, y, observations = NULL, appariement =
   }
   ok <- !is.na(a$valeurs) & !is.na(b$valeurs)
   noms <- unname(projet$noms_obs[nom_numero(obs[ok])])
+  # (une variable quantitative constante sur ces observations : ni corrélation ni comparaison des
+  # groupes ne se calcule, leurs tests rendent NA)
+  if (sum(ok) >= 3) for (v in list(a, b)) if (!v$qualitative && isTRUE(stats::sd(v$valeurs[ok]) == 0)) {
+    stop(sprintf(traduire("« %s » a la même valeur pour les %d observations où les deux variables sont connues : aucun test ne se calcule.",
+                          "“%s” has the same value for the %d observations where both variables are known: no test can be computed."), v$nom, sum(ok)), call. = FALSE)
+  }
   r <- if (a$qualitative && b$qualitative) contingence(a$valeurs[ok], b$valeurs[ok])
        else if (a$qualitative) comparer_groupes(b$valeurs[ok], a$valeurs[ok], noms)
        else if (b$qualitative) comparer_groupes(a$valeurs[ok], b$valeurs[ok], noms)
