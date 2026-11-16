@@ -139,15 +139,17 @@ Fichier › Enregistrer (Ctrl+S) écrit le projet (.nuee) avec ses données, ses
 séance en cours : modèles calculés, panneaux ouverts et leur disposition, réglages des
 graphiques (axes, couleurs, étiquettes, titres), sélections, choix des VIP, groupes du
 dendrogramme. En rouvrant le projet, les modèles sont recalculés et tout revient en place.
-Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une
-coupure du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si un
-autre programme garde le fichier ouvert (synchronisation, antivirus), Nuée réessaie pendant
-cinq secondes, puis le laisse tel quel et le dit : enregistrer de nouveau, ou Enregistrer
-sous.... Si le fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un
-collègue, sur un dossier partagé ; une autre fenêtre), Nuée le dit et propose Enregistrer
-sous..., Écraser ou Annuler, aussi pour un projet repris après un arrêt inattendu. Le
-fichier dit aussi quelle version de Nuée et de R l'a écrit ; un projet enregistré
-par une version plus récente de Nuée est signalé à l'ouverture.
+Le projet est écrit dans un fichier à côté, qui prend ensuite la place de l'ancien : une coupure
+du réseau ou un disque plein pendant l'enregistrement laisse l'ancien intact. Si un autre
+programme garde le fichier ouvert (synchronisation, antivirus), Nuée réessaie pendant cinq
+secondes, puis le laisse tel quel et le dit : enregistrer de nouveau, ou Enregistrer sous.... Si
+le fichier a été modifié ailleurs depuis qu'on l'a ouvert ou enregistré (un collègue, sur un
+dossier partagé ; une autre fenêtre), Nuée le dit et propose de réunir ses changements avec les
+vôtres (voir Travailler à plusieurs), Écraser, Enregistrer sous... ou Annuler ; pour un projet
+repris après un arrêt inattendu, Enregistrer sous..., Écraser ou Annuler. Le fichier dit aussi
+quelle version de Nuée et de R l'a écrit, et le nom de qui l'a enregistré ; un projet enregistré
+par une version plus récente de Nuée est signalé à l'ouverture. Nuée garde aussi d'elle-même des
+versions de chaque projet enregistré, pour y revenir : voir Historique et versions.
 Rouvrir un fichier déjà ouvert (fichier récent, double-clic dans l'Explorateur) montre le
 projet ouvert au lieu d'en ouvrir une seconde copie.
 En fermant l'application avec des changements non enregistrés, elle propose « Enregistrer et
@@ -2110,22 +2112,26 @@ dialogue le dit : les mettre à jour reprendrait celles que la source et les ét
 Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
 suivante, dont les colonnes peuvent venir dans un autre ordre ou avec de nouvelles. Les étapes y
 sont rejouées, puis ses lignes rapportées aux observations du projet par leurs identifiants et
-ses colonnes aux variables par leurs noms, si bien que chaque modèle garde sa définition. Avant
-que rien ne change, le dialogue montre ce qui changera : les nouvelles observations, variables
-et catégories, celles qui ne sont plus dans le fichier (elles quittent le projet et ses
-modèles), les cellules changées, les variables calculées de nouveau d'après leur formule, chaque
-étape rejouée, sautée (une observation ou une variable qu'elle nomme n'est plus là) ou en
-erreur, avec sa raison, les modèles qui ne peuvent plus être ajustés et ce qui leur manque, un
-modèle dont la catégorie de référence n'a plus d'observation, et comment le fichier a été lu
-(sans colonne qui nomme les observations, elles se retrouvent par leur numéro de ligne). Un
-modèle qui laisse de côté des observations demande s'il prend les nouvelles (coché). Mettre à
-jour remplace les données en un seul changement (Ctrl+Z l'annule, la source et les étapes
-comprises, et ajuste à nouveau chaque modèle sur les données d'avant) ; avec les versions, une version est enregistrée d'abord. Puis chaque modèle du
-projet est ajusté à nouveau, avec une barre de progression et Arrêter, et Ce qui a changé
-compare leurs résultats clés avant et après. Il montre aussi ce que la mise à jour a fait aux
-données, et les valeurs citées dans les documents qui ont changé, chacune avec sa phrase (un
-clic ouvre le document à cet endroit) ; dans l'aperçu de chaque document, ces valeurs sont
-marquées, celle d'avant au survol, jusqu'à Cacher les changements.
+ses colonnes aux variables par leurs noms, si bien que chaque modèle garde sa définition. Une
+nouvelle catégorie se place juste avant la dernière, pour que chaque régression garde sa
+catégorie de référence (la dernière), et chaque modèle prend son terme avec les réglages des
+autres (une PLS-DA garde ses classes, et ne prend aucune observation d'une nouvelle). Avant que
+rien ne change, le dialogue montre ce qui changera : les nouvelles observations, variables et
+catégories, celles qui ne sont plus dans le fichier (elles quittent le projet et ses modèles),
+les cellules changées, les variables calculées de nouveau d'après leur formule, chaque étape
+rejouée, sautée (une observation ou une variable qu'elle nomme n'est plus là) ou en erreur, avec
+sa raison, les modèles qui ne peuvent plus être ajustés et ce qui leur manque, ceux qui prennent
+une nouvelle catégorie, un modèle dont la catégorie de référence n'a plus d'observation, et
+comment le fichier a été lu (sans colonne qui nomme les observations, elles se retrouvent par
+leur numéro de ligne). Un modèle qui laisse de côté des observations demande s'il prend les
+nouvelles (coché). Mettre à jour remplace les données en un seul changement (Ctrl+Z l'annule, la
+source et les étapes comprises, et ajuste à nouveau chaque modèle sur les données d'avant) ; avec
+les versions, une version est enregistrée d'abord. Puis chaque modèle du projet est ajusté à
+nouveau, avec une barre de progression et Arrêter, et Ce qui a changé compare leurs résultats
+clés avant et après (voir Ce qui a changé). Il montre aussi ce que la mise à jour a fait aux
+données, et les valeurs citées dans les documents qui ont changé, l'ancienne → la nouvelle,
+chacune avec sa phrase (un clic ouvre le document à cet endroit) ; dans l'aperçu de chaque
+document, elles sont marquées, celle d'avant au survol, jusqu'à Cacher les changements.
 Quand le fichier source d'un projet change (une nouvelle année ajoutée), la barre d'état le dit,
 à l'ouverture du projet et quand Nuée revient au premier plan ; son lien ouvre Mettre à jour les
 données.
@@ -2183,6 +2189,164 @@ Pour un projet venant d'un fichier .usp, l'explorateur montre « Historique du f
 le journal enregistré dans le fichier (création, changements de jeu de travail, nombre de
 composantes, modèles supprimés...), avec la date, la version du logiciel et l'utilisateur.
 Clic droit sur un modèle importé › Historique du modèle : seulement ce qui le concerne.
+
+Historique et versions (Fichier › Historique)
+---------------------------------------------
+Nuée garde d'elle-même des versions de chaque projet enregistré dans son format (.nuee), sans
+rien à installer : quand le projet est enregistré et que sa dernière version a une heure ou plus,
+quand il est fermé (ou que Nuée se ferme) et qu'il a changé depuis, et avant que ses données
+soient mises à jour (« Enregistrer d'abord une version » de Mettre à jour les données, coché).
+Chacune dit ce qui a changé depuis la précédente : lignes et variables, modèles par leur nom,
+documents et figures par leur titre, étapes des données, source des données. Rien ne quitte
+l'ordinateur si le projet n'est pas partagé (voir Partager sur GitHub ou GitLab).
+Fichier › Historique (ou l'horloge de la barre d'état) : les versions jour par jour (le clic
+droit sur le projet les donne aussi), chacune avec son heure, ce qui a changé, ses noms, son
+auteur, « automatique » pour une version que Nuée a gardée d'elle-même, et « envoyée » une fois
+dans un dépôt partagé. Sur chacune : Ouvrir (à côté du projet, en lecture seule : un cadenas dans
+l'explorateur et sur ses onglets ; Enregistrer sous... en garde une copie ailleurs), Comparer
+(avec le projet tel qu'il est : voir Ce qui a changé), Nommer... (« soumis à la revue »,
+« chapitre 2 de la thèse »), Restaurer... (le projet redevient cette version, ses données, ses
+modèles, ses documents et ses figures ; son état actuel reste dans l'historique, gardé d'abord
+dans une version). Enregistrer une version... en garde une tout de suite, avec quelques mots ; un
+projet qui a des changements non enregistrés est d'abord enregistré, et celui qui n'a pas changé
+depuis sa dernière version le dit.
+Les versions automatiques jamais envoyées s'espacent avec le temps, une fois par jour au plus :
+une par jour après 30 jours, une par mois après un an. Les versions nommées, celles enregistrées
+à la main et celles envoyées sont toutes gardées. Garder des versions de ce projet (en haut de
+l'Historique) les arrête pour un projet, celles déjà gardées restant lisibles ; Réglages... les
+arrête pour tous les projets (Garder des versions de mes projets : aucun nouvel historique ne
+commence, ceux qui existent restent), et donne le nom, et l'adresse électronique, écrits avec
+chaque version.
+Les versions sont gardées à côté du projet, dans un dossier caché nommé .nuee-versions : un
+historique par projet de ce dossier (un dépôt git à vous autour du dossier l'ignore). Le haut de
+l'Historique donne sa taille ; chaque version contient le fichier du projet entier, compressé. Un
+projet renommé hors de Nuée est retrouvé par son contenu, et Enregistrer sous... emmène son
+historique. Supprimer le dossier .nuee-versions supprime l'historique des projets de ce dossier,
+et rien d'autre : les projets ne changent pas, et un nouvel historique commence à leur prochain
+enregistrement, sauf si les versions sont arrêtées (un projet dont les versions étaient arrêtées
+suit de nouveau les Réglages). Un projet partagé sur GitHub ou GitLab perd aussi son lien avec le
+dépôt : ses versions y restent, et Fichier › Ouvrir depuis GitHub ou GitLab, dans un autre
+dossier, reprend le projet avec elles. La version navigateur n'a pas d'Historique : l'application
+de bureau garde les versions.
+
+Ce qui a changé
+---------------
+Ce qui a changé compare deux états d'un projet, modèle par modèle, les modèles appariés par leur
+nom, sur leurs résultats clés : l'ajustement (N, R², Q², AIC, déviance expliquée), chaque
+estimation avec son intervalle à 95 % et sa valeur p (coefficients, pentes, indices), les tests,
+les effets aléatoires, les composantes, le VIP, les coefficients ou les loadings de chaque
+variable, la valeur indicatrice de chaque espèce, les moyennes ajustées et la puissance d'une
+tendance gardées avec le modèle, un jeu de test. Il s'ouvre après une mise à jour des données ou
+le retrait d'une étape (voir Étapes des données et mise à jour), depuis l'Historique (Comparer :
+une version avec le projet actuel) et quand arrive la version d'un collègue (Ce qui a changé,
+dans le message de la barre d'état). Les modèles des deux états sont d'abord ajustés, avec une
+barre de progression.
+Chaque modèle commence par ses changements notables, en phrases écrites comme le texte des
+résultats : Le coefficient de « annee » passe de -0,0210 à -0,0260 (IC 95 % [-0,0310 ; -0,0210]),
+toujours significatif (p < 0,001). Puis le tableau de ses résultats qui ont changé : avant, après
+(avec leur intervalle et leur p), l'écart (en points pour un pourcentage) et ce qu'il a franchi :
+nouveau ou disparu ; signe (de l'autre côté de 0, ou de 1 pour un rapport ou un indice) ; seuil
+de 5 % (significatif d'un côté seulement) ; hors de l'ancien IC (la nouvelle valeur sort de
+l'ancien intervalle à 95 %) ; catégorie (la classe d'une tendance, le groupe d'une espèce
+indicatrice) ; composante retournée (le signe d'une composante, qui est arbitraire, a changé :
+remis dans le même sens avant de comparer). Plus de huit variables ou espèces qui changent sont
+résumées en une phrase par marque. Les modèles d'un seul côté viennent à la fin.
+
+Partager sur GitHub ou GitLab
+-----------------------------
+Fichier › Partager sur GitHub ou GitLab (aussi dans l'Historique) : les versions du projet sont
+envoyées dans un dépôt sur GitHub, GitLab ou le GitLab de votre institution, et celles de vos
+collègues en reviennent ; chacun travaille sur sa copie, et Nuée les garde au même point.
+Choisissez le serveur et connectez-vous-y (voir Se connecter à GitHub ou GitLab) : Nuée crée au
+projet un dépôt de votre compte, à son nom (un autre nom est proposé quand celui-là est pris),
+privé sauf si vous le décochez : vous seul et les collègues que vous invitez le voyez. La
+première fois, elle demande votre nom et votre adresse électronique, écrits avec chaque version
+(GitHub et GitLab montrent par l'adresse qui a fait quoi).
+Inviter un collègue... : son nom d'utilisateur sur le serveur, tel qu'il est dans l'adresse de
+son profil (le bouton est dans Partager une fois le partage fait, puis dans l'Historique, à côté
+de votre compte). GitHub lui envoie une invitation, qu'il accepte depuis son courriel ou ses
+notifications ; GitLab en fait un membre du projet, avec le rôle Developer. Il l'ouvre ensuite
+avec Fichier › Ouvrir depuis GitHub ou GitLab : l'adresse du dépôt (connecté à son serveur, pour
+un dépôt privé ; ou un jeton), le projet quand le dépôt en a plusieurs, et le dossier où le
+mettre. Il s'ouvre avec ses versions, partagé avec ce dépôt.
+Utiliser un dépôt existant, ou un autre serveur : son adresse, telle que la donne son bouton Code
+(https://...). Connecté à GitHub ou GitLab, il ne faut rien d'autre ; sinon, un jeton qui peut y
+écrire (sur GitHub, un jeton à accès précis, « fine-grained », avec Contents en lecture et
+écriture sur ce dépôt ; sur GitLab, un jeton avec write_repository). Le dépôt peut être vide ou
+avoir d'autres fichiers : le projet va à sa racine sous son nom, ou sous un autre quand un
+fichier l'y a déjà, et les autres fichiers restent tels qu'ils sont.
+Une fois le projet partagé, ses versions vont d'elles-mêmes : chacune est envoyée, et le dépôt
+est interrogé sur les plus récentes quand le projet s'ouvre, après chaque version et quand Nuée
+revient au premier plan (toutes les cinq minutes au plus). Une version plus récente met à jour le
+projet ouvert quand il n'a pas de changement non enregistré, et la barre d'état le dit, avec Ce
+qui a changé ; avec des changements non enregistrés, elle attend qu'ils soient enregistrés. La
+partie partage de l'Historique donne l'état (à jour, envoi, à envoyer, plus récente, en attente,
+à choisir, ou l'erreur, avec Réessayer), le compte connecté, avec Inviter un collègue... et Se
+déconnecter (ou Se connecter...), et Envoyer maintenant, Recevoir maintenant, Vérifier, Changer
+l'adresse ou le jeton... et Arrêter le partage (les versions restent ici et dans le dépôt).
+L'horloge de la barre d'état montre le même état. Quand un collègue et vous avez changé le projet
+tous les deux : voir Travailler à plusieurs.
+
+Se connecter à GitHub ou GitLab
+-------------------------------
+Nuée se connecte à GitHub, à GitLab et au GitLab de votre institution sans mot de passe tapé dans
+Nuée. Partager, Se connecter... dans l'Historique, ou un dépôt privé dans Ouvrir depuis GitHub ou
+GitLab montrent un code court : Ouvrir la page (elle s'ouvre dans votre navigateur, le code
+copié), y coller ou taper le code (la page de GitLab l'a déjà) et autoriser Nuée. Le dialogue
+attend cet accord (il dit jusqu'à quand le code vaut ; refusé ou expiré, Obtenir un nouveau
+code), puis montre le compte, avec sa photo, son nom et son nom d'utilisateur. La connexion est
+gardée dans le trousseau de l'ordinateur (sous Linux sans trousseau, jusqu'à la fermeture de
+Nuée) et se renouvelle d'elle-même.
+Le GitLab de votre institution : tapez le nom de son serveur (gitlab.example.org). Nuée s'y
+connecte une fois que son administrateur l'y a enregistré comme application de ce GitLab (17.3 ou
+plus récent) : il vous donne son identifiant d'application, que vous tapez une fois. Avant GitLab
+17.3, ou tant que Nuée n'y est pas enregistré, utilisez un jeton.
+Autres façons de se connecter : Utiliser la connexion git de cet ordinateur, quand git est
+installé (une fenêtre de Git Credential Manager peut s'ouvrir) ; Utiliser plutôt un jeton, un
+jeton créé sur le site du serveur (En créer un sur GitHub, portée « repo » ; sur GitLab, portées
+api, read_user et write_repository), vérifié, puis gardé dans le trousseau et plus jamais montré.
+Une connexion qui ne peut qu'envoyer et recevoir des versions ne peut ni créer de dépôt ni
+inviter : le dialogue le dit, et se connecter par la page du serveur le permet.
+Se déconnecter (dans l'Historique, à côté du compte) : Nuée oublie sa connexion à ce serveur sur
+cet ordinateur, et les projets partagés là-bas n'envoient ni ne reçoivent plus leurs versions
+jusqu'à ce que vous vous reconnectiez. Le compte et ses dépôts restent tels qu'ils sont.
+
+Travailler à plusieurs
+----------------------
+Deux personnes peuvent travailler sur un projet, chacune sur son ordinateur : partagé par GitHub
+ou GitLab, ou ouvert depuis un dossier réseau partagé. Quand les deux l'ont changé, Nuée réunit
+les deux d'après ce qui a changé, pas comme du texte. Chaque modèle par son nom, réglage par
+réglage (variables, termes, observations, options) ; deux nouveaux modèles du même nom sont
+gardés tous les deux, le leur renommé. Les documents ligne par ligne, leurs références suivant un
+modèle renommé, et les figures. Les données par leurs étapes, quand les deux côtés n'ont fait
+qu'ajouter des étapes sur la même source : la source du côté qui l'a mise à jour, puis les étapes
+des deux côtés rejouées dessus (voir Étapes des données et mise à jour) ; sinon cellule par
+cellule, une variable ou une observation ajoutée d'un côté gardée, une retirée d'un côté et
+inchangée de l'autre retirée.
+Ce qui s'oppose, c'est ce que les deux côtés ont changé autrement : la même cellule, un passage
+d'un document, un réglage d'un modèle, une variable retirée d'un côté et changée de l'autre. Si
+rien ne s'oppose, le dialogue dit ce que chaque côté a apporté, et Réunir les deux les réunit.
+Sinon chaque conflit montre les deux côtés, ses passages ou ses cellules (les vingt premières)
+côte à côte, avec Garder la mienne ou Prendre la leur (la mienne pour commencer), et Réunir avec
+ces choix les réunit.
+Partagé par GitHub ou GitLab : quand votre version et celle d'un collègue ont changé le projet
+toutes les deux, la barre d'état le dit (Choisir...), et l'Historique aussi. Réunir les deux, ou,
+pour tout le projet, Garder la mienne ou Prendre la leur (le projet devient le leur, le vôtre
+restant dans l'historique), après Comparer si vous le voulez (Ce qui a changé du vôtre au leur).
+Le projet réuni est la version suivante, envoyée au dépôt ; les deux historiques sont gardés.
+Sans version commune (un projet partagé dans un dépôt qui l'avait déjà), Nuée peut ne proposer
+que Garder la mienne et Prendre la leur.
+Sur un dossier réseau partagé : quand un projet est ouvert depuis un partage ou un NAS, Nuée
+regarde toutes les 30 secondes si son fichier a été enregistré par quelqu'un d'autre depuis sa
+lecture ; elle dit alors qui (le nom donné dans Historique › Réglages...) et propose de réunir
+ses changements avec les vôtres, avec Réunir les deux, ou les choix de chaque conflit, ou Pas
+maintenant. La réunion est un seul changement du projet, qu'annule Ctrl+Z : enregistrez le projet
+pour la garder. Enregistrer trouve aussi le fichier changé : Réunir les deux (puis le projet
+réuni est enregistré), Écraser (ses changements sont perdus), Enregistrer sous... ou Annuler. Un
+projet ouvert avant que Nuée ou son moteur R redémarre, ou repris après un arrêt inattendu, ne
+peut pas être réuni : Enregistrer demande alors s'il faut écraser ses changements. L'historique
+du projet, dans le .nuee-versions du dossier, est commun aux deux, chaque version avec le nom de
+qui l'a enregistrée. Un projet partagé par GitHub ou GitLab est tenu au même point par son dépôt.
 
 OPLS et OPLS-DA
 ---------------
