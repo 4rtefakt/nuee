@@ -248,7 +248,7 @@ export function barreMenus(nav, menus, debut = []) {
     if (k >= 0) pris.add(simple(d.libelle[k]));
     const b = el('button', { class: 'menu-haut', role: 'menuitem', 'aria-haspopup': 'menu', 'aria-expanded': 'false', tabindex: i === 0 ? 0 : -1,
       'aria-keyshortcuts': k >= 0 && !MAC ? `Alt+${d.libelle[k].toUpperCase()}` : null },
-    k >= 0 ? [d.libelle.slice(0, k), el('span', { class: 'cle-acces' }, d.libelle[k]), d.libelle.slice(k + 1)] : d.libelle);
+    el('span', {}, k >= 0 ? [d.libelle.slice(0, k), el('span', { class: 'cle-acces' }, d.libelle[k]), d.libelle.slice(k + 1)] : d.libelle));
     b._cle = k >= 0 ? simple(d.libelle[k]) : null;
     b._menu = d;
     b.addEventListener('mousedown', (e) => {
