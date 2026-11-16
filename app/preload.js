@@ -41,7 +41,12 @@ contextBridge.exposeInMainWorld('bureau', {
   surProgressionMaj: (f) => ipcRenderer.on('maj-progression', (_, x) => f(x)),
   langue: (l) => ipcRenderer.invoke('langue', l),
   ouvrirGuide: () => ipcRenderer.invoke('ouvrir-guide'),
-  // a file dropped on the window: its path; a file Windows asks Nuée to open (double-click)
+  // a file dropped on the window: its path; a file Windows asks Nuée to open (double-click),
+  // kept by main.js until asked for: also those that came before the page was ready
   cheminFichier: (f) => webUtils.getPathForFile(f),
-  surOuvrirFichier: (f) => ipcRenderer.on('ouvrir-fichier', (_, chemin) => f(chemin)),
+  surOuvrirFichier: (f) => {
+    const prendre = async () => { for (const chemin of await ipcRenderer.invoke('fichiers-a-ouvrir')) f(chemin); };
+    ipcRenderer.on('ouvrir-fichier', prendre);
+    prendre();
+  },
 });

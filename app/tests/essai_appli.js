@@ -139,6 +139,12 @@ async function brancher(cible) {
     fs.chmodSync(path.join(ancienR, 'Rtmp', 'lecture seule.txt'), 0o444);
     fs.chmodSync(path.join(ancienR, 'Rtmp', 'figé'), 0o555);
   }
+  // a project given to a second start while Nuée is still starting (its R folder made, no window
+  // yet): it waits for the window's page, and opens there (main.js: montrerFenetre, aOuvrir)
+  const auDemarrage = path.join(dossier, 'vergers.json');
+  fs.copyFileSync(path.join(__dirname, '..', '..', 'exemple', 'vergers.json'), auDemarrage);
+  const dossiersR = () => fs.readdirSync(windows ? temp : os.tmpdir()).filter((n) => n.startsWith('nuee-r-'));
+  const avantR = new Set(dossiersR());
   const port = await portLibre();
   const proc = lancer(port);
   let sortie = '';
@@ -146,6 +152,8 @@ async function brancher(cible) {
   proc.stderr.on('data', (d) => { sortie += d; });
   let p;
   try {
+    for (let i = 0; i < 600 && !dossiersR().some((n) => !avantR.has(n)) && proc.exitCode === null; i += 1) await pause(50);
+    const secondAuDemarrage = lancer(await portLibre(), [auDemarrage]);
     let cible;
     for (let i = 0; i < 240 && !cible && proc.exitCode === null; i += 1) {  // R starts first: up to two minutes
       await pause(500);
@@ -154,6 +162,12 @@ async function brancher(cible) {
     if (!cible) throw new Error(`no window (exit code ${proc.exitCode})`);
     p = await brancher(cible);
     await p.attendre("document.querySelectorAll('.menu-haut').length > 3", 60000);
+    const ouvertAuDemarrage = await p.attendre("document.querySelector('.arbre').textContent.includes('vergers')", 30000).catch(() => false);
+    verifier('fichierDonnePendantLeDemarrage', !!ouvertAuDemarrage && secondAuDemarrage.exitCode !== null, `${!!ouvertAuDemarrage} ${secondAuDemarrage.exitCode}`);
+    tuer(secondAuDemarrage);
+    for (const x of [].concat((await p.api('etat')).projets)) await p.api('fermer_projet', { projet: x.id });  // (the example project, below, is then the only one)
+    await p.evaluer("new BroadcastChannel('nuee').postMessage({ type: 'modeles' })");
+    await p.attendre("!(document.querySelector('.arbre') || { textContent: '' }).textContent.includes('vergers')", 20000);
     // what goes wrong without a page error: a policy violation, a request the engine refuses
     await p.evaluer(`window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
       window.__refus = []; const f = window.fetch;

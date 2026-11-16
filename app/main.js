@@ -401,13 +401,17 @@ function fenetrePrincipale() {
   return fenetre;
 }
 
-// The main window brought forward, with a file to open in it (null: none)
+// The main window brought forward, with a file to open in it (null: none). The file waits in
+// aOuvrir until a main window's page takes it (preload.js: surOuvrirFichier): it may come while
+// Nuée is still starting, before its window, or the window's page, is there to hear about it.
+const aOuvrir = [];
 function montrerFenetre(fichier) {
+  if (fichier) aOuvrir.push(fichier);
   const f = BrowserWindow.getAllWindows().find(principale) || BrowserWindow.getAllWindows()[0];
   if (!f) return;
   if (f.isMinimized()) f.restore();
   f.focus();
-  if (fichier) f.webContents.send('ouvrir-fichier', fichier);
+  if (fichier) f.webContents.send('ouvrir-fichier');
 }
 
 // macOS gives the file to open (a .nuee double-clicked in the Finder, dropped on the Dock icon)
@@ -553,6 +557,7 @@ function ipc() {
     }
   });
   recevoir('ouvrir-chemin', (_, chemin) => shell.openPath(chemin));
+  recevoir('fichiers-a-ouvrir', () => aOuvrir.splice(0));  // (see montrerFenetre)
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
