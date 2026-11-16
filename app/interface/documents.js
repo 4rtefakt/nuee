@@ -16,7 +16,7 @@ import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
 import { zip } from './zip.js';
-import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS } from './rendu_document.js';
+import { pluginReferences, analyser, versHTML, pageHTML, versDocx, versQmd, referencesReproductibles, lireEntete, listeEntete, fixerEntete, BLOCS, nomFichierQuarto } from './rendu_document.js';
 import { lireBibtex, lireCslJson, lireBibliographie, versBibtex, formaterCitations, resume, correspond, STYLES,
   elementZotero, lireReponseZotero, memeOeuvre, placerReference, SANS_ZOTERO, joindreReferences } from './bibliographie.js';
 import { VERSION } from './nouveautes.js';
@@ -1200,7 +1200,8 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
       // the .qmd, its figures in a folder beside it (<name>_figures), then Quarto if asked
       const fichier = chemin ? chemin.split(/[\\/]/).pop() : `${base}.qmd`;
       const nom = fichier.replace(/\.qmd$/i, '');
-      const dossier = `${nom}_figures`;
+      // (its figures' folder without # nor % in its name: their address is a URL, nomFichierQuarto)
+      const dossier = `${nomFichierQuarto(nom)}_figures`;
       // the references cited, in <name>.bib beside it; the header's CSL style copied there too
       const cites = r.citations ? r.citations.liste.map((x) => r.citations.entrees.get(x.cle)).filter(Boolean) : [];
       const bib = cites.length ? `${nom}.bib` : null;
@@ -1356,7 +1357,8 @@ function gabarit(app, p, st, choisis) {
     return liste.map((v) => `{{${d.nom}.${v} #fig-${etiquette(d.nom)}-${v} | ${tDans(st.langue, v)}}}`);
   };
   const resume = (d) => (!calcule(d) || partiesModele(calcule(d)).some((x) => x.cle === 'resume' && x.tableau) ? [`{{${d.nom}.table.resume | ${w.resume}}}`] : []);
-  const entete = `---\ntitle: "${(st.titre || tDans(st.langue, 'document_sans_titre')).replace(/"/g, '\\"')}"\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
+  // (the title as a YAML string, its backslashes and quotes escaped: Quarto refuses "a\b")
+  const entete = `---\ntitle: ${JSON.stringify(st.titre || tDans(st.langue, 'document_sans_titre'))}\n${st.gabarit === 'article' ? 'author: ""\n' : ''}---\n\n`;
   if (st.gabarit === 'article') {
     return entete + [`# ${w.introduction}`, '', `# ${w.methodes}`, ...choisis.map((d) => `{{${d.nom}.methodes}}`),
       `# ${w.resultats}`, ...choisis.flatMap((d) => [phrase(d), `{{${d.nom}.resultats}}`, ...figures(d, false)]), `# ${w.discussion}`, '', `# ${w.references}`, ''].join('\n\n');

@@ -26,7 +26,12 @@ export function lireEntete(texte) {
   const m = /^---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(texte);
   if (!m) return { entete: {}, corps: texte, brut: '' };
   const entete = {};
-  const sansGuillemets = (v) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
+  // (a value between double quotes with its escapes, \" and \\, as YAML reads it)
+  const sansGuillemets = (v) => {
+    const x = v.trim();
+    if (/^".*"$/.test(x)) try { return JSON.parse(x); } catch { /* another YAML escape: as it is */ }
+    return x.replace(/^(["'])(.*)\1$/, '$2');
+  };
   let liste = null;
   for (const ligne of m[1].split(/\r?\n/)) {
     const item = /^\s+-\s+(.*)$/.exec(ligne);
@@ -553,6 +558,24 @@ export function zonesCode(texte) {
   return zones;
 }
 
+// The folder of a .qmd's figures, from the .qmd's name: Pandoc reads a figure's address as a URL,
+// where # starts a fragment and % an escape (a "rapport #2_figures" folder's images were missing
+// from the HTML); these, and ?, become -.
+export const nomFichierQuarto = (nom) => String(nom).replace(/[#%?]/g, '-') || 'document';
+
+// A file name in the header (bibliography:, csl:), which Pandoc reads as Markdown: "d'Alembert.bib"
+// was looked for as "d’Alembert.bib", -- became a dash, _x_ emphasis, @x a citation. Its ASCII signs
+// escaped, unless it has only letters, digits, spaces, single dots and hyphens, and brackets.
+export const sansMarkdown = (nom) => {
+  const s = String(nom);
+  return /^[\p{L}\p{N}][\p{L}\p{N} .()-]*$/u.test(s) && !/--|\.\.|^\d+\.\s/.test(s) ? s : s.replace(/[!-/:-@[-`{-~]/g, '\\$&');
+};
+
+// A title from the title field, for the header Nuée writes: Pandoc reads it as Markdown (@x a
+// citation, *x* emphasis, a backslash an escape or LaTeX), so those signs are escaped; its quotes
+// and dashes left to Pandoc's typography. As YAML.
+export const titreYaml = (titre) => JSON.stringify(String(titre).replace(/[\\`*_[\]<>@$^~#|]/g, '\\$&'));
+
 // Quarto labels: a figure's starts with fig-, a table's with tbl- (Quarto numbers them and
 // writes "Figure 2" for @fig-...).
 export const etiquetteQuarto = (genre, etiquette, numero) => {
@@ -674,16 +697,17 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
   if ((analyse.citations.length || sansCitation.length) && !analyse.biblio && !analyse.titreReferences) {
     sortie = `${sortie.replace(/\s+$/, '')}\n\n${'#'.repeat(analyse.niveauTitres)} ${libelles.references || 'Références'} {.unnumbered}\n`;
   }
-  let tete = brut || `---\ntitle: ${JSON.stringify(String(titre))}\n---\n\n`;
+  let tete = brut || `---\ntitle: ${titreYaml(titre)}\n---\n\n`;
   tete = fixerEntete(tete, 'lang', langue, true);
-  if (bibliographie) tete = fixerEntete(tete, 'bibliography', bibliographie);
+  // (file names Pandoc reads as Markdown: sansMarkdown)
+  if (bibliographie) tete = fixerEntete(tete, 'bibliography', sansMarkdown(bibliographie));
   if (sansCitation.length) {
     // (added to the header's own nocite when it is written on its line)
     const avant = lireEntete(`${tete.replace(/\n*$/, '')}\n`).entete.nocite;
     const garde = typeof avant === 'string' && avant && !/^[|>]/.test(avant) ? `${avant}, ` : '';
     if (avant === undefined || garde) tete = fixerEntete(tete, 'nocite', `${garde}${sansCitation.map((k) => `@${k}`).join(', ')}`);
   }
-  if (csl) tete = fixerEntete(tete, 'csl', csl);
+  if (csl) tete = fixerEntete(tete, 'csl', sansMarkdown(csl));
   // (citeproc for every format: Quarto's PDF through Typst would use Typst's own, in another
   // style, with a heading of its own and the LaTeX of the titles left as it is)
   if (bibliographie) tete = fixerEntete(tete, 'citeproc', 'true', true);
