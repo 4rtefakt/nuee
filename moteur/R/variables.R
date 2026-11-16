@@ -604,6 +604,8 @@ classes_valeurs <- function(projet, nom, variable, bornes = NULL, n = NULL) {
   if (is.null(bornes)) {
     n <- suppressWarnings(as.integer(unlist(n)))[1]
     if (!isTRUE(n >= 2)) stop(traduire("Donner les bornes des classes, ou leur nombre (2 ou plus)", "Give the classes' limits, or their number (2 or more)"), call. = FALSE)
+    # (sans aucune valeur, ses quantiles manquent : « il faut au moins une borne » n'en dirait pas la raison)
+    if (all(is.na(x))) stop(sprintf(traduire("« %s » n'a aucune valeur : pas de classes à en faire.", "“%s” has no value: there are no classes to make from it."), projet$noms_var[[nom_numero(variable)]]), call. = FALSE)
     q <- stats::quantile(x, seq(0, 1, length.out = n + 1), na.rm = TRUE, names = FALSE)
     bornes <- unique(q[-c(1, length(q))])
   }
