@@ -23,6 +23,16 @@ const ETIQUETTES_MAX = 100;
 // them back into SVG for a vector export: composition.js.)
 const POINTS_SVG_MAX = 5000;
 const typePoints = (n) => (n > POINTS_SVG_MAX ? 'scattergl' : 'scatter');
+// WebGL, when the computer gives it: a virtual machine or a remote desktop without a graphics card,
+// or one Chromium refuses, has none, and Plotly then writes "WebGL is not supported" where the
+// points go. Its plots are drawn in SVG instead (tracer), slower beyond some thousands of points.
+const WEBGL = (() => {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();  // (one context fewer held)
+    return !!gl;
+  } catch { return false; }
+})();
 // A table draws its rows by slices of about this many cells (tableau).
 const CELLULES_TRANCHE = 20000;
 
@@ -117,6 +127,7 @@ export function tracer(ctx, div, traces, layout = {}) {
   const echelle = (x, f) => (Array.isArray(x) ? x.map((v) => v * f) : typeof x === 'number' ? x * f : x);
   traces = traces.map((tr) => {
     const x = { ...tr };  // (no key added where the trace has none: Plotly rejects marker: undefined)
+    if (tr.type === 'scattergl' && !WEBGL) x.type = 'scatter';
     if (tr.marker && tr.marker.size !== undefined && F.points !== 1) x.marker = { ...tr.marker, size: echelle(tr.marker.size, F.points) };
     if (tr.textfont && tr.textfont.size) x.textfont = { ...tr.textfont, size: tr.textfont.size * F.taille / 12 };
     return x;

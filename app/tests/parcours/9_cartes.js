@@ -36,8 +36,11 @@ module.exports = {
     verifier('carte', proches(tri(xy.x), tri(await valeurs('X_L93'))) && proches(tri(xy.y), tri(await valeurs('Y_L93'))), `${xy.x.length} meadows placed`);
     const couleur = `__n.tous('label.champ').find((l) => __n.norm((l.querySelector('span') || {}).textContent) === __n.t('couleur')
       && l.closest('.panneau') === __n.graphe(${JSON.stringify(carte)}).closest('.panneau')).querySelector('select')`;
-    const couleurs = async (titre) => n.evaluer(`(() => { const g = __n.graphe(${JSON.stringify(titre)});
-      return { uid: g.data.flatMap((t) => Array.isArray(t.marker.color) ? [...t.customdata] : []), v: g.data.flatMap((t) => Array.isArray(t.marker.color) ? [...t.marker.color] : []) }; })()`);
+    // (the map is drawn at once under its new title, then again with the colours once their values
+    // have come from the engine: until then, no point has its own colour)
+    const couleurs = async (titre) => n.attendre(`(() => { const g = __n.graphe(${JSON.stringify(titre)}); if (!g) return null;
+      const r = { uid: g.data.flatMap((t) => Array.isArray(t.marker.color) ? [...t.customdata] : []), v: g.data.flatMap((t) => Array.isArray(t.marker.color) ? [...t.marker.color] : []) };
+      return r.v.length ? r : null; })()`);
     await n.choisirTexte(couleur, 'biomass');
     await n.plotlyPret(`${carte} · biomass`, 90);
     const biomasse = await couleurs(`${carte} · biomass`);

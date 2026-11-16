@@ -30,6 +30,9 @@ const zlib = require('zlib');
 const windows = process.platform === 'win32';
 const attente = (ms) => new Promise((r) => setTimeout(r, ms));  // (between two looks at a condition only)
 const ATTENTE = Number(process.env.NUEE_ATTENTE || 60000);    // the longest wait for one condition, in ms
+// a DevTools command the program doesn't answer within this time fails, naming it, instead of
+// holding the run until the CI machine gives up (a start on GitHub's arm64 Mac once waited 85 min)
+const REPONSE_MAX = Math.max(3 * ATTENTE, 180000);
 
 function portLibre() {
   return new Promise((ok, ko) => {
@@ -42,7 +45,11 @@ function portLibre() {
 // A Chrome DevTools Protocol session over a WebSocket: commands, and the events a test waits for.
 async function session(url) {
   const ws = new WebSocket(url);
-  await new Promise((ok, ko) => { ws.onopen = ok; ws.onerror = () => ko(new Error(`no DevTools connection: ${url}`)); });
+  await new Promise((ok, ko) => {
+    const delai = setTimeout(() => { ws.close(); ko(new Error(`no DevTools connection within ${REPONSE_MAX / 1000} s: ${url}`)); }, REPONSE_MAX);
+    ws.onopen = () => { clearTimeout(delai); ok(); };
+    ws.onerror = () => { clearTimeout(delai); ko(new Error(`no DevTools connection: ${url}`)); };
+  });
   let n = 0;
   const reponses = new Map();
   const ecouteurs = new Set();
@@ -56,8 +63,10 @@ async function session(url) {
     envoyer: (method, params = {}) => new Promise((ok, ko) => {
       if (ws.readyState !== 1) { ko(new Error(`${method}: connection closed`)); return; }
       n += 1;
-      reponses.set(n, (j) => (j.error ? ko(new Error(`${method}: ${j.error.message}`)) : ok(j.result)));
-      ws.send(JSON.stringify({ id: n, method, params }));
+      const id = n;
+      const delai = setTimeout(() => { reponses.delete(id); ko(new Error(`${method}: no answer within ${REPONSE_MAX / 1000} s`)); }, REPONSE_MAX);
+      reponses.set(id, (j) => { clearTimeout(delai); if (j.error) ko(new Error(`${method}: ${j.error.message}`)); else ok(j.result); });
+      ws.send(JSON.stringify({ id, method, params }));
     }),
     ecouter: (f) => { ecouteurs.add(f); return () => ecouteurs.delete(f); },
     fermer: () => ws.close(),
@@ -68,8 +77,14 @@ async function session(url) {
 // (installed once its inspector answers; main.js holds the same `dialog`, `shell` and `app`).
 const SUBSTITUTS = `(() => {
   // (the inspector's own require, until main.js is the main module)
-  const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const { dialog, shell, app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
+  // the windows deaf to the computer's own mouse (the run's clicks reach the page through DevTools,
+  // not the system): a pointer resting over a window, as over the menu bar on GitHub's Windows and
+  // macOS machines, moves the hover there whenever the system stirs it, and a menu the run opened
+  // gives way to the one under that pointer before the run's click on its item
+  for (const w of BrowserWindow.getAllWindows()) w.setIgnoreMouseEvents(true);
+  if (!E.sourdes) { E.sourdes = true; app.on('browser-window-created', (_, w) => w.setIgnoreMouseEvents(true)); }
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
     const o = sans(a, b) || {};
@@ -544,6 +559,9 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       for (const p of e.projets) await n.api('fermer_projet', { projet: p.id });
       // (their recovery copies too: the reload would offer them as an earlier stop's)
       await n.evaluer('window.bureau.secoursIndex([])');
+      // (and the main process's answers and records: a scenario stopped before its dialog would
+      // hand its file to the next scenario's)
+      await evaluerPrincipal('(Object.values(__essai).forEach((a) => { if (Array.isArray(a)) a.length = 0; }), true)');
       let fin;
       const charge = new Promise((ok, ko) => {
         const ecoute = page.ecouter((j) => { if (j.method === 'Page.loadEventFired') { ecoute(); ok(); } });
