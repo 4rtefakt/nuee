@@ -94,6 +94,19 @@ const doubleClic = (page, texte) => page.evaluate((x) => {
   if (!n) throw new Error(`not in the tree: ${x}`);
   n.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 }, texte);
+// Waiting for an async condition of the page: Playwright's waitForFunction takes the Promise of an
+// async function as a truthy value at once, page.evaluate awaits it
+async function attendre(page, f, arg, ms = 60000) {
+  const fin = Date.now() + ms;
+  for (;;) {
+    let v;
+    try { v = await page.evaluate(f, arg); } catch { v = false; }
+    if (v) return v;
+    if (Date.now() > fin) throw new Error(`attendu ${ms / 1000} s : ${String(f).slice(0, 120)}`);
+    await page.waitForTimeout(500);
+  }
+}
+const copiesAJour = (page) => attendre(page, () => import('./app.js').then((m) => m.app.copiesAJour()));
 // the requests answered so far, and waiting for one more of a name
 const demandes = (page) => page.evaluate(() => window.nueeDemandes.map((d) => ({ nom: d.nom, ms: Math.round(d.ms), ok: d.ok })));
 async function attendreDemande(page, nom, avant, ms = 120000) {
@@ -201,13 +214,15 @@ try {
   // ---- the recovery copies: written (the last one after the PLS-DA, 3 s later), then offered after a reload
   const onglet1 = await ongletDe(page);
   const depuis = await page.evaluate(() => new Date().toISOString());
-  await page.waitForFunction(async ([o, t]) => {
+  await page.waitForTimeout(1000);  // (the PLS-DA kept, its project's summary asked again: its copy to come)
+  await attendre(page, async ([o, t]) => {
     try {
+      const { app } = await import('./app.js');
       const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuee-secours');
       const e = JSON.parse(await (await (await d.getFileHandle(`index-${o}.json`)).getFile()).text());
-      return e.length === 1 && e[0].modifie && e[0].date > t;
+      return app.copiesAJour() && e.length === 1 && e[0].modifie && e[0].date > t;
     } catch { return false; }
-  }, [onglet1, depuis], { timeout: 60000, polling: 500 });
+  }, [onglet1, depuis]);
   const avantRechargement = await copies(page);
   verifier('copie de secours écrite (OPFS)', (avantRechargement[`index-${onglet1}.json`] || []).length === 1,
     `${await page.evaluate(() => import('./secours_navigateur.js').then((m) => m.typeStockage()))} : ${JSON.stringify(avantRechargement[`index-${onglet1}.json`])}`);
@@ -220,8 +235,8 @@ try {
   const proposes = await page.evaluate(() => [...document.querySelectorAll('.fond-dialogue li')].map((l) => l.textContent));
   await page.click('.fond-dialogue .pied-dialogue button.principal');
   await page.waitForFunction(() => window.nueeDemandes.some((d) => d.nom === 'ouvrir' && d.ok), null, { timeout: 300000 });
-  await page.waitForFunction(async (n) => { const { app } = await import('./app.js'); const pid = app.projetActif(); return pid && app.modelesDe(pid).length >= n; },
-    modelesAvant.length, { timeout: 300000, polling: 1000 }).catch(() => {});
+  await attendre(page, async (n) => { const { app } = await import('./app.js'); const pid = app.projetActif(); return pid && app.modelesDe(pid).length >= n; },
+    modelesAvant.length, 300000).catch(() => {});
   await page.waitForTimeout(3000);
   const repris = await page.evaluate(async () => {
     const { app } = await import('./app.js');
@@ -235,13 +250,13 @@ try {
 
   // ---- a second tab meanwhile: offered nothing (the first one is open)
   const onglet2 = await ongletDe(page);
-  await page.waitForFunction(async (o) => {
+  await attendre(page, async (o) => {
     try {
       const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuee-secours');
       return JSON.parse(await (await (await d.getFileHandle(`index-${o}.json`)).getFile()).text()).length === 1;
     } catch { return false; }
-  }, onglet2, { timeout: 60000, polling: 500 });
-  await page.waitForTimeout(4000);
+  }, onglet2);
+  await copiesAJour(page);
   const autre = await ouvrirPage();
   await autre.waitForTimeout(5000);
   const dialogueAutre = await autre.evaluate((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation);
@@ -255,6 +270,7 @@ try {
   // ---- the tab closed: the next one offers the project; set aside, the copies go
   verifier('sans violation de la politique de sécurité', (await page.evaluate(() => window.__violations)).length === 0, await page.evaluate(() => window.__violations));
   res.demandes = await demandes(page);
+  await copiesAJour(page);
   await page.close({ runBeforeUnload: true });
   page = await ouvrirPage();
   await page.waitForFunction((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, { timeout: 120000 });
@@ -267,7 +283,7 @@ try {
     && Object.keys(apresIgnorer).every((k) => k === `index-${onglet3}.json`), `${proposes2.join(' | ')} ; restent : ${Object.keys(apresIgnorer).join(', ') || 'aucune'}`);
   await page.close({ runBeforeUnload: true });
 
-  // ---- a browser whose OPFS can't write (Safari before 17.4...): the copies in IndexedDB
+  // ---- a browser whose OPFS can't write (no createWritable): the copies in IndexedDB
   const sansOpfs = await contexte.newPage();
   sansOpfs.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
   sansOpfs.on('dialog', (d) => d.accept());
@@ -293,8 +309,9 @@ try {
       } catch { ok(null); }
     };
   }));
-  await page.waitForFunction(() => import('./secours_navigateur.js').then((m) => m.typeStockage()).then((t) => t === 'IndexedDB'), null, { timeout: 30000 });
+  await attendre(page, () => import('./secours_navigateur.js').then((m) => m.typeStockage()).then((t) => t === 'IndexedDB'), null, 30000);
   for (let i = 0; i < 60; i += 1) { const e = await indexIdb(); if (e && e.length === 1 && e[0].date > depuis2) break; await page.waitForTimeout(500); }
+  await copiesAJour(page);
   const entreesIdb = await indexIdb();
   await page.reload();
   await page.waitForFunction((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, { timeout: 120000 });

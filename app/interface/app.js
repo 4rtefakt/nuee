@@ -1184,6 +1184,8 @@ async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
   copieEnCours = null;
   if (encoreUneCopie) { encoreUneCopie = false; sauvegarderSecoursNavigateur(); }
 }
+// (whether every change is in a copy: the checks, tests/essai_navigateur.mjs, wait for it)
+app.copiesAJour = () => !aCopier.size && !indexPerime && !copieEnCours;
 if (MOTEUR_WEBR && !VUE_SEULE) {
   // (a document's text or a figure: changed without a new summary of its project)
   window.addEventListener('nuee-demande', (e) => {

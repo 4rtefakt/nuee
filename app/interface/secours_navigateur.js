@@ -22,7 +22,7 @@ const nomCopie = (fichier) => fichier.split('/').pop();
 const PAGE = typeof window !== 'undefined' && window.NUEE_MOTEUR === 'webr' && !new URLSearchParams(window.location.search).get('vue');
 if (PAGE && navigator.locks) navigator.locks.request(verrou(ONGLET), () => new Promise(() => {})).catch(() => {});
 
-// ---- the storage: OPFS, else IndexedDB (a Safari or Firefox that lacks createWritable, a private window...)
+// ---- the storage: OPFS, else IndexedDB (a browser without OPFS or its createWritable)
 let stockage = null;
 async function opfs() {
   const racine = await navigator.storage.getDirectory();

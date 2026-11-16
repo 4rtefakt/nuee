@@ -130,10 +130,13 @@ fs.rmSync(profil, { recursive: true, force: true });
 const resultats = {};
 resultats.natif = await natif();
 console.log(`R natif (${resultats.natif.R}) : fait`);
-resultats.navigateur = await navigateur(adresse, profil, null);  // (a first visit: an empty profile)
-console.log(`Navigateur, ${resultats.navigateur.aides} autres R : fait (démarrage ${resultats.navigateur.demarrage_s.toFixed(1)} s)`);
-resultats.navigateur_un_R = await navigateur(adresse, profil, 0);  // (the next visit: the packages in the browser's cache)
-console.log(`Navigateur, un seul R : fait (démarrage ${resultats.navigateur_un_R.demarrage_s.toFixed(1)} s)`);
+// (the first visit, an empty profile, then the next one, the packages in the browser's cache;
+// --inverser: one R first)
+const ordre = options.inverser ? [['navigateur_un_R', 0], ['navigateur', null]] : [['navigateur', null], ['navigateur_un_R', 0]];
+for (const [cle, aides] of ordre) {
+  resultats[cle] = await navigateur(adresse, profil, aides);
+  console.log(`Navigateur, ${resultats[cle].aides} autres R : fait (démarrage ${resultats[cle].demarrage_s.toFixed(1)} s)`);
+}
 serveur.close();
 fs.writeFileSync(path.join(sortie, 'banc.json'), JSON.stringify(resultats, null, 1));
 
@@ -145,4 +148,5 @@ for (const cle of Object.keys(resultats.natif.temps)) {
   const u = resultats.navigateur_un_R.temps[cle].mediane;
   console.log(`${cle} | ${s(n)} | ${s(b)} | ${(b / n).toFixed(1)}× | ${s(u)} | ${(u / n).toFixed(1)}×`);
 }
-console.log(`R dans la page prêt : ${resultats.navigateur.demarrage_s.toFixed(1)} s à la première visite, ${resultats.navigateur_un_R.demarrage_s.toFixed(1)} s à la suivante ; ${sortie}`);
+const [premiere, suivante] = ordre.map(([cle]) => resultats[cle].demarrage_s.toFixed(1));
+console.log(`R dans la page prêt : ${premiere} s à la première visite, ${suivante} s à la suivante ; ${sortie}`);
