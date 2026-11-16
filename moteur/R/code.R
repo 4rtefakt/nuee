@@ -490,15 +490,68 @@ reponse_code <- function(fit) {
   if (inherits(f, "formula") && length(f) == 3 && is.name(f[[2]])) as.character(f[[2]])
 }
 
+# Les lignes de `donnees` que des noms désignent, quand ce sont leurs numéros (donnees_code numérote
+# ses `n` lignes de 1 à n), chacune une fois ; NULL sinon.
+lignes_noms_code <- function(noms, n) {
+  noms <- as.character(noms)
+  k <- suppressWarnings(as.integer(noms))
+  if (length(k) && !anyNA(k) && identical(as.character(k), noms) && all(k >= 1 & k <= n) && !anyDuplicated(k)) k
+}
+
+# Les lignes de `donnees` des valeurs ajustées `f` (fitted()) et des résidus `e` (residuals()) du
+# modèle, dans leur ordre (`lignes`) : leurs noms (lm, glm, gls… gardent ceux des lignes de leurs
+# données, même quand le code réordonne `donnees` ou que na.action en retire), sinon ceux des lignes
+# du cadre que le modèle garde (fit$model : un gam de mgcv) ; d'un greffon qui ne les nomme pas, leur
+# place (le contrat des greffons : dans l'ordre des données, sans les lignes que na.action() dit omises,
+# par leur place). NULL quand ce ne sont pas ces numéros (lme les nomme par ses groupes, nls ne les
+# nomme pas) : chaque valeur n'est pas rapportée à une observation, plutôt qu'à une autre. `autres` :
+# la réponse `y` du modèle (une colonne de `donnees`) n'a pas, à ces lignes, les valeurs de `donnees`
+# (fitted() + residuals(type = "response")) : le code l'a ajusté sur d'autres données (par site,
+# transformées), et ses lignes ne sont pas des observations.
+lignes_ajustement_code <- function(fit, f, e, donnees, y, greffon = FALSE) {
+  n <- nrow(donnees)
+  nombre <- length(nombres_ou_rien(f))
+  noms <- function(x) if (length(names(x)) == nombre) lignes_noms_code(names(x), n)
+  lignes <- if (nombre) noms(f) %||% noms(e)
+  cadre <- if (is.list(fit) && !isS4(fit)) fit[["model"]]
+  if (is.null(lignes) && is.data.frame(cadre) && nrow(cadre) == nombre) lignes <- lignes_noms_code(rownames(cadre), n)
+  if (is.null(lignes) && greffon && nombre && is.null(names(f))) {
+    omis <- essai_code(stats::na.action(fit))
+    omis <- if (length(omis)) suppressWarnings(as.integer(omis)) else integer(0)
+    gardees <- setdiff(seq_len(n), omis)
+    if (!anyNA(omis) && length(gardees) == nombre) lignes <- gardees
+  }
+  autres <- FALSE
+  if (!is.null(lignes) && !is.null(y) && is.numeric(donnees[[y]])) {
+    r <- nombres_ou_rien(essai_code(stats::residuals(fit, type = "response")))
+    if (length(r) == nombre) {
+      vu <- nombres_ou_rien(f) + r
+      ok <- !is.na(vu)
+      autres <- !isTRUE(all.equal(vu[ok], donnees[[y]][lignes][ok], tolerance = 1e-6, check.attributes = FALSE))
+    }
+  }
+  list(lignes = if (!autres) lignes, autres = autres)
+}
+
 # Les observations que l'ajustement a prises (des numéros), parmi `obs` (celles que le code a reçues,
-# `N` celles que nobs() compte) : toutes, ou celles que na.action() ne dit pas omises ; NULL quand on
-# ne le sait pas.
-observations_utilisees_code <- function(fit, obs, N) {
+# `N` celles que nobs() compte ; `lg` : lignes_ajustement_code des valeurs ajustées `ajustees`) : celles
+# des lignes de ses valeurs ajustées (non manquantes : na.exclude) quand elles sont N, toutes quand il
+# les a toutes prises, sinon toutes sauf celles que na.action() dit omises, par leurs noms (d'un greffon
+# qui ne les nomme pas, par leur place) ; NULL quand on ne le sait pas, ou que ses données ne sont pas
+# celles de `donnees`.
+observations_utilisees_code <- function(fit, obs, N, lg, ajustees, greffon = FALSE) {
   n <- length(obs)
+  if (isTRUE(lg$autres)) return(NULL)
+  prises <- if (!is.null(lg$lignes) && length(lg$lignes) == length(ajustees)) lg$lignes[!is.na(ajustees)]
+  if (length(prises) && length(prises) == N) return(obs[sort(prises)])
   if (identical(as.numeric(N), as.numeric(n))) return(obs)
-  omis <- essai_code(stats::na.action(fit))
-  omis <- suppressWarnings(as.integer(omis))
-  if (length(omis) && !anyNA(omis) && all(omis >= 1 & omis <= n) && n - length(unique(omis)) == N) return(obs[-unique(omis)])
+  na <- essai_code(stats::na.action(fit))
+  omis <- lignes_noms_code(names(na), n)
+  if (is.null(omis) && greffon && length(na) && is.null(names(na))) {
+    omis <- unique(suppressWarnings(as.integer(na)))
+    if (anyNA(omis) || any(omis < 1 | omis > n)) omis <- NULL
+  }
+  if (length(omis) && n - length(omis) == N) return(obs[-omis])
   NULL
 }
 
@@ -537,6 +590,10 @@ comparaison_code <- function(projet, m) {
   if (inherits(fit, c("lme", "gls")) && identical(fit$method, "REML")) {
     return(ecarte("Ajusté par REML : sa vraisemblance ne se compare pas à celle d'autres effets fixes (method = \"ML\" pour le comparer par l'AIC).",
                   "Fitted by REML: its likelihood doesn't compare with other fixed effects' (method = \"ML\" to compare it by AIC)."))
+  }
+  if (isTRUE(m$autres_donnees)) {
+    return(ecarte("Le code l'a ajusté sur d'autres données que `donnees` : sa réponse n'y a pas les valeurs des observations (des données agrégées, transformées).",
+                  "The code fitted it on other data than `donnees`: its response doesn't have the observations' values there (aggregated, transformed data)."))
   }
   if (!isTRUE(m$utilisees_connues)) return(ecarte("On ne sait pas quelles observations l'ajustement a prises.", "Which observations the fit used isn't known."))
   y <- m$reponse
@@ -587,16 +644,21 @@ modele_valeur_code <- function(projet, d, ev, donnees, type = "CODE") {
   obs <- as.numeric(unlist(d$observations))
   st <- statistiques_code(fit)
   N <- st$nobs %||% length(obs)
-  utilisees <- observations_utilisees_code(fit, obs, N)
-  ajustees <- nombres_ou_rien(essai_code(stats::fitted(fit)))
-  residus <- nombres_ou_rien(essai_code(stats::residuals(fit)))
+  f <- essai_code(stats::fitted(fit))
+  e <- essai_code(stats::residuals(fit))
+  ajustees <- nombres_ou_rien(f)
+  residus <- nombres_ou_rien(e)
   if (length(ajustees) != length(residus)) ajustees <- residus <- NULL
-  # (chaque valeur ajustée rapportée à son observation : une par observation prise, ou par ligne reçue)
-  uid_ajustees <- if (length(ajustees) && length(ajustees) == length(utilisees)) utilisees else if (length(ajustees) == length(obs)) obs
+  reponse <- reponse_code(fit)
+  # (chaque valeur ajustée rapportée à son observation par le numéro de sa ligne dans `donnees`, quand
+  # on le sait : lignes_ajustement_code)
+  lg <- lignes_ajustement_code(fit, f, e, donnees, reponse, identical(type, "PLUGIN"))
+  utilisees <- observations_utilisees_code(fit, obs, N, lg, ajustees, identical(type, "PLUGIN"))
+  uid_ajustees <- if (length(ajustees) && length(lg$lignes) == length(ajustees)) obs[lg$lignes]
   m <- list(type = type, N = N, n_donnees = length(obs), observations = utilisees %||% obs, recues = obs, utilisees_connues = !is.null(utilisees),
-            ajustement = fit, liste = liste,
+            autres_donnees = isTRUE(lg$autres), ajustement = fit, liste = liste,
             autres = if (liste) setdiff(names(v), c("modele", "valeurs", "tableaux")) else character(0),
-            classe = if (!is.null(fit)) class(fit) else character(0), reponse = reponse_code(fit),
+            classe = if (!is.null(fit)) class(fit) else character(0), reponse = reponse,
             resume = resume_code(fit), coefficients = coefficients_code(fit), statistiques = st,
             ajustees = ajustees, residus = residus, uid_ajustees = uid_ajustees, prediction = prediction_code(fit, donnees),
             valeurs = valeurs, tableaux = tableaux, sortie = ev$sortie, messages = ev$messages, avertissements = ev$avertissements,

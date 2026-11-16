@@ -288,8 +288,10 @@ function rendreDiagnosticsCode(conteneur, ctx, p, loc) {
   const g1 = el('div', { class: 'graphe' });
   const g2 = el('div', { class: 'graphe' });
   const graphes = loc.mode === 'deux' ? [g1, g2] : [loc.mode === 'qq' ? g2 : g1];
+  // (without the observations' uids, said: code.R, lignes_ajustement_code)
+  const note = uid.length ? t('code_residus_note') : `${t('code_residus_note')} ${t('code_residus_sans_lien')}`;
   conteneur.replaceChildren(outils(choix('', [['deux', t('code_deux_graphes')], ['ajustes', t('residus_ajustes')], ['qq', t('residus_qq')]], loc.mode,
-    (v) => { loc.mode = v; ctx.rafraichir(); }), el('span', { class: 'infos' }, t('code_residus_note'))), el('div', { class: 'deux-graphes' }, graphes));
+    (v) => { loc.mode = v; ctx.rafraichir(); }), el('span', { class: 'infos' }, note)), el('div', { class: 'deux-graphes' }, graphes));
   const c = couleursTheme(ctx);
   const sel = new Set(ctx.selection(m.id));
   const couleurs = uid.length ? uid.map((u) => (sel.has(u) ? '#e4572e' : PALETTE[0])) : PALETTE[0];
@@ -496,6 +498,7 @@ ajouterTextes({
   code_estimation: 'Estimation', code_erreur_type: 'Erreur-type', code_statistique: 'Statistique', code_ic_bas: 'IC 95 % bas', code_ic_haut: 'IC 95 % haut',
   code_diagnostics: 'Résidus', code_deux_graphes: 'Les deux', code_residus: 'Résidus', code_residus_note: 'residuals() contre fitted() du modèle, et leur droite de Henry.',
   code_sans_residus: 'Ce modèle ne donne pas de valeurs ajustées et de résidus (fitted(), residuals()).',
+  code_residus_sans_lien: 'Nuée ne sait pas à quelle observation revient chaque point (ni sélection ni exclusion) : les noms de fitted() ne sont pas les numéros des lignes de donnees, ou le code a ajusté le modèle sur d’autres données.',
   code_graphiques: 'Graphiques du code', code_graphique: 'Graphique {n}', code_sans_graphique: 'Le code n’a dessiné aucun graphique.',
   code_tableaux: 'Valeurs et tableaux', code_valeurs: 'Valeurs', code_valeur: 'Valeur',
   code_valeurs_note: 'Un document les cite : {{{modele}.valeurs.{nom}}}.', code_tableau_tronque: 'Les {n} premières lignes sur {total} (l’export les a toutes).',
@@ -533,6 +536,7 @@ ajouterTextes({
   code_estimation: 'Estimate', code_erreur_type: 'Standard error', code_statistique: 'Statistic', code_ic_bas: '95% CI low', code_ic_haut: '95% CI high',
   code_diagnostics: 'Residuals', code_deux_graphes: 'Both', code_residus: 'Residuals', code_residus_note: 'The model’s residuals() against fitted(), and their normal QQ plot.',
   code_sans_residus: 'This model gives no fitted values and residuals (fitted(), residuals()).',
+  code_residus_sans_lien: 'Nuée doesn’t know which observation each point belongs to (no selection, no exclusion): the names of fitted() aren’t the row numbers of donnees, or the code fitted the model on other data.',
   code_graphiques: 'Plots of the code', code_graphique: 'Plot {n}', code_sans_graphique: 'The code drew no plot.',
   code_tableaux: 'Values and tables', code_valeurs: 'Values', code_valeur: 'Value',
   code_valeurs_note: 'A document cites them: {{{modele}.valeurs.{nom}}}.', code_tableau_tronque: 'The first {n} rows of {total} (the export has them all).',

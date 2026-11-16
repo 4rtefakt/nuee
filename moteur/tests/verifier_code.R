@@ -16,6 +16,8 @@
 #   - le texte des méthodes, avec R, les paquets, leur version et leur citation ;
 #   - la comparaison par l'AIC : le même ensemble que la régression linéaire de Nuée de la même réponse
 #     sur les mêmes observations ; écarté, avec sa raison, ajusté par REML ;
+#   - les valeurs ajustées et les résidus rapportés à leurs observations par leurs noms : un code qui
+#     réordonne donnees, lme (rapportés à aucune), un modèle ajusté sur des moyennes par site ;
 #   - les prédictions, sur l'échelle de la réponse (un glm de Poisson : des comptages) ; les tableaux exportés ;
 #   - l'export vers R : le script écrit, lancé seul par Rscript, redonne les mêmes nombres.
 #   Rscript moteur/tests/verifier_code.R
@@ -326,6 +328,29 @@ verifier("ses résultats clés : N, K, logLik, AIC, BIC, chaque coefficient (coe
 r_lm_nuee <- demande("ajuster", list(projet = pid, type = "LM", x = as.numeric(numeros(p(), c("x", "g"))), y = as.numeric(numeros(p(), "y")), echelle = "none", nom = "LM1"))
 verifier("comparé par l'AIC à la régression linéaire de Nuée de la même réponse sur les mêmes observations : le même ensemble, le même AIC",
          identical(m_lm$comparaison$signature, r_lm_nuee$signature) && proche(m_lm$comparaison$AIC, r_lm_nuee$qualite$AIC, 1e-8))
+
+# les valeurs ajustées, les résidus et les observations prises, rapportés aux observations par les noms
+# de fitted(), residuals() et na.action() (les numéros des lignes de donnees), pas par leur place : un
+# code qui réordonne donnees ; lme, qui les nomme par ses groupes, et un modèle ajusté sur d'autres
+# données (par site) : rapportés à aucune observation, plutôt qu'à une autre
+code_ordre <- "donnees <- donnees[order(donnees$x), ]\nlm(y ~ x + g, data = donnees)"
+approuver(code_ordre)
+m_ordre <- ajuste_code(code_ordre, "O1")
+par_obs <- function(r) stats::setNames(as.numeric(r$ajustees$residu), as.character(r$ajustees$uid))
+lignes_dd <- as.integer(names(residuals(attendu)))
+verifier("donnees réordonné par le code : le résidu de chaque observation est le sien (celui de lm() sur les données du projet) ; les observations prises sans o07 et o44 ; comparé par l'AIC à la régression de Nuée, le même ensemble",
+         length(m_ordre$ajustees$uid) == 58 && proche(par_obs(m_ordre)[as.character(numeros_observations(p())[lignes_dd])], residuals(attendu), 1e-8) &&
+           setequal(e_de(m_ordre)$modele$observations, numeros_observations(p())[-c(7, 44)]) && identical(m_ordre$comparaison$signature, r_lm_nuee$signature))
+code_lme_ordre <- "donnees <- donnees[order(donnees$x), ]\nnlme::lme(y ~ x + g, random = ~ 1 | site, data = donnees, method = \"ML\", na.action = na.omit)"
+approuver(code_lme_ordre)
+m_lme_ordre <- ajuste_code(code_lme_ordre, "O2")
+code_agg <- "par_site <- aggregate(y ~ site, donnees, mean)\nlm(y ~ 1, data = par_site)"
+approuver(code_agg)
+m_agg <- ajuste_code(code_agg, "O3")
+verifier("lme (ses valeurs nommées par ses groupes) sur donnees réordonné : ses résidus rapportés à aucune observation ; les observations prises par les noms de na.action(), sans o07 et o44",
+         length(m_lme_ordre$ajustees$residu) == 58 && !length(m_lme_ordre$ajustees$uid) && setequal(e_de(m_lme_ordre)$modele$observations, numeros_observations(p())[-c(7, 44)]))
+verifier("un modèle ajusté par le code sur des moyennes par site : ses 6 résidus rapportés à aucune observation, hors de la comparaison par l'AIC (d'autres données)",
+         length(m_agg$ajustees$residu) == 6 && !length(m_agg$ajustees$uid) && is.null(m_agg$comparaison$signature) && grepl("autres données", m_agg$comparaison$raison))
 
 # ---------------------------------------------------------------- l'export vers R
 
