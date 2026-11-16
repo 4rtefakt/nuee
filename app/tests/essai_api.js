@@ -2344,9 +2344,10 @@ async function principal() {
       try { await api('fusionner_finir', { fusion: t.fusion, choix: {} }); } catch (e) { refusF = e.message; }
       verifier(/Rapport/.test(refusF), `sans choix : « ${refusF} »`);
       const g = path.join(dossier, 'fusion.nuee');
-      const w = await api('fusionner_finir', { fusion: t.fusion, choix: { 'document:D1': 'leur' }, chemin: g });
+      const w = await api('fusionner_finir', { fusion: t.fusion, choix: { 'document:D1': 'leur' }, chemin: g, auteur: 'Alice' });
       const o = await api('ouvrir', { chemin: w.chemin });
       verifier(w.chemin === g && (await api('document', { projet: o.id, id: 'D1' })).texte === 'Un, d’Alice\n\nDeux, de Bob\n\nTrois, de Bob', 'le leur, écrit et rouvert');
+      verifier(JSON.parse(fs.readFileSync(g, 'utf8')).nuee.auteur === 'Alice', `qui a fusionné, dans le fichier : ${JSON.stringify(JSON.parse(fs.readFileSync(g, 'utf8')).nuee)}`);
       for (const x of [alice, bob, o]) await api('fermer_projet', { projet: x.id });
     });
     await etape('retirer un modèle et sa définition', async () => {

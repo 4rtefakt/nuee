@@ -209,8 +209,9 @@ verifier("la figure F1 : mon titre, leur contenu, leur panneau de M3 devenu celu
            identical(pn[[3]]$loc$couleur, "m@4|t1") && pn[[1]]$numero == 1 && identical(jsonlite::fromJSON(f1$contenu)$largeur, 174L))
 f2 <- figure(p, "F2")
 verifier("leur nouvelle figure F2, son panneau sur M4", !is.null(f2) && identical(f2$titre, "Leur figure") && panneaux(f2)[[1]]$numero == 4)
-verifier("ce que chaque côté a apporté, en phrases",
-         any(grepl("M3", r$apports$mien)) && any(grepl("remplacement de -9999", r$apports$mien)) && any(grepl("renommé M4", r$apports$leur)) &&
+verifier("ce que chaque côté a apporté, en phrases, chaque étape dite comme la vue des étapes la dit",
+         any(grepl("M3", r$apports$mien)) && "1 étape(s) : remplacement de « -9999 » par vide dans comptage" %in% r$apports$mien &&
+           "1 étape(s) : catégories de habitat" %in% r$apports$leur && any(grepl("renommé M4", r$apports$leur)) &&
            any(grepl("Rapport", r$apports$leur)) && any(grepl("figure", r$apports$leur)))
 verifier("le projet fusionné s'enregistre, se rouvre et chacun de ses modèles se réajuste", reajuste(p, "fusion_a"))
 
@@ -297,6 +298,9 @@ x1 <- function(p) unname(valeurs(p, "x1")["S1-2018"])
 verifier("la cellule : la mienne (9) par une étape de plus, la leur (7) ; leur cellule sans conflit (x2 = 1,5) des deux fois",
          x1(pm) == 9 && x1(pl) == 7 && unname(valeurs(pm, "x2")["S2-2018"]) == 1.5 && unname(valeurs(pl, "x2")["S2-2018"]) == 1.5 &&
            any(grepl("fusion : valeurs de x1 de mon côté", etiquettes(pm), fixed = TRUE)) && !any(grepl("fusion", etiquettes(pl))))
+verifier("les étapes de la fusion, dans la vue des étapes : « fusion avec Bob : … »",
+         all(c("fusion avec Bob : cellules collées dans x1", "fusion avec Bob : unités et descriptions de x1", "fusion avec Bob : coordonnées X et Y") %in%
+               vapply(pm$etapes, etiquette_etape, "")))
 verifier("l'unité : « mm » ou « cm » ; les coordonnées : X, Y ou Y, X ; les données restent celles que leurs étapes donnent",
          identical(variable_du_projet(pm, uid_p(pm, "x1"))$unite, "mm") && identical(variable_du_projet(pl, uid_p(pl, "x1"))$unite, "cm") &&
            pm$coordonnees$x == uid_p(pm, "X") && pl$coordonnees$x == uid_p(pl, "Y") && isTRUE(donnees_conformes(pm)) && isTRUE(donnees_conformes(pl)))
@@ -305,6 +309,27 @@ verifier("rejouées depuis la source, les étapes du mien redonnent ses données
          x1(rejoue) == 9 && identical(variable_du_projet(rejoue, uid_p(rejoue, "x1"))$unite, "mm") && identical(valeurs(rejoue, "x2"), valeurs(pm, "x2")))
 verifier("sans choix, le mien", x1(fusion(base, mien_c, leur_c)$projet) == 9)
 verifier("les deux projets fusionnés se réajustent", reajuste(pm, "fusion_c_mien") && reajuste(pl, "fusion_c_leur"))
+
+cat("Les paragraphes d'un passage en conflit, comptés comme l'éditeur les montre (une ligne chacun), dans mon texte\n")
+doc_base <- cote("doc_base.nuee", function(id) demande("document_enregistrer", list(projet = id, id = "D1", texte = "Titre\nUn\nDeux")))
+ecrit <- function(nom, texte) cote(nom, depuis = doc_base, function(id) demande("document_enregistrer", list(projet = id, id = "D1", texte = texte)))
+passage <- function(r) conflit(r, "document:D1")$details$passages[[1]]
+r <- fusion(doc_base, ecrit("doc_mien1.nuee", "Titre\nUn, le mien\nDeux"), ecrit("doc_leur1.nuee", "Titre\nUn, le leur\nDeux"))
+verifier("un conflit sur la ligne 2 : « paragraphe 2 réécrit », et le passage à la ligne 2",
+         identical(conflit(r, "document:D1")$mien, "paragraphe 2 réécrit") && identical(conflit(r, "document:D1")$leur, "paragraphe 2 réécrit") && passage(r)$ligne == 2)
+r <- fusion(doc_base, ecrit("doc_mien2.nuee", "Nouveau\nTitre\nUn, le mien\nDeux"), ecrit("doc_leur2.nuee", "Titre\nUn, le leur\nDeux"))
+verifier("mon paragraphe ajouté en tête : le passage, le paragraphe 3 de mon texte, des deux côtés",
+         identical(conflit(r, "document:D1")$mien, "paragraphe 3 réécrit") && identical(conflit(r, "document:D1")$leur, "paragraphe 3 réécrit") && passage(r)$ligne == 3)
+verifier("… mon paragraphe ajouté, sans conflit, gardé avec l'un comme avec l'autre choix",
+         identical(document(r$projet, "D1")$texte, "Nouveau\nTitre\nUn, le mien\nDeux") &&
+           identical(document(fusion(doc_base, fichier("doc_mien2.nuee"), fichier("doc_leur2.nuee"), list(`document:D1` = "leur"))$projet, "D1")$texte, "Nouveau\nTitre\nUn, le leur\nDeux"))
+r <- fusion(doc_base, ecrit("doc_mien3.nuee", "Titre\nUn\nDeux\nMa fin"), ecrit("doc_leur3.nuee", "Titre\nUn\nDeux\nLeur fin"))
+verifier("du texte ajouté au même endroit des deux côtés : « texte ajouté après le paragraphe 3 », à la ligne 4",
+         identical(conflit(r, "document:D1")$mien, "texte ajouté après le paragraphe 3") && passage(r)$ligne == 4)
+r <- fusion(doc_base, ecrit("doc_mien4.nuee", "Titre"), ecrit("doc_leur4.nuee", "Titre\nUn, le leur\nDeux, le leur"))
+verifier("des paragraphes que j'ai retirés et qu'ils ont réécrits : « texte retiré après le paragraphe 1 », « texte réécrit … »",
+         identical(conflit(r, "document:D1")$mien, "texte retiré après le paragraphe 1") && identical(conflit(r, "document:D1")$leur, "texte réécrit après le paragraphe 1") &&
+           passage(r)$ligne == 2)
 
 cat("La source des données : les deux côtés mis à jour d'un autre fichier\n")
 avec_lignes <- function(nom, quels, graine) {
@@ -409,8 +434,13 @@ pm <- lire_projet(mien_f)
 pl <- lire_projet(leur_f)
 r <- fusion(base10, mien_f, leur_f)
 p <- r$projet
-verifier("par les cellules (la base n'a pas d'étapes) ; deux conflits : la source et la cellule de x1",
-         identical(r$donnees$mode, "cellules") && setequal(ids_conflits(r), c("source", "variable:x1")) && conflit(r, "variable:x1")$details$n == 1)
+verifier("par les cellules (la base n'a pas d'étapes), sans raison à dire ; deux conflits : la source et la cellule de x1",
+         identical(r$donnees$mode, "cellules") && identical(r$donnees$raison, "") && setequal(ids_conflits(r), c("source", "variable:x1")) &&
+           conflit(r, "variable:x1")$details$n == 1)
+r0 <- fusion(base10, cote("mien_f0.nuee", depuis = base10, function(id) demande("ajuster", list(projet = id, type = "PCA", x = uid(id, c("x1", "y")), A = 1, nom = "Seul"))),
+             cote("leur_f0.nuee", depuis = base10, function(id) paragraphe(id, 7, "Conclusion de Bob.")))
+verifier("sans fichier source, ni l'un ni l'autre côté ne touchant aux données : « inchangees », rien à en dire",
+         identical(r0$donnees$mode, "inchangees") && identical(r0$donnees$raison, "") && !length(r0$conflits))
 noms <- names(valeurs(p, "x1"))
 verifier("mes lignes de S5 et leur ligne de S6 ; S5-2018, ajoutée des deux côtés avec les mêmes valeurs, une fois",
          all(c("S5-2018", "S5-2019", "S6-2018") %in% noms) && length(noms) == 35 && !anyDuplicated(noms))
@@ -600,9 +630,11 @@ ft <- demande("fusionner", list(base = base, mien = mien_c, leur = leur_c, dossi
 verifier("trois fichiers : les mêmes conflits que fusionner_projets", setequal(vapply(ft$conflits, function(x) x$id, ""), ids_conflits(fc)) && isFALSE(ft$auto))
 verifier("un conflit sans choix : refusé, en le nommant", grepl("Modèle M1", refus("fusionner_finir", list(fusion = ft$fusion, choix = list(`document:D1` = "leur")))))
 sortie <- file.path(dossier, "fusion_trois.nuee")
-ff <- demande("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur"), chemin = sortie))
+ff <- demande("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur"), chemin = sortie, auteur = list(nom = "Alice", email = "alice@exemple.invalid")))
 q <- lire_projet(sortie)
 verifier("le projet fusionné écrit dans le fichier demandé, les choix faits", identical(ff$chemin, sortie) && definition(q, "M1")$A == 3 && x1(q) == 7)
+verifier("… et nommant qui l'a fusionné (son nom, pas son courriel), comme Enregistrer",
+         identical(entete_projet(sortie)$auteur, "Alice") && !grepl("exemple.invalid", paste(readLines(sortie, warn = FALSE), collapse = ""), fixed = TRUE))
 verifier("une fusion finie ne se finit pas deux fois", grepl("inconnue", refus("fusionner_finir", list(fusion = ft$fusion, choix = choix("leur")))))
 v <- demande("ouvrir", list(chemin = partage, nom = "partage — version", lecture_seule = list(source = partage, oid = "a1", date = "2026-11-16")))
 verifier("une ancienne version ne se fusionne pas, et n'a pas de copie gardée",
@@ -648,9 +680,12 @@ verifier("conflicts and contributions in English",
            identical(conflit(r, "variable:x1")$titre, "Variable “x1”") && identical(conflit(r, "champ:coordonnees")$titre, "Coordinates") &&
            any(grepl("cell(s) changed", r$apports$mien, fixed = TRUE)))
 pm <- fusion(base, mien_c, leur_c, choix("mien"))$projet
-verifier("the step a choice adds, named in English", any(grepl("merge: values of x1 from my side", etiquettes(pm), fixed = TRUE)))
+verifier("the step a choice adds, named in English", any(grepl("merge: values of x1 from my side", etiquettes(pm), fixed = TRUE)) &&
+           "merge with Bob: cells pasted into x1" %in% vapply(pm$etapes, etiquette_etape, ""))
 r <- fusion(base, mien_a, leur_a)
 verifier("their renamed model, said in English", any(grepl("their M3 renamed M4 (an M3 was made on both sides)", r$apports$leur, fixed = TRUE)))
+verifier("steps done in French, said in English", "1 step(s): replacement of “-9999” with empty in comptage" %in% r$apports$mien &&
+           "1 step(s): categories of habitat" %in% r$apports$leur)
 options(nuee.langue = "fr")
 
 unlink(dossier, recursive = TRUE)

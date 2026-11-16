@@ -616,17 +616,17 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
 # changée autrement des deux côtés reste un conflit : le choix qui n'est pas ce que les étapes rejouées
 # donnent devient une étape de plus, un collage des cellules, et les données restent celles que leurs
 # étapes donnent. NULL quand ce n'est pas possible (une source absente de cet ordinateur, une étape de
-# l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi : la fusion se fait
-# alors cellule par cellule.
+# l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi quand c'est utile
+# à savoir : la fusion se fait alors cellule par cellule.
 fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   rien <- function(raison) {
     ctx$raison <- raison
     NULL
   }
   cotes <- list(B, M, L)
-  if (!all(vapply(cotes, function(p) is.list(p$source_donnees) && !is.null(p$etapes), TRUE))) {
-    return(rien(traduire("un côté n'a pas de source de données ou d'étapes", "a side has no data source or steps")))
-  }
+  # (un projet sans fichier source, ou d'avant la 1.1, se fusionne toujours cellule par cellule : rien à
+  # en dire, au contraire d'une source introuvable ou de données changées hors des étapes)
+  if (!all(vapply(cotes, function(p) is.list(p$source_donnees) && !is.null(p$etapes), TRUE))) return(rien(""))
   if (!all(vapply(cotes, function(p) isTRUE(donnees_conformes(p)), TRUE))) {
     return(rien(traduire("des données ont changé hors des étapes", "data changed outside the steps")))
   }
@@ -696,8 +696,10 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     voulu <- texte_valeurs(if (choix == "mien") vm else vl)[i]
     a_faire <- which(!egales_fusion(voulu, texte_valeurs(valeurs_fusion(tD, k, oc[i]))) & oc[i] %in% tD$cles_o)
     if (!length(a_faire)) next
+    # (`fusion_avec` : l'étape dit, dans la langue de qui la lit, qu'elle vient de cette fusion : etapes.R,
+    # etiquette_etape ; rejouée, elle colle les cellules comme une autre)
     q <- list(observations = unname(tD$uid_o[oc[i][a_faire]]), variables = tD$uid_v[[k]],
-              valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1))
+              valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1), fusion_avec = ctx$qui)
     D <- noter_etape(D, sans_attributs(appliquer_etape("coller_cellules", D, q)), "coller_cellules", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("valeurs de %s", "values of %s", nom_cle_fusion(k))))
     tD <- tableau_fusion(D)
@@ -711,7 +713,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     choix <- conflit_champ_variable(ctx, k, f, vm, vl)
     voulu <- premier_texte((if (choix == "mien") vm else vl)[[f]])
     if (identical(voulu, premier_texte(tD$vars[[k]][[f]]))) next
-    q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))))
+    q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))), fusion_avec = ctx$qui)
     D <- noter_etape(D, appliquer_etape("decrire_variables", D, q), "decrire_variables", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), nom_cle_fusion(k))))
     tD <- tableau_fusion(D)
@@ -723,7 +725,8 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     choix <- conflit_coordonnees(ctx, cm, cl)
     voulu <- if (choix == "mien") cm else cl
     if (!identical(json_fusion(voulu), json_fusion(coordonnees_canon(tD))) && (is.null(voulu) || all(c(voulu$x, voulu$y) %in% tD$cles_v))) {
-      q <- if (is.null(voulu)) list(x = NULL, y = NULL) else list(x = tD$uid_v[[voulu$x]], y = tD$uid_v[[voulu$y]], systeme = premier_texte(voulu$systeme))
+      q <- c(if (is.null(voulu)) list(x = NULL, y = NULL) else list(x = tD$uid_v[[voulu$x]], y = tD$uid_v[[voulu$y]], systeme = premier_texte(voulu$systeme)),
+             list(fusion_avec = ctx$qui))
       D <- noter_etape(D, appliquer_etape("coordonnees", D, q), "coordonnees", q, etiquette_fusion(ctx, choix, traduire("coordonnées", "coordinates")))
     }
   }
@@ -1342,7 +1345,8 @@ lignes_communes <- function(a, b) {
 # Trois versions d'un texte (des vecteurs de lignes) fusionnées ligne à ligne (diff3) : chaque passage
 # changé d'un seul côté prend ce côté, changé de la même façon des deux côtés aussi ; changé autrement
 # des deux côtés, c'est un passage en conflit, qui prend le côté `cote`. Rend list(lignes, passages : les
-# passages en conflit, list(debut : le numéro de sa première ligne dans la base, base, mien, leur)).
+# passages en conflit, list(debut, debut_mien : le numéro de sa première ligne dans la base et dans mon
+# texte, base, mien, leur)).
 fusion_lignes <- function(base, mien, leur, cote = "mien") {
   am <- lignes_communes(base, mien)
   al <- lignes_communes(base, leur)
@@ -1381,7 +1385,7 @@ fusion_lignes <- function(base, mien, leur, cote = "mien") {
     if (identical(cm, cb)) sortie <- c(sortie, cl)
     else if (identical(cl, cb) || identical(cm, cl)) sortie <- c(sortie, cm)
     else {
-      passages[[length(passages) + 1L]] <- list(debut = ib + 1L, base = cb, mien = cm, leur = cl)
+      passages[[length(passages) + 1L]] <- list(debut = ib + 1L, debut_mien = im + 1L, base = cb, mien = cm, leur = cl)
       sortie <- c(sortie, if (cote == "leur") cl else cm)
     }
     ib <- jb - 1L
@@ -1392,28 +1396,44 @@ fusion_lignes <- function(base, mien, leur, cote = "mien") {
   list(lignes = sortie, passages = passages)
 }
 
-# Ce qu'un côté a fait des passages en conflit d'un texte, en peu de mots : « paragraphe 3 réécrit »,
-# « paragraphes 2 et 3 retirés », « texte ajouté après le paragraphe 4 » (les paragraphes de la base,
-# séparés par des lignes vides).
-resume_passages <- function(base, passages, cote) {
+# Les paragraphes d'un texte de document tels que son éditeur les montre : chacune de ses lignes qui
+# n'est pas vide (il ne numérote pas les lignes, et passe de lui-même à la ligne dans une ligne longue :
+# une ligne est un paragraphe à l'écran). Le numéro du paragraphe de chaque ligne, 0 pour une ligne vide.
+paragraphes_texte <- function(lignes) {
+  pleines <- nzchar(trimws(lignes))
+  ifelse(pleines, cumsum(pleines), 0L)
+}
+
+# Où est un passage en conflit (fusion_lignes) dans mon texte, celui que j'ai sous les yeux, et non dans
+# la base que personne ne voit plus : les numéros de ses paragraphes (paragraphes_texte), celui du
+# paragraphe d'avant, et `ligne`, son premier (là où il serait, quand je l'ai retiré), que le conflit
+# donne avec le passage.
+place_passage <- function(mien, p) {
+  par <- paragraphes_texte(mien)
+  numeros <- par[p$debut_mien + seq_along(p$mien) - 1L]
+  numeros <- numeros[numeros > 0]
+  avant <- max(c(0L, par[seq_len(p$debut_mien - 1L)]))
+  list(numeros = numeros, avant = avant, ligne = if (length(numeros)) numeros[1] else avant + 1L)
+}
+
+# Ce qu'un côté a fait des passages en conflit d'un texte, en peu de mots, à leur place dans mon texte
+# (`mien`, ses lignes : place_passage) : « paragraphe 3 réécrit », « paragraphes 2 à 4 retirés »,
+# « texte ajouté après le paragraphe 4 ».
+resume_passages <- function(mien, passages, cote) {
   fr <- !identical(getOption("nuee.langue"), "en")
-  pleines <- nzchar(trimws(base))
-  paragraphe <- cumsum(pleines & !c(FALSE, utils::head(pleines, -1)))
+  quels <- function(n) if (length(n) > 2 && all(diff(n) == 1)) phrase_fusion("%d à %d", "%d to %d", n[1], n[length(n)]) else liste_mots(n, fr)
+  plein <- function(x) any(nzchar(trimws(x)))
   morceaux <- vapply(passages, function(p) {
-    lignes <- p$debut + seq_along(p$base) - 1L
-    numeros <- unique(paragraphe[lignes])
-    numeros <- numeros[numeros > 0]
-    if (!length(p$base) || !length(numeros)) {
-      avant <- if (p$debut > 1L) paragraphe[p$debut - 1L] else 0L
-      return(if (avant > 0) phrase_fusion("texte ajouté après le paragraphe %d", "text added after paragraph %d", avant)
-             else traduire("texte ajouté au début", "text added at the start"))
+    pl <- place_passage(mien, p)
+    n <- pl$numeros
+    ou <- if (pl$avant > 0) phrase_fusion("après le paragraphe %d", "after paragraph %d", pl$avant) else traduire("au début", "at the start")
+    if (!plein(p$base)) return(phrase_fusion("texte ajouté %s", "text added %s", ou))
+    if (!plein(p[[cote]])) {
+      if (!length(n)) return(phrase_fusion("texte retiré %s", "text removed %s", ou))
+      return(if (length(n) > 1) phrase_fusion("paragraphes %s retirés", "paragraphs %s removed", quels(n)) else phrase_fusion("paragraphe %d retiré", "paragraph %d removed", n))
     }
-    plusieurs <- length(numeros) > 1
-    quels <- liste_mots(numeros, fr)
-    if (!any(nzchar(trimws(p[[cote]])))) {
-      return(if (plusieurs) phrase_fusion("paragraphes %s retirés", "paragraphs %s removed", quels) else phrase_fusion("paragraphe %s retiré", "paragraph %s removed", quels))
-    }
-    if (plusieurs) phrase_fusion("paragraphes %s réécrits", "paragraphs %s rewritten", quels) else phrase_fusion("paragraphe %s réécrit", "paragraph %s rewritten", quels)
+    if (!length(n)) return(phrase_fusion("texte réécrit %s", "text rewritten %s", ou))
+    if (length(n) > 1) phrase_fusion("paragraphes %s réécrits", "paragraphs %s rewritten", quels(n)) else phrase_fusion("paragraphe %d réécrit", "paragraph %d rewritten", n)
   }, "")
   paste(unique(morceaux), collapse = traduire(" ; ", "; "))
 }
@@ -1556,9 +1576,10 @@ fusion_documents <- function(B, M, L, noms_leur, ctx) {
     ll <- lignes_texte(l$texte)
     t <- fusion_lignes(lb, lm, ll)
     if (length(conflits) || length(t$passages)) {
-      resume <- function(cote) paste(c(if (length(t$passages)) resume_passages(lb, t$passages, cote),
+      resume <- function(cote) paste(c(if (length(t$passages)) resume_passages(lm, t$passages, cote),
                                        vapply(conflits, function(f) phrase_fusion("%s changé", "%s changed", f), "")), collapse = traduire(" ; ", "; "))
-      passage <- function(p) list(ligne = p$debut, base = paste(p$base, collapse = "\n"), mien = paste(p$mien, collapse = "\n"), leur = paste(p$leur, collapse = "\n"))
+      # (`ligne` : le paragraphe de mon texte où il est, celui que ses phrases nomment : place_passage)
+      passage <- function(p) list(ligne = place_passage(lm, p)$ligne, base = paste(p$base, collapse = "\n"), mien = paste(p$mien, collapse = "\n"), leur = paste(p$leur, collapse = "\n"))
       cote <- conflit_fusion(ctx, paste0("document:", premier_texte(m$id)), "document", premier_texte(m$id), titre(m), resume("mien"), resume("leur"),
                              list(passages = lapply(t$passages, passage), champs = I(conflits)))
       if (cote == "leur") {
@@ -1685,7 +1706,8 @@ apports_donnees <- function(B, X, d, ctx, cote) {
   }
   eb <- cles_etapes(B)
   neuves <- Filter(function(e) !cle_etape(e, TRUE) %in% eb, X$etapes %||% list())
-  if (length(neuves)) apport_fusion(ctx, cote, phrase_fusion("%d étape(s) : %s", "%d step(s): %s", length(neuves), noms_fusion(vapply(neuves, function(e) premier_texte(e$etiquette), ""), 3)))
+  # (chaque étape dite dans la langue de la demande, non dans celle où elle a été faite : etapes.R, etiquette_etape)
+  if (length(neuves)) apport_fusion(ctx, cote, phrase_fusion("%d étape(s) : %s", "%d step(s): %s", length(neuves), noms_fusion(vapply(neuves, etiquette_etape, ""), 3)))
   vars <- function(k) k[!startsWith(k, ID_FUSION)]
   if (length(vars(d$ajoutees))) apport_fusion(ctx, cote, phrase_fusion("variable(s) ajoutée(s) : %s", "variable(s) added: %s", noms_fusion(cle_lisible(vars(d$ajoutees)))))
   if (length(vars(d$retirees))) apport_fusion(ctx, cote, phrase_fusion("variable(s) retirée(s) : %s", "variable(s) removed: %s", noms_fusion(cle_lisible(vars(d$retirees)))))
@@ -1708,7 +1730,8 @@ apports_donnees <- function(B, X, d, ctx, cote) {
 # la séance, dont le projet fusionné prend ce qui est de la séance (serveur.R : son identifiant, son
 # fichier…), rendu tel quel quand leur côté n'a rien changé. Rend list(projet : le projet fusionné ;
 # conflits ; apports : list(mien, leur), ce que chaque côté a apporté, en phrases ; donnees : list(mode :
-# "etapes", "cellules" ou "inchangees", raison : pourquoi pas par les étapes) ; notes). Fusionner un côté
+# "etapes", "cellules" ou "inchangees" (aucun côté n'a touché aux données), raison : pourquoi pas par les
+# étapes quand c'est utile à savoir, "" sinon) ; notes). Fusionner un côté
 # avec lui-même, ou avec la base, rend ce côté tel quel.
 fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, qui = NULL, relus = FALSE, seance = mien) {
   force(seance)
