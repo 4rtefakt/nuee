@@ -890,7 +890,9 @@ modele_rejoue <- function(p, q, rejeu = NULL) {
 # des observations garde les colonnes qui distinguaient celles d'un même nom (`colonnes_cle` :
 # colonnes_cle, aucune quand les noms ne revenaient pas), pour les retrouver par elles. L'empreinte des
 # données devient celle d'après l'étape, sauf quand elles avaient changé autrement depuis la
-# précédente (donnees_conformes) : rompue, elle le reste.
+# précédente (donnees_conformes) : rompue, elle le reste. La première étape d'un projet d'avant la 1.1
+# (sans empreinte) le marque (`changements_avant_etapes`) : ses changements d'alors ne sont pas des
+# étapes, et le restent ; la demande etapes et la mise à jour continuent de le dire.
 noter_etape <- function(avant, apres, demande, q, etiquette, contexte = NULL) {
   def <- ETAPES_DONNEES[[demande]] %||% stop(sprintf("Étape inconnue : %s", demande), call. = FALSE)
   q <- q[setdiff(names(q), c("projet", "apercu"))]
@@ -905,6 +907,7 @@ noter_etape <- function(avant, apres, demande, q, etiquette, contexte = NULL) {
   if (length(def$observations)) e$colonnes_cle <- I(as.character(colonnes))
   if (length(fiches)) e$fichiers <- fiches
   apres$etapes <- c(avant$etapes %||% list(), list(e))
+  if (is.na(donnees_conformes(avant))) apres$changements_avant_etapes <- TRUE
   apres$empreinte_donnees <- if (isFALSE(donnees_conformes(avant))) "" else empreinte_donnees(apres)
   apres
 }
@@ -1600,10 +1603,15 @@ mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NU
   n$etapes <- etapes
   n$source_donnees <- source_fichier(chemin, lecteur, table, reglages, collecte)
   n$empreinte_donnees <- empreinte_donnees(n)
+  # (les changements faits avant les étapes, dans une version d'avant la 1.1 : la mise à jour les remplace
+  # par ce que donnent le fichier et les étapes, et le dit ; ils n'y sont plus après elle)
+  avant_etapes <- isTRUE(actuel$changements_avant_etapes) || is.null(actuel$empreinte_donnees)
+  n$changements_avant_etapes <- NULL
   rapport <- a$rapport
   rapport$observations$par_position <- isTRUE(rapport$observations$par_position) || identical(premier_texte(reglages$identifiant, NA_character_), "")
   rapport$etapes <- r$etapes
   rapport$fichier <- list(chemin = normalizePath(chemin, winslash = "/"), table = table, lecteur = lecteur)
   rapport$notes <- I(notes)
+  rapport$changements_avant_etapes <- avant_etapes
   list(projet = n, rapport = rapport)
 }

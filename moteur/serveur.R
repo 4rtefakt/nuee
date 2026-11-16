@@ -1324,11 +1324,14 @@ etapes_demande <- function(q) {
             }))
   if (isFALSE(q$conformes)) return(r)
   conformes <- conformite_projet(p)
+  # (un projet d'avant la 1.1, ses étapes faites depuis : ses données sont celles de ses étapes, mais pas ses
+  # changements d'alors, qui n'en sont pas ; dit comme avant sa première étape, etapes.R : noter_etape)
+  if (isTRUE(conformes) && isTRUE(p$changements_avant_etapes)) conformes <- NA
   c(r, list(conformes = conformes,
             raison = if (isFALSE(conformes)) traduire("Les données ont changé hors des étapes (dans la console R, ou dans une version de Nuée d'avant la 1.1) : les mettre à jour reprendrait celles que la source et les étapes donnent.",
                                                        "The data changed outside the steps (in the R console, or in a version of Nuée before 1.1): updating them would bring back those the source and the steps give.")
-                     else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes.",
-                                                         "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else ""))
+                     else if (is.na(conformes)) traduire("Projet d'une version de Nuée d'avant la 1.1 : ses changements d'alors ne sont pas des étapes, et les mettre à jour les remplacerait par ce que donnent le fichier et les étapes.",
+                                                         "A project from a version of Nuée before 1.1: its changes from then aren't steps, and updating its data would replace them with what the file and the steps give.") else ""))
 }
 
 # Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les

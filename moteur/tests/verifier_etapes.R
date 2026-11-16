@@ -54,7 +54,9 @@
 #     Annuler ne laisse plus Rétablir ; les modèles réajustés par leur numéro, si ;
 #   - une étape retirée défait ce qu'elle avait fait : des coordonnées, des catégories renommées et rangées
 #     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
-#     modèle l'y utilise).
+#     modèle l'y utilise) ;
+#   - un projet de la 1.0 (une valeur corrigée alors) : dit d'avant la 1.1 après sa première étape aussi,
+#     enregistré et rouvert, et par l'aperçu de la mise à jour, qui remplace cette valeur.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -1093,6 +1095,36 @@ demande("supprimer_modele", list(modele = ma$id, definition = TRUE))
 if (length(etape_n("type_variable"))) retirer("type_variable")
 verifier("sans le modèle : annee de nouveau en nombres, plus d'étape, les données d'accord",
          !length(variable_du_projet(projet(rid2), ur("annee"))$categories) && !length(projet(rid2)$etapes) && isTRUE(donnees_conformes(projet(rid2))))
+
+cat("Un projet de la 1.0, puis sa première étape de la 1.1\n")
+# (une valeur corrigée dans la 1.0, qui n'est pas une étape : dit avant la première étape faite dans la 1.1
+# comme après, et par l'aperçu de la mise à jour, qui la remplacera par celle du fichier)
+csv10 <- fichier("releves 1.0.csv")
+utils::write.csv(data.frame(nom = paste0("O", 1:6), x = c(1, 2, 3, 4, 5, 6), y = c(10, 20, 30, 40, 50, 60)), csv10, row.names = FALSE)
+p10 <- importer_tableau(csv10)
+attr(p10, "reglages") <- NULL
+p10$donnees["3", "1"] <- 30
+f_10 <- fichier("projet 1.0.nuee")
+enregistrer_projet(p10, f_10)
+j10 <- jsonlite::fromJSON(f_10, simplifyVector = FALSE)
+j10$nuee$format <- 2L
+j10$etapes <- j10$empreinte_donnees <- j10$source_donnees <- NULL
+writeLines(as.character(jsonlite::toJSON(j10, auto_unbox = TRUE, null = "null", digits = NA)), f_10)
+id10 <- demande("ouvrir", list(chemin = f_10))$id
+e10 <- demande("etapes", list(projet = id10))
+demande("variable_calculee", list(projet = id10, nom = "z", formule = "x * 2"))
+f_11 <- fichier("projet 1.0 puis 1.1.nuee")
+demande("enregistrer", list(projet = id10, chemin = f_11))
+id11 <- demande("ouvrir", list(chemin = f_11))$id
+e11 <- demande("etapes", list(projet = id11))
+a11 <- demande("mettre_a_jour", list(projet = id11, chemin = csv10, apercu = TRUE))
+verifier("un projet de la 1.0 : dit après sa première étape de la 1.1 comme avant, enregistré et rouvert ; l'aperçu de la mise à jour le dit",
+         is.na(e10$conformes) && grepl("avant la 1.1", e10$raison) && is.na(e11$conformes) && identical(e11$raison, e10$raison) &&
+           isTRUE(a11$changements_avant_etapes) && a11$observations$cellules >= 1)
+demande("mettre_a_jour", list(projet = id11, chemin = csv10))
+verifier("mis à jour : sa valeur de la 1.0 remplacée par celle du fichier, comme l'aperçu le disait ; ses données sont alors celles de ses étapes",
+         unname(valeurs(projet(id11), "x")["O3"]) == 3 && isTRUE(demande("etapes", list(projet = id11))$conformes) &&
+           !isTRUE(demande("mettre_a_jour", list(projet = id11, chemin = csv10, apercu = TRUE))$changements_avant_etapes))
 
 cat("En anglais\n")
 options(nuee.langue = "en")

@@ -112,6 +112,9 @@ egal('nothing changes: said, and only the steps listed', [lu3.rien, lu3.resume, 
 const enLong = lireRapport({ ...meme, observations: { ...meme.observations, distinguees: ['annee'] } }, 40);
 egal('a long table: observations of the same name told apart by a column, said', [textes(enLong, 'lecture'), classes(enLong, 'lecture')],
   [['Observations of the same name are matched by “annee”.'], ['']]);
+const avant11 = lireRapport({ ...meme, changements_avant_etapes: true }, 40);
+egal('a project from before 1.1: its changes from then replaced, a warning that leaves “nothing changes” as it is', [textes(avant11, 'lecture'), classes(avant11, 'lecture'), avant11.rien],
+  [['This project comes from a version of Nuée before 1.1: what was changed in it then isn’t a step, and the update replaces it with what the file and the steps give.'], ['attention'], true]);
 
 console.log('The models fitted again');
 const projet = { modeles: [{ numero: 3, nom: 'M3', type: 'PLS', ajuste: true }, { numero: 1, nom: 'Tous', type: 'LM', ajuste: true },
