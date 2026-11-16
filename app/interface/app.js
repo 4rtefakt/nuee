@@ -30,6 +30,8 @@ import './vues_forets.js';
 import './vues_distance.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
+import { installerVersions } from './versions.js';
+import { nomFichier } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables } from './atelier.js';
 import { dialogueKobo, filtresKobo, deposerKobo } from './kobo.js';
@@ -273,12 +275,17 @@ const app = {
   // true once saved; false if the user cancelled the choice of a file
   async enregistrer(pid, sous) {
     if (!etat.projets[pid]) { statut(t('choisir_projet'), true); return false; }
+    // (an old version opened read-only is never saved over the temporary file it was read from:
+    // versions.js offers Save as… or Restore…)
+    if (!sous && etat.projets[pid].lecture_seule && app.refuserEnregistrement) return app.refuserEnregistrement(pid);
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
     let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
-      chemin = await bureau.enregistrerSous(p.nom.replace(/\.[^.]+$/, '') + '.nuee', [{ name: t('format_projet'), extensions: ['nuee'] }]);
+      // (an old version's name has its date, whose dot and colon a file's name can't take as they are)
+      const nom = p.lecture_seule ? nomFichier(p.nom) : p.nom.replace(/\.[^.]+$/, '');
+      chemin = await bureau.enregistrerSous(`${nom}.nuee`, [{ name: t('format_projet'), extensions: ['nuee'] }]);
       if (!chemin) return false;
     }
     const session = VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid));
@@ -298,6 +305,7 @@ const app = {
     if (!bureau && !chemin) telecharger(r.chemin);
     statut(`${t('enregistre')} ${r.chemin}`);
     await rafraichirProjet(pid);
+    if (p.lecture_seule) retitrer(pid);  // (an old version saved elsewhere: a project like any other, its tabs unmarked)
     sauvegarderSecours();  // its recovery copy, now older than the file, leaves the index
     diffuser('modeles');
     return true;
@@ -342,6 +350,50 @@ const app = {
     diffuser('modeles');
   },
 
+  // A project read again from its file, which changed under it (versions.js: a version restored,
+  // versions received): closed without asking (the caller has dealt with its unsaved changes),
+  // then reopened with the views it had, as a saved session brings them back: the models it
+  // still has, fitted with the number of components its file's session gives, and their views;
+  // without fitted models, the file's own session. Resolves to the new project's id.
+  async rechargerProjet(pid) {
+    const p = etat.projets[pid];
+    if (!p || !p.chemin_enregistrement) return null;
+    let session = dock ? collecterSession(pid) : null;
+    if (session && !session.modeles.length) session = null;
+    await demander('fermer_projet', { projet: pid });
+    oublierProjet(pid);
+    const res = await occupe(() => demander('ouvrir', { chemin: p.chemin_enregistrement }));
+    if (session && res.session) {
+      try {
+        const fichier = JSON.parse((await demander('session', { projet: res.id })).session);
+        const A = new Map([].concat(fichier.modeles || []).map((m) => [m.numero, m.A]));
+        session.modeles = session.modeles.map((m) => (A.has(m.numero) ? { ...m, A: A.get(m.numero) } : m));
+      } catch { /* the session's own */ }
+    }
+    await apresOuverture(res, session);
+    diffuser('modeles');
+    return res.id;
+  },
+  // An old version of a project (versions.js), written to a temporary file by the main process:
+  // opened read-only under its name (the engine keeps `lecture_seule`: its source, oid and date),
+  // with its views as its session saved them; without one, its data, so that it shows.
+  async ouvrirLectureSeule(fichier, nom, lecture) {
+    const res = await occupe(() => demander('ouvrir', { chemin: fichier, nom, lecture_seule: lecture }));
+    await apresOuverture(res);
+    if (!res.session) app.ouvrirVue('donnees', null, null, res.id);
+    return res.id;
+  },
+  // A project open already, chosen in the explorer.
+  montrerProjet(pid) {
+    if (!etat.projets[pid]) return;
+    etat.noeud = pid;
+    app.rafraichirExplorateur();
+    majEtat();
+  },
+  // The status bar drawn again (versions.js, its indicator once the file's state is known;
+  // etapes.js, the notice of a data file that changed).
+  majStatut: () => majEtat(),
+
   quitter: () => bureau && bureau.quitter(),
 
   // ---- models
@@ -352,9 +404,12 @@ const app = {
     return res.id;
   },
   // A model of the project computed without opening its views (a document that refers to it,
-  // documents.js), as a saved session brings its models back (restaurerSession).
-  async calculerDiscret(pid, numero) {
-    const res = await demander('ajuster', { projet: pid, numero });
+  // documents.js), as a saved session brings its models back (restaurerSession); A: its number of
+  // components, if not the definition's. A project the interface doesn't show (an old version
+  // compared with the project now, opened in the engine only: changements.js) keeps it there only.
+  async calculerDiscret(pid, numero, A) {
+    const res = await demander('ajuster', { projet: pid, numero, A });
+    if (!etat.projets[pid]) return res.id;
     etat.modeles[res.id] = res;
     await rafraichirProjet(pid);
     diffuser('modeles');
@@ -390,8 +445,6 @@ const app = {
     majEtat();
     return res.id;
   },
-  // The status bar drawn again (etapes.js: the notice of a source file that changed).
-  majStatut: () => majEtat(),
   // A project's summary after a change that leaves its data and models as they are (a document
   // written): the explorer and the status bar, no panel drawn again.
   majProjet(res) {
@@ -503,10 +556,12 @@ const app = {
       const s = p.modifie && derniersSecours.get(p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
-      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null } });
+      // (an old version opened read-only stays one, under its name: versions.js)
+      const lecture = p.lecture_seule ? { nom: p.nom, lecture_seule: p.lecture_seule } : {};
+      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null, ...lecture } });
       // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
       // (opened as is, it is opened as is again: an export would otherwise come back as an import to make)
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
+      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
     statut(t('moteur_redemarrage'));
@@ -620,7 +675,7 @@ const app = {
         const r = await occupe(() => demander('par_reponse', q));
         if (r.projet) projetChange(r.projet);
         for (const res of [].concat(r.resultats || [])) await garder_(res);
-        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction]), res: r } });
+        app.ouvrirVue('par_reponse', id, { reponses: q.reponses, correction, cache: { cle: JSON.stringify([q.reponses, correction, langueActuelle()]), res: r } });
       })().catch((e) => statut(e.message, true));
       return true;
     } }] });
@@ -865,7 +920,7 @@ const app = {
         position: position || positionDansPage(interne, id) });
       page.api.setActive();
     } else {
-      dock.addPanel({ id: cle, component: vue, title: titre, params: { modele: id, projet }, position: positionCentrale() });
+      dock.addPanel({ id: cle, component: vue, title: marqueLecture(projet) + titre, params: { modele: id, projet }, position: positionCentrale() });
       fermerAccueil();
     }
   },
@@ -956,6 +1011,7 @@ const app = {
 
 installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app.nouveauDocument...)
 installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
+installerVersions(app);  // (File › Versions and What changed: their views, app.versions, the status bar's indicator...)
 const C = creerCommandes(app);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 
@@ -1151,7 +1207,9 @@ async function sauvegarderSecours() {
         // (lu: the state of the project's file when it was read or saved, for the question
         // before overwriting it once the copy is recovered)
         const r = await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session: JSON.stringify(collecterSession(p.id)), version: VERSION });
-        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString() });
+        // (an old version opened read-only comes back as one: versions.js)
+        derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: p.chemin_enregistrement || p.chemin || null, lu: r.lu || null, date: new Date().toISOString(),
+          ...(p.lecture_seule ? { lecture_seule: p.lecture_seule } : {}) });
       } catch { /* this one is tried again two minutes later; the others go on */ }
       if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
     }
@@ -1180,7 +1238,7 @@ async function proposerRecuperation() {
           for (const e of entrees) {
             // before 0.9.1, a project without a file had its own copy as its origin
             const origine = e.origine && e.origine !== e.fichier ? e.origine : null;
-            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null }))); } catch { illisibles.push(e); }
+            try { await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine, nom: e.nom, lu: e.lu || null, lecture_seule: e.lecture_seule || undefined }))); } catch { illisibles.push(e); }
           }
           secoursEnAttente = illisibles;  // kept for another try
           if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
@@ -1260,7 +1318,8 @@ function collecterSession(pid) {
   for (const m of app.modelesDe(pid)) if (m.numero !== null && m.numero !== undefined) parNumero.set(m.numero, m);
   const code = new Map([...parNumero.values()].map((m) => [m.id, '@' + m.numero]));
   const panneaux = [...etat.panneaux.values()].filter((e) => !EXTERNES.includes(e.vue));
-  const aMoi = (e) => e.params.projet === pid && (!e.params.modele || code.has(e.params.modele));
+  // (a view that can't be made again from its settings, What changed: changements.js, isn't kept)
+  const aMoi = (e) => e.params.projet === pid && (!e.params.modele || code.has(e.params.modele)) && !(VUES[e.vue] || {}).passager;
   const codeVue = (e) => (e.params.modele ? code.get(e.params.modele) : null);
   const vues = panneaux.filter(aMoi).map((e) => ({ vue: e.vue, modele: codeVue(e), loc: locEnregistrable(e.loc) }));
   let disposition = null;
@@ -1460,7 +1519,18 @@ function dimensionnerPage(id) {
 
 const tousDocks = () => (dock ? [dock, ...pages.values()] : []);
 const estPage = (p) => !!p && typeof p.id === 'string' && p.id.startsWith('page:');
-const titrePage = (m) => `${m.nom} · ${m.type}`;
+// (the tabs of an old version opened read-only, versions.js: marked, its model pages beside the
+// project's own of the same names)
+const marqueLecture = (pid) => (etat.projets[pid] && etat.projets[pid].lecture_seule ? '🔒 ' : '');
+const titrePage = (m) => `${marqueLecture(m.projet)}${m.nom} · ${m.type}`;
+// The tabs of a project titled again (an old version saved elsewhere is read-only no more)
+function retitrer(pid) {
+  for (const m of app.modelesDe(pid)) {
+    const page = dock && dock.getPanel(`page:${m.id}`);
+    if (page) page.api.setTitle(titrePage(m));
+  }
+  for (const e of etat.panneaux.values()) if (e.params.projet === pid && !e.params.modele) rendrePanneau(e);
+}
 const titreCourt = (titre, m) => (m && titre.startsWith(`${m.nom} · `) ? titre.slice(m.nom.length + 3) : titre);
 
 // A view shown once per thing of its own (a document) adds it to its panel's id: document:P1~D2.
@@ -1689,8 +1759,9 @@ function rendrePanneau(entree) {
     entree.element.replaceChildren(el('p', { class: 'erreur' }, `${t('erreur')} : ${e.message}`));
   });
   const titre = v.titre(m, etat.projets[entree.params.projet] || {}, entree.loc);
-  if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : titre);  // in its model's page, the model's name goes without saying
-  if (VUE_SEULE) document.title = titre;
+  // (in its model's page, the model's name goes without saying, and the page's tab has the mark)
+  if (entree.api) entree.api.setTitle(m ? titreCourt(titre, m) : marqueLecture(entree.params.projet) + titre);
+  if (VUE_SEULE) document.title = marqueLecture(entree.params.projet) + titre;
 }
 
 function rafraichirModele(id) {
@@ -1837,7 +1908,9 @@ function majEtat() {
       el('button', { class: 'icone-seule', title: t('ignorer_version'), onclick: () => { ecrire('version_ignoree', etat.nouvelleVersion.version); majEtat(); } }, icone('x'))) : null,
     // (a project's data file changed since it was read: etapes.js)
     !VUE_SEULE && app.avisDonnees ? app.avisDonnees() : null,
-    m ? el('span', {},`${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
+    // (the active project's versions to send and to get: versions.js)
+    !VUE_SEULE && app.indicateurVersions ? app.indicateurVersions() : null,
+    m ? el('span', {}, `${m.nom} · ${m.type}${m.regression || m.analyse ? '' : ` · A = ${m.A}`} · N = ${m.N} · K = ${m.K}`) : el('span', { class: 'doux' }, t('aucun_modele_actif')),
     n ? el('span', { class: 'sel' }, `${n} ${t('selectionnees')}`) : null,
     nv ? el('span', { class: 'sel' }, t('variables_en_evidence', { n: nv })) : null,
     el('button', { class: 'icone-seule', title: t('theme_sombre'), onclick: () => app.changerTheme(!app.themeSombre()) }, icone(app.themeSombre() ? 'sun' : 'moon')),

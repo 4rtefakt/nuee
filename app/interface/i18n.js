@@ -1527,21 +1527,29 @@ export function t(cle, valeurs) {
 // interface's language. The engine names them in French, and the names are keys too (residu,
 // groupe_vc…): only what is shown is translated. After a variable's name, the suffix is
 // translated and the name kept ("flamingo observé": "flamingo observed").
+// (TRIM's observations: temps, compte, ajuste, impute; distance sampling's: dans_troncature; the
+// k-means clusters: groupe, CP1 and CP2, and their predictions: groupe prédit, distance au centre;
+// the predictions of a tree, an LDA or a forest: classe prédite, classe observée)
 const RESULTATS = {
   fr: { residu: 'résidu', quantile_normal: 'quantile normal', cook: 'distance de Cook', groupe_vc: 'groupe VC',
-    classe_predite: 'classe prédite', classe_predite_vc: 'classe prédite (VC)', DModX_pondere: 'DModX (pond.)', DModX_absolu: 'DModX (abs.)' },
+    classe_predite: 'classe prédite', classe_predite_vc: 'classe prédite (VC)', DModX_pondere: 'DModX (pond.)', DModX_absolu: 'DModX (abs.)',
+    ajuste: 'ajusté', impute: 'imputé', dans_troncature: 'dans la troncature' },
   en: { residu: 'residual', quantile_normal: 'normal quantile', levier: 'leverage', cook: 'Cook’s distance', groupe_vc: 'CV group',
     classe: 'class', classe_predite: 'predicted class', classe_predite_vc: 'predicted class (CV)', 'classe ajustée': 'fitted class',
     'classe prédite (VC)': 'predicted class (CV)', 'classe prédite (OOB)': 'predicted class (OOB)', voisin: 'neighbouring cluster',
-    feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)' },
+    feuille: 'leaf', DModX_pondere: 'DModX (weighted)', DModX_absolu: 'DModX (absolute)',
+    'classe prédite': 'predicted class', 'classe observée': 'observed class', groupe: 'group', 'groupe prédit': 'predicted group',
+    'distance au centre': 'distance to centre', CP1: 'PC1', CP2: 'PC2', temps: 'time', compte: 'count', ajuste: 'fitted', impute: 'imputed',
+    dans_troncature: 'within the truncation' },
 };
-const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'],
-  ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
+const PREFIXES_RESULTATS = [['probabilité ', 'probability '], ['distance au centre (', 'distance to centre (']];
+const SUFFIXES_RESULTATS = [['ajusté (effets fixes)', 'fitted (fixed effects)'], ['prédit (VC)', 'predicted (CV)'], ['prédit (OOB)', 'predicted (OOB)'],
+  ['prédit (lien)', 'predicted (link)'], ['observé', 'observed'], ['ajusté', 'fitted'], ['prédit', 'predicted'], ['résidu', 'residual']];
 export function libelleResultat(cle) {
   const dico = RESULTATS[langue] || RESULTATS.fr;
   if (cle in dico) return dico[cle];
   if (langue !== 'en') return cle;
-  if (cle.startsWith('probabilité ')) return `probability ${cle.slice('probabilité '.length)}`;
+  for (const [fr, en] of PREFIXES_RESULTATS) if (cle.startsWith(fr)) return `${en}${cle.slice(fr.length)}`;
   for (const [fr, en] of SUFFIXES_RESULTATS) if (cle.endsWith(` ${fr}`)) return `${cle.slice(0, -fr.length)}${en}`;
   return cle;
 }

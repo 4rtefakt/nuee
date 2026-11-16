@@ -304,6 +304,7 @@ resume_projet <- function(p) {
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
+       lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
        historique = sum(vapply(p$audit %||% list(), function(s) length(s$events), 0)),
        predictions = lapply(p$prediction_sets, function(s) list(nom = s$name %||% "", n_obs = length(s$observations))))
 }
@@ -993,10 +994,13 @@ etapes_demande <- function(q) {
                                                     "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else "")
 }
 
-# Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z.
+# Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
+# modèles de la séance suivent leurs définitions comme après un changement des catégories (leurs
+# conditions ; leurs catégories, par leurs noms : modele, aligner_categories).
 remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
   memoriser(actuel, etiquette)
   n <- r$projet
+  suivre_conditions_seance(actuel, n)
   n$modifie <- TRUE
   etat$projets[[actuel$id]] <- n
   reviser(actuel$id)
@@ -1032,8 +1036,10 @@ retirer_etape_demande <- function(q) {
 
 # Tout ce qui est ouvert : pour une nouvelle fenêtre de l'application.
 etat_complet <- function() {
-  list(projets = lapply(unname(etat$projets), resume_projet),
-       modeles = lapply(names(etat$modeles), resultat_modele))
+  # (sans les projets que l'interface ne montre pas, ni leurs modèles : ouvrir, q$cache)
+  vus <- Filter(function(p) !isTRUE(p$cache), etat$projets)
+  list(projets = lapply(unname(vus), resume_projet),
+       modeles = lapply(Filter(function(id) !is.null(vus[[etat$modeles[[id]]$projet]]), names(etat$modeles)), resultat_modele))
 }
 
 DEMANDES <- list(
@@ -1228,14 +1234,30 @@ DEMANDES <- list(
   # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
   # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
   # elle est effacée quand Nuée se ferme.
+  # q$lecture_seule : une ancienne version d'un projet (interface/versions.js), lue d'un fichier
+  # temporaire et ouverte sous le nom q$nom (« vergers — version du 12 nov. 2026, 14:32 ») ; sa
+  # source (le fichier du projet), son oid et sa date, que l'interface montre et dont elle se sert
+  # pour la restaurer. Enregistrer ne l'écrit jamais sur ce fichier temporaire ; enregistrée ailleurs,
+  # c'est une copie, un projet comme un autre. q$cache : un projet que l'interface ne montre pas
+  # (l'ancienne version comparée au projet d'aujourd'hui, le temps d'en réajuster les modèles), hors
+  # de l'état de la séance que les autres fenêtres demandent (etat_complet).
   ouvrir = function(q) {
     r <- ouvrir_fichier(q$chemin, table = q$table, brut = isTRUE(q$brut), collecte = isTRUE(q$collecte), kobo = q$kobo)
-    if (!(isTRUE(q$secours) || !is.null(q$origine)) || !is.null(r$choisir) || !is.null(r$kobo)) return(r)
+    secours <- isTRUE(q$secours) || !is.null(q$origine)
+    if (!(secours || !is.null(q$lecture_seule) || isTRUE(q$cache)) || !is.null(r$choisir) || !is.null(r$kobo)) return(r)
     p <- projet(r$id)
-    p$nom <- q$nom %||% basename(q$origine %||% p$nom)
-    p$chemin <- q$origine
-    p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
-    p$modifie <- TRUE
+    if (secours) {
+      p$nom <- q$nom %||% basename(q$origine %||% p$nom)
+      p$chemin <- q$origine
+      p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
+      p$modifie <- TRUE
+    }
+    if (!is.null(q$lecture_seule)) {
+      p$nom <- as.character(q$nom %||% p$nom)[1]
+      texte <- function(x) as.character(x %||% "")[1]
+      p$lecture_seule <- list(source = texte(q$lecture_seule$source), oid = texte(q$lecture_seule$oid), date = texte(q$lecture_seule$date))
+    }
+    if (isTRUE(q$cache)) p$cache <- TRUE
     etat$projets[[p$id]] <- p
     resume_projet(p)
   },
@@ -1601,7 +1623,10 @@ DEMANDES <- list(
   # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`
   # (variables_absentes : ceux qui ne se réajustent plus et les variables qui leur manquent ;
   # observations_choisies : ceux qui n'avaient pas toutes les observations du projet, à qui demander
-  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas), `fichier`,
+  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas ;
+  # nouvelles_categories : ceux qui prennent le terme d'une catégorie nouvelle, mise avant la dernière
+  # de sa variable ; references_changees : les régressions dont la catégorie de référence change quand
+  # même, la dernière n'ayant plus de lignes, avant et après), `fichier`,
   # `notes` (la lecture du fichier). Sans q$apercu, la mise à jour faite, un seul Ctrl+Z (la source et
   # les étapes comprises), le fichier lu devenant la source : le même rapport et `projet`.
   # L'interface réajuste ensuite les modèles. Un fichier de plusieurs tableaux sans q$table : `choisir`.
@@ -1651,6 +1676,11 @@ DEMANDES <- list(
   },
   enregistrer = function(q) {
     p <- projet(q$projet)
+    # (une ancienne version ouverte en lecture seule : jamais sur le fichier temporaire d'où elle a été lue)
+    if (!is.null(p$lecture_seule) && !is.null(q$chemin) && !is.null(p$chemin) && identical(etat_fichier(q$chemin)$chemin, etat_fichier(p$chemin)$chemin)) {
+      stop(traduire("Cette ancienne version est en lecture seule : Enregistrer sous en garde une copie ailleurs.",
+                    "This old version is read-only: Save as keeps a copy elsewhere."))
+    }
     if (!is.null(q$session)) p$session <- q$session
     chemin <- q$chemin %||% file.path(tempdir(), paste0(tools::file_path_sans_ext(p$nom), ".nuee"))
     # le fichier qu'on avait lu ou écrit, changé depuis : l'interface demande avant de l'écraser
@@ -1665,6 +1695,7 @@ DEMANDES <- list(
       p <- chemins_relatifs(p, dirname(chemin))  # (comme le fichier les écrit : etapes.R)
       p$chemin_enregistrement <- chemin
       p$fichier_lu <- etat_fichier(chemin)
+      p$lecture_seule <- NULL  # (une ancienne version enregistrée ailleurs : une copie, un projet comme un autre)
     }
     p$modifie <- FALSE
     etat$projets[[p$id]] <- p

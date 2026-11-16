@@ -821,6 +821,8 @@ table_valeurs_propres <- function(eig, totale, rang_contraint = 0) {
 }
 
 # Les flèches d'une RDA à montrer : celles des X quantitatifs (une catégorie a son centroïde).
+# Des X tous qualitatifs n'en laissent aucune : la matrice n'a plus de noms de lignes (R les
+# retire à zéro ligne), d'où `rownames(f) %||% character(0)` là où on les lit.
 fleches_rda <- function(m, s) s$biplot[!rownames(s$biplot) %in% m$X$noms[m$X$indicatrices], , drop = FALSE]
 
 # Ce que l'interface reçoit d'une RDA (serveur.R : resultat_modele ; analyses.R), ou d'une CCA
@@ -836,7 +838,7 @@ resultat_rda <- function(id) {
   ordination <- function(s) {
     f <- fleches_rda(m, s)
     list(sites = colonnes_axes(s$sites), lc = colonnes_axes(s$lc), reponses = colonnes_axes(s$reponses), noms_reponses = I(rownames(s$reponses)),
-         biplot = colonnes_axes(f), noms_biplot = I(rownames(f)),
+         biplot = colonnes_axes(f), noms_biplot = I(rownames(f) %||% character(0)),
          centroides = if (!is.null(s$centroides)) colonnes_axes(s$centroides), noms_centroides = I(rownames(s$centroides) %||% character(0)))
   }
   s2 <- echelles[[2]]
@@ -849,7 +851,7 @@ resultat_rda <- function(id) {
        chiffres = sprintf("%s · p %s", chiffre_r2, if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
-       variables = cbind(data.frame(terme = rownames(f2), stringsAsFactors = FALSE), colonnes_axes(f2)),
+       variables = cbind(data.frame(terme = rownames(f2) %||% character(0), stringsAsFactors = FALSE), colonnes_axes(f2)),
        variables_y = cbind(data.frame(terme = rownames(s2$reponses), stringsAsFactors = FALSE), colonnes_axes(s2$reponses)),
        axes = I(utils::head(names(s2$valeurs_propres), AXES_INTERFACE)), rang_contraint = k$contraint$rang,
        inertie = list(totale = k$totale, conditionnelle = k$conditionnelle, contrainte = k$contraint$inertie, residuelle = k$residuel$inertie),

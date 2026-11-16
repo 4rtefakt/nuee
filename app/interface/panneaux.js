@@ -1189,7 +1189,7 @@ async function rendrePredictions(conteneur, ctx, p, loc) {
         marker: { color: couleur, size: 7, opacity: 0.9 }, hovertemplate: survol }],
     { title: { text: `${m.nom} · ${t('predictions')}${fichier ? ' · ' + r.fichier : ''}` }, dragmode: 'zoom', margin: { t: 30, b: 36 },
       shapes: vals.length ? [{ type: 'line', x0: etendue(vals)[0], y0: etendue(vals)[0], x1: etendue(vals)[1], y1: etendue(vals)[1], line: { color: '#888', dash: 'dot', width: 1 } }] : [],
-      xaxis: { title: { text: avecObs ? yo : 'observation' } }, yaxis: { title: { text: yp } } });
+      xaxis: { title: { text: avecObs ? libelleResultat(yo) : 'observation' } }, yaxis: { title: { text: libelleResultat(yp) } } });
     return;
   }
   if (m.analyse) { haut.remove(); return; }

@@ -695,7 +695,11 @@ function creerVersions({ fetch, jetons, langue = () => 'en', auteur: reglageAute
 
   async function lire(chemin, oid) {
     const d = await ouvrir(chemin);
-    await versionConnue(d, oid);
+    // (their versions too, after a divergence: until a choice brings them in, they are only under the
+    // remote's branch, and "Compare first" opens their newest one)
+    const distante = d.brancheDistante ? await resoudre(d, `refs/remotes/origin/${d.brancheDistante}`) : null;
+    const chezEux = distante && typeof oid === 'string' && (await versionsDe(d, distante)).some((x) => x.oid === oid);
+    if (!chezEux) await versionConnue(d, oid);
     const { blob } = await git.readBlob({ fs: d.fs, dir: d.dir, oid: await blobDans(d, (await lireCommit(d, oid)).tree) });
     const dossier = await fs.promises.mkdtemp(path.join(temporaire(), 'version-'));
     const fichier = path.join(dossier, path.basename(d.chemin));

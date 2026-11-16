@@ -5,7 +5,7 @@
 // term's effect in small multiples (one small plot per response, its band, the same x axis); and
 // each model's quality (N, AIC, R², Q²) with the responses that couldn't be fitted.
 // Imported by app.js.
-import { t, ajouterTextes } from './i18n.js';
+import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, fmt } from './ui.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, tableau, valeurP } from './panneaux.js';
 import { ICONES_VUES } from './commandes.js';
@@ -17,7 +17,9 @@ const PETITS_MAX = 36;  // small multiples up to this many responses
 async function rendreParReponse(conteneur, ctx, p, loc) {
   const m = ctx.modele(p.modele);
   const cache = (loc.cache ??= {});
-  const cle = JSON.stringify([liste(loc.reponses), loc.correction || 'BH']);
+  // (the language too: the Methods sentence and the reasons a response failed are the engine's;
+  // app.js, unModeleParReponse, hands the view its first result under the same key)
+  const cle = JSON.stringify([liste(loc.reponses), loc.correction || 'BH', langueActuelle()]);
   if (!liste(loc.reponses).length) { conteneur.replaceChildren(el('p', { class: 'infos' }, t('par_reponse_vide'))); return; }
   if (cache.cle !== cle || !cache.res) {
     conteneur.replaceChildren(el('p', { class: 'infos attente' }, t('calcul')));
