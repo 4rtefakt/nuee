@@ -2189,6 +2189,8 @@ Pour un projet venant d'un fichier .usp, l'explorateur montre « Historique du f
 le journal enregistré dans le fichier (création, changements de jeu de travail, nombre de
 composantes, modèles supprimés...), avec la date, la version du logiciel et l'utilisateur.
 Clic droit sur un modèle importé › Historique du modèle : seulement ce qui le concerne.
+Les versions que Nuée garde de chaque projet, dans Fichier › Historique, sont autre chose : voir
+Historique et versions.
 
 Historique et versions (Fichier › Historique)
 ---------------------------------------------

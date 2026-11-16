@@ -2003,6 +2003,8 @@ For a project from a .usp file, the explorer shows "File history": the log store
 file (creation, working-set changes, number of components, deleted models...), with the
 date, the software version and the user. Right-click on an imported model › Model history:
 only what concerns it.
+The versions Nuée keeps of every project, in File › History, are another thing: see History and
+versions.
 
 History and versions (File › History)
 -------------------------------------
