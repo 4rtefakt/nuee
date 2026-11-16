@@ -20,6 +20,10 @@
 #     réparé par une mise à jour ; un projet de la 1.0 lu par la 1.0 (son lire_projet, quand git a
 #     l'étiquette v1.0.0) ;
 #   - les scores d'un modèle en variables, rejoués dans un modèle hiérarchique ;
+#   - une catégorie nouvelle, mise avant la dernière : une régression garde sa référence (contre lm()
+#     et relevel()), son nouveau coefficient en plus ; une PLS prend son terme, aux réglages des
+#     autres ; une PLS-DA garde ses classes ; la référence d'un modèle qui change quand même (sa
+#     catégorie n'a plus de lignes, ou une nouvelle vient après elle dans ses lignes), dite ; Ctrl+Z ;
 #   - un projet sans source (un tableau collé) mis à jour d'un fichier ; un projet sans étapes dont
 #     une variable calculée garde sa formule ; un tableau sans colonne qui nomme les observations,
 #     retrouvées par leur place.
@@ -301,9 +305,13 @@ verifier("mis à jour : 44 observations, celles d'avant sous leurs numéros, la 
 verifier("les étapes rejouées dans le nouveau numérotage, chacune faite", all(statuts(a) == "ok") && length(p$etapes) == 17)
 verifier("la source devient le nouveau fichier, les données conformes", identical(p$source_donnees$chemin, normalizePath(suivant, winslash = "/")) &&
            isTRUE(donnees_conformes(p)))
-verifier("les catégories d'avant dans leur ordre, la nouvelle après ; « foret » de 2026 fusionné par l'étape",
-         identical(categories_de(p, "habitat"), c(cats_avant, "dune")) && unname(valeurs(p, "habitat")["S1-2026"]) == "forêt" &&
-           identical(categories_de(p, "site"), c("S1", "S2", "S3", "S4", "S5")))
+verifier("les catégories d'avant dans leur ordre, la nouvelle avant la dernière ; « foret » de 2026 fusionné par l'étape",
+         identical(categories_de(p, "habitat"), c(utils::head(cats_avant, -1), "dune", utils::tail(cats_avant, 1))) &&
+           unname(valeurs(p, "habitat")["S1-2026"]) == "forêt" && identical(categories_de(p, "site"), c("S1", "S2", "S3", "S5", "S4")))
+verifier("les modèles de habitat prennent le terme de « dune », avant celui de la référence ; aucune référence ne change",
+         identical(vapply(Filter(function(t) startsWith(t$name, "habitat"), definition(p, "Tous")$x), `[[`, "", "name"),
+                   c("habitat(forêt)", "habitat(lande)", "habitat(dune)", "habitat(prairie)")) &&
+           setequal(vapply(a$modeles$nouvelles_categories, `[[`, "", "nom"), c("Tous", "Sans", "Garde")) && !length(a$modeles$references_changees))
 nouvelles <- o(paste0("S", 1:5, "-2026"))
 dp <- function(nom) definition(p, nom)
 verifier("Tous prend les nouvelles observations ; S2-2019 a quitté tous les modèles",
@@ -457,6 +465,84 @@ verifier("les scores rejoués sont ceux du modèle de base réajusté sur les do
          length(definition(ph, "A")$observations) == 40 && isTRUE(all.equal(unname(valeurs(ph, "$A.t1")[noms_obs(ph, refaitA$observations)]), unname(refaitA$T[, 1]), tolerance = 1e-10)))
 hh <- demande("ajuster", list(projet = hid, numero = definition(ph, "H")$number))
 verifier("le modèle hiérarchique réajusté sur ses scores mis à jour, ses 40 observations", hh$N == 40 && hh$A == 2)
+
+cat("Une catégorie nouvelle : la référence des régressions gardée, un terme de plus\n")
+# trois zones de dix relevés ; l'année suivante, une zone D de six relevés en plus
+set.seed(8)
+zones <- function(noms, zone, graine) {
+  set.seed(graine)
+  x <- round(rnorm(length(noms)), 3)
+  data.frame(nom = noms, zone = zone, x = x, y = round(c(A = 1, B = 2, C = 3, D = 4)[zone] + 0.5 * x + rnorm(length(noms), 0, 0.3), 3))
+}
+z1 <- zones(sprintf("z%02d", 1:30), rep(c("A", "B", "C"), each = 10), 1)
+zones_csv <- fichier("zones.csv")
+utils::write.csv(z1, zones_csv, row.names = FALSE)
+zp <- demande("ouvrir", list(chemin = zones_csv))
+zid <- zp$id
+zu <- function(nom) uid_de(projet(zid), nom)
+zo <- function(noms) numeros_observations(projet(zid), noms)
+r_tous <- demande("ajuster", list(projet = zid, type = "LM", x = list(zu("zone"), zu("x")), y = list(zu("y")), echelle = "none", nom = "R"))
+r_ab <- demande("ajuster", list(projet = zid, type = "LM", x = list(zu("zone")), y = list(zu("y")), nom = "RB", exclues = zo(z1$nom[z1$zone == "C"])))
+pls_z <- demande("ajuster", list(projet = zid, type = "PLS", x = list(zu("x"), zu("zone")), y = list(zu("y")), A = 1, nom = "P",
+                                 blocs = stats::setNames(list("Z"), zu("zone")), modificateurs = stats::setNames(list(0.5), zu("zone"))))
+termes_de <- function(p, nom) definition(p, nom)$x
+coef_de <- function(m) stats::setNames(m$coefficients_regression$estimation, m$coefficients_regression$terme)
+verifier("avant : la référence de R est C, celle de RB est B (C laissée de côté)",
+         !"zone(C)" %in% names(coef_de(r_tous)) && all(c("zone(A)", "zone(B)") %in% names(coef_de(r_tous))) && identical(names(coef_de(r_ab)), c("(Intercept)", "zone(A)")))
+avant_z <- projet(zid)
+z2 <- rbind(z1, zones(sprintf("z%02d", 31:36), rep("D", 6), 2))
+utils::write.csv(z2, zones_csv, row.names = FALSE)
+# (RB n'a pas de relevés de C : D, avant C mais après B, deviendrait sa dernière catégorie observée)
+ap_z <- demande("mettre_a_jour", list(projet = zid, apercu = TRUE))
+rc <- ap_z$modeles$references_changees
+verifier("l'aperçu : RB, s'il prenait les relevés de D, changerait de référence (B, puis D) ; dit",
+         length(rc) == 1 && identical(rc[[1]]$nom, "RB") && identical(rc[[1]]$variable, "zone") && identical(rc[[1]]$avant, "B") && identical(rc[[1]]$apres, "D") &&
+           identical(rc[[1]]$numero, r_ab$numero))
+az <- demande("mettre_a_jour", list(projet = zid, sans_nouvelles = list("RB")))
+pz <- projet(zid)
+verifier("D avant la dernière catégorie, C : ses numéros suivis dans les données et les termes",
+         identical(categories_de(pz, "zone"), c("A", "B", "D", "C")) && identical(unname(valeurs(pz, "zone")), c(z2$zone)) &&
+           identical(vapply(Filter(function(t) startsWith(t$name, "zone"), termes_de(pz, "R")), function(t) as.numeric(t$categories), 0), c(1, 2, 3, 4)) &&
+           identical(vapply(Filter(function(t) startsWith(t$name, "zone"), termes_de(pz, "R")), `[[`, "", "name"), c("zone(A)", "zone(B)", "zone(D)", "zone(C)")))
+r2 <- demande("ajuster", list(projet = zid, numero = r_tous$numero))
+reference_c <- stats::lm(y ~ zone + x, data = transform(z2, zone = stats::relevel(factor(z2$zone), ref = "C")))
+co <- coef_de(r2)
+verifier("R réajusté : la même référence, C ; les coefficients de A et B toujours contre elle, celui de D en plus, = lm() avec C en référence",
+         r2$N == 36 && !"zone(C)" %in% names(co) && isTRUE(all.equal(unname(co[c("(Intercept)", "zone(A)", "zone(B)", "zone(D)", "x")]),
+                                                                      unname(stats::coef(reference_c)[c("(Intercept)", "zoneA", "zoneB", "zoneD", "x")]), tolerance = 1e-8)))
+tp <- Filter(function(t) startsWith(t$name, "zone"), termes_de(pz, "P"))
+verifier("la PLS prend le terme zone(D), avant zone(C), avec l'échelle, le bloc et le modificateur des autres",
+         identical(vapply(tp, `[[`, "", "name"), c("zone(A)", "zone(B)", "zone(D)", "zone(C)")) && all(vapply(tp, function(t) identical(t$scaling, tp[[1]]$scaling), TRUE)) &&
+           identical(tp[[1]]$scaling$block, "Z") && identical(tp[[1]]$scaling$modifier, 0.5) && demande("ajuster", list(projet = zid, numero = pls_z$numero))$K == 5)
+verifier("le rapport : les modèles qui prennent le terme de D (RB aussi, sans ses relevés), aucune référence changée",
+         setequal(vapply(az$modeles$nouvelles_categories, `[[`, "", "nom"), c("R", "RB", "P")) &&
+           all(vapply(az$modeles$nouvelles_categories, function(x) identical(x$variable, "zone") && identical(as.character(x$categories), "D"), TRUE)) &&
+           !length(az$modeles$references_changees))
+r3 <- demande("ajuster", list(projet = zid, numero = r_ab$numero))
+verifier("RB réajusté sans les relevés de D : toujours B en référence", r3$N == 20 && identical(names(coef_de(r3)), c("(Intercept)", "zone(A)")))
+demande("annuler", list(projet = zid))
+verifier("Ctrl+Z : les catégories, les données et les définitions d'avant", identical(projet(zid)$variables, avant_z$variables) &&
+           identical(projet(zid)$donnees, avant_z$donnees) && identical(projet(zid)$models, avant_z$models))
+# l'année suivante sans la zone B : la référence de RB (ses lignes de A et B) ne peut pas rester
+utils::write.csv(z2[z2$zone != "B", ], zones_csv, row.names = FALSE)
+ab <- demande("mettre_a_jour", list(projet = zid, apercu = TRUE, sans_nouvelles = list("RB")))
+rc <- ab$modeles$references_changees
+verifier("une catégorie de référence qui n'a plus de lignes dans un modèle : dite, avant et après ; R garde la sienne",
+         length(rc) == 1 && identical(rc[[1]]$nom, "RB") && identical(rc[[1]]$avant, "B") && identical(rc[[1]]$apres, "A"))
+classes_csv <- fichier("classes.csv")
+utils::write.csv(transform(z1, groupe = rep(c("g1", "g2"), 15)), classes_csv, row.names = FALSE)
+cp <- demande("ouvrir", list(chemin = classes_csv))
+cu <- function(nom) uid_de(projet(cp$id), nom)
+da <- demande("ajuster", list(projet = cp$id, type = "PLS-DA", x = list(cu("x"), cu("y")), classe = cu("groupe"), A = 1, nom = "DA"))
+utils::write.csv(rbind(transform(z1, groupe = rep(c("g1", "g2"), 15)), data.frame(nom = c("z31", "z32", "z33"), zone = "A", x = 1, y = 2, groupe = c("g3", "g1", "g3"))),
+                 classes_csv, row.names = FALSE)
+demande("mettre_a_jour", list(projet = cp$id))
+pc <- projet(cp$id)
+dda <- definition(pc, "DA")
+verifier("une PLS-DA : la classe nouvelle mise avant la dernière, ses classes suivies ; seules les nouvelles observations de ses classes y entrent",
+         identical(categories_de(pc, "groupe"), c("g1", "g3", "g2")) && identical(vapply(dda$y, `[[`, "", "name"), c("groupe(g1)", "groupe(g2)")) &&
+           identical(vapply(dda$y, function(t) as.numeric(t$categories), 0), c(1, 3)) && length(dda$observations) == 31 &&
+           demande("ajuster", list(projet = cp$id, numero = da$numero))$N == 31)
 
 cat("Sans source, sans étapes, sans colonne qui nomme les observations\n")
 cl <- demande("coller", list(texte = paste(c("nom\tx\tz", sprintf("c%d\t%d\t%d", 1:6, 1:6, c(3, 1, 4, 1, 5, 9))), collapse = "\n"), nom = "Collé"))

@@ -716,14 +716,19 @@ identifiants_definition <- function(d, p) {
 }
 
 # Celles des observations `nouvelles` (des numéros de `p`) qu'un modèle de définition `d` prend : une
-# PLS-DA, celles dont la classe est connue (comme definir_modele) ; un modèle de classe, celles de sa
+# PLS-DA, celles d'une classe qu'il a (une classe connue, comme definir_modele, et l'une de ses
+# termes Y : une classe nouvelle en ferait un autre modèle) ; un modèle de classe, celles de sa
 # classe ; le modèle mixte BACI, celles des unités d'impact et témoins dont le temps est connu,
 # jusqu'à la fin (comme definition_baci) ; un autre modèle, toutes.
 nouvelles_admises <- function(d, p, nouvelles) {
   if (!length(nouvelles)) return(nouvelles)
   # (la classe d'une PLS-DA d'un fichier .usp : la variable de ses termes Y)
   classe <- d$classe %||% (if (isTRUE(d$plsda)) unlist(lapply(d$y, function(t) t$variables))[1])
-  if (isTRUE(d$plsda) && length(classe)) nouvelles <- nouvelles[!is.na(colonne(p, classe, nouvelles))]
+  if (isTRUE(d$plsda) && length(classe)) {
+    x <- colonne(p, classe, nouvelles)
+    siennes <- unlist(lapply(d$y, function(t) if (identical(as.numeric(t$variables)[1], as.numeric(classe)[1])) categorie(t)))
+    nouvelles <- nouvelles[!is.na(x) & (!length(siennes) | x %in% siennes)]
+  }
   g <- d$groupe_classes
   if (!is.null(g)) {
     v <- tryCatch(variable_du_projet(p, g$variable), error = function(e) NULL)
@@ -781,6 +786,85 @@ definition_suivie <- function(d, p, nouvelles, retirees, prend = TRUE) {
   d
 }
 
+# Les catégories d'une variable après une mise à jour : celles du projet (`actuelles`) dans leur ordre,
+# et les nouvelles (`neuves`, dans l'ordre où elles viennent) juste avant la dernière, qui reste la
+# dernière. Dans une régression, la dernière catégorie observée est la référence (regression.R :
+# candidats_regression) : elle ne change pas, et les coefficients des autres gardent leur sens.
+categories_alignees <- function(actuelles, neuves) {
+  if (!length(neuves)) return(actuelles)
+  if (!length(actuelles)) return(neuves)
+  c(utils::head(actuelles, -1), neuves, utils::tail(actuelles, 1))
+}
+
+# Les termes d'une définition avec ceux des catégories `codes` de la variable `uid` (leurs numéros dans
+# la liste de ses catégories : categories_alignees), venues avec une mise à jour des données. Chaque
+# famille de termes de ses catégories (son effet principal ou ses facteurs seuls, chaque terme croisé
+# avec les mêmes catégories des autres variables : comme suivre_termes, atelier.R) prend le terme de
+# chacune, avec les réglages des autres (échelle, bloc, modificateur, transformation), et ses termes
+# viennent dans l'ordre des catégories, la dernière restant la dernière. Sans lui, les lignes d'une
+# nouvelle catégorie n'auraient que des 0 dans les colonnes de la variable : rien dans une ACP ou une
+# PLS, la référence d'une régression. Une famille aux décalages (lags, d'un fichier .usp) reste telle
+# quelle. attr(, "ajoutees") : les numéros des catégories qui ont pris un terme.
+termes_nouvelles_categories <- function(termes, projet, uid, codes) {
+  cats_terme <- function(t) vapply(seq_along(t$variables), function(j) as.numeric(categorie(t, j)), 0)
+  ici <- function(t) which(as.numeric(t$variables) == uid & cats_terme(t) != 0)
+  famille <- vapply(termes, function(t) {
+    j <- ici(t)
+    if (!length(j) || length(t$lags)) return(NA_character_)
+    cats <- cats_terme(t)
+    cats[j] <- -1
+    paste(c(as.numeric(t$variables), cats, isTRUE(t$facteur_seul)), collapse = " ")
+  }, "")
+  ajoutees <- numeric(0)
+  nouveaux <- vector("list", length(termes))
+  for (f in unique(famille[!is.na(famille)])) {
+    k <- which(famille %in% f)
+    presents <- vapply(termes[k], function(t) cats_terme(t)[ici(t)], 0)
+    manquants <- setdiff(codes, presents)
+    if (!length(manquants)) next
+    modele_terme <- termes[[k[1]]]
+    j <- ici(modele_terme)
+    nouveaux[[max(k)]] <- lapply(manquants, function(code) {
+      t <- modele_terme
+      cats <- cats_terme(t)
+      cats[j] <- code
+      t$categories <- if (length(cats) == 1) cats[1] else cats
+      t$name <- nom_terme(projet, as.numeric(t$variables), cats)
+      t
+    })
+    ajoutees <- union(ajoutees, manquants)
+  }
+  if (!length(ajoutees)) return(termes)
+  # (chaque terme, suivi des nouveaux de sa famille après le dernier d'entre eux, puis chaque famille
+  # rangée dans l'ordre des catégories de la variable, à ses places)
+  garde <- unlist(lapply(seq_along(termes), function(i) c(list(termes[[i]]), nouveaux[[i]])), recursive = FALSE)
+  familles <- unlist(lapply(seq_along(termes), function(i) rep(famille[i], 1 + length(nouveaux[[i]]))))
+  for (f in unique(familles[!is.na(familles)])) {
+    k <- which(familles %in% f)
+    rang <- vapply(garde[k], function(t) cats_terme(t)[ici(t)], 0)
+    if (is.unsorted(rang)) garde[k] <- garde[k][order(rang)]
+  }
+  structure(garde, ajoutees = ajoutees)
+}
+
+# La catégorie de référence de la variable qualitative `uid` dans la régression de définition `d` sur
+# les données de `p` (le nom de la catégorie ; NA sans elle) : la dernière, dans l'ordre de ses termes,
+# que portent les lignes complètes de ses observations (sa condition refaite), comme l'ajustement la
+# laisse de côté (regression.R : candidats_regression).
+reference_variable <- function(d, p, uid) {
+  termes <- Filter(function(t) length(t$variables) == 1 && as.numeric(t$variables) == uid && categorie(t) != 0, d$x)
+  codes <- vapply(termes, function(t) as.numeric(categorie(t)), 0)
+  if (!length(codes)) return(NA_character_)
+  obs <- tryCatch(resoudre_observations(p, d)$observations, error = function(e) as.numeric(unlist(d$observations)))
+  vars <- Filter(function(u) as.character(u) %in% colnames(p$donnees), variables_definition(d))
+  valeurs <- do.call(cbind, lapply(vars, function(u) colonne(p, u, obs)))
+  if (!is.null(valeurs)) obs <- obs[stats::complete.cases(valeurs)]
+  x <- colonne(p, uid, obs)
+  presentes <- codes[codes %in% x]
+  if (!length(presentes)) return(NA_character_)
+  as.character(unlist(variable_du_projet(p, uid)$categories))[utils::tail(presentes, 1)]
+}
+
 # (la variable `de` du projet prend le numéro `vers` ; ses noms de colonne comparés en nombres, que
 # ajouter_colonne a pu écrire « 1e+05 »)
 renumeroter_variable <- function(p, de, vers) {
@@ -798,17 +882,21 @@ renumeroter_variable <- function(p, de, vers) {
 # Les données d'un projet rejoué (`nouveau`) dans la numérotation du projet `actuel` :
 #   - une variable du même nom (à une capitale, une espace ou un point près : nom_comparable, quand
 #     un seul nom de chaque côté s'y rapporte) garde son numéro et son nom ; une nouvelle en prend un ;
-#     une variable qualitative garde ses catégories, dans leur ordre (la dernière catégorie observée
-#     est la référence d'une régression), les nouvelles venant après, et une variable qui a changé
-#     de type dans le fichier reprend le sien (des nombres lus en catégories, ou l'inverse) ;
+#     une variable qualitative garde ses catégories, dans leur ordre, les nouvelles juste avant la
+#     dernière (categories_alignees : la dernière catégorie observée est la référence d'une
+#     régression, et elle le reste), et une variable qui a changé de type dans le fichier reprend le
+#     sien (des nombres lus en catégories, ou l'inverse) ;
 #   - une observation du même identifiant (cles_observations) garde son numéro ; une nouvelle en prend
 #     un ; une absente part ; les identifiants des observations gardent leurs rangs, ceux du fichier
 #     qui sont nouveaux venant après ;
 #   - une variable du projet que les données n'ont plus : celle d'une formule de Nouvelle variable
 #     (variables.R : variable_calculee) est calculée de nouveau sur elles, sous son numéro ; les
 #     autres partent, et un modèle qui en utilise une ne se réajuste plus (le rapport les nomme) ;
-#   - les définitions des modèles suivent les observations (definition_suivie : les nouvelles y
-#     entrent, sauf pour les modèles de `sans_nouvelles`, leurs noms ou leurs numéros).
+#   - les définitions des modèles suivent les numéros des catégories (atelier.R : suivre_categories)
+#     et prennent les termes des nouvelles (termes_nouvelles_categories), puis les observations
+#     (definition_suivie : les nouvelles y entrent, sauf pour les modèles de `sans_nouvelles`, leurs
+#     noms ou leurs numéros) ; le rapport nomme les modèles qui ont pris une catégorie, et les
+#     régressions dont la référence change quand même, sa catégorie n'ayant plus de lignes.
 # Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Rend
 # list(projet, rapport : ce qui a changé ; vers_nouveau : le numéro dans `nouveau` de chaque
 # observation, nommé par le sien ; absentes : les numéros des variables parties).
@@ -852,6 +940,9 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   vars <- vector("list", length(vn))
   categories <- list()
   types <- list()
+  # (les variables dont les catégories ont changé de numéros, nommées par le leur : celles d'avant et
+  # les nouvelles, pour les définitions des modèles)
+  cartes <- list()
   for (i in seq_along(vn)) {
     v <- vn[[i]]
     if (!is.na(k[i])) {
@@ -862,12 +953,12 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
       neuves <- character(0)
       if (length(ca) && length(cn)) {
         neuves <- setdiff(cn, ca)
-        v$categories <- c(ca, neuves)
+        v$categories <- categories_alignees(ca, neuves)
         X[, i] <- match(cn[x], v$categories)
       } else if (length(ca)) {
         texte <- ifelse(is.na(x), NA_character_, sprintf("%.15g", x))
         neuves <- sort(setdiff(unique(stats::na.omit(texte)), ca))
-        v$categories <- c(ca, neuves)
+        v$categories <- categories_alignees(ca, neuves)
         X[, i] <- match(texte, v$categories)
         types[[length(types) + 1]] <- list(variable = nom(a), type = "qualitative", perdues = 0L)
       } else if (length(cn)) {
@@ -876,7 +967,10 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
         v["categories"] <- list(NULL)
         types[[length(types) + 1]] <- list(variable = nom(a), type = "quantitative", perdues = sum(!is.na(x) & is.na(n)))
       }
-      if (length(neuves)) categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
+      if (length(neuves)) {
+        categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
+        if (length(ca)) cartes[[as.character(uid_v[i])]] <- list(anciennes = ca, neuves = neuves)
+      }
       v$ids[1] <- nom(a)
       for (champ in c("unite", "description")) if (is.null(v[[champ]]) && !is.null(a[[champ]])) v[[champ]] <- a[[champ]]
     }
@@ -935,13 +1029,68 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     p <- renumeroter_variable(essai, uid(essai$variables[[j]]), uid(a))
     j <- match(nom(a), vapply(p$variables, nom, ""))
     for (champ in c("unite", "description")) if (!is.null(a[[champ]])) p$variables[[j]][[champ]] <- a[[champ]]
+    # (qualitative, elle garde ses catégories d'avant et leur ordre, comme une variable du fichier)
+    ca <- as.character(unlist(a$categories))
+    cn <- as.character(unlist(p$variables[[j]]$categories))
+    if (length(ca) && length(cn) && !identical(ca, cn)) {
+      neuves <- setdiff(cn, ca)
+      colonne_a <- as.character(uid(a))
+      p$variables[[j]]$categories <- categories_alignees(ca, neuves)
+      p$donnees[, colonne_a] <- match(cn[p$donnees[, colonne_a]], p$variables[[j]]$categories)
+      if (length(neuves)) {
+        categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
+        cartes[[colonne_a]] <- list(anciennes = ca, neuves = neuves)
+      }
+    }
     recalculees <- c(recalculees, nom(a))
   }
   absentes_uid <- vapply(parties, uid, 0)
-  # (les modèles : leurs observations suivent)
+  # (les modèles : les numéros des catégories suivent leur nouvel ordre, comme quand l'atelier les range
+  # (atelier.R : suivre_categories), chaque famille de termes d'une variable prend ceux de ses nouvelles
+  # catégories (sauf les classes d'une PLS-DA : ses observations d'une classe nouvelle n'y entrent
+  # pas, nouvelles_admises), puis les observations suivent)
+  p$models <- actuel$models
+  gagnees <- list()
+  for (u in names(cartes)) {
+    uu <- as.numeric(u)
+    finales <- as.character(unlist(variable_du_projet(p, uu)$categories))
+    p <- suivre_categories(p, uu, match(cartes[[u]]$anciennes, finales), cartes[[u]]$anciennes)
+    codes <- match(cartes[[u]]$neuves, finales)
+    for (i in seq_along(p$models)) {
+      d <- p$models[[i]]
+      faites <- numeric(0)
+      for (champ in c("x", if (!isTRUE(d$plsda)) "y", "termes_complets")) {
+        if (!length(d[[champ]])) next
+        r <- termes_nouvelles_categories(d[[champ]], p, uu, codes)
+        faites <- union(faites, attr(r, "ajoutees"))
+        attr(r, "ajoutees") <- NULL
+        d[[champ]] <- r
+      }
+      if (!length(faites)) next
+      d$solution <- NULL
+      d$reference <- list(ynames = d[["reference"]][["ynames"]], note = d[["reference"]][["note"]])
+      p$models[[i]] <- d
+      gagnees[[length(gagnees) + 1]] <- list(nom = premier_texte(d$name), numero = d$number, variable = nom(variable_du_projet(p, uu)),
+                                             categories = I(finales[sort(faites)]))
+    }
+  }
   exclus <- as.character(unlist(sans_nouvelles))
   prend <- function(d) !(premier_texte(d$name) %in% exclus || premier_texte(d$number) %in% exclus)
-  p$models <- lapply(actuel$models, function(d) definition_suivie(d, p, ajoutees, retirees, prend(d)))
+  p$models <- lapply(p$models, function(d) definition_suivie(d, p, ajoutees, retirees, prend(d)))
+  # (les régressions dont la catégorie de référence change quand même : la dernière n'a plus de lignes)
+  references <- list()
+  for (i in seq_along(p$models)) {
+    d <- p$models[[i]]
+    if (!est_regression(d)) next
+    qualitatives <- unique(unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0) as.numeric(t$variables))))
+    for (u in setdiff(qualitatives, absentes_uid)) {
+      avant <- reference_variable(actuel$models[[i]], actuel, u)
+      apres <- reference_variable(d, p, u)
+      if (!identical(avant, apres)) {
+        references[[length(references) + 1]] <- list(nom = premier_texte(d$name), numero = d$number, variable = nom(variable_du_projet(p, u)), avant = avant, apres = apres)
+      }
+    }
+  }
   p$prediction_sets <- lapply(actuel$prediction_sets, function(s) { s$observations <- setdiff(as.numeric(unlist(s$observations)), retirees); s })
   # (ce qui a changé : les cellules des observations et des variables communes, par variable ; celles
   # que des étapes calculent sur toutes les observations, une imputation, des scores, changent avec
@@ -994,7 +1143,8 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     variables = list(nouvelles = I(noms_n[is.na(k)]), absentes = I(vapply(parties, nom, "")), recalculees = I(recalculees),
                      categories = categories, types = types),
     identifiants = list(nouveaux = I(setdiff(noms_id_n[-1], noms_id_a)), absents = I(id_absents)),
-    modeles = list(variables_absentes = touches, observations_choisies = choisies, sans_nouvelles = I(sans)))
+    modeles = list(variables_absentes = touches, observations_choisies = choisies, sans_nouvelles = I(sans),
+                   nouvelles_categories = gagnees, references_changees = references))
   list(projet = p, rapport = rapport, vers_nouveau = stats::setNames(uo_n, as.character(uid_o)), absentes = absentes_uid)
 }
 

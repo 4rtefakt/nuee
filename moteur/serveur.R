@@ -993,10 +993,13 @@ etapes_demande <- function(q) {
                                                     "A project from a version of Nuée before 1.1: its changes from then aren't steps.") else "")
 }
 
-# Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z.
+# Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
+# modèles de la séance suivent leurs définitions comme après un changement des catégories (leurs
+# conditions ; leurs catégories, par leurs noms : modele, aligner_categories).
 remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
   memoriser(actuel, etiquette)
   n <- r$projet
+  suivre_conditions_seance(actuel, n)
   n$modifie <- TRUE
   etat$projets[[actuel$id]] <- n
   reviser(actuel$id)
@@ -1601,7 +1604,10 @@ DEMANDES <- list(
   # demande, etiquette, statut "ok", "sautee" ou "erreur", raison, notes), `modeles`
   # (variables_absentes : ceux qui ne se réajustent plus et les variables qui leur manquent ;
   # observations_choisies : ceux qui n'avaient pas toutes les observations du projet, à qui demander
-  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas), `fichier`,
+  # s'ils prennent les nouvelles ; sans_nouvelles : ceux qui ne les prendront pas ;
+  # nouvelles_categories : ceux qui prennent le terme d'une catégorie nouvelle, mise avant la dernière
+  # de sa variable ; references_changees : les régressions dont la catégorie de référence change quand
+  # même, la dernière n'ayant plus de lignes, avant et après), `fichier`,
   # `notes` (la lecture du fichier). Sans q$apercu, la mise à jour faite, un seul Ctrl+Z (la source et
   # les étapes comprises), le fichier lu devenant la source : le même rapport et `projet`.
   # L'interface réajuste ensuite les modèles. Un fichier de plusieurs tableaux sans q$table : `choisir`.
