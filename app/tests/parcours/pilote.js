@@ -319,7 +319,7 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   const portPage = await portLibre();
   const portNode = await portLibre();
   const debut = Date.now();
-  const horsEcran = HORS_ECRAN ? ['--disable-features=CalculateNativeWinOcclusion'] : [];
+  const horsEcran = HORS_ECRAN ? ['--disable-features=CalculateNativeWinOcclusion', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] : [];
   const proc = spawn(programme, [`--user-data-dir=${profil}`, `--remote-debugging-port=${portPage}`, `--inspect=${portNode}`, ...horsEcran, ...options],
     { env, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows });
   let sortie = '';

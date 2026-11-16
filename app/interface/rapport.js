@@ -45,7 +45,10 @@ const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
   { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
   { cle: 'effets', vue: 'effets', defaut: true, tableau: tableauPentes,
-    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false, echelle: 'lien' })) },
+  // (the same terms' predicted values on the response scale, what stays fixed said under each: {{M1.valeurs_predites.annee}})
+  { cle: 'valeurs_predites', vue: 'effets',
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false, echelle: 'reponse' })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
     variantes: async (m) => (await variantesSeuils(m)).map((v) => ({ terme: v.terme, seuils: true, ...(v.categorie ? { categorie: v.categorie } : {}) })) },
   { cle: 'moyennes', vue: 'moyennes', si: (m) => [].concat(m.qualitatives || []).length > 0, tableau: tableauMoyennes },

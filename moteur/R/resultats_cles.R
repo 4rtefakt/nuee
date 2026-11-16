@@ -86,10 +86,24 @@ resume_resultats <- function(projet, e) {
   # vaut 0, comme N, K, et G, RMSEE, RMSEcv et bien_classes quand elle les a, sous les mêmes clés ici)
   if (autre) entrees <- c(entrees, list(entree_resultat("A", traduire("Nombre de composantes", "Number of components"), "ajustement", 0, forme = "entier")))
   entrees <- Filter(Negate(is.null), entrees)
+  if (autre) entrees <- lapply(entrees, alias_parties)
   unname(entrees[!duplicated(vapply(entrees, `[[`, "", "cle"))])  # (sans noms : un tableau en JSON)
 }
 
 entree_g <- function(G) entree_resultat("G", traduire("Nombre de groupes de validation croisée", "Number of cross-validation groups"), "ajustement", G, forme = "entier")
+
+# Les références d'un document qui citent une partie de l'entrée `e` d'une autre analyse (references.js :
+# referenceCle), en alias de l'entrée : son intervalle à 95 % (cle.ic, cle.bas, cle.haut), sa valeur p
+# (cle.p) ; une valeur multiplicative (une pente de TRIM, un indice : limite 1), sa variation en
+# pourcentage et son intervalle (cle.pourcent, cle.pourcent.ic...) ; la pente globale de TRIM, sa classe
+# (pente.classe).
+alias_parties <- function(e) {
+  parties <- c(if (!is.null(e$ic)) c("ic", "bas", "haut"), if (!is.null(e$p)) "p",
+               if (identical(e$limite, 1) && !is.null(e$valeur)) c("pourcent", if (!is.null(e$ic)) c("pourcent.ic", "pourcent.bas", "pourcent.haut")),
+               if (identical(e$cle, "pente") && !is.null(e$classe)) "classe")
+  if (length(parties)) e$alias <- I(c(as.character(e$alias), paste(e$cle, parties, sep = ".")))
+  e
+}
 
 entrees_communes <- function(projet, d, m) list(entree_n(m$N))
 

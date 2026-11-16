@@ -69,7 +69,7 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
     x <- co[i, ]
     u <- par_unite(x$terme)
     base <- sprintf(if (fr) "%s : β = %s%s (IC 95 %% [%s ; %s], %s)" else "%s: β = %s%s (95%% CI [%s, %s], %s)",
-                    guillemets_resultat(x$terme, fr), nb(x$estimation), u, nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
+                    paste0(guillemets_resultat(x$terme, fr), lieu_coefficient(m, x$terme, fr, d)), nb(x$estimation), u, nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
     echelle <- if (lien == "log") sprintf(if (fr) ", soit un facteur %s [%s ; %s]%s" else ", i.e. a factor of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
                else if (lien == "logit") sprintf(if (fr) ", soit un rapport de cotes de %s [%s ; %s]%s" else ", i.e. an odds ratio of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
                else ""
@@ -103,6 +103,34 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
                                paste(sprintf("%s σ = %s", simples$composante, vapply(sqrt(simples$variance), nb, "")), collapse = if (fr) " ; " else "; "))
   }
   c(p1, p2, p3, p4)
+}
+
+# Où se lit le coefficient d'une catégorie d'une variable qualitative croisée, dans les termes de
+# l'ajustement, avec des variables quantitatives (« habitat » avec « annee » dans annee × habitat) :
+# son écart à la catégorie de référence là où chacune vaut 0, ou à sa moyenne quand elle est centrée
+# (Quelle analyse ? centre le temps d'une tendance) ; le texte des méthodes le dit aussi
+# (regression.R : phrases_qualitatives). " (à la moyenne de « annee », 2016)", ou "" pour un autre
+# terme. `d` : la définition du modèle (la transformation d'une variable), s'il y en a une.
+lieu_coefficient <- function(m, terme, fr, d = NULL) {
+  comp <- m$composition
+  t <- m$termes[match(terme, m$noms_termes)]
+  ct <- if (length(t) && !is.na(t)) comp[[t]]
+  if (is.null(ct) || length(ct$variables) != 1 || ct$categories == 0) return("")
+  u <- ct$variables
+  croises <- Filter(function(p) length(comp[[p]]$variables) > 1 && u %in% comp[[p]]$variables, m$utiles)
+  autres <- unique(unlist(lapply(comp[croises], function(c) c$variables[c$categories == 0])))
+  valeur <- function(x) trimws(formatC(x, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+  lieux <- unlist(lapply(autres, function(w) {
+    k <- which(vapply(comp, function(c) length(c$variables) == 1 && c$variables == w && c$categories == 0, TRUE))[1]
+    if (is.na(k)) return(NULL)
+    tr <- if (!is.null(d)) termes_regression(d$x)[[k]]$transform
+    nom <- guillemets_resultat(m$noms_termes[k], fr)
+    if (!is.null(tr)) nom <- formule_transformation(tr, nom, fr)
+    centre <- m$bloc$centre[k]
+    if (isTRUE(centre != 0)) sprintf(if (fr) "à la moyenne de %s, %s" else "at the mean of %s, %s", nom, valeur(centre))
+    else sprintf(if (fr) "là où %s vaut 0" else "where %s is 0", nom)
+  }))
+  if (length(lieux)) sprintf(" (%s)", paste(lieux, collapse = if (fr) " ; " else "; ")) else ""
 }
 
 resultats_composantes <- function(projet, d, m, fr) {

@@ -350,7 +350,11 @@ celles du projet, ou celles que proposent les noms de ses variables ; les distan
 variable nommée comme elles, et les autres colonnes de l'échantillonnage par distance par les
 noms d'où Nouveau modèle les propose (Sample.Label, Effort, Region.Label, Area, size du paquet
 Distance, ou transect, longueur, région, aire, taille) ; des points plutôt que des lignes quand
-la colonne du transect est nommée comme un point ou une station. Chaque réponse se change.
+la colonne du transect est nommée comme un point ou une station. Chaque réponse se change. La
+liste des réponses laisse de côté le temps, le site et l'unité dès que leur case du dispositif
+est cochée (ils sont le dispositif, non la réponse) ; quand une seule variable reste, elle est
+proposée : sur les comptages d'alouettes, une tendance propose les alouettes, l'année étant son
+temps.
 À droite : l'analyse conseillée, pourquoi, ses conditions principales et des notes selon les
 réponses (l'effet aléatoire par site, l'autocorrélation des résidus d'années qui se suivent, les
 moyennes ajustées après la comparaison de groupes, une proportion qui touche 0 ou 1...), ce qui
@@ -384,7 +388,11 @@ Les choix principaux :
   - une tendance : TRIM pour des comptages par site et par année (une ligne par site et par
     année : pas plus d'observations que de sites × années ; sinon un GLM, et TRIM après Édition
     › Résumer par groupe) ; une mesure sur plusieurs sites : le modèle mixte, l'année en X ; une
-    seule série : Séries et ses tendances ;
+    seule série : Séries et ses tendances ; la régression d'une tendance a son temps centré sur
+    sa moyenne (son échelle Ctr, les autres variables gardant leurs unités) : la pente ne change
+    pas, et une fois le temps croisé avec une variable qualitative (la tendance diffère-t-elle
+    d'un habitat à l'autre ?), le coefficient de chaque catégorie est son écart à l'année
+    moyenne plutôt qu'en l'an 0, ce que disent les textes des méthodes et des résultats ;
   - prédire : la PLS ou la PLS-DA avec beaucoup de X (20 ou plus, ou moitié moins que
     d'observations), la forêt aléatoire sinon, les arbres boostés pour des comptages et des
     présences ;
@@ -611,6 +619,20 @@ donnent leur valeur :
   {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
   {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
   {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+  {{M5.valeurs_predites.annee}} (ses valeurs prédites sur l'échelle de la réponse, Effets › Échelle)
+  {{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+  (TRIM : la pente globale des totaux imputés, à 4 décimales, son intervalle à 95 %, sa variation
+  en % par pas de temps, sa classe dans la langue du document, σ² et ρ)  {{D1.D}} {{D1.D.ic}}
+  {{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.Nord}} (échantillonnage par distances :
+  la densité, son intervalle et son CV, l'effectif, p, ESW ou EDR, la densité d'une strate)
+  {{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+  {{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA : le R² et p du modèle, ceux
+  d'un terme)  {{N1.stress}} (NMDS)
+  Les résultats clés des autres analyses se citent de même, sous les clés que compare Ce qui a
+  changé (un indice {{T1.indice.2015}}, le r d'un test de Mantel {{M1.mantel}}...) : une valeur,
+  puis .ic, .bas, .haut et .p pour celles qui ont un intervalle ou une valeur p, .pourcent pour une
+  valeur multiplicative ; A, et un K de 0, ne sont pas proposés là où ils ne veulent rien dire. Le
+  fichier Quarto reproductible écrit ceux ci-dessus d'après les scripts des modèles.
   {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
   {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
   en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
@@ -1267,9 +1289,15 @@ qu'on peut faire : la loi des résidus (Shapiro–Wilk, sur les résidus quantil
 des présences-absences et des valeurs positives), une dispersion des résidus qui change avec les
 valeurs ajustées, les observations influentes (distance de Cook au-delà de 4/n, modèle linéaire),
 la surdispersion et un excès de zéros (comptages), des termes quantitatifs colinéaires (VIF > 5),
-des courbes confondues avec les autres termes, et l'autocorrélation spatiale des résidus quand le
-projet a des coordonnées. Avec beaucoup d'observations un test voit des écarts sans conséquence,
-avec peu il n'en voit aucun : les graphiques des résidus restent la référence.
+des courbes confondues avec les autres termes, l'autocorrélation spatiale des résidus quand le
+projet a des coordonnées, et ℹ une variable X quantitative loin de 0 (une année : 0 hors de ses
+valeurs et sa moyenne au-delà de 5 écarts-types) croisée avec une variable qualitative sans être
+centrée : le coefficient de chaque catégorie est alors son écart là où cette X vaut 0, loin des
+données, d'où sa taille et son large intervalle. Son bouton, « Ajuster de nouveau avec « annee »
+centrée », ajuste un nouveau modèle (M1 (1)) à l'échelle Ctr : le même modèle, l'écart lu à
+l'année moyenne, comme le disent alors ses textes des méthodes et des résultats. Avec beaucoup
+d'observations un test voit des écarts sans conséquence, avec peu il n'en voit aucun : les
+graphiques des résidus restent la référence.
 Formule R (onglet Général) : le modèle écrit comme dans R, par exemple
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/secteur).
 Modifiez-la puis Appliquer (Ctrl+Entrée) : elle règle les variables et leurs transformations
@@ -1294,7 +1322,10 @@ courbe par catégorie) ; Q2 et RMSEcv ; AIC ; la variance
 de chaque effet aléatoire et sa part (avec des pentes aléatoires, voir plus haut) ; φ de
 l'autocorrélation), Coefficients (l'effet de chaque terme avec son intervalle à 95 %, en rouge
 quand p ≤ 0,05 ; avec un lien log, exp(estimation) est l'effet multiplicatif d'une unité de
-plus, avec le logit le rapport des cotes), Effets (l'effet de chaque terme quantitatif quand sa
+plus, avec le logit le rapport des cotes, que la case « exp(estimation) » trace à leur place,
+sur un axe logarithmique passant par 1 ; un GAM dont tous les termes sont des courbes,
+y ~ s(annee) + (1 | site), n'y a que son ordonnée à l'origine : il s'ouvre sur Effets et
+Résidus, et ses Coefficients renvoient à Effets), Effets (l'effet de chaque terme quantitatif quand sa
 variable varie, les autres fixés, avec sa bande à 95 % et les valeurs observées dessous : les
 courbes d'un GAM, des droites sinon, une par catégorie pour un terme croisé avec une variable
 qualitative ou une courbe par catégorie, avec la légende des catégories ; sur l'échelle du
@@ -1304,7 +1335,20 @@ pour une courbe, Seuils : l'effet et sa pente avec des intervalles simultanés �
 nette, colorées et listées, et l'edf, sous 1,5 presque une droite, comme Simpson (2018) lit les
 seuils ; une courbe qui en a une par catégorie (une courbe par catégorie, ou une courbe croisée
 avec une variable qualitative) a les seuils de la catégorie choisie dans la liste à côté de la
-case, sur les percentiles de la variable dans cette catégorie), Observé / prédit, Résidus
+case, sur les percentiles de la variable dans cette catégorie ; Échelle › Valeurs prédites :
+les valeurs de la réponse que prédit le modèle quand la variable du terme varie, avec leur bande
+à 95 %, celle du prédicteur linéaire (± 1,96 erreur-type) ramenée par l'inverse du lien (exp,
+logit inverse ; la valeur attendue d'un comptage pour le Poisson à excès de zéros), les alouettes
+attendues par année dans chaque habitat plutôt que l'effet sur l'échelle log. Ce qui reste fixe,
+que dit la note sous le graphique : les autres variables quantitatives à leur moyenne sur les
+observations du modèle (avant leur transformation, comme pour les moyennes ajustées), leurs
+courbes en ce point ; les variables qualitatives dans leur catégorie de référence, sauf celles
+croisées avec le terme, dont chaque catégorie a sa courbe sur ses propres valeurs (et une courbe
+par catégorie, son niveau) ; les effets aléatoires à 0 (la population, sans l'écart propre à un
+groupe) ; un effort de 1 (des densités) ; le lissage spatial au point moyen des coordonnées. Avec
+le lien identité, ce sont les valeurs prédites de la réponse modélisée (transformée, si elle
+l'est). Exporter vers R les calcule et les dessine de même (valeurs_predites, un graphique par
+terme), et un document les cite par {{M5.valeurs_predites.annee}}), Observé / prédit, Résidus
 (standardisés, contre les valeurs ajustées, droite de
 Henry, par groupe d'un effet aléatoire ; distance de Cook pour une régression linéaire ; aussi
 les résidus quantiles pour des comptages, une présence-absence ou des valeurs positives,

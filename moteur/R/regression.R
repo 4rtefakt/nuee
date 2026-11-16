@@ -2142,9 +2142,27 @@ texte_methodes_regression <- function(projet, d, m, langue = "fr", version = "")
   termes <- if (!length(noms)) (if (fr) "sans terme explicatif (le modèle nul)" else "with no explanatory term (the null model)")
             else if (length(noms) <= 12) sprintf(if (fr) "%d terme%s (%s)" else "%d term%s (%s)", length(noms), if (length(noms) > 1) "s" else "", liste(noms))
             else sprintf(if (fr) "%d termes" else "%d terms", length(noms))
-  echelles <- unique(vapply(Filter(function(t) length(t$variables) == 1 && categorie(t) == 0, d$x), function(t) as.character(t$scaling$type %||% "UV"), ""))
+  simples_q <- which(vapply(d$x, function(t) length(t$variables) == 1 && categorie(t) == 0, TRUE))
+  types <- vapply(d$x[simples_q], function(t) as.character(t$scaling$type %||% "UV")[1], "")
+  echelles <- unique(types)
   unites <- if (!length(echelles) || all(echelles == "none")) {
     if (fr) "Les variables explicatives sont dans leurs unités." else "The explanatory variables are in their own units."
+  } else if (all(echelles %in% c("none", "Ctr"))) {
+    # (centrées seulement, comme le temps d'une tendance que Quelle analyse ? centre : chacune sur sa
+    # moyenne, dite ; une catégorie croisée avec elle a son écart pris à cette moyenne, phrases_qualitatives)
+    centrees <- simples_q[types == "Ctr"]
+    n <- length(centrees)
+    valeur <- function(x) trimws(formatC(x, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+    noms_c <- vapply(centrees, function(k) {
+      t <- d$x[[k]]
+      x <- guillemets(as.character(t$name))
+      if (is.null(t$transform)) x else formule_transformation(t$transform, x, fr)
+    }, "")
+    autres <- if (!any(types == "none")) "" else if (fr) " ; les autres variables explicatives sont dans leurs unités" else "; the other explanatory variables are in their own units"
+    moyennes <- liste(vapply(m$bloc$centre[centrees], valeur, ""))
+    if (fr) sprintf("%s %s centrée%s sur %s moyenne (%s) avant l'ajustement%s.", liste(noms_c), if (n > 1) "ont été" else "a été", if (n > 1) "s" else "",
+                    if (n > 1) "leur" else "sa", moyennes, autres)
+    else sprintf("%s %s centred on %s mean (%s) before fitting%s.", liste(noms_c), if (n > 1) "were" else "was", if (n > 1) "their" else "its", moyennes, autres)
   } else if (fr) "Les variables explicatives ont été centrées et mises à l'échelle avant l'ajustement." else "The explanatory variables were centred and scaled before fitting."
   p2 <- if (generalise) {
     lois <- if (fr) c(gaussienne = "normale", poisson = "de Poisson", binomiale_negative = "binomiale négative", binomiale = "binomiale", gamma = "gamma", tweedie = "de Tweedie",

@@ -13,12 +13,15 @@
 #   - l'excès de zéros d'un comptage : les zéros observés contre ceux qu'attend le modèle ;
 #   - la colinéarité des termes quantitatifs : le facteur d'inflation de la variance (VIF) ;
 #   - la concurvité des courbes d'un GAM ;
+#   - une variable quantitative loin de 0 (une année) croisée avec une variable qualitative sans être
+#     centrée : pourquoi les coefficients des catégories sont si grands, et le réajustement centré ;
 #   - l'autocorrélation spatiale des résidus quand le projet a des coordonnées (spatial.R : l'I de
 #     Moran des 4 plus proches voisins, jusqu'à MAX_VERIFICATION_SPATIALE observations).
 
 MAX_VERIFICATION_SPATIALE <- 3000
 
-verifications_regression <- function(projet, m) {
+# `d` : la définition du modèle (les transformations de ses termes), quand elle est donnée.
+verifications_regression <- function(projet, m, d = NULL) {
   fr <- !identical(getOption("nuee.langue"), "en")
   r <- m$resultat
   n <- m$N
@@ -128,6 +131,43 @@ verifications_regression <- function(projet, m) {
     fortes <- which(cb$concurvite > 0.8)
     if (length(fortes)) ajouter("concurvite", "attention", sprintf(if (fr) "Des courbes se confondent avec les autres termes (concurvité > 0,8) : %s." else "Some curves are confounded with the other terms (concurvity > 0.8): %s.",
                                                                    paste(sprintf("%s (%s)", cb$terme[fortes], nb(cb$concurvite[fortes])), collapse = ", ")))
+  }
+  # --- une variable quantitative loin de 0 croisée avec une variable qualitative, sans être centrée :
+  # le coefficient de chaque catégorie de celle-ci est son écart là où la variable vaut 0 (l'an 0 d'une
+  # année), loin des données, d'où sa taille et la largeur de son intervalle ; centrée sur sa moyenne
+  # (l'échelle Ctr), le même modèle donne cet écart à sa moyenne (avec une pente aléatoire de mgcv,
+  # indépendante de l'ordonnée à l'origine, le modèle change un peu : rien n'en est dit). Loin : 0 hors
+  # de ses valeurs, et sa moyenne à plus de 5 écarts-types de 0 (une année, une date ; pas une
+  # température de 10 à 25 °C). L'entrée porte la variable à centrer, pour le bouton du Résumé
+  # (serveur.R : reajuster_demande, q$centrer).
+  comp <- m$composition
+  croisees <- pentes_croisees(m)
+  for (t in names(croisees)) {
+    i <- match(t, m$termes)
+    x <- m$donnees[[t]]
+    if (isTRUE(m$bloc$centre[i] != 0) || !length(x) || !(min(x) > 0 || max(x) < 0) || !isTRUE(abs(mean(x)) > 5 * stats::sd(x))) next
+    # (les variables qualitatives croisées avec elle qui ont leurs coefficients de catégorie, un effet principal)
+    qual <- unique(unlist(lapply(comp[croisees[[t]]], function(ct) ct$variables[ct$categories != 0])))
+    avec <- Filter(function(u) any(vapply(m$utiles, function(s) length(comp[[s]]$variables) == 1 && comp[[s]]$variables == u && comp[[s]]$categories != 0, TRUE)), qual)
+    if (!length(avec)) next
+    nom_q <- vapply(avec, function(u) {
+      s <- Find(function(s) length(comp[[s]]$variables) == 1 && comp[[s]]$variables == u && comp[[s]]$categories != 0, names(comp))
+      comp[[s]]$noms[1]
+    }, "")
+    g <- function(z) if (fr) sprintf("« %s »", z) else sprintf("“%s”", z)
+    liste <- function(z) if (length(z) <= 1) paste(z) else paste(paste(z[-length(z)], collapse = ", "), if (fr) "et" else "and", z[length(z)])
+    nom <- m$noms_termes[i]
+    tr <- if (!is.null(d)) termes_regression(d$x)[[i]]$transform
+    forme <- if (is.null(tr)) g(nom) else formule_transformation(tr, g(nom), fr)
+    v6 <- function(z) trimws(formatC(z, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+    meme <- !t %in% unlist(m$pentes)
+    ajouter(paste0("centrage.", nom), "info",
+            sprintf(if (fr) "%s est croisée avec %s sans être centrée, et ses valeurs (de %s à %s) sont loin de 0 : le coefficient de chaque catégorie de %s est son écart là où %s vaut 0, loin des données, d'où sa taille et son large intervalle. Centrée sur sa moyenne (%s), elle donnerait cet écart à sa moyenne%s."
+                    else "%s is crossed with %s without being centred, and its values (%s to %s) are far from 0: each category's coefficient of %s is its difference where %s is 0, far from the data, hence its size and its wide interval. Centred on its mean (%s), it would give that difference at its mean%s.",
+                    forme, liste(g(nom_q)), v6(min(x)), v6(max(x)), liste(g(nom_q)), forme, v6(mean(x)),
+                    if (!meme) "" else if (fr) " : le même modèle, lu ailleurs" else ": the same model, read elsewhere"))
+    out[[length(out)]]$centrer <- comp[[t]]$variables
+    out[[length(out)]]$nom <- nom
   }
   # --- autocorrélation spatiale des résidus
   if (!is.null(coordonnees_projet(projet)) && n <= MAX_VERIFICATION_SPATIALE) {

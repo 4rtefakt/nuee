@@ -3,7 +3,7 @@
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, bureau } from './api.js';
-import { VUES } from './panneaux.js';
+import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
 import { rendreExplorateur } from './explorateur.js';
@@ -1696,10 +1696,12 @@ function vuesParDefaut(id) {
   if (!interne.getPanel(r)) {
     app.ouvrirVue('resume', id, null, null, interne.panels.length ? { referencePanel: interne.panels[0].id, direction: 'left' } : undefined);
   }
-  // a regression: its coefficients and residuals (no scores or loadings: regression.R); another
-  // analysis: the two views it names (m.vues_defaut)
-  const [haut, bas] = etat.modeles[id].vues_defaut ? [].concat(etat.modeles[id].vues_defaut)
-    : etat.modeles[id].regression ? ['coefficients', etat.modeles[id].type === 'GAM' ? 'effets' : 'residus'] : ['scores', null];
+  // a regression: its coefficients and residuals (no scores or loadings: regression.R), a GAM made
+  // only of curves its effects (it has no coefficient but the intercept); another analysis: the two
+  // views it names (m.vues_defaut)
+  const m = etat.modeles[id];
+  const [haut, bas] = m.vues_defaut ? [].concat(m.vues_defaut)
+    : m.regression ? (seulementCourbes(m) ? ['effets', 'residus'] : ['coefficients', m.type === 'GAM' ? 'effets' : 'residus']) : ['scores', null];
   if (!interne.getPanel(`${haut}:${id}`)) app.ouvrirVue(haut, id, null, null, { referencePanel: r, direction: 'right' });
   // spectra: their loadings as lines rather than a scatter of hundreds of variables
   const vue = bas || ([].concat((etat.modeles[id].reglages || {}).spectres || []).length ? 'profils' : 'loadings');

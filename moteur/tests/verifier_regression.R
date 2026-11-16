@@ -1455,6 +1455,42 @@ for (l in c("fr", "en")) {
                    tx_q(lm_q(c("habitat", "traitement"), list(c("habitat", "traitement"))), mq2), fixed = TRUE) &&
              endsWith(tx_q(dq0, mq0), if (l == "fr") "est son écart à la catégorie de référence." else "is its difference from the reference category."))
 }
+# l'année centrée seule (Ctr, comme Quelle analyse ? centre le temps d'une tendance) : le même modèle que
+# dans ses unités, le coefficient de secteur(S1) celui de l'année centrée ; les méthodes disent qu'elle a
+# été centrée et sur quelle moyenne, et où se lit l'écart ; les résultats aussi, à chaque coefficient de
+# catégorie croisée (dans ses unités : là où l'année vaut 0) ; les conditions du modèle disent pourquoi
+# ce coefficient est si grand quand l'année ne l'est pas, avec la variable à centrer, et rien centrée
+dq1ctr <- definir_modele(pq, "LM", x = uq("annee", "secteur"), y = uq("densite"), echelle = stats::setNames(c("none", "Ctr"), c("defaut", uq("annee"))),
+                         croises = list(uq("annee", "secteur")))
+mq1ctr <- ajuster(pq, dq1ctr)
+dq1ctr_x <- definir_modele(pq, "LM", x = uq("annee", "secteur", "x"), y = uq("densite"), echelle = stats::setNames(c("none", "Ctr"), c("defaut", uq("annee"))),
+                           croises = list(uq("annee", "secteur")))
+mq1ctr_x <- ajuster(pq, dq1ctr_x)
+verifier("l'année centrée seule (Ctr) : le même ajustement que dans ses unités, secteur(S1) comme avec l'année en UV, la pente de l'année inchangée",
+         proche(mq1ctr$resultat$logLik, mq1$resultat$logLik, 1e-10) && proche(mq1ctr$resultat$ajuste, mq1$resultat$ajuste, 1e-8) &&
+           proche(co_q(mq1ctr, "secteur(S1)"), co_q(mq1c, "secteur(S1)"), 1e-8) && proche(co_q(mq1ctr, "annee"), co_q(mq1, "annee"), 1e-10))
+for (l in c("fr", "en")) {
+  tm <- texte_methodes(pq, dq1ctr, mq1ctr, l, "essai")$paragraphes[2]
+  tm_x <- texte_methodes(pq, dq1ctr_x, mq1ctr_x, l, "essai")$paragraphes[2]
+  rs <- paste(texte_resultats(pq, dq1ctr, mq1ctr, l)$paragraphes, collapse = " ")
+  rs0 <- paste(texte_resultats(pq, dq1, mq1, l)$paragraphes, collapse = " ")
+  verifier(sprintf("l'année centrée (%s) : les méthodes la disent centrée sur sa moyenne et l'écart d'un secteur pris à l'année moyenne ; les résultats aussi, là où l'année vaut 0 sans centrage", l),
+           grepl(if (l == "fr") "« annee » a été centrée sur sa moyenne (2006,1) avant l'ajustement. Une variable qualitative"
+                 else "“annee” was centred on its mean (2006.1) before fitting. A qualitative variable", tm, fixed = TRUE) &&
+             grepl(if (l == "fr") "« annee » a été centrée sur sa moyenne (2006,1) avant l'ajustement ; les autres variables explicatives sont dans leurs unités."
+                   else "“annee” was centred on its mean (2006.1) before fitting; the other explanatory variables are in their own units.", tm_x, fixed = TRUE) &&
+             grepl(if (l == "fr") "cet écart est pris là où « annee » est à sa moyenne (2006,1)." else "that difference is taken where “annee” is at its mean (2006.1).", tm, fixed = TRUE) &&
+             grepl(if (l == "fr") "« secteur(S1) » (à la moyenne de « annee », 2006,1) : β =" else "“secteur(S1)” (at the mean of “annee”, 2006.1): β =", rs, fixed = TRUE) &&
+             grepl(if (l == "fr") "« secteur(S1) » (là où « annee » vaut 0) : β =" else "“secteur(S1)” (where “annee” is 0): β =", rs0, fixed = TRUE) &&
+             !grepl("« annee » (", rs, fixed = TRUE) && !grepl("“annee” (", rs, fixed = TRUE))
+}
+vq1 <- verifications_regression(pq, mq1, dq1)
+cq1 <- Find(function(v) startsWith(v$cle, "centrage"), vq1)
+verifier("conditions : l'année (2001 à 2011) croisée avec le secteur sans être centrée, le coefficient de chaque secteur pris en l'an 0 ; la variable à centrer donnée ; rien pour l'année centrée",
+         !is.null(cq1) && identical(cq1$statut, "info") && identical(as.numeric(cq1$centrer), uq("annee")) && identical(cq1$nom, "annee") &&
+           grepl("« secteur »", cq1$texte, fixed = TRUE) && grepl("de 2001 à 2011", cq1$texte, fixed = TRUE) && grepl("(2006,1)", cq1$texte, fixed = TRUE) &&
+           !any(vapply(verifications_regression(pq, mq1ctr, dq1ctr), function(v) startsWith(v$cle, "centrage"), TRUE)) &&
+           !any(vapply(verifications_regression(pq, mq0, dq0), function(v) startsWith(v$cle, "centrage"), TRUE)))
 
 cat("Une courbe par catégorie (s(x, by = f))\n")
 # quatre sites suivis quinze ans, trois secteurs dans chacun : chaque secteur sa forme (une bosse, une

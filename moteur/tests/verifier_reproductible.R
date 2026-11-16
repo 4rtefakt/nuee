@@ -141,7 +141,10 @@ BLOCS <- list(
   list(modele = "m5", chemin = list("effets", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE), etiquette = "fig-effet-altitude",
        legende = "Effet de l'altitude"),
   # (et les seuils de sa courbe, la vue Effets avec ses seuils : sa seule courbe, {{M5.seuils}})
-  list(modele = "m5", chemin = list("seuils"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = TRUE), etiquette = "fig-seuils", legende = "Seuils"))
+  list(modele = "m5", chemin = list("seuils"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = TRUE), etiquette = "fig-seuils", legende = "Seuils"),
+  # (et les valeurs prédites de l'altitude sur l'échelle de la réponse, {{M5.valeurs_predites.altitude}} : le graphique prediction-k du script)
+  list(modele = "m5", chemin = list("valeurs_predites", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE, echelle = "reponse"),
+       etiquette = "fig-predites", legende = "Valeurs prédites de l'altitude"))
 EN_DUR <- list(
   list(modele = "m1", chemin = list("biplot"), genre = "figure", vue = "biplot", variante = list()),
   list(modele = "m4", chemin = list("coef", "temp"), genre = "valeur", forme = list(forme = "coef_cs"), texte = "0,12 [0,05 ; 0,19]"),
@@ -268,6 +271,74 @@ re <- ecrire_document_reproductible(p, list(m6 = list(definition = d_gam2, model
 code <- vapply(re$references, function(z) length(z$lignes) > 0, TRUE)
 verifier("en dur : les seuils d'un GAM à deux courbes et l'effet d'un terme croisé avec l'habitat ; refaits : la courbe de l'altitude et la droite du pH",
          identical(code, c(FALSE, TRUE, FALSE, TRUE)) && all(vapply(re$references[!code], function(z) nzchar(z$raison %||% ""), TRUE)))
+cat("Les résultats clés des autres analyses, cités et refaits par leur script\n")
+# (references.js : referenceCle ; document_reproductible.R : expression_cle) la pente globale de TRIM,
+# sa variation en %, sa classe, σ² et ρ, sur les comptages d'alouettes du tutoriel ; la densité de
+# l'échantillonnage par distances, son intervalle et son CV, p et ESW, sur ses transects ; le R² ajusté
+# et le test d'une RDA, le stress d'une NMDS, le R² et la valeur p d'une PERMANOVA. La forme de chaque
+# valeur : celle que l'interface envoie ; son texte : celui de Nuée, écrit ici par nuee.R.
+sig3 <- function(v) max(0, min(6, 2 - floor(log10(abs(v)))))
+pa <- projet_depuis_tableau(utils::read.csv("docs/site/donnees/skylark_counts.csv", stringsAsFactors = FALSE), "alouettes")
+ua <- function(...) numeros(pa, c(...))
+d_trim <- definir_modele(pa, "TRIM", x = NULL, y = ua("skylarks"), echelle = "none", nom = "T1",
+                         options = list(site = list(by = "variable", variable = ua("site")), temps = list(by = "variable", variable = ua("year")), modele = 2,
+                                        surdispersion = TRUE, correlation = TRUE))
+m_trim <- ajuster(pa, d_trim)
+pt <- m_trim$pentes[m_trim$pentes$quoi == "imputee", ]
+pd <- projet_depuis_tableau(cbind(nom = sprintf("d%03d", seq_len(nrow(utils::read.csv("docs/site/donnees/skylark_transects.csv")))),
+                                  utils::read.csv("docs/site/donnees/skylark_transects.csv", stringsAsFactors = FALSE), stringsAsFactors = FALSE), "transects")
+ud <- function(x) numeros(pd, x)
+d_dist <- definir_modele(pd, "DISTANCE", x = NULL, y = ud("distance"), echelle = "none", nom = "D1",
+                         options = list(transect = "ligne", echantillon = list(by = "variable", variable = ud("Sample.Label")), strate = list(by = "variable", variable = ud("Region.Label")),
+                                        effort = ud("Effort"), aire = ud("Area"), taille = ud("size"), troncature = list(type = "aucune"), gauche = 0, cle = "hn", serie = "cos",
+                                        ajustements = "aic", monotonie = "stricte", echelle_ajustements = "largeur", unites = list(distance = "m", effort = "km", aire = "km2")))
+m_dist <- ajuster(pd, d_dist)
+tot <- m_dist$densite[nrow(m_dist$densite), ]
+d_rda <- definir_modele(p, "RDA", x = u("temp", "ph", "habitat"), y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "R1",
+                        options = list(transformation = "hellinger", permutations = 99, graine = 3))
+m_rda <- ajuster(p, d_rda)
+d_nmds <- definir_modele(p, "NMDS", x = NULL, y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "N1", options = list(distance = "bray", k = 2, departs = 5, graine = 5))
+m_nmds <- ajuster(p, d_nmds)
+ia <- list(t1 = list(definition = d_trim, modele = m_trim, projet = pa), d1 = list(definition = d_dist, modele = m_dist, projet = pd),
+           r1 = list(definition = d_rda, modele = m_rda), n1 = list(definition = d_nmds, modele = m_nmds), m3 = modeles$m3)
+pc <- function(d = 1) list(forme = "pourcentage", decimales = d)
+pv <- list(forme = "p", decimales = 3)
+ic_f <- function(d, pourcentage = FALSE) list(forme = "ic", decimales = d, pourcentage = pourcentage)
+CLES <- list(
+  valeur("t1", "pente", nb(4), function(f) f$nuee_nombre(pt$multiplicative, 4)),
+  valeur("t1", c("pente", "ic"), ic_f(4), function(f) f$nuee_ic(pt$bas, pt$haut, 4)),
+  valeur("t1", c("pente", "p"), pv, function(f) f$nuee_p(pt$p)),
+  valeur("t1", c("pente", "pourcent"), pc(1), function(f) f$nuee_pourcentage(pt$multiplicative - 1, 1)),
+  valeur("t1", c("pente", "pourcent", "ic"), ic_f(1, TRUE), function(f) f$nuee_ic(pt$bas - 1, pt$haut - 1, 1, TRUE)),
+  c(valeur("t1", c("pente", "classe"), list(forme = "texte"), NULL), list(classe = pt$classe)),
+  valeur("t1", "sigma2", nb(sig3(m_trim$sigma2)), function(f) f$nuee_nombre(m_trim$sigma2, sig3(m_trim$sigma2))),
+  valeur("t1", "rho", nb(sig3(m_trim$rho)), function(f) f$nuee_nombre(m_trim$rho, sig3(m_trim$rho))),
+  valeur("d1", "D", nb(sig3(tot$D)), function(f) f$nuee_nombre(tot$D, sig3(tot$D))),
+  valeur("d1", c("D", "ic"), ic_f(sig3(tot$D)), function(f) f$nuee_ic(tot$bas_D, tot$haut_D, sig3(tot$D))),
+  valeur("d1", c("D", "cv"), pc(1), function(f) f$nuee_pourcentage(tot$cv, 1)),
+  valeur("d1", "abondance", nb(sig3(tot$N)), function(f) f$nuee_nombre(tot$N, sig3(tot$N))),
+  valeur("d1", "p", nb(sig3(m_dist$p)), function(f) f$nuee_nombre(m_dist$p, sig3(m_dist$p))),
+  valeur("d1", "ESW", nb(sig3(m_dist$effectif$valeur)), function(f) f$nuee_nombre(m_dist$effectif$valeur, sig3(m_dist$effectif$valeur))),
+  valeur("r1", "R2_ajuste", nb(sig3(m_rda$r2_ajuste)), function(f) f$nuee_nombre(m_rda$r2_ajuste, sig3(m_rda$r2_ajuste))),
+  valeur("r1", c("test", "modele", "p"), pv, function(f) f$nuee_p(m_rda$test$p)),
+  valeur("n1", "stress", nb(sig3(m_nmds$noyau$stress)), function(f) f$nuee_nombre(m_nmds$noyau$stress, sig3(m_nmds$noyau$stress))),
+  valeur("m3", c("permanova", "modele"), nb(sig3(m_per$noyau$modele$R2)), function(f) f$nuee_nombre(m_per$noyau$modele$R2, sig3(m_per$noyau$modele$R2))),
+  valeur("m3", c("permanova", "modele", "p"), pv, function(f) f$nuee_p(m_per$noyau$modele$p)))
+for (langue in c("fr", "en")) {
+  f <- if (langue == "en") en else fr
+  refs_c <- lapply(CLES, function(v) c(v[c("modele", "chemin", "genre", "forme")],
+                                        list(texte = if (!is.null(v$classe)) libelle_classe_trim(v$classe, langue == "fr") else v$nombre(f))))
+  ici <- file.path(dossier, paste0("cles_", langue))
+  dir.create(ici)
+  rc <- ecrire_document_reproductible(p, ia, refs_c, ici, "Suivi", langue, "essai")
+  codes <- vapply(rc$references, function(z) z$code %||% NA_character_, "")
+  manquent <- which(is.na(codes))
+  verifier(sprintf("en %s : chaque résultat clé cité (pente de TRIM et sa classe, densité et CV, R² ajusté, stress, PERMANOVA) est une expression du script qui redonne le texte de Nuée (%d)%s",
+                   langue, length(CLES), if (length(manquent)) sprintf(" ; EN DUR : %s", paste(sprintf("%s (%s)", vapply(CLES[manquent], function(v) paste(unlist(v$chemin), collapse = "."), ""),
+                                                                                                          vapply(rc$references[manquent], function(z) z$raison %||% "?", "")), collapse = " | ")) else ""),
+           !length(manquent) && all(vapply(rc$modeles, function(x) is.null(x$erreur), TRUE)))
+}
+
 cat("Un modèle ajusté avant un nouvel ordre de ses catégories\n")
 # (Édition › Catégories : l'habitat dans un autre ordre ; le modèle reste valide, sa définition suit le
 # nouvel ordre. Le script de la PERMANOVA, écrit sur le projet d'aujourd'hui, donnerait ses

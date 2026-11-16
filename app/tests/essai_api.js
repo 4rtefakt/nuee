@@ -1149,6 +1149,41 @@ async function principal() {
         && col(garde2.moyennes, 'estimation').every((x, i) => Math.abs(x - est[i]) < 1e-12) && !(await api('projets_modifies', {})).noms.includes(q2.nom),
       `enregistrées avec le projet, rouvertes : ${JSON.stringify(garde2.reglages)}`);
     });
+    await etape('une année loin de 0 croisée avec un secteur : les conditions du modèle disent pourquoi le coefficient d’un secteur est si grand, et le réajustement la centre', async () => {
+      // (moteur/R/verifications_modele.R ; serveur.R : reajuster_demande, q$centrer)
+      let g = 29;
+      const alea = () => { g = (g * 16807) % 2147483647; return g / 2147483647 - 0.5; };
+      const pentes = { S1: 0.1, S2: 0.3, S3: -0.1 };
+      const lignes = [];
+      for (const s of ['A', 'B', 'C', 'D']) for (const sec of ['S1', 'S2', 'S3']) for (let an = 2001; an <= 2008; an += 1) lignes.push([`${s}${sec}${an}`, s, sec, an, (3 + pentes[sec] * (an - 2000) + 0.3 * alea()).toFixed(4)]);
+      const q = await api('coller', { texte: ['nom\tsite\tsecteur\tannee\ty', ...lignes.map((l) => l.join('\t'))].join('\r\n'), nom: 'Centrer' });
+      const v = Object.fromEntries(q.variables.map((x) => [x.nom, x.uid]));
+      const lmm = await api('ajuster', { projet: q.id, type: 'LMM', x: [v.annee, v.secteur], y: [v.y], echelle: 'none', nom: 'C1',
+        croises: [[v.annee, v.secteur]], aleatoires: [{ by: 'variable', variable: v.site }] });
+      const centrage = (r) => [].concat(r.verifications || []).find((x) => String(x.cle).startsWith('centrage'));
+      const c = centrage(await api('verifications_modele', { modele: lmm.id }));
+      verifier(!!c && c.statut === 'info' && Number(c.centrer) === v.annee && c.nom === 'annee' && /« secteur »/.test(c.texte) && /2004,5/.test(c.texte),
+        `la condition : ${JSON.stringify(c)}`);
+      const re = await api('reajuster', { modele: lmm.id, centrer: c.centrer });
+      const co = (m, terme) => [].concat(m.coefficients_regression.estimation)[[].concat(m.coefficients_regression.terme).indexOf(terme)];
+      const attendu = co(lmm, 'secteur(S1)') + co(lmm, 'annee*secteur(S1)') * 2004.5;
+      verifier(re.reglages.echelles[v.annee] === 'Ctr' && re.reglages.echelles[v.secteur] === 'none' && Math.abs(co(re, 'annee') - co(lmm, 'annee')) < 1e-6
+        && Math.abs(co(re, 'secteur(S1)') - attendu) < 1e-6 && Math.abs(re.qualite.logLik - lmm.qualite.logLik) < 1e-6 && !centrage(await api('verifications_modele', { modele: re.id }))
+        && /^C1 \(\d+\)$/.test(re.nom),
+      `réajusté centré : ${re.nom}, secteur(S1) ${co(re, 'secteur(S1)')} au lieu de ${co(lmm, 'secteur(S1)')} (attendu ${attendu})`);
+      let refus = '';
+      try { await api('reajuster', { modele: lmm.id, centrer: v.secteur }); } catch (err) { refus = err.message; }
+      verifier(/pas une variable quantitative X/.test(refus), `une variable qualitative à centrer, refusée : « ${refus} »`);
+      // the Effects view's predicted values (moyennes.R: effets_reponse): one line per sector, the site at
+      // 0; the same once the year is centred (the same model)
+      const p1 = await api('effets', { modele: lmm.id, echelle: 'reponse' });
+      const p2 = await api('effets', { modele: re.id, echelle: 'reponse' });
+      const parSecteur = (p) => [].concat(p.effets[0].niveaux);
+      const memes = parSecteur(p1).every((n, i) => [].concat(n.effet).every((x, j) => Math.abs(x - [].concat(parSecteur(p2)[i].effet)[j]) < 1e-6));
+      verifier(p1.echelle === 'reponse' && p1.lien === 'identity' && parSecteur(p1).map((n) => n.niveau).join() === 'S1,S2,S3' && [].concat(p1.commun.aleatoires).join() === 'site'
+        && [].concat(p1.effets[0].fixes.qualitatives.nom || []).length === 0 && [].concat(parSecteur(p1)[0].x).length === 80 && memes,
+      `valeurs prédites : ${JSON.stringify(parSecteur(p1).map((n) => [n.niveau, [].concat(n.effet)[0]]))}`);
+    });
     await etape('Poisson à excès de zéros (ziP) et loi bêta (betar) : loi, lien, paramètres, résidus quantiles, moyennes, côte à côte, méthodes, refus', async () => {
       // 90 surveys of three habitats with an effort: counts with extra zeros, proportions between 0 and 1
       let g = 41;
@@ -1759,6 +1794,16 @@ async function principal() {
       verifier(perma.type === 'PERMANOVA' && [].concat(perma.table.terme).join() === 'temp,habitat,Résidus,Total' && perma.dispersions.length === 2
         && perma.dispersions.map((d) => d.variable).join() === 'habitat,site' && typeof perma.modele.p === 'number'
         && [].concat(perma.vues_defaut).join() === 'permanova,dispersion' && perma.reglages.classe === v.site, `PERMANOVA : ${perma.chiffres}`);
+      // their key numbers in a document (references.js: referenceCle): the NMDS's stress, the PERMANOVA's
+      // R² and p, the model's and each term's
+      {
+        const { valeurReference, offreModele } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+        const ecrit = (m, c) => valeurReference(m, c.split('.'), { format: '' }, 'en').texte;
+        const s3 = (x) => +Number(x).toPrecision(3);
+        verifier(Number(ecrit(nmds, 'stress')) === s3(nmds.stress) && Number(ecrit(perma, 'permanova.modele')) === s3(perma.modele.R2) && /^p [<=] /.test(ecrit(perma, 'permanova.modele.p'))
+          && /^p [<=] /.test(ecrit(perma, 'permanova.habitat.p')) && offreModele(perma).some((o) => o.chemin === 'permanova.modele.p'),
+        `NMDS et PERMANOVA dans un document : stress = ${ecrit(nmds, 'stress')}, R² = ${ecrit(perma, 'permanova.modele')}, ${ecrit(perma, 'permanova.modele.p')}`);
+      }
       const mantel = await api('ajuster', { projet: q.id, type: 'MANTEL', x: [v.temp], y: especes, echelle: 'UV', nom: 'Mantel',
         options: { distance: 'bray', methode: 'spearman', permutations: 99, graine: 4, z: [v.habitat], strates: { by: 'variable', variable: v.site } } });
       verifier(mantel.type === 'MANTEL' && mantel.test.r > 0 && typeof mantel.test.r_partiel === 'number' && [].concat(mantel.correlogramme.table.classe).length >= 3
@@ -2108,6 +2153,25 @@ async function principal() {
       verifier(mt.paragraphes.some((x) => /TRIM model 3/.test(x)) && mt.paragraphes.some((x) => /overall slope/.test(x)) && mt.references.some((x) => /TRIM 3 manual/.test(x)), 'texte des méthodes');
       const e = await api('exporter', { modele: tr.id, chemin: path.join(dossier, 'trim.xlsx') });
       verifier(fs.existsSync(e.chemin), 'exporter les résultats');
+      // its key numbers in a document (references.js: referenceCle), under What changed's keys
+      // (resultats_cles.R: entrees_trim, alias_parties): the overall slope (4 decimals), its interval,
+      // its change in %, its class in the document's language, σ²; no A
+      const { offreModele, valeurReference } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+      const ecrit = (m, c, l = 'fr') => valeurReference(m, c.split('.'), { format: '' }, l).texte;
+      const pt = { mult: [].concat(tr.pentes.multiplicative)[0], bas: [].concat(tr.pentes.bas)[0], haut: [].concat(tr.pentes.haut)[0], classe: [].concat(tr.pentes.classe)[0] };
+      const fr4 = (x) => x.toFixed(4).replace('.', ',').replace('-', '−');
+      const classes = { declin_modere: ['déclin modéré', 'moderate decline'], fort_declin: ['fort déclin', 'steep decline'], stable: ['stable', 'stable'], incertaine: ['incertaine', 'uncertain'],
+        hausse_moderee: ['augmentation modérée', 'moderate increase'], forte_hausse: ['forte augmentation', 'strong increase'] };
+      const offre = offreModele(tr).map((o) => o.chemin);
+      const cles = await api('resultats_cles', { modele: tr.id });
+      const parCle = new Map();
+      for (const x of cles.entrees) for (const c of [x.cle].concat(x.alias || [])) parCle.set(c, x);
+      verifier(ecrit(tr, 'pente') === fr4(pt.mult) && ecrit(tr, 'pente.ic') === `[${fr4(pt.bas)} ; ${fr4(pt.haut)}]`
+        && ecrit(tr, 'pente.pourcent') === `${(100 * (pt.mult - 1)).toFixed(1).replace('.', ',').replace('-', '−')} %` && ecrit(tr, 'pente.classe') === classes[pt.classe][0]
+        && ecrit(tr, 'pente.classe', 'en') === classes[pt.classe][1] && /^p [<=] /.test(ecrit(tr, 'pente.p')) && ecrit(tr, 'sigma2') !== undefined
+        && ['pente', 'pente.ic', 'pente.p', 'pente.pourcent', 'pente.classe', 'sigma2', 'N', 'sites'].every((c) => offre.includes(c)) && !offre.includes('A')
+        && ['pente.ic', 'pente.pourcent', 'pente.classe', 'pente.p'].every((c) => parCle.get(c) && parCle.get(c).cle === 'pente'),
+      `les nombres de TRIM dans un document : ${['pente', 'pente.ic', 'pente.pourcent', 'pente.classe', 'sigma2'].map((c) => `${c} = ${ecrit(tr, c)}`).join(' ; ')}`);
       let refus = '';
       try { await api('ajuster', { ...def, x: [], options: { ...options, site: { by: 'variable', variable: v.habitat } } }); } catch (err) { refus = err.message; }
       verifier(/Deux lignes pour le même site et le même temps/.test(refus), `deux lignes pour un site et un temps refusées : « ${refus} »`);
@@ -2212,6 +2276,21 @@ async function principal() {
         && dm.troncature.pourcentage === 5 && dm.au_dela > 0 && dm.effectif.quoi === 'ESW' && dm.reglages.options.cle === 'hn', `distance : ${dm.chiffres}, n = ${dm.n}`);
       const francais = await colonnesEnFrancais(dm.observations);
       verifier(!francais.length, `colonnes des observations en français dans l’interface en anglais : ${francais.join(', ')}`);
+      // its key numbers in a document (references.js: referenceCle): D, its interval and CV, the
+      // abundance, p, ESW, a stratum's density; neither A nor K (no X term)
+      {
+        const { offreModele, valeurReference } = await import(require('url').pathToFileURL(path.join(depot, 'app', 'interface', 'references.js')).href);
+        const ecrit = (c) => valeurReference(dm, c.split('.'), { format: '' }, 'en').texte;
+        const t = [].concat(dm.densite.D).length - 1;
+        const s3 = (x) => +Number(x).toPrecision(3);
+        const strate = [].concat(dm.densite.strate)[0];
+        const offre = offreModele(dm).map((o) => o.chemin);
+        verifier(Number(ecrit('D').replace(/,/g, '')) === s3([].concat(dm.densite.D)[t]) && /^\[[0-9.,]+, [0-9.,]+\]$/.test(ecrit('D.ic'))
+          && ecrit('D.cv') === `${(100 * [].concat(dm.densite.cv)[t]).toFixed(1)}%` && Number(ecrit('p')) === s3(dm.p) && Number(ecrit('ESW')) === s3(dm.effectif.valeur)
+          && Number(ecrit(`D.${strate}`).replace(/,/g, '')) === s3([].concat(dm.densite.D)[0])
+          && ['D', 'D.ic', 'D.cv', 'abondance', 'p', 'ESW', 'detections'].every((c) => offre.includes(c)) && !offre.includes('A') && !offre.includes('K'),
+        `les nombres de l’échantillonnage par distances dans un document : ${['D', 'D.ic', 'D.cv', 'abondance', 'p', 'ESW'].map((c) => `${c} = ${ecrit(c)}`).join(' ; ')}`);
+      }
       const groupes = await api('ajuster', { ...def, nom: 'Distance 2', options: { ...options, taille: v.taille, cle: 'hr', serie: 'cos', ajustements: 1, troncature: { type: 'distance', valeur: 90 } } });
       verifier(groupes.groupes === true && groupes.modele_detection === 'hr + cos(2)' && [].concat(groupes.densite_groupes.D).length === 3 && groupes.troncature.w === 90,
         `groupes, hasard et un terme : ${groupes.chiffres}`);

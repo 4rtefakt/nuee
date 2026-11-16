@@ -322,7 +322,10 @@ the coordinates the project's, or those its variables' names propose; the distan
 named like them, and the other columns of distance sampling by the names New model proposes
 them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur,
 région, aire, taille); points rather than lines when the transect's column is named like a point
-or a station. Every answer can be changed.
+or a station. Every answer can be changed. The response list leaves out the time, the site and
+the unit once their design box is ticked (they are the design, not the response); when a single
+variable is left, it is proposed: on the skylark counts, a trend proposes the skylarks, the year
+being its time.
 On the right: the recommended analysis, why, its main conditions and notes for the answers given
 (the random effect by site, the residual autocorrelation of successive years, the adjusted means
 after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is
@@ -353,7 +356,11 @@ The main choices:
   - a trend: TRIM for counts by site and year (one row per site and year: no more observations
     than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a
     measurement on several sites: the mixed model with the year as X; a single series: Series
-    and its trends;
+    and its trends; a trend's regression has its time centred on its mean (its scaling Ctr, the
+    other variables keeping their units): the slope doesn't change, and once the time is
+    crossed with a qualitative variable (does the trend differ between habitats?), each
+    category's coefficient is its difference at the mean year rather than in year 0, which the
+    Methods and Results texts say;
   - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
     random forest otherwise, boosted trees for counts and presences;
   - a density or an abundance: distance sampling, the distances as Y, lines or points, its
@@ -562,6 +569,20 @@ their values:
   {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+  {{M5.valeurs_predites.year}} (its predicted values on the response scale, Effects › Scale)
+  {{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+  (TRIM: the overall slope of the imputed totals, 4 decimals, its 95 % interval, its change in %
+  per time step, its class in the document's language, σ² and ρ)  {{D1.D}} {{D1.D.ic}}
+  {{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.North}} (distance sampling: the
+  density, its interval and CV, the abundance, p, ESW or EDR, a stratum's density)
+  {{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+  {{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA: the model's R² and p, a
+  term's)  {{N1.stress}} (NMDS)
+  The other analyses' key results are cited the same way, under the keys What changed compares
+  (an index {{T1.indice.2015}}, a Mantel r {{M1.mantel}}...): a value, then .ic, .bas, .haut and .p
+  for those that have an interval or a p, .pourcent for a multiplicative value; A, and a K of 0,
+  aren't offered where they don't apply. The reproducible Quarto file writes those above from the
+  models' scripts.
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
   {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
   or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
@@ -1155,9 +1176,15 @@ Model conditions (a regression's Summary): pointers in words, each ✓ or ⚠ wi
 residuals' distribution (Shapiro–Wilk, on the quantile residuals for counts, presence-absence and
 positive values), a spread of the residuals that changes with the fitted values, influential
 observations (Cook's distance beyond 4/n, linear model), overdispersion and an excess of zeros
-(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, and the
-residuals' spatial autocorrelation when the project has coordinates. With many observations a
-test sees harmless departures, with few it sees none: the residual plots remain the reference.
+(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, the
+residuals' spatial autocorrelation when the project has coordinates, and ℹ a quantitative X far
+from 0 (a year: 0 outside its values and its mean beyond 5 standard deviations) crossed with a
+qualitative variable without being centred: each category's coefficient is then its difference
+where that X is 0, far from the data, hence its size and its wide interval. Its button, "Fit
+again with “year” centred", fits a new model (M1 (1)) with its scaling Ctr: the same model, the
+difference read at the mean year, as its Methods and Results texts then say. With many
+observations a test sees harmless departures, with few it sees none: the residual plots remain
+the reference.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
@@ -1181,7 +1208,9 @@ Q2 and RMSEcv; AIC; the variance of each random effect and its share (with rando
 above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
-the odds ratio),
+the odds ratio, which the box "exp(estimate)" plots instead, on a log axis through 1; a GAM
+whose terms are all curves, y ~ s(year) + (1 | site), has only its intercept there: it opens on
+Effects and Residuals, and its Coefficients point to Effects),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
 category for a term crossed with a qualitative variable or a curve per category, with the
@@ -1191,7 +1220,20 @@ slope with 95 % simultaneous bands from 2000 draws of the coefficients, the rang
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
 nearly a straight line, as Simpson (2018) reads thresholds; a curve with one per category (a
 curve per category, or a curve crossed with a qualitative variable) has the thresholds of the
-category chosen in the list beside the box, over the variable's percentiles in that category),
+category chosen in the list beside the box, over the variable's percentiles in that category;
+Scale › Predicted y: the values of the response the model predicts as the term's variable
+varies, with their 95 % band, that of the linear predictor (±1.96 standard errors) brought back
+by the inverse of the link (exp, inverse logit; a count's expected value for the zero-inflated
+Poisson), the predicted skylarks by year in each habitat rather than the log-scale effect. What
+is held fixed, which the note under the plot says: the other quantitative variables at their mean
+over the model's observations (before their transformation, as for the adjusted means), their
+curves at that point; the qualitative variables in their reference category, except those
+crossed with the term, each category of which has its curve over its own values (and a curve per
+category its level); the random effects at 0 (the population, no group's own departure); an
+effort of 1 (densities); the spatial smooth at the mean point of the coordinates. With the
+identity link they are the predicted values of the modelled response (transformed, if it is).
+Export to R computes and draws the same (predicted_values, a plot per term), and a document cites
+them as {{M5.valeurs_predites.year}}),
 Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and
