@@ -152,10 +152,12 @@ export function grilleClavier(table, loc, plus) {
 
 // ------------------------------------------------------------ plots
 
-// Every plot (panneaux.js: tracer) is an image for screen readers, named by its title and what it
+// Every plot (panneaux.js: tracer) is a figure for screen readers, named by its title and what it
 // shows ("M1 · Scores. Scatter plot, t[2] against t[1]: 120 values, 4 groups: Gala 30, Golden 30…"),
-// that the keyboard reaches: Shift+F10 or the menu key give its menu, Ctrl+C copies its numbers
-// as a table (app.js: tableauActif, from donneesGraphe), Ctrl+Shift+C its image.
+// its drawing hidden from them (its ticks and labels one by one would say little), Plotly's tool
+// buttons (zoom, pan, reset) left within reach. The keyboard reaches it: Shift+F10 or the menu key
+// give its menu, Ctrl+C copies its numbers as a table (app.js: tableauActif, from donneesGraphe),
+// Ctrl+Shift+C its image.
 const NATURES = { scatter: 'nuage', scattergl: 'nuage', bar: 'barres', histogram: 'histogramme', heatmap: 'chaleur', contour: 'chaleur',
   box: 'boites', violin: 'boites', scatter3d: '3d', surface: '3d', scattermap: 'carte', scattermapbox: 'carte', scattergeo: 'carte' };
 const sansBalises = (s) => String(s ?? '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -172,7 +174,8 @@ export function decrireGraphe(div, traces, layout) {
   const nommees = vues.filter((tr) => tr.name && tr.showlegend !== false);
   const total = vues.reduce((s, tr) => s + nValeurs(tr), 0);
   const groupes = nommees.length > 1 ? `, ${t('graphe_groupes', { n: nommees.length })}: ${nommees.slice(0, 8).map((tr) => `${sansBalises(tr.name)} ${nValeurs(tr)}`).join(', ')}${nommees.length > 8 ? ', …' : ''}` : '';
-  div.setAttribute('role', 'img');
+  div.setAttribute('role', 'figure');
+  div.querySelectorAll('svg.main-svg, canvas').forEach((x) => x.setAttribute('aria-hidden', 'true'));
   div.setAttribute('aria-label', `${titreDe(layout.title) || t('graphe_generique')}. ${nature}${x && y ? `, ${t('graphe_axes', { x, y })}` : ''}: ${t('graphe_valeurs', { n: total })}${groupes}.`);
   div.setAttribute('aria-description', t('graphe_aide'));
   if (!div.hasAttribute('tabindex')) div.tabIndex = 0;
