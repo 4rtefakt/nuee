@@ -78,11 +78,18 @@ entree_n <- function(N) entree_resultat("N", traduire("Nombre d'observations", "
 resume_resultats <- function(projet, e) {
   d <- e$definition
   m <- e$modele
-  f <- if (est_regression(d)) entrees_regression else if (est_autre_analyse(d)) fonction_analyse("entrees_", d$type) else entrees_composantes
+  autre <- est_autre_analyse(d)
+  f <- if (est_regression(d)) entrees_regression else if (autre) fonction_analyse("entrees_", d$type) else entrees_composantes
   if (is.null(f)) f <- entrees_communes
-  entrees <- Filter(Negate(is.null), f(projet, d, m))
+  entrees <- f(projet, d, m)
+  # (references.js lit une autre analyse comme un modèle de composantes : un document peut y citer A, qui
+  # vaut 0, comme N, K, et G, RMSEE, RMSEcv et bien_classes quand elle les a, sous les mêmes clés ici)
+  if (autre) entrees <- c(entrees, list(entree_resultat("A", traduire("Nombre de composantes", "Number of components"), "ajustement", 0, forme = "entier")))
+  entrees <- Filter(Negate(is.null), entrees)
   unname(entrees[!duplicated(vapply(entrees, `[[`, "", "cle"))])  # (sans noms : un tableau en JSON)
 }
+
+entree_g <- function(G) entree_resultat("G", traduire("Nombre de groupes de validation croisée", "Number of cross-validation groups"), "ajustement", G, forme = "entier")
 
 entrees_communes <- function(projet, d, m) list(entree_n(m$N))
 
@@ -105,7 +112,7 @@ entrees_composantes <- function(projet, d, m) {
   E <- list(entree_n(m$N),
             entree_resultat("K", traduire("Nombre de termes X", "Number of X terms"), "ajustement", m$K, forme = "entier"),
             entree_resultat("A", traduire("Nombre de composantes", "Number of components"), "ajustement", m$A, forme = "entier"),
-            entree_resultat("G", traduire("Nombre de groupes de validation croisée", "Number of cross-validation groups"), "ajustement", m$G, forme = "entier"),
+            entree_g(m$G),
             entree_resultat("R2X", traduire("R²X cumulé", "Cumulative R²X"), "ajustement", der$R2Xcum, forme = "pourcentage"),
             if (pls) entree_resultat("R2Y", traduire("R²Y cumulé", "Cumulative R²Y"), "ajustement", der$R2Ycum, forme = "pourcentage"),
             entree_resultat("Q2", traduire("Q² cumulé", "Cumulative Q²"), "ajustement", der$Q2cum),
@@ -437,6 +444,7 @@ entrees_trim <- function(projet, d, m) {
   }
   a <- m$ajustement
   E <- list(entree_n(m$N),
+            entree_resultat("K", traduire("Nombre de covariables", "Number of covariates"), "ajustement", length(m$donnees$covariables), forme = "entier"),
             entree_resultat("sites", traduire("Nombre de sites", "Number of sites"), "ajustement", m$I, forme = "entier"),
             entree_resultat("temps", traduire("Nombre de temps", "Number of times"), "ajustement", m$J, forme = "entier"),
             pente("pente", "imputee", traduire("Pente globale (totaux imputés)", "Overall slope (imputed totals)")),
@@ -484,6 +492,8 @@ entrees_distance <- function(projet, d, m) {
   strates <- nrow(dens) > 1
   esw <- identical(m$effectif$quoi, "ESW")
   E <- list(entree_n(m$N),
+            # (sans terme X : ses covariables sont des Z ; K, que l'interface reçoit et qu'un document peut citer, vaut 0)
+            entree_resultat("K", traduire("Nombre de termes X", "Number of X terms"), "ajustement", 0, forme = "entier"),
             entree_resultat("detections", traduire("Nombre de détections", "Number of detections"), "ajustement", t$n, forme = "entier"),
             entree_resultat("modele", traduire("Fonction de détection retenue", "Detection function chosen"), "ajustement", classe = libelle_detection(det$fd), genre = "f"),
             entree_resultat("AIC", "AIC", "ajustement", det$AIC),
@@ -508,6 +518,17 @@ entrees_distance <- function(projet, d, m) {
   E
 }
 
+# Les valeurs d'une forêt, d'arbres boostés, d'un arbre ou d'une LDA qu'un document peut citer comme
+# celles d'une PLS (references.js) : la part bien classée en validation croisée (bien_classes), et le
+# RMSEE et le RMSEcv de sa réponse `y`, sous leurs clés et avec le nom de la réponse en alias.
+entree_bien_classes <- function(global) {
+  entree_resultat("bien_classes", traduire("Part bien classée en validation croisée", "Share correctly classified in cross-validation"), "ajustement", global, forme = "pourcentage", genre = "f")
+}
+entrees_rmse <- function(y, rmsee, rmsecv) {
+  list(entree_resultat("RMSEE", sprintf("RMSEE %s", nom_resultat(y)), "ajustement", rmsee, alias = paste0("RMSEE.", y)),
+       entree_resultat("RMSEcv", sprintf("RMSEcv %s", nom_resultat(y)), "ajustement", rmsecv, alias = paste0("RMSEcv.", y)))
+}
+
 # Une forêt aléatoire (forets.R) : son erreur hors du sac et sa validation croisée, l'importance par
 # permutation de chaque variable, et la plus importante (une catégorie : qu'une autre la remplace se
 # dit, quand les importances, sans intervalle, n'ont pas de drapeau).
@@ -515,14 +536,14 @@ entrees_forest <- function(projet, d, m) {
   g <- nom_resultat
   qualite <- if (m$classement) {
     list(entree_resultat("bien_classes_oob", traduire("Part bien classée hors du sac", "Share correctly classified out of bag"), "ajustement", 1 - m$oob$erreur, forme = "pourcentage", genre = "f"),
-         entree_resultat("bien_classes_vc", traduire("Part bien classée en validation croisée", "Share correctly classified in cross-validation"), "ajustement", m$classification$vc$global, forme = "pourcentage", genre = "f"))
+         entree_bien_classes(m$classification$vc$global))
   } else {
-    list(entree_resultat("R2_oob", traduire("R² hors du sac", "Out-of-bag R²"), "ajustement", m$oob$r2),
-         entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", m$vc$Q2),
-         entree_resultat("RMSEcv", "RMSEcv", "ajustement", m$vc$RMSEcv))
+    c(list(entree_resultat("R2_oob", traduire("R² hors du sac", "Out-of-bag R²"), "ajustement", m$oob$r2),
+           entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", m$vc$Q2)),
+      entrees_rmse(m$y$nom, NULL, m$vc$RMSEcv))
   }
   im <- m$importance
-  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier")), qualite,
+  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier"), entree_g(m$G)), qualite,
     list(entree_resultat("variable_principale", traduire("Variable la plus importante (permutation)", "Most important variable (permutation)"), "estimations",
                          classe = im$variable[which.max(im$permutation)], genre = "f")),
     lapply(seq_len(nrow(im)), function(i) entree_resultat(paste0("importance.", im$variable[i]), sprintf(traduire("Importance de %s (permutation)", "Importance of %s (permutation)"), g(im$variable[i])),
@@ -537,16 +558,17 @@ entrees_boost <- function(projet, d, m) {
   q <- m$qualite
   im <- m$influence
   # (par leur nom exact : `$` prendrait l'AUC en validation croisée pour celle de l'ajustement)
-  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier"),
+  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier"), entree_g(m$G),
          entree_resultat("arbres", traduire("Nombre d'arbres retenu", "Number of trees chosen"), "ajustement", m$meilleur, forme = "entier"),
          entree_resultat("D2", traduire("Part de la déviance expliquée (D²)", "Share of the deviance explained (D²)"), "ajustement", q[["D2"]], forme = "pourcentage", genre = "f"),
          entree_resultat("D2_vc", traduire("Part de la déviance expliquée en validation croisée (D²)", "Cross-validated share of the deviance explained (D²)"), "ajustement", q[["D2_vc"]],
                          forme = "pourcentage", genre = "f"),
          entree_resultat("R2", "R²", "ajustement", q[["r2"]]),
-         entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", q[["Q2"]]),
-         entree_resultat("RMSEcv", "RMSEcv", "ajustement", q[["RMSEcv"]]),
-         entree_resultat("AUC", "AUC", "ajustement", q[["auc"]]),
+         entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", q[["Q2"]])),
+    if (identical(m$loi, "gaussienne")) entrees_rmse(m$y$nom, q[["RMSEE"]], q[["RMSEcv"]]),
+    list(entree_resultat("AUC", "AUC", "ajustement", q[["auc"]]),
          entree_resultat("AUC_vc", traduire("AUC en validation croisée", "Cross-validated AUC"), "ajustement", q[["auc_vc"]]),
+         if (!is.null(m$classification)) entree_bien_classes(m$classification$vc$global),
          entree_resultat("variable_principale", traduire("Variable la plus influente", "Most influential variable"), "estimations",
                          classe = if (sum(im$influence) > 0) im$variable[which.max(im$influence)], genre = "f")),
     lapply(seq_len(nrow(im)), function(i) entree_resultat(paste0("influence.", im$variable[i]), sprintf(traduire("Influence relative de %s", "Relative influence of %s"), g(im$variable[i])),
@@ -560,15 +582,16 @@ entrees_tree <- function(projet, d, m) {
   g <- nom_resultat
   a <- m$ajustement
   qualite <- if (m$classement) {
-    list(entree_resultat("bien_classes", traduire("Part bien classée", "Share correctly classified"), "ajustement", m$classification$ajuste$global, forme = "pourcentage", genre = "f"),
-         entree_resultat("bien_classes_vc", traduire("Part bien classée en validation croisée", "Share correctly classified in cross-validation"), "ajustement", m$classification$vc$global, forme = "pourcentage", genre = "f"))
+    list(entree_resultat("bien_classes_ajuste", traduire("Part bien classée par l'arbre ajusté", "Share correctly classified by the fitted tree"), "ajustement", m$classification$ajuste$global,
+                         forme = "pourcentage", genre = "f"),
+         entree_bien_classes(m$classification$vc$global))
   } else {
-    list(entree_resultat("R2", "R²", "ajustement", m$r2),
-         entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", m$vc$Q2),
-         entree_resultat("RMSEcv", "RMSEcv", "ajustement", m$vc$RMSEcv))
+    c(list(entree_resultat("R2", "R²", "ajustement", m$r2),
+           entree_resultat("Q2", traduire("Q² en validation croisée", "Cross-validated Q²"), "ajustement", m$vc$Q2)),
+      entrees_rmse(m$y$nom, sqrt(mean((m$donnees$.y - m$ajuste)^2)), m$vc$RMSEcv))
   }
   im <- importance_arbre(a, m$variables)
-  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier"),
+  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de variables X", "Number of X variables"), "ajustement", m$K, forme = "entier"), entree_g(m$G),
          entree_resultat("feuilles", traduire("Nombre de feuilles", "Number of leaves"), "ajustement", sum(a$frame$var == "<leaf>"), forme = "entier")), qualite,
     list(entree_resultat("premiere_coupure", traduire("Variable de la première coupure", "First split variable"), "estimations", classe = premiere_coupure(a, m$variables)$variable, genre = "f")),
     lapply(seq_len(nrow(im)), function(i) entree_resultat(paste0("importance.", im$variable[i]), sprintf(traduire("Importance de %s", "Importance of %s"), g(im$variable[i])), "variables",
@@ -582,9 +605,10 @@ entrees_lda <- function(projet, d, m) {
   g <- nom_resultat
   r <- m$classification
   effectifs <- stats::setNames(m$effectifs, m$classes)
-  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de termes X", "Number of X terms"), "ajustement", m$K, forme = "entier"),
-         entree_resultat("bien_classes", traduire("Part bien classée", "Share correctly classified"), "ajustement", r$ajuste$global, forme = "pourcentage", genre = "f"),
-         entree_resultat("bien_classes_vc", traduire("Part bien classée en validation croisée", "Share correctly classified in cross-validation"), "ajustement", r$vc$global, forme = "pourcentage", genre = "f")),
+  c(list(entree_n(m$N), entree_resultat("K", traduire("Nombre de termes X", "Number of X terms"), "ajustement", m$K, forme = "entier"), entree_g(m$G),
+         entree_resultat("bien_classes_ajuste", traduire("Part bien classée par l'analyse ajustée", "Share correctly classified by the fitted analysis"), "ajustement", r$ajuste$global,
+                         forme = "pourcentage", genre = "f"),
+         entree_bien_classes(r$vc$global)),
     lapply(names(r$vc$correct), function(k) entree_resultat(paste0("bien_classes.", k), sprintf(traduire("Part bien classée de %s en validation croisée", "Share of %s correctly classified in cross-validation"), g(k)),
                                                             "ajustement", r$vc$correct[[k]], n = if (k %in% names(effectifs)) effectifs[[k]], forme = "pourcentage", genre = "f")),
     entrees_axes(stats::setNames(as.numeric(m$part), m$axes), 1, traduire("Part de la variance discriminante sur %s", "Share of the discriminant variance on %s")),

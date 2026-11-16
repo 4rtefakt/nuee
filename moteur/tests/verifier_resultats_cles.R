@@ -59,6 +59,32 @@ references_composantes <- function(m) {
     if (length(s$cv_anova)) c("cvanova.p", "cvanova.F", paste0("cvanova.p.", ny), paste0("cvanova.F.", ny)),
     if (pls) paste0("vip.", s$variables$terme), if (pls) paste0("coef.", s$coefficients$terme[is.finite(s$coefficients[[paste0("CoeffCS ", ny[1])]])]))
 }
+# Une autre analyse : ce que l'interface en reçoit (son resultat_<type>, comme serveur.R le demande),
+# que references.js lit comme un modèle de composantes : A, N, K, et G, RMSEE, RMSEcv et bien_classes
+# quand elle les a (des remplaçants de projet() et modele() de serveur.R, comme verifier_forets.R).
+etat <- new.env()
+projet <- function(id) etat$projets[[id]]
+modele <- function(id, a_jour = FALSE) etat$modeles[[id]]
+interface_autre <- function(p, d, m) {
+  q <- p
+  q$id <- "P1"
+  etat$projets <- list(P1 = q)
+  etat$modeles <- list(M1 = list(projet = "P1", definition = d, modele = m))
+  fonction_analyse("resultat_", d$type)("M1")
+}
+references_autre <- function(r) {
+  y <- as.character(unlist(r$noms_y))[1]
+  du_premier <- function(x) if (!is.null(x) && !is.na(y) && !is.null(x[[y]])) nombre_ou_rien(x[[y]])
+  c("A", "N", "K", if (!is.null(r$G)) "G", if (!is.null(du_premier(r$RMSEE))) c("RMSEE", paste0("RMSEE.", y)),
+    if (!is.null(du_premier(r$RMSEcv))) c("RMSEcv", paste0("RMSEcv.", y)), if (!is.null(r$classification)) "bien_classes")
+}
+# (et les mêmes valeurs que l'interface)
+memes_valeurs_autre <- function(E, r) {
+  y <- as.character(unlist(r$noms_y))[1]
+  proche(valeur(E, "A"), r$A) && proche(valeur(E, "N"), r$N) && proche(valeur(E, "K"), r$K) && (is.null(r$G) || proche(valeur(E, "G"), r$G)) &&
+    (is.null(r$classification) || proche(valeur(E, "bien_classes"), r$classification$vc$global)) &&
+    (is.null(r$RMSEcv) || proche(valeur(E, "RMSEcv"), r$RMSEcv[[y]])) && (is.null(r$RMSEE) || proche(valeur(E, "RMSEE"), r$RMSEE[[y]]))
+}
 references_regression <- function(m) {
   r2 <- m$resultat$r2
   termes <- m$resultat$coefficients$terme
@@ -334,10 +360,14 @@ attendus <- list(RDA = c("R2", "R2_ajuste", "test.modele", "axe.RDA1"), CCA = c(
 seuils <- list(RDA = "test.modele", CCA = "test.modele", PCOA = "ajuste.temp", NMDS = "ajuste.temp", PERMANOVA = "permanova.temp", MANTEL = "mantel")
 for (type in names(analyses)) {
   d <- analyses[[type]](peA)
-  E <- resume(peA, d)
+  m <- ajuster(peA, d)
+  E <- resume(peA, d, m)
+  r <- interface_autre(peA, d, m)
   CO <- comparer_resultats(E, resume(peB, analyses[[type]](peB)), "fr")
-  verifier(sprintf("%s : un résumé bien formé (%s) ; la température ne jouant plus, « %s » passe le seuil de 5 %%", type, paste(attendus[[type]], collapse = ", "), seuils[[type]]),
-           bien_forme(E) && all(attendus[[type]] %in% cles(E)) && drapeau(CO, seuils[[type]], "seuil") && nzchar(phrase(CO, seuils[[type]])))
+  verifier(sprintf("%s : un résumé bien formé (%s), les références d'un document trouvées ; la température ne jouant plus, « %s » passe le seuil de 5 %%",
+                   type, paste(attendus[[type]], collapse = ", "), seuils[[type]]),
+           bien_forme(E) && all(attendus[[type]] %in% cles(E)) && trouvees(E, references_autre(r)) && memes_valeurs_autre(E, r) &&
+             drapeau(CO, seuils[[type]], "seuil") && nzchar(phrase(CO, seuils[[type]])))
 }
 dr <- analyses$RDA(peA)
 mr <- ajuster(peA, dr)
@@ -351,6 +381,7 @@ CAe <- resume(peA, dca, mca)
 CCa <- comparer_resultats(CAe, resume(peB, ordination("CA", list(), x = esp, y = NULL)(peB)), "fr")
 verifier("CA : l'inertie totale et la part de ses premiers axes ; sp10, vide après, laisse le tableau d'une colonne de moins",
          bien_forme(CAe) && proche(valeur(CAe, "axe.CA1"), mca$noyau$eig[[1]] / mca$noyau$totale) && proche(valeur(CAe, "inertie.totale"), mca$noyau$totale) &&
+           trouvees(CAe, references_autre(interface_autre(peA, dca, mca))) && memes_valeurs_autre(CAe, interface_autre(peA, dca, mca)) &&
            identical(comparee(CCa, "K")$ecart, -1) && contient(phrase(CCa, "K"), "Le nombre de colonnes du tableau passe de 10 à 9."))
 indval <- ordination("INDVAL", list(permutations = 199, graine = 7, ordre = 1), x = NULL, classe = "habitat")
 mi <- ajuster(peA, indval(peA))
@@ -359,7 +390,8 @@ CI <- comparer_resultats(I, resume(peB, indval(peB)), "fr")
 groupe_change <- Filter(function(x) isTRUE(x$categorie) && !is.null(x$phrase), CI$entrees)
 sans_portee <- Filter(function(x) isTRUE(x$categorie) && !isTRUE(x$seuil) && isTRUE(x$p_avant > 0.05) && isTRUE(x$p_apres > 0.05), CI$entrees)
 verifier("espèces indicatrices : chaque espèce avec sa valeur, sa valeur p corrigée, son groupe ; sp10, absente après, disparaît ; des espèces changent de groupe",
-         bien_forme(I) && proche(valeur(I, "indval.sp01"), mi$valeur[1]) && proche(entree(I, "indval.sp01")$p, mi$p_ajuste[1]) &&
+         bien_forme(I) && trouvees(I, references_autre(interface_autre(peA, indval(peA), mi))) && memes_valeurs_autre(I, interface_autre(peA, indval(peA), mi)) &&
+           proche(valeur(I, "indval.sp01"), mi$valeur[1]) && proche(entree(I, "indval.sp01")$p, mi$p_ajuste[1]) &&
            identical(entree(I, "indval.sp01")$classe, colnames(mi$combinaisons)[mi$meilleure[1]]) && drapeau(CI, "indval.sp10", "disparu") &&
            length(groupe_change) > 0 && contient(groupe_change[[1]]$phrase, " avant, « "))
 verifier("espèces indicatrices : le groupe d'une espèce qui n'est indicatrice ni avant ni après change sans phrase (il n'a pas de portée)",
@@ -387,7 +419,8 @@ mtA <- ajuster(ptA, trim_de(ptA))
 TA <- resume(ptA, trim_de(ptA), mtA)
 imputee <- mtA$pentes[mtA$pentes$quoi == "imputee", ]
 verifier("TRIM : la pente globale, son intervalle, sa valeur p et sa classe ; les indices (± 1,96 erreur-type), les pentes entre les points de changement, les tests de Wald",
-         bien_forme(TA) && proche(valeur(TA, "pente"), imputee$multiplicative) && proche(entree(TA, "pente")$ic, c(imputee$bas, imputee$haut)) &&
+         bien_forme(TA) && trouvees(TA, references_autre(interface_autre(ptA, trim_de(ptA), mtA))) && memes_valeurs_autre(TA, interface_autre(ptA, trim_de(ptA), mtA)) &&
+           proche(valeur(TA, "pente"), imputee$multiplicative) && proche(entree(TA, "pente")$ic, c(imputee$bas, imputee$haut)) &&
            identical(entree(TA, "pente")$classe, imputee$classe) &&
            proche(entree(TA, "indice.2003")$ic, mtA$indices$impute[4] + c(-1, 1) * stats::qnorm(0.975) * mtA$indices$se_impute[4]) && is.null(entree(TA, "indice.2000")) &&
            !is.null(entree(TA, "pente.2000-2004")) && !is.null(entree(TA, "wald.changement.2004")))
@@ -427,7 +460,8 @@ mdA <- ajuster(pdA, distance_de(pdA))
 DS <- resume(pdA, distance_de(pdA), mdA)
 tot <- mdA$densite[nrow(mdA$densite), ]
 verifier("échantillonnage par distances : la fonction de détection retenue (une catégorie), p, ESW, la densité totale et celle de chaque strate avec leurs intervalles, l'adéquation",
-         bien_forme(DS) && identical(entree(DS, "modele")$classe, libelle_detection(mdA$detection$fd)) && is.null(entree(DS, "modele")$valeur) &&
+         bien_forme(DS) && trouvees(DS, references_autre(interface_autre(pdA, distance_de(pdA), mdA))) && memes_valeurs_autre(DS, interface_autre(pdA, distance_de(pdA), mdA)) &&
+           identical(entree(DS, "modele")$classe, libelle_detection(mdA$detection$fd)) && is.null(entree(DS, "modele")$valeur) &&
            proche(valeur(DS, "D"), tot$D) && proche(entree(DS, "D")$ic, c(tot$bas_D, tot$haut_D)) && !is.null(entree(DS, "D.Nord")) && proche(valeur(DS, "p"), mdA$p) &&
            !is.null(entree(DS, "ESW")) && !is.null(entree(DS, "adequation.khi2")$p))
 CD <- comparer_resultats(DS, resume(pdB, distance_de(pdB)), "fr")
@@ -455,13 +489,18 @@ modeles <- list(FOREST = ensemble("FOREST", options = list(arbres = 100)), FORES
                 BOOST = ensemble("BOOST", options = list(arbres_max = 100, taux = 0.1)), BOOST_presence = ensemble("BOOST", y = "presence", options = list(arbres_max = 100, taux = 0.1, loi = "binomiale")),
                 TREE = ensemble("TREE"), TREE_classes = ensemble("TREE", y = NULL, classe = "classe"),
                 LDA = ensemble("LDA", y = NULL, classe = "classe", echelle = "UV"), KMEANS = ensemble("KMEANS", y = NULL, options = list(k = 3), x = c("h_gel", "t_moy", "haie"), echelle = "UV"))
-attendus <- list(FOREST = c("R2_oob", "Q2", "RMSEcv", "importance.h_gel"), FOREST_classes = c("bien_classes_oob", "bien_classes_vc", "importance.h_gel"),
-                 BOOST = c("arbres", "D2", "D2_vc", "R2", "Q2", "influence.h_gel"), BOOST_presence = c("arbres", "D2", "AUC", "AUC_vc", "influence.h_gel"),
-                 TREE = c("feuilles", "R2", "Q2", "premiere_coupure", "importance.h_gel"), TREE_classes = c("feuilles", "bien_classes", "bien_classes_vc", "premiere_coupure"),
-                 LDA = c("bien_classes", "bien_classes_vc", "bien_classes.haute", "axe.LD1"), KMEANS = c("k", "R2", "silhouette"))
+attendus <- list(FOREST = c("R2_oob", "Q2", "RMSEcv", "importance.h_gel"), FOREST_classes = c("bien_classes_oob", "bien_classes", "importance.h_gel"),
+                 BOOST = c("arbres", "D2", "D2_vc", "R2", "Q2", "RMSEE", "influence.h_gel"), BOOST_presence = c("arbres", "D2", "AUC", "AUC_vc", "bien_classes", "influence.h_gel"),
+                 TREE = c("feuilles", "R2", "Q2", "RMSEE", "premiere_coupure", "importance.h_gel"), TREE_classes = c("feuilles", "bien_classes_ajuste", "bien_classes", "premiere_coupure"),
+                 LDA = c("bien_classes_ajuste", "bien_classes", "bien_classes.haute", "axe.LD1"), KMEANS = c("k", "R2", "silhouette"))
 for (nom in names(modeles)) {
-  E <- resume(pfA, modeles[[nom]](pfA))
-  verifier(sprintf("%s : un résumé bien formé (%s)", nom, paste(attendus[[nom]], collapse = ", ")), bien_forme(E) && all(attendus[[nom]] %in% cles(E)))
+  d <- modeles[[nom]](pfA)
+  m <- ajuster(pfA, d)
+  E <- resume(pfA, d, m)
+  r <- interface_autre(pfA, d, m)
+  verifier(sprintf("%s : un résumé bien formé (%s), les références d'un document trouvées (%s), avec les valeurs de l'interface",
+                   nom, paste(attendus[[nom]], collapse = ", "), paste(references_autre(r), collapse = ", ")),
+           bien_forme(E) && all(attendus[[nom]] %in% cles(E)) && trouvees(E, references_autre(r)) && memes_valeurs_autre(E, r))
 }
 CTr <- comparer_resultats(resume(pfA, modeles$TREE(pfA)), resume(pfB, modeles$TREE(pfB)), "fr")
 verifier(sprintf("arbre réajusté : sa première coupure passe du gel aux haies (%s)", phrase(CTr, "premiere_coupure")),

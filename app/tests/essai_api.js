@@ -2122,16 +2122,20 @@ async function principal() {
     await etape('résultats clés d’un modèle, comparés avant et après un réajustement (moteur/R/resultats_cles.R)', async () => {
       const { offreModele, formeReference } = await import(require('url').pathToFileURL(path.join(interfaceDir, 'references.js')).href);
       const lm = await api('ajuster', { projet: p.id, type: 'LM', x: [uid.x1, uid.x2, uid.zone], y: [uid.y], echelle: 'none', nom: 'LMcles' });
+      // (another analysis: references.js reads it like a model of components, N, K, A, G, RMSEE...)
+      const arbre = await api('ajuster', { projet: p.id, type: 'TREE', x: [uid.x1, uid.x2, uid.x4], y: [uid.y], echelle: 'none', nom: 'Arbrecles', options: { minbucket: 8 } });
+      const lda = await api('ajuster', { projet: p.id, type: 'LDA', x: [uid.x1, uid.x2, uid.x4], classe: uid.groupe, echelle: 'UV', nom: 'LDAcles' });
       // every value a document can cite (references.js offers it) is an entry, under its reference or
       // an alias, with the number the document writes
-      for (const m of [pca, pls, opls, da, lm]) {
+      for (const m of [pca, pls, opls, da, lm, arbre, lda]) {
         const r = await api('resultats_cles', { modele: m.id });
         verifier(r.modele === m.id && Array.isArray(r.entrees) && r.entrees.length > 0, `${m.nom} : aucune entrée`);
         const parCle = new Map();
         for (const e of r.entrees) for (const c of [e.cle].concat(e.alias || [])) parCle.set(c, e);
         const terme = m.regression ? [].concat(m.coefficients_regression.terme)[1] : null;
         const chemins = offreModele(m).filter((o) => o.type === 'valeur').map((o) => o.chemin)
-          .concat(m.regression ? [`est.${terme}`, `p.${terme}`, `ic.${terme}`] : ['R2X.1', 'Q2.1']);
+          .concat(m.regression ? [`est.${terme}`, `p.${terme}`, `ic.${terme}`] : m.analyse ? [] : ['R2X.1', 'Q2.1']);
+        verifier(chemins.length >= (m.analyse ? 4 : 8), `${m.nom} : ${chemins.length} références offertes seulement`);
         for (const chemin of chemins) {
           const e = parCle.get(chemin);
           verifier(e, `${m.nom} : {{${m.nom}.${chemin}}} sans entrée`);
