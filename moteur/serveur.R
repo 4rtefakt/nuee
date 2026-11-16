@@ -514,6 +514,7 @@ resume_projet <- function(p) {
        coordonnees = coordonnees_projet(p),
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
+       paquet = paquet_pour_interface(p$paquet),  # (les réponses du dernier paquet de reproductibilité : paquet.R)
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
        a_source = !is.null(p$source_donnees),  # (un fichier d'où viennent ses données, que la demande etapes décrit : etapes.R)
        lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
@@ -1108,6 +1109,40 @@ script_demande <- function(q) {
     stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
   do.call(ecrire_script_seance, c(list(projet(e$projet), lapply(es, `[[`, "definition"), lapply(es, `[[`, "modele"), chemin,
                                        file.path(racine, "moteur")), options))
+}
+
+# Fichier › Exporter un paquet de reproductibilité (paquet.R) : les modèles q$modeles (le dernier
+# ajustement de chaque modèle du projet, dans l'ordre de leurs numéros ; l'interface ajuste d'abord
+# ceux qui ne le sont pas encore, et nomme dans q$non_ajustes ceux qui n'ont pas pu l'être, avec
+# pourquoi), ses documents q$documents (du JSON, en texte : ce que documents.js en fait), les
+# réponses du dialogue q$meta, gardées dans le projet pour l'export suivant, la disposition de
+# l'interface q$session (comme Enregistrer). Écrit en q$chemin ; sans lui, dans un dossier de la
+# session (le navigateur le télécharge ; main.js le dépose de là sur Zenodo).
+paquet_demande <- function(q) {
+  p <- projet(q$projet)
+  meta <- metadonnees_paquet(q$meta)
+  modeles <- lapply(as.character(unlist(q$modeles)), function(id) {
+    e <- modele(id)
+    if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
+    # (une catégorie qu'il a vue a changé de nom ou disparu : à ajuster de nouveau, il n'est pas refait)
+    perime <- tryCatch({ modele(id, TRUE); NULL }, error = function(err) conditionMessage(err))
+    list(id = id, definition = e$definition, modele = e$modele, erreur = perime)
+  })
+  na <- q$non_ajustes
+  if (is.data.frame(na)) na <- lapply(seq_len(nrow(na)), function(i) as.list(na[i, , drop = FALSE]))
+  for (x in na %||% list()) {
+    d <- Find(function(d) identical(as.character(d$name), as.character(x$nom)), p$models) %||% list(name = as.character(x$nom), type = "")
+    modeles[[length(modeles) + 1]] <- list(id = NULL, definition = d, modele = NULL, erreur = as.character(x$erreur %||% "?"))
+  }
+  documents <- jsonlite::fromJSON(as.character(q$documents %||% "[]"), simplifyVector = FALSE)
+  if (!identical(metadonnees_gardees(p$paquet), meta)) {
+    p$paquet <- meta
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+  }
+  chemin <- q$chemin %||% chemin_temporaire(paste0(trimws(gsub("[^[:alnum:]_ ()-]", "_", substr(meta$titre, 1, 60))), ".zip"))
+  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session)
+  c(r, list(projet = resume_projet(p)))
 }
 
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
@@ -1916,6 +1951,7 @@ DEMANDES <- list(
   scores_en_variables = scores_demande,
   classe_selection = classe_demande,
   script_r = script_demande,
+  paquet = paquet_demande,
   methodes = methodes_demande,
   # Les conditions d'une régression vérifiées et dites en mots (verifications_modele.R), dans la
   # langue de la demande, calculées une fois par langue et gardées avec le modèle.
