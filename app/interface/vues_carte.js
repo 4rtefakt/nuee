@@ -178,7 +178,10 @@ async function rendreCarte(conteneur, ctx, p, loc) {
     customdata: idx.map((k) => uids[k]), hovertext: idx.map((k) => `<b>${N[avec[k]]}</b><br>${coordTexte(k)}${valeurTexte(k)}`),
     hovertemplate: '%{hovertext}<extra></extra>', text: loc.etiquettes ? idx.map((k) => N[avec[k]]) : undefined, textposition: 'top center',
     textfont: { size: 10 },
-    marker: { size: idx.map((k) => taillesPx[k]), color: couleur, opacity: sel.size ? idx.map((k) => (sel.has(uids[k]) ? 1 : 0.35)) : 0.85, ...extra },
+    // (the outline in the panel's colour: Plotly's own is white, around points of varying size, which
+    // in the dark theme paled the dark end of Viridis)
+    marker: { size: idx.map((k) => taillesPx[k]), color: couleur, opacity: sel.size ? idx.map((k) => (sel.has(uids[k]) ? 1 : 0.35)) : 0.85,
+      line: { color: couleursTheme(ctx).fond, width: 1 }, ...extra },
   });
   const tous = avec.map((_, k) => k);
   const traces = [];
