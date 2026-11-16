@@ -8,7 +8,7 @@ const path = require('path');
 
 module.exports = {
   async executer(n, verifier, { donnee, dossier }) {
-    await n.menu('m_aide', 'projet_exemple');
+    await n.sousMenu('m_aide', 'projet_exemple', 'exemple_pommes');
     await n.attendre(n.ligneModele('M1', true));
     await n.libre();
 

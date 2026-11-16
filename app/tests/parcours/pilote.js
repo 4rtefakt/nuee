@@ -200,7 +200,9 @@ const OUTILS = `(async () => {
     graphe: (debut) => __n.tous('.js-plotly-plot').find((g) => g._fullLayout && g.data && norm(((g.layout || {}).title || {}).text).startsWith(norm(debut))) || null,
     points: (g) => (g && g.data ? g.data.reduce((s, tr) => s + (Array.isArray(tr.x) ? tr.x.length : Array.isArray(tr.y) ? tr.y.length : Array.isArray(tr.z) ? tr.z.length : 0), 0) : 0),
     // the tab of a panel, by its title
-    onglet: (titre) => __n.tous('.dv-tab').find((e) => norm(e.textContent) === norm(titre)) || null,
+    // (with several projects open, a model's tab begins with its project: "skylark_counts · M1 · TRIM")
+    onglet: (titre) => __n.tous('.dv-tab').find((e) => norm(e.textContent) === norm(titre))
+      || __n.tous('.dv-tab').find((e) => norm(e.textContent).endsWith(' · ' + norm(titre))) || null,
     // the status bar's message
     statut: () => norm((document.querySelector('#statut .moteur') || {}).textContent),
     occupe: () => document.body.classList.contains('occupe') || window.__essai.enCours > 0,

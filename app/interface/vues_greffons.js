@@ -11,7 +11,7 @@ import { t, ajouterTextes, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
 import { VUES } from './panneaux.js';
-import { ANALYSES, dialogueModele } from './dialogues.js';
+import { ANALYSES, FAMILLES_TYPES, dialogueModele } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
 import { ICONES_VUES } from './commandes.js';
 import { PARTIES_TYPES } from './rapport.js';
@@ -59,9 +59,13 @@ async function actualiser(app) {
 
 // The New model entry of a plugin `g` (its manifest's inputs and options, as the engine describes
 // them); `modele`: the model being edited when the dialog is made from that model's own version.
+// (New model's Type list: the plugins in a family of their own, after Nuée's own, dialogues.js)
+if (!FAMILLES_TYPES.some((f) => f.cle === 'greffons')) FAMILLES_TYPES.push({ cle: 'greffons', libelle: () => t('greffons_menu'), types: [] });
+
 function analyseGreffon(g, modele = null) {
   return {
     typeMoteur: 'PLUGIN',
+    familleType: 'greffons',
     libelle: () => `${texte(g.nom) || g.id} (${t('greffon_mot')})`,
     note: () => `${texte(g.description)} ${t('greffon_note_version', { version: g.version, auteurs: etEntre(nomsAuteurs(g.auteurs)) })}`,
     roles: [],
