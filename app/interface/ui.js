@@ -80,6 +80,7 @@ export function fermerMenus(rendre = true) {
   if (ouvreur) { ouvreur.classList.remove('ouvert'); ouvreur.setAttribute('aria-expanded', 'false'); }
   ouvreur = null;
   document.querySelectorAll('.menu-haut.ouvert').forEach((b) => b.classList.remove('ouvert'));
+  if (rendre) document.querySelectorAll('#menus.clavier').forEach((n) => n.classList.remove('clavier'));  // (the menu bar's letters: until a command runs)
   if (rendre && dedans && retour && retour.isConnected) retour.focus({ preventScroll: true });
 }
 
