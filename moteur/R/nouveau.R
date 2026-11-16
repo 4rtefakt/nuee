@@ -67,6 +67,9 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
   colonne_id <- if (premiere_id) names(df)[1] else ""
   ids <- if (premiere_id) as.character(df[[1]]) else as.character(seq_len(nrow(df)))
+  # (une case vide de la colonne des noms : un nom vide, "", comme un identifiant secondaire vide ;
+  # manquant, le fichier du projet l'écrirait null, et ne se rouvrirait plus)
+  ids[is.na(ids)] <- ""
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.

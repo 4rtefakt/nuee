@@ -149,8 +149,9 @@ pseudo_fusion <- function(ctx, genre, cle) {
 
 # ---------------------------------------------------------------- les données sous leurs noms
 
-# Des noms en clés uniques : un nom qui revient prend son rang (« x », puis « x␟2 »), comme les
-# identifiants des observations (etapes.R : cles_observations).
+# Des noms en clés uniques : un nom qui revient prend son rang (« x », puis « x␟2 ») : les clés des
+# variables, et celles des observations d'une étape notée avant que les étapes gardent les colonnes
+# qui distinguent les observations d'un même nom (etapes.R : par_numeros, cles_observations).
 cles_rangs <- function(noms) {
   if (!anyDuplicated(noms)) return(noms)
   o <- order(noms, method = "radix")
@@ -167,12 +168,13 @@ ID_FUSION <- "\u001did:"
 
 # Les données d'un projet sous leurs noms, pour les comparer d'une version à l'autre : ses variables qui
 # ont des données (`cles_v` : leur nom, avec son rang s'il revient ; `uid_v` : leur numéro par clé), ses
-# observations (`cles_o` : cles_observations ; `uid_o`), les noms de ses identifiants (`noms_id`) et les
-# clés de ses identifiants secondaires (`cles_id`).
-tableau_fusion <- function(p) {
+# observations (`cles_o` : cles_observations, celles d'un même nom distinguées par les colonnes
+# `colonnes`, les mêmes pour les trois versions d'une fusion : fusionner_projets ; `uid_o`), les noms
+# de ses identifiants (`noms_id`) et les clés de ses identifiants secondaires (`cles_id`).
+tableau_fusion <- function(p, colonnes = colonnes_cle(p)) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
   cles_v <- cles_rangs(vapply(vars, function(v) premier_texte(v$ids), ""))
-  cles_o <- cles_observations(p)
+  cles_o <- cles_observations(p, colonnes)
   noms_id <- as.character(unlist(p$observation_id_names %||% "Observation"))
   list(p = p, vars = stats::setNames(vars, cles_v), cles_v = cles_v,
        uid_v = stats::setNames(numeros_entiers(vapply(vars, function(v) as.numeric(v$uid), 0)), cles_v),
@@ -200,7 +202,7 @@ valeurs_fusion <- function(t, k, cles) {
   }
   v <- t$vars[[k]]
   if (is.null(v)) return(rep(NA_real_, n))
-  i <- match(as.character(t$uid_o[cles]), rownames(t$p$donnees))
+  i <- match(as.character(t$uid_o[match(cles, t$cles_o)]), rownames(t$p$donnees))
   x <- unname(t$p$donnees[i, as.character(t$uid_v[[k]])])
   cats <- as.character(unlist(v$categories))
   if (length(cats)) cats[x] else as.numeric(x)
@@ -664,7 +666,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     }
   }
   D <- r$projet
-  tD <- tableau_fusion(D)
+  tD <- tableau_fusion(D, ctx$colonnes_cle)
   for (k in tD$cles_v) {
     v <- tD$vars[[k]]
     cats <- as.character(unlist(v$categories))
@@ -681,7 +683,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   D$empreinte_donnees <- empreinte_donnees(D)
   # (les cellules changées autrement des deux côtés)
   oc <- intersect(tM$cles_o, tL$cles_o)
-  tD <- tableau_fusion(D)
+  tD <- tableau_fusion(D, ctx$colonnes_cle)
   for (k in intersect(tM$cles_v, tL$cles_v)) {
     vb <- valeurs_fusion(tB, k, oc)
     vm <- valeurs_fusion(tM, k, oc)
@@ -702,7 +704,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
               valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1), fusion_avec = ctx$qui)
     D <- noter_etape(D, sans_attributs(appliquer_etape("coller_cellules", D, q)), "coller_cellules", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("valeurs de %s", "values of %s", nom_cle_fusion(k))))
-    tD <- tableau_fusion(D)
+    tD <- tableau_fusion(D, ctx$colonnes_cle)
   }
   # (l'unité et la description d'une variable changées autrement des deux côtés, de même ; une étape qui
   # les décrit, quand le choix n'est pas ce que les étapes rejouées donnent)
@@ -716,7 +718,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))), fusion_avec = ctx$qui)
     D <- noter_etape(D, appliquer_etape("decrire_variables", D, q), "decrire_variables", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), nom_cle_fusion(k))))
-    tD <- tableau_fusion(D)
+    tD <- tableau_fusion(D, ctx$colonnes_cle)
   }
   # (les coordonnées réglées autrement des deux côtés, de même)
   cm <- coordonnees_canon(tM)
@@ -1749,10 +1751,13 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   ctx$qui <- premier_texte(qui, traduire("l'autre version", "the other version"))
   ctx$mode <- "cellules"
   ctx$raison <- ""
+  # (les colonnes qui distinguent les observations d'un même nom : les mêmes pour les trois versions, et
+  # pour ce que la fusion en fait)
+  ctx$colonnes_cle <- colonnes_cle(list(base, mien, leur))
   notes <- character(0)
-  tB <- tableau_fusion(base)
-  tM <- tableau_fusion(mien)
-  tL <- tableau_fusion(leur)
+  tB <- tableau_fusion(base, ctx$colonnes_cle)
+  tM <- tableau_fusion(mien, ctx$colonnes_cle)
+  tL <- tableau_fusion(leur, ctx$colonnes_cle)
   dM <- changements_fusion(tB, tM)
   dL <- changements_fusion(tB, tL)
   # (les données : inchangées des deux côtés, par les étapes si c'est possible, sinon cellule par cellule)
@@ -1774,7 +1779,7 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
       notes <- x$notes
     }
   }
-  tF <- tableau_fusion(p)
+  tF <- tableau_fusion(p, ctx$colonnes_cle)
   cartes <- list(base = carte_fusion(tB, tF, ctx), mien = carte_fusion(tM, tF, ctx), leur = carte_fusion(tL, tF, ctx))
   if (!identical(ctx$mode, "etapes")) p <- avec_champ(p, "coordonnees", fusion_coordonnees(tB, tM, tL, tF, ctx))
   if (!is.null(base$prediction_sets) || !is.null(mien$prediction_sets) || !is.null(leur$prediction_sets)) p$prediction_sets <- fusion_predictions(tB, tM, tL, cartes, ctx)

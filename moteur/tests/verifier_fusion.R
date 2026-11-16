@@ -17,7 +17,8 @@
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
 #     de ces catégories ajoutés des deux côtés au même modèle, un modèle nouveau d'un côté qui prend les
 #     lignes de l'autre ; une variable et des observations retirées d'un côté, inchangées (retirées) ou
-#     changées (un conflit) de l'autre ; une unité ; un jeu de prédiction ;
+#     changées (un conflit) de l'autre ; une unité ; un jeu de prédiction ; des lignes sans nom, chaque
+#     côté relu, ses cellules à leur place ;
 #   - chaque sorte de conflit (modèle, document, figure, source des données, variable, champ : l'unité
 #     d'une variable, les coordonnées, l'ordre des catégories) et ses deux choix, par les étapes (le choix
 #     que les étapes rejouées ne donnent pas devient une étape, les données restent conformes) et cellule
@@ -531,6 +532,22 @@ verifier("« lande » renommée de mon côté, l'ordre changé du leur : sans co
            identical(termes(p), c("habitat(prairie)", "habitat(landes)", "habitat(foret)")))
 
 # ---------------------------------------------------------------- sans rien changer
+
+cat("Une case vide dans la colonne des noms : chaque côté relu, ses cellules à leur place\n")
+# (deux lignes sans nom ; chaque côté change une cellule, de l'une d'elles aussi. Leurs noms manquants,
+# écrits null, ne se relisaient pas ; la première, d'identifiant vide, ne se retrouvait pas)
+vides_csv <- fichier("donnees", "noms vides.csv")
+writeLines(c("nom,x,y", "a,1,3", ",4,6", ",7,9", "d,1,1"), vides_csv)
+pv0 <- importer_tableau(vides_csv)
+attr(pv0, "reglages") <- NULL
+mv <- lv <- pv0
+mv$donnees["1", "2"] <- 30
+mv$donnees["2", "2"] <- 60
+lv$donnees["4", "2"] <- 10
+rv <- tryCatch(fusionner_projets(pv0, mv, lv, list(), dossier = etude, qui = "Bob"), error = function(e) NULL)
+verifier("des projets aux noms vides se relisent et se fusionnent : chaque cellule changée à sa place, celle de la première ligne sans nom comprise",
+         !is.null(rv) && !length(rv$conflits) && identical(unname(rv$projet$donnees[, "2"]), c(30, 60, 9, 10)) &&
+           identical(unname(rv$projet$noms_obs), c("a", "", "", "d")))
 
 cat("Un côté fusionné avec lui-même, ou avec la base : rien ne change\n")
 texte <- function(f) contenu_fusion(lire_projet(f))

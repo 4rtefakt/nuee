@@ -39,6 +39,12 @@
 #     une étape (l'ancien nom et le nouveau), rejouées sur le même fichier puis sur celui de l'année
 #     suivante ; un modèle et les références d'un document qui suivent le nom, Annuler et Rétablir qui
 #     les remettent, même dans un document écrit depuis ; un ajustement fait avec l'ancien nom, à refaire.
+#   - un tableau en long (le site en première colonne, l'année à côté) : les observations d'un même nom
+#     retrouvées par l'année, une ligne retirée au milieu ne déplaçant ni une modification ni une
+#     observation laissée de côté ; sans rien qui les distingue, par leur rang, et dit ; une étape d'avant,
+#     par son rang ;
+#   - une case vide dans la colonne des noms : un nom vide, jamais manquant, enregistré et rouvert (aussi
+#     écrit null, d'avant), lu par la 1.0 ; la modification de sa ligne refaite.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -855,6 +861,92 @@ verifier("un document écrit depuis : Annuler remet ses références à l'ancien
          identical(texte_doc(), paste(avant_v$documents[[1]]$texte, "Ajouté : {{R1.p.mesure}}.")))
 demande("retablir", list(projet = vid))
 verifier("et Rétablir les remet au nouveau", grepl("Ajouté : {{R1.p.mesure (cm)}}.", texte_doc(), fixed = TRUE) && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE))
+
+cat("Un tableau en long : des observations d'un même nom\n")
+# (un fichier trié par site, l'année à côté : la première colonne, le site, nomme les observations, et
+# revient ; l'année les distingue. Celui de l'année suivante a perdu la ligne S1 2017, corrigée, et a
+# celles de 2021 : par leur rang parmi celles du même nom, la modification de S1 2019 serait allée à
+# S1 2020, et l'observation de S1 2018 laissée de côté à S1 2019)
+releves_long <- function(annees) do.call(rbind, lapply(names(annees), function(s) {
+  a <- annees[[s]]
+  data.frame(site = s, annee = a, x = a - 2000 + (s == "S2") * 100, y = round(sin(a + (s == "S2")), 3))
+}))
+long_csv <- fichier("releves long.csv")
+utils::write.csv(releves_long(list(S1 = 2016:2020, S2 = 2016:2020)), long_csv, row.names = FALSE)
+lid <- demande("ouvrir", list(chemin = long_csv))$id
+an <- function(p) unname(valeurs(p, "annee"))
+ligne_de <- function(p, site, annee) numeros_observations(p)[names(valeurs(p, "annee")) == site & an(p) == annee]
+demande("modifier_valeur", list(projet = lid, observation = ligne_de(projet(lid), "S1", 2019), variable = uid_de(projet(lid), "x"), valeur = "999"))
+ml <- demande("ajuster", list(projet = lid, type = "LM", x = list(uid_de(projet(lid), "annee")), y = uid_de(projet(lid), "y"), nom = "L1"))
+demande("reajuster", list(modele = ml$id, exclues = list(ligne_de(projet(lid), "S1", 2018))))
+pl <- projet(lid)
+verifier("les observations d'un même nom distinguées par l'année : l'étape les nomme ainsi, et garde la colonne",
+         identical(parametres(pl, 1)$observation, "S1\u001e2019") && identical(as.character(pl$etapes[[1]]$colonnes_cle), "var:annee") &&
+           identical(cle_lisible("S1\u001e2019"), "S1 (2019)") && !anyDuplicated(cles_observations(pl)))
+long_2021 <- fichier("releves long 2021.csv")
+utils::write.csv(releves_long(list(S1 = c(2016, 2018:2021), S2 = 2016:2021)), long_2021, row.names = FALSE)
+al <- demande("mettre_a_jour", list(projet = lid, chemin = long_2021, apercu = TRUE))
+verifier("l'aperçu : 2 observations de plus, 1 de moins (S1 2017), aucune cellule changée, retrouvées par l'année",
+         al$observations$ajoutees == 2 && al$observations$retirees == 1 && al$observations$cellules == 0 &&
+           identical(as.character(al$observations$distinguees), "annee") && al$observations$repetees == 0 && all(statuts(al) == "ok"))
+demande("mettre_a_jour", list(projet = lid, chemin = long_2021))
+pl <- projet(lid)
+x_de <- function(site, annee) unname(valeurs(pl, "x"))[ligne_de(pl, site, annee) == numeros_observations(pl)]
+dl <- definition(pl, "L1 (1)")
+verifier("mis à jour : la modification reste sur S1 2019, S1 2020 garde sa valeur",
+         x_de("S1", 2019) == 999 && x_de("S1", 2020) == 20 && sum(unname(valeurs(pl, "x")) == 999, na.rm = TRUE) == 1)
+verifier("l'observation laissée de côté reste S1 2018, et le modèle prend les autres",
+         identical(as.numeric(dl$exclues), as.numeric(ligne_de(pl, "S1", 2018))) && !ligne_de(pl, "S1", 2018) %in% dl$observations &&
+           ligne_de(pl, "S1", 2019) %in% dl$observations && length(dl$observations) == 10)
+# (rien ne distingue des observations d'un même nom, que des mesures : retrouvées par leur rang, ce que
+# l'aperçu dit en avertissement)
+mesures_csv <- fichier("mesures.csv")
+utils::write.csv(data.frame(espece = rep(c("chêne", "hêtre"), each = 3), hauteur = c(12.5, 14.25, 9.75, 20.5, 18.25, 22.75)), mesures_csv, row.names = FALSE)
+mid <- demande("ouvrir", list(chemin = mesures_csv))$id
+am <- demande("mettre_a_jour", list(projet = mid, apercu = TRUE))
+verifier("des observations d'un même nom que rien ne distingue : retrouvées par leur rang, toutes numérotées, et dit",
+         am$observations$repetees == 6 && !length(am$observations$distinguees) &&
+           identical(cles_observations(projet(mid)), paste0(rep(c("chêne", "hêtre"), each = 3), "\u001f", rep(1:3, 2))))
+# (une étape notée avant que les étapes gardent leurs colonnes : ses observations d'un même nom se
+# retrouvent par leur rang, comme elles ont été notées, la première sous son nom seul)
+pv <- projet(lid)
+e1 <- pv$etapes[[1]]
+e1$colonnes_cle <- NULL
+e1$parametres <- sub("S1\\\\u001e2019", "S1", e1$parametres)
+pv$etapes <- list(e1)
+r_v <- mise_a_jour(pv, long_2021)
+verifier("une étape d'avant, sans ses colonnes : son observation par son rang, la première du nom S1 (2016)",
+         identical(jsonlite::fromJSON(e1$parametres)$observation, "S1") && all(vapply(r_v$rapport$etapes, `[[`, "", "statut") == "ok") &&
+           unname(valeurs(r_v$projet, "x"))[match(ligne_de(r_v$projet, "S1", 2016), numeros_observations(r_v$projet))] == 999)
+
+cat("Une case vide dans la colonne des noms\n")
+vides_csv <- fichier("noms vides.csv")
+writeLines(c("nom,x,y", "a,1,3", ",4,6", ",7,9", "d,1,1"), vides_csv)
+vid_n <- demande("ouvrir", list(chemin = vides_csv))$id
+pn <- projet(vid_n)
+verifier("un nom vide, pas manquant ; un identifiant jamais vide pour les étapes",
+         identical(vapply(pn$observations, function(o) o$ids[1], ""), c("a", "", "", "d")) && all(nzchar(cles_observations(pn))) && !anyDuplicated(cles_observations(pn)))
+demande("modifier_valeur", list(projet = vid_n, observation = numeros_observations(pn)[2], variable = uid_de(pn, "y"), valeur = "60"))
+rn <- demande("mettre_a_jour", list(projet = vid_n))
+verifier("la modification de la première ligne sans nom se refait à la mise à jour",
+         all(statuts(rn) == "ok") && identical(unname(valeurs(projet(vid_n), "y")), c(3, 60, 9, 1)))
+f_vides <- fichier("noms vides.nuee")
+demande("enregistrer", list(projet = vid_n, chemin = f_vides))
+texte_vides <- paste(readLines(f_vides, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+rv_n <- tryCatch(demande("ouvrir", list(chemin = f_vides)), error = function(e) NULL)
+verifier("enregistré sans nom manquant, puis rouvert", !grepl('"ids":null', texte_vides, fixed = TRUE) && !is.null(rv_n) &&
+           identical(unname(projet(rv_n$id)$noms_obs), c("a", "", "", "d")))
+# (un projet enregistré avant, ses noms vides écrits null, qui ne se rouvrait plus)
+f_null <- fichier("noms null.nuee")
+writeLines(gsub('"ids":""', '"ids":null', texte_vides, fixed = TRUE), f_null, useBytes = TRUE)
+rnul <- tryCatch(demande("ouvrir", list(chemin = f_null)), error = function(e) conditionMessage(e))
+verifier("un projet aux noms vides écrits null (d'avant) s'ouvre : ses noms vides",
+         grepl('"ids":null', paste(readLines(f_null, warn = FALSE), collapse = ""), fixed = TRUE) && is.list(rnul) &&
+           identical(unname(projet(rnul$id)$noms_obs), c("a", "", "", "d")) && identical(projet(rnul$id)$observations[[2]]$ids, ""))
+if (exists("v10", inherits = FALSE)) {
+  verifier("lu par le lire_projet de la 1.0 : ses noms vides",
+           isTRUE(tryCatch(identical(unname(v10$lire_projet(f_vides)$noms_obs), c("a", "", "", "d")), error = function(e) FALSE)))
+}
 
 cat("En anglais\n")
 options(nuee.langue = "en")

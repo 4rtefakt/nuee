@@ -44,8 +44,19 @@ lire_projet <- function(chemin) {
     donnees[nom_numero(d$observations), nom_numero(d$variables)] <- v
   }
   j$donnees <- donnees
+  # (un nom vide qu'une version d'avant la 1.1 gardait manquant, écrit null : relu "", comme l'import le
+  # donne maintenant ; les identifiants manquants d'une observation aussi)
+  manque <- function(ids) !length(ids) || (if (is.list(ids)) any(vapply(ids, function(x) !length(x) || is.na(x[1]), NA)) else anyNA(ids))
+  vides <- which(vapply(j$observations, function(o) manque(o$ids), NA))
+  for (i in vides) {
+    ids <- j$observations[[i]]$ids
+    j$observations[[i]]$ids <- if (!length(ids)) "" else vapply(seq_along(ids), function(k) {
+      x <- ids[[k]]
+      if (!length(x) || is.na(x[1])) "" else as.character(x[1])
+    }, "")
+  }
   j$noms_obs <- stats::setNames(
-    vapply(j$observations, function(o) as.character(o$ids[1]), ""),
+    vapply(j$observations, function(o) premier_texte(o$ids), ""),
     vapply(j$observations, function(o) nom_numero(o$uid), ""))
   j$noms_var <- stats::setNames(
     vapply(j$variables, function(v) as.character(v$ids[1]), ""),
