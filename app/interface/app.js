@@ -1126,6 +1126,8 @@ installerDocuments(app);  // (the documents: their view, app.ouvrirDocument, app
 installerFigures(app);  // (the figures for publication: their view, app.composerFigure, app.ouvrirFigure...)
 installerVersions(app);  // (File › History and What changed: their views, sharing, the status bar's clock...)
 const C = creerCommandes(app);
+// (Help › Example projects as a menu under a button: the start page's, the empty explorer's)
+app.menuExemples = (bouton) => ouvrirMenuSous(bouton, menuExemples(C).sous);
 installerEtapes(app);  // (the data's source and steps: Edit › Data steps, Update the data, the notice of a changed file)
 installerReglages(app);  // (File › Settings…: the R the engine runs on; the message when Nuée's own took over)
 installerCode(app);  // (R-code models: the bar over a project whose code was written elsewhere, app.barresCode)
@@ -2222,7 +2224,7 @@ function rendreAccueil(conteneur) {
         title: etat.seance.precedente.map((x) => x.chemin).join('\n') }, icone('rotate-ccw'), t('seance_bouton')) : null,
       el('button', { onclick: () => app.coller(), title: t('coller_aide') }, icone('clipboard-paste'), t('coller')),
       el('button', { onclick: () => app.importerSpectres() }, icone('audio-waveform'), t('importer_spectres')),
-      el('button', { onclick: (e) => ouvrirMenuSous(e.currentTarget, menuExemples(C).sous), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple'), icone('chevron-down')),
+      el('button', { onclick: (e) => app.menuExemples(e.currentTarget), title: t('projet_exemple_aide') }, icone('apple'), t('projet_exemple'), icone('chevron-down')),
       el('button', { onclick: () => app.nouveauModele(), disabled: !app.projetActif() }, icone('file-plus'), t('nouveau_modele')),
       el('button', { onclick: () => app.quelleAnalyse(), disabled: !app.projetActif() }, icone('signpost'), t('quelle_analyse')),
       el('button', { onclick: () => app.aide('guide') }, icone('circle-help'), t('guide'))),
