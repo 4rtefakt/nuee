@@ -13,9 +13,14 @@
 # de Nuée écrit des projets que les précédentes ne liraient pas en entier : elles le voient au
 # format du fichier. 1 : jusqu'à 0.9.9 ; 2 : la 1.0 (les coordonnées du projet, le lissage
 # spatial d'un GAM, de nouveaux types d'analyses, qu'une version plus ancienne ne refait pas ;
-# les figures composées, p$figures, qu'elle garde sans les montrer). Toute version 1.x ouvre
-# les projets de la 1.0.
-FORMAT_PROJET <- 2L
+# les figures composées, p$figures, qu'elle garde sans les montrer) ; 3 : la 1.1, les rapports
+# vivants (etapes.R) : d'où viennent les données (p$source_donnees : le fichier, sa table, ce que
+# l'import a décidé de ses colonnes, sa taille, sa date et son empreinte), chaque changement fait
+# à elles, en étapes qui se rejouent (p$etapes, leurs paramètres en texte JSON), et l'empreinte
+# des données après la dernière (p$empreinte_donnees). La 1.0 lit les données et les modèles d'un
+# projet de la 1.1, et garde ces champs sans s'en servir ; ce qu'elle change aux données n'est pas
+# une étape, et l'empreinte le montre. Toute version 1.x ouvre les projets de la 1.0.
+FORMAT_PROJET <- 3L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,

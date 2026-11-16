@@ -392,7 +392,10 @@ date_decimale <- function(x) {
 #   shannon(Ablette:Vandoise)                   richesse(Ablette, Brochet, Gardon)
 # Une variable qualitative y vaut le nom de sa catégorie ; un identifiant des observations
 # (site, secteur...) y vaut ses valeurs, sauf si une variable a le même nom. Un résultat texte
-# donne une variable qualitative, un résultat logique aussi (catégories FALSE et TRUE).
+# donne une variable qualitative, un résultat logique aussi (catégories FALSE et TRUE). La variable
+# garde sa formule (`formula`, avec `origine` de type "formule" : celle d'une variable d'un fichier
+# .usp est écrite pour un autre logiciel, pas pour R), qui la refait quand les données sont mises à
+# jour sans elle (etapes.R : aligner_projet).
 variable_calculee <- function(projet, nom, formule) {
   nom <- trimws(nom)
   if (!nzchar(nom)) stop(traduire("Donner un nom à la nouvelle variable", "Give the new variable a name"))
@@ -415,10 +418,15 @@ variable_calculee <- function(projet, nom, formule) {
   }
   if (is.character(r)) {
     cats <- sort(unique(stats::na.omit(r)))
-    return(ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats))
+    projet <- ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats)
+  } else {
+    if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
+    projet <- ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
   }
-  if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
-  ajouter_colonne(projet, nom, obs, ifelse(is.finite(r), r, NA))
+  k <- match(nom, vapply(projet$variables, function(v) as.character(v$ids[1]), ""))
+  projet$variables[[k]]$formula <- paste(as.character(formule), collapse = "\n")
+  projet$variables[[k]]$origine <- list(type = "formule")
+  projet
 }
 
 # L'environnement où se calcule une formule de Nouvelle variable (variable_calculee), et une
