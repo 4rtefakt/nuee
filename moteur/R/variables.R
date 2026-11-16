@@ -598,6 +598,8 @@ classes_valeurs <- function(projet, nom, variable, bornes = NULL, n = NULL) {
   x <- colonne(projet, variable, obs)
   if (length(variable_du_projet(projet, variable)$categories)) stop(traduire("Choisir une variable quantitative", "Choose a quantitative variable"))
   if (is.null(bornes)) {
+    n <- suppressWarnings(as.integer(unlist(n)))[1]
+    if (!isTRUE(n >= 2)) stop(traduire("Donner les bornes des classes, ou leur nombre (2 ou plus)", "Give the classes' limits, or their number (2 or more)"), call. = FALSE)
     q <- stats::quantile(x, seq(0, 1, length.out = n + 1), na.rm = TRUE, names = FALSE)
     bornes <- unique(q[-c(1, length(q))])
   }

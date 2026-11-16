@@ -259,7 +259,7 @@ reglages_puissance <- function(m, d, lu, q) {
   if (!terme %in% lu$noms) err(sprintf("« %s » n'est pas un X quantitatif (non transformé) de ce modèle : choisissez le temps parmi %s.", terme, paste(lu$noms, collapse = ", ")),
                                sprintf("\"%s\" isn't a quantitative X (untransformed) of this model: choose the time among %s.", terme, paste(lu$noms, collapse = ", ")))
   pourcent_possible <- !is.null(log_reponse(d$y[[1]]$transform))
-  unite <- as.character(unlist(q$unite))[1]
+  unite <- as.character(unlist(q[["unite"]]))[1]  # (sans unite, q$unite prendrait q$unites : la correspondance partielle de $)
   if (is.na(unite) || !unite %in% c("pente", "pourcent")) unite <- if (pourcent_possible) "pourcent" else "pente"
   y <- m$donnees$y
   defaut <- if (unite == "pourcent") -3 else -signif(if (mean(y) != 0) 0.03 * abs(mean(y)) else if (stats::sd(y) > 0) 0.1 * stats::sd(y) else 0.1, 2)

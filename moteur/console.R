@@ -99,7 +99,7 @@ journaliser <- function(nom, q, r) {
     classe_selection = sprintf("%s <- ajouter_classe(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$variable), code_r(q$etiquette), vecteur_r(as.numeric(q$observations))),
     variable_calculee = sprintf("%s <- variable_calculee(%s, %s, %s)", q$projet, q$projet, code_r(q$nom), code_r(q$formule)),
     classes_valeurs = sprintf("%s <- classes_valeurs(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$nom), q$variable,
-                              if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
+                              if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q[["n"]])),
     # (et, en commentaire, le même calcul fait avec match() sur le tableau des données)
     ajouter_colonnes = {
       p <- projet(q$projet)

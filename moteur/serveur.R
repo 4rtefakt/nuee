@@ -342,13 +342,15 @@ modele <- function(id, a_jour = FALSE) {
 definition_interface <- function(p, q) {
   obs <- vapply(p$observations, function(o) as.numeric(o$uid), 0)
   if (length(q$exclues)) obs <- setdiff(obs, as.numeric(q$exclues))
-  ech <- c(defaut = q$echelle %||% "UV", unlist(q$echelles))
+  # (q[["echelle"]], q[["croises"]] : absents, q$echelle prendrait q$echelles et q$croises
+  # q$croises_reglages, la correspondance partielle de $)
+  ech <- c(defaut = q[["echelle"]] %||% "UV", unlist(q$echelles))
+  croises <- q[["croises"]]
   d <- definir_modele(p, q$type, x = as.numeric(q$x), y = as.numeric(q$y %||% numeric(0)),
                       classe = q$classe, observations = obs, echelle = ech,
                       A = q$A %||% 0, nom = q$nom, titre = q$titre %||% "", G = q$G %||% 7,
                       transformations = if (length(q$transformations)) unlist(q$transformations),
-                      croises = if (is.matrix(q$croises)) lapply(seq_len(nrow(q$croises)), function(i) q$croises[i, ])
-                                else q$croises,
+                      croises = if (is.matrix(croises)) lapply(seq_len(nrow(croises)), function(i) croises[i, ]) else croises,
                       spectres = q$spectres, test = as.numeric(q$test %||% numeric(0)),
                       vc = q$vc, blocs = if (length(q$blocs)) unlist(q$blocs), modificateurs = if (length(q$modificateurs)) unlist(q$modificateurs),
                       aleatoires = q$aleatoires, correlation = q$correlation, famille = q$famille,
@@ -1446,7 +1448,8 @@ DEMANDES <- list(
     reviser(p$id)
     c(resume_projet(p), list(imputation = info))
   },
-  classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q$n),
+  # (q[["n"]] : sans n, q$n prendrait q$nom, la correspondance partielle de $)
+  classes_valeurs = function(q) changer_projet(q, function(p) classes_valeurs(p, q$nom, q$variable, bornes = q$bornes, n = q[["n"]]),
     sprintf("variable %s", q$nom)),
   # Édition › Ajouter des colonnes d'un tableau : le tableau et les clés proposées, puis l'ajout
   table_a_joindre = table_a_joindre_demande,
