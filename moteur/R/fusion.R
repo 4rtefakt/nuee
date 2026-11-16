@@ -377,7 +377,7 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
     n <- length(d$cellules[[k]])
     paste(c(if (n) phrase_fusion("%d cellule(s) changée(s)", "%d cell(s) changed", n),
             if (length(d$champs[[k]])) paste(d$champs[[k]], collapse = ", "),
-            if (k %in% d$listes) traduire("catégories", "categories")), collapse = " ; ")
+            if (k %in% d$listes) traduire("catégories", "categories")), collapse = traduire(" ; ", "; "))
   }
   garder_v <- character(0)
   for (k in kM) {
@@ -466,7 +466,7 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
     if (any(conflit) || length(champs)) {
       x <- if (any(conflit)) cellules_conflit(obs, which(conflit), vb, vm, vl, ob) else list(mien = character(0), leur = character(0))
       decrire <- function(w, cellules) paste(c(vapply(champs, function(f) sprintf(traduire("%s : %s", "%s: %s"), nom_champ_variable(f), paste(as.character(unlist(w[[f]])), collapse = " ")), ""),
-                                               cellules), collapse = " ; ")
+                                               cellules), collapse = traduire(" ; ", "; "))
       choix <- conflit_fusion(ctx, paste0("variable:", k), "variable", k, titre_cle_fusion(k), decrire(tM$vars[[k]], x$mien), decrire(tL$vars[[k]], x$leur),
                               c(x$details, if (length(champs)) list(champs = I(champs))))
       if (choix == "leur") r[conflit] <- vl[conflit]
@@ -1096,7 +1096,7 @@ resume_modele_fusion <- function(nom, b, x) {
                    title = traduire("titre", "title"))
   for (f in names(libelles)) if (!identical(texte_champ(b, f), texte_champ(x, f))) morceaux <- c(morceaux, libelles[[f]])
   if (!length(morceaux)) morceaux <- traduire("réglages", "settings")
-  sprintf(traduire("%s : %s", "%s: %s"), nom, paste(morceaux, collapse = " ; "))
+  sprintf(traduire("%s : %s", "%s: %s"), nom, paste(morceaux, collapse = traduire(" ; ", "; ")))
 }
 
 # Le nom libre suivant pour un modèle : « M5 » devient « M6 », « M7 »… ; un nom sans numéro, « nom (2) ».
@@ -1415,7 +1415,7 @@ resume_passages <- function(base, passages, cote) {
     }
     if (plusieurs) phrase_fusion("paragraphes %s réécrits", "paragraphs %s rewritten", quels) else phrase_fusion("paragraphe %s réécrit", "paragraph %s rewritten", quels)
   }, "")
-  paste(unique(morceaux), collapse = " ; ")
+  paste(unique(morceaux), collapse = traduire(" ; ", "; "))
 }
 
 # Les références aux modèles d'un texte de document ({{M5.Q2}} : interface/references.js) qui suivent
@@ -1557,7 +1557,7 @@ fusion_documents <- function(B, M, L, noms_leur, ctx) {
     t <- fusion_lignes(lb, lm, ll)
     if (length(conflits) || length(t$passages)) {
       resume <- function(cote) paste(c(if (length(t$passages)) resume_passages(lb, t$passages, cote),
-                                       vapply(conflits, function(f) phrase_fusion("%s changé", "%s changed", f), "")), collapse = " ; ")
+                                       vapply(conflits, function(f) phrase_fusion("%s changé", "%s changed", f), "")), collapse = traduire(" ; ", "; "))
       passage <- function(p) list(ligne = p$debut, base = paste(p$base, collapse = "\n"), mien = paste(p$mien, collapse = "\n"), leur = paste(p$leur, collapse = "\n"))
       cote <- conflit_fusion(ctx, paste0("document:", premier_texte(m$id)), "document", premier_texte(m$id), titre(m), resume("mien"), resume("leur"),
                              list(passages = lapply(t$passages, passage), champs = I(conflits)))
@@ -1587,7 +1587,7 @@ fusion_figures <- function(B, M, L, numeros, noms, ctx) {
             if (!identical(texte_champ(b, "contenu"), texte_champ(x, "contenu"))) {
               if (panneaux(b) != panneaux(x)) phrase_fusion("%d → %d panneaux", "%d → %d panels", panneaux(b), panneaux(x))
               else traduire("mise en page ou panneaux changés", "layout or panels changed")
-            }), collapse = " ; ")
+            }), collapse = traduire(" ; ", "; "))
   }
   fusionner <- function(b, m, l) {
     d <- m
