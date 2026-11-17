@@ -2483,6 +2483,8 @@ DEMANDES <- list(
     })))
   },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
+  # (où en est le calcul en arrière-plan : arriere_plan.R)
+  progression = function(q) arriere_plan_progression(),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
   completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
   version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
@@ -2621,6 +2623,9 @@ travail_finir <- function(nom, corps, langue, fichier, sorties) {
   }, error = function(e) repondre_erreur(nom, e)))
 }
 
+# Les calculs en arrière-plan : les demandes longues faites par un second R (1.2).
+source(file.path(racine, "moteur", "arriere_plan.R"), encoding = "UTF-8")
+
 # Le serveur HTTP. La version navigateur (webR : app/interface/moteur_webr.js) charge ce fichier
 # jusqu'ici, comme les vérifications du moteur le chargent sans écouter (moteur/tests/verifier_etapes.R) :
 # l'interface y appelle traiter_demande() elle-même.
@@ -2638,9 +2643,17 @@ appli <- list(
     }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
+    # (un Arrêter venu pendant un calcul en arrière-plan, pris avant que la ligne suivante n'efface son fichier)
+    arriere_plan_arret()
     # (un Arrêter d'avant cette demande, venu quand plus rien ne calculait, ne l'arrête pas : arret.R)
     if (nzchar(getOption("nuee.arret", ""))) unlink(getOption("nuee.arret"))
-    if (!nom %in% c("fichier", "televerser", "deposer")) return(traiter_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE))
+    if (!nom %in% c("fichier", "televerser", "deposer")) {
+      # (un calcul, que le calculateur fait, ou une demande qui attend la fin d'un calcul sur son
+      # projet : leur réponse viendra plus tard ; arriere_plan.R)
+      plus_tard <- arriere_plan_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE)
+      if (!is.null(plus_tard)) return(plus_tard)
+      return(traiter_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE))
+    }
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -2674,6 +2687,7 @@ appli <- list(
 )
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)
+arriere_plan_lancer()
 cat("PRET", port, "\n")
 if (!jeton_donne) cat(sprintf("Interface : http://127.0.0.1:%d/api/connexion?jeton=%s\n", port, JETON))
 flush(stdout())

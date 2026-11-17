@@ -988,7 +988,7 @@ fichiers_rejoues <- function(e, def, q, dossier) {
 rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL) {
   resultats <- vector("list", length(etapes))
   for (k in seq_along(etapes)) {
-    verifier_arret()
+    verifier_arret(k, length(etapes), "etapes")
     e <- etapes[[k]]
     r <- list(n = k, demande = premier_texte(e$demande), etiquette = etiquette_etape(e), statut = "ok", raison = "", notes = I(character(0)))
     essai <- tryCatch({

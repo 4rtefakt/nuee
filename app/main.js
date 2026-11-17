@@ -320,6 +320,9 @@ function demarrerR(port, r, repli = false, delai = 0) {
     // packages that come with Nuée are found first (environnementR). Another R keeps its .Renviron.
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
     Object.assign(env, environnementR(r));
+    // (the engine starts its second R, for the computations it does in the background, with the same
+    // options: moteur/arriere_plan.R)
+    env.NUEE_R_OPTIONS = optionsR.join(' ');
     let pret = false;
     let depasse = false;
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });

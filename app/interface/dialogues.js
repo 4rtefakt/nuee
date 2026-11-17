@@ -736,22 +736,33 @@ export function dialogueModele(app, projet, r = null, titre = t('nouveau_modele'
     return false;  // the dialog closes once the model is fitted
   }
 
-  // The fit runs with the dialog open: it closes once the model is there; an error ("Component 3
-  // isn't possible…") shows in it, with every setting kept. A second click on Fit does nothing.
+  // The fit starts with the dialog open: one that ends at once closes it, or shows its error in it
+  // ("Component 3 isn't possible…"), with every setting kept. One that takes longer goes on in the
+  // background, the engine answering the rest meanwhile (moteur/arriere_plan.R): the dialog steps
+  // aside and the window is free, the status bar saying the computation (Stop stops it); the model's
+  // views open once it is there, and an error brings the dialog back, its settings and the error in
+  // it (a fit stopped meanwhile closes it). A second click on Fit does nothing.
+  const PATIENCE_DIALOGUE = 1500;
   let enCours = false;
   async function ajusterPuisFermer(q) {
     enCours = true;
     erreur.textContent = '';
     alerte.replaceChildren(el('p', { class: 'infos' }, t('calcul')));
+    let aCote = false;
+    const minuterie = setTimeout(() => { aCote = true; d.cacher(); }, PATIENCE_DIALOGUE);
     try {
       if (analyse() && analyse().avantAjuster) await analyse().avantAjuster(q);
       const id = await app.ajusterDefinition(q, remplace);
+      clearTimeout(minuterie);
       d.fermer();
       if (apres && id) apres(id);
     } catch (e) {
+      clearTimeout(minuterie);
       alerte.replaceChildren();
+      if (aCote && e.reponse && e.reponse.arrete) { d.fermer(); return; }
       erreur.textContent = e.message;
       if (analyse() && analyse().surErreur) analyse().surErreur(st, e);
+      d.montrer();
     } finally {
       enCours = false;
     }

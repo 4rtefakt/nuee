@@ -23,7 +23,9 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--texte); background: var(--fond); overflow: hidden; }
-body.occupe, body.occupe * { cursor: progress !important; }
+/* (a computation under way: said by the status bar, whose dot pulses; the rest of the window stays
+   usable, the engine answering it meanwhile, moteur/arriere_plan.R) */
+body.occupe #statut .moteur { cursor: progress; }
 button { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
   padding: 3px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 button:hover:not(:disabled) { border-color: var(--accent); }
@@ -132,6 +134,27 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .infos { color: var(--texte-doux); font-size: 12px; }
 .note { color: var(--texte-doux); font-size: 11.5px; margin: 4px 0; }
 .attente { margin: 20px; }
+/* A view waiting for the engine: its skeleton, a sheen going over it (shown after a moment, so that
+   what comes at once doesn't flicker), then where the computation is, with a bar (progression.js) */
+.infos.attente { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 180px;
+  margin: 10px; padding: 16px; border-radius: 6px; text-align: center;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--texte) 4%, transparent) 30%, color-mix(in srgb, var(--texte) 9%, transparent) 50%,
+    color-mix(in srgb, var(--texte) 4%, transparent) 70%) 0 0 / 300% 100%;
+  animation: apparaitre .2s ease .3s both, reflet 1.6s ease-in-out infinite; }
+@keyframes reflet { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes apparaitre { from { opacity: 0; } to { opacity: 1; } }
+/* A bar: what is done, or, for a computation that doesn't count its rounds, a piece going across */
+.progres-statut { display: inline-flex; min-width: 0; }
+.progres { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.progres-barre { position: relative; width: 120px; height: 6px; border-radius: 3px; overflow: hidden; flex: none;
+  background: color-mix(in srgb, var(--texte) 14%, transparent); }
+.progres-fait { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 3px; background: var(--accent); transition: width .45s ease; }
+.progres.indetermine .progres-fait { width: 35%; transition: none; animation: va-et-vient 1.3s ease-in-out infinite; }
+@keyframes va-et-vient { from { left: -35%; } to { left: 100%; } }
+.progres-texte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.infos.attente .progres { flex-direction: column; max-width: 100%; }
+.infos.attente .progres-barre { width: min(320px, 70vw); }
+.infos.attente .progres-texte { white-space: normal; }
 .graphe { flex: 1; min-height: 200px; }
 /* (a plot's ring outside it: Plotly's layers would cover one drawn inside; its tool buttons shown while
    the keyboard is on it, their ring the accent's, which Plotly draws black whatever the theme) */

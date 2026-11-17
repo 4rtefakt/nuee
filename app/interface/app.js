@@ -3,6 +3,7 @@
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { demander, televerser, deposer, telechargerFichier, bureau, debutAttente, MOTEUR_WEBR, moteurWebR } from './api.js';
+import { elementStatut } from './progression.js';
 import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
@@ -1382,6 +1383,8 @@ async function arreterCalcul() {
   minuterieArretLent = setTimeout(() => { if (etat.arretDemande) { etat.arretLent = true; majArret(); } }, 8000);
 }
 window.addEventListener('requetes', majArret);
+// (the status bar's progress, drawn again twice a second, changes its width: Stop follows it)
+window.addEventListener('progression', placerArret);
 
 function choisirFichierNavigateur(accept) {
   return new Promise((resolve) => {
@@ -2640,11 +2643,13 @@ function majEtat() {
   const nv = id ? app.variablesChoisies(id).length : 0;
   // (a view's request that takes long computes too, under Stop: majArret)
   const arret = document.getElementById('arret-calcul');
-  const calcule = etat.occupe || !!(arret && !arret.hidden);
+  const arretVisible = !!(arret && !arret.hidden);
+  const calcule = etat.occupe || arretVisible;
   const debut = etat.occupe ? etat.debutOccupe : debutAttente();
   s.replaceChildren(...[
+    // (once Stop shows, where the computation is, with a bar: progression.js)
     el('span', { class: 'moteur' + (calcule ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
-      calcule ? (debut !== null && Date.now() - debut > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
+      calcule ? (arretVisible ? elementStatut() : debut !== null && Date.now() - debut > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },

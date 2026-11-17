@@ -722,8 +722,9 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       for (const v of sans) await n.choisir(role(v), '');
       const avant = (await n.etat()).modeles.map((m) => m.id);
       await n.bouton('ajuster');
+      // (a fit that takes more than a moment goes on with the dialog set aside: dialogues.js)
       await n.attendre('!__n.dialogue()', 180000);
-      const id = await n.attendre(`__n.api('etat').then((e) => { const m = [].concat(e.modeles).find((x) => !${JSON.stringify(avant)}.includes(x.id)); return m ? m.id : null; })`);
+      const id = await n.attendre(`__n.api('etat').then((e) => { const m = [].concat(e.modeles).find((x) => !${JSON.stringify(avant)}.includes(x.id)); return m ? m.id : null; })`, 180000);
       const m = await n.api('modele', { modele: id });
       await n.attendre(n.ligneModele(m.nom, true));
       return m;

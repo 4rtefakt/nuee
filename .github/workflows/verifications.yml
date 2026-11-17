@@ -43,7 +43,7 @@ jobs:
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret protocole; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret arriere_plan protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -176,7 +176,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret protocole; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret arriere_plan protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -289,7 +289,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret protocole; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret arriere_plan protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -350,7 +350,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret protocole; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible paquet trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret arriere_plan protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"

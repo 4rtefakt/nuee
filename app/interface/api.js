@@ -4,14 +4,21 @@
 // X-Langue: the language of the messages the engine sends back (moteur/R/langue.R).
 import { langueActuelle } from './i18n.js';
 
-// The requests the user waits for (not those made in the background), by number, and when each
-// began: after a moment the status bar offers to stop the computation (app.js, Stop). A change
-// is told to the page ('requetes').
+// The requests the user waits for (not those made in the background), by number, with their name
+// and when each began: after a moment the status bar offers to stop the computation (app.js, Stop)
+// and says where it is (progression.js). A view that waits puts its waiting text (.infos.attente)
+// just before asking: that text is given the request's number (data-demande), for progression.js.
+// A change is told to the page ('requetes').
 const enAttente = new Map();
 let numeroRequete = 0;
-export const debutAttente = () => (enAttente.size ? Math.min(...enAttente.values()) : null);
-const attente = (n, oui) => {
-  if (oui) enAttente.set(n, Date.now()); else enAttente.delete(n);
+export const debutAttente = () => (enAttente.size ? Math.min(...[...enAttente.values()].map((x) => x.debut)) : null);
+export const demandesEnAttente = () => [...enAttente.entries()].map(([n, x]) => ({ n, ...x }));
+const attente = (n, oui, nom) => {
+  if (oui) {
+    enAttente.set(n, { debut: Date.now(), nom });
+    const texte = [...document.querySelectorAll('.infos.attente:not([data-demande])')].pop();
+    if (texte) texte.dataset.demande = String(n);
+  } else enAttente.delete(n);
   window.dispatchEvent(new CustomEvent('requetes'));
 };
 
@@ -35,7 +42,7 @@ function noter(nom, corps, debut, ok) {
 // at most).
 export async function demander(nom, corps = {}, { silencieux = false, garder = false } = {}) {
   const n = silencieux ? 0 : (numeroRequete += 1);
-  if (n) attente(n, true);
+  if (n) attente(n, true, nom);
   try { return await envoyer(nom, corps, silencieux, garder); } finally { if (n) attente(n, false); }
 }
 

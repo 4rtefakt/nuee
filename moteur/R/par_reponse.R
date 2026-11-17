@@ -43,7 +43,7 @@ modeles_par_reponse <- function(projet, d, reponses, correction = "BH") {
   }
   base <- d$name %||% "M"
   modeles <- lapply(reponses, function(u) {
-    verifier_arret()
+    verifier_arret(match(u, reponses), length(reponses), "reponses")
     nom <- unname(projet$noms_var[nom_numero(u)])
     tryCatch({
       dk <- definition_pour_reponse(projet, d, u, sprintf("%s · %s", base, nom))

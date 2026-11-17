@@ -41,7 +41,7 @@ mesure_permutation <- function(r, y, A) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$s
 permutations_morceau <- function(t, i) {
   cote_x <- if (t$meme_x) cote_x_modele(t$projet, t$definition, t$G)
   do.call(rbind, lapply(i, function(k) {
-    verifier_arret()
+    verifier_arret(match(k, i), length(i), "permutations")
     pp <- t$projet
     pp$donnees[t$lignes_y, t$variables] <- t$valeurs[t$ordres[[k]], , drop = FALSE]
     r <- calculer_modele(pp, t$definition, t$A, t$G, cote_x = cote_x)

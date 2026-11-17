@@ -173,7 +173,7 @@ validation_foret <- function(X, y, groupes, r, classement) {
   votes <- if (classement) matrix(NA_real_, nrow(X), length(classes), dimnames = list(NULL, classes))
   echecs <- 0
   for (g in unique(groupes)) {
-    verifier_arret()
+    verifier_arret(match(g, unique(groupes)), length(unique(groupes)), "validation")
     k <- groupes == g
     ya <- if (classement) droplevels(y[!k]) else y[!k]
     if (classement && nlevels(ya) == 1) {

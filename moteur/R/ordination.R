@@ -275,7 +275,7 @@ stats_permutees <- function(k, P, premier = FALSE) {
   ponderee <- !is.null(k$poids)
   Q1 <- if (!partielle && !ponderee) base_orthonormee(k$Q)
   for (b in seq_len(B)) {
-    verifier_arret()
+    verifier_arret(b, B, "permutations")
     ip <- P[b, ]
     Ep <- k$E[ip, , drop = FALSE]
     Xb <- if (ponderee) centrer_pondere(k$Xbrut, k$poids[ip]) else k$Xc

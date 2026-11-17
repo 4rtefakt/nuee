@@ -2,7 +2,7 @@
 
 <!-- Written by docs/ecrire_protocole.R from moteur/protocole.json: change the description there, then run Rscript docs/ecrire_protocole.R (moteur/tests/verifier_protocole.R checks that this page is up to date). -->
 
-Version **2.2** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 129 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
+Version **2.2** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 130 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
 
 It is written from `moteur/protocole.json`, the description that the request [`protocole`](#protocole) also gives (with `complet`); `moteur/tests/verifier_protocole.R` checks that every request the engine answers is described there, and nothing else. `outils/exemple_client.py` is a client in Python, with nothing but its standard library: it starts the engine from the sources, opens the example project and fits one of its models.
 
@@ -29,7 +29,7 @@ The protocol's version is MAJOR.MINOR. MINOR grows when a request, a parameter o
 | 1.0 | The requests of Nuée 1.0.0, before the protocol had a version: an engine that answers protocole with "Unknown request: protocole" speaks 1.0. |
 | 2.0 | Nuée 1.1.0. New requests: protocole; retablir (Redo); the data steps, etapes, mettre_a_jour and retirer_etape; renommer_variable, supprimer_variable and type_variable; the versions of a project, fichier_change, fusionner and fusionner_finir; R-code models (the model type CODE) with empreinte_code, code_approuve and code_modeles; plugins (the model type PLUGIN) with greffons, greffon_lire, greffon_installer, greffon_retirer, greffon_projet and greffon_mettre_a_jour; resultats_cles and comparer_resultats; guide. New parameters: exemple's nom, ouvrir's lecture_seule and cache, enregistrer's auteur, reajuster's centrer, effets' echelle, ajouter_colonnes' colle, a model definition's meme_numero. New fields: Projet's retablissable, a_source and lecture_seule; ResumeModele's code_r and greffon; Modele's cles and an R-code or plugin model's own; annuler's documents, reajuster and a_reajuster, and retablir's; projets_modifies' ids; fusionner_finir's documents; RapportMiseAJour's changements_avant_etapes and its observations' distinguees; etat's code_interdit and greffons; error answers with fields of their own (arrete for a computation stopped, source_modifiee, code_non_approuve and empreinte, ligne, a plugin's refusal, a 409's fusion). Changed in a way a client of 1.0 notices: annuler keeps the model definitions added since the change (fitted models), which 1.0 took back with it; enregistrer without chemin no longer marks the project saved (it is a download); document_enregistrer and figure_enregistrer refuse an id the project doesn't have instead of making a new document or figure, and document_supprimer and figure_supprimer refuse it too; fermer_projet, rapports_vraisemblance, console and completer refuse an unknown project or model, which 1.0 ignored; exporter_prediction names its columns in the request's language; moyennes and puissance_tendance take only their own settings; an unknown model type or cross-validation is refused, not fitted as a PLS or validated by centres; an id is read as text (1 no longer names the first project); a missing projet or modele, an unknown observation and the choices the requests check get the engine's own messages instead of R's; most undo labels are in the request's language. |
 | 2.1 | New request: paquet, the reproducibility package (a .zip of the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data, CITATION.cff, codemeta.json and the SHA-256 of every file), with the DOI Zenodo reserved for the draft it goes in. New field: Projet's paquet, the answers kept from the last one. |
-| 2.2 | New request: paquet_ouvrir, a reproducibility package opened again: unzipped in the engine's temporary folder, its files checked against its manifest, its project opened as a new project, with the results it deposited (ResultatsDeposes) to compare with its models fitted again. New parameter: paquet's qr, the QR code of its link. New fields: comparer_resultats' resume's verdict (identique, six_chiffres or differe), ecart_max, cle_ecart_max, libelle_ecart_max and partie_ecart_max. New fields: ouvrir's paquet_ouvrir (a reproducibility package, to open with paquet_ouvrir), Projet's depuis_paquet, the error answer's pas_un_paquet; paquet's .zip holds results/key_results.json (ResultatsDeposes), and with doi and qr, qr-code.svg. |
+| 2.2 | New request: progression, where the computation under way in the background is (the desktop engine does its long requests in a second R and answers the others meanwhile; a request that would change a project being computed waits for its end). New request: paquet_ouvrir, a reproducibility package opened again: unzipped in the engine's temporary folder, its files checked against its manifest, its project opened as a new project, with the results it deposited (ResultatsDeposes) to compare with its models fitted again. New parameter: paquet's qr, the QR code of its link. New fields: comparer_resultats' resume's verdict (identique, six_chiffres or differe), ecart_max, cle_ecart_max, libelle_ecart_max and partie_ecart_max. New fields: ouvrir's paquet_ouvrir (a reproducibility package, to open with paquet_ouvrir), Projet's depuis_paquet, the error answer's pas_un_paquet; paquet's .zip holds results/key_results.json (ResultatsDeposes), and with doi and qr, qr-code.svg. |
 
 ## Starting the engine
 
@@ -649,7 +649,7 @@ Errors several requests raise. Each comes as status 400 with `{"erreur": message
 
 ### Session and projects
 
-[`protocole`](#protocole) · [`version`](#version) · [`etat`](#etat) · [`projet`](#projet) · [`projets_modifies`](#projets_modifies) · [`donnees`](#donnees) · [`valeurs`](#valeurs) · [`historique`](#historique) · [`session`](#session) · [`modeles`](#modeles) · [`annuler`](#annuler) · [`retablir`](#retablir) · [`enregistrer`](#enregistrer) · [`sauvegarde_secours`](#sauvegarde_secours) · [`projet_texte`](#projet_texte) · [`fermer_projet`](#fermer_projet) · [`guide`](#guide)
+[`protocole`](#protocole) · [`version`](#version) · [`etat`](#etat) · [`projet`](#projet) · [`projets_modifies`](#projets_modifies) · [`progression`](#progression) · [`donnees`](#donnees) · [`valeurs`](#valeurs) · [`historique`](#historique) · [`session`](#session) · [`modeles`](#modeles) · [`annuler`](#annuler) · [`retablir`](#retablir) · [`enregistrer`](#enregistrer) · [`sauvegarde_secours`](#sauvegarde_secours) · [`projet_texte`](#projet_texte) · [`fermer_projet`](#fermer_projet) · [`guide`](#guide)
 
 #### `protocole`
 
@@ -744,6 +744,23 @@ No parameters.
 |---|---|---|
 | `noms` | `string[]` | Their names (always an array, empty when every project is saved). |
 | `ids` | `string[]` | Their ids, in the same order (always an array). Since 2.0. |
+
+**Errors:** none of its own.
+
+#### `progression`
+
+Gives where the computation under way in the background is, answered at once even during it (the desktop application's engine does its long requests in a second R and answers the others meanwhile; without that second R, a computation holds it as it holds any request): its request, how long it has run, how far it is when its loops count their rounds, and the requests waiting.
+
+Since 2.2. Changes nothing.
+
+No parameters.
+
+**Result:** `object`, with the fields below.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `calcul` | `object` \| `null` | The computation under way, null when there is none: {nom, its request; secondes, since it began; fraction, from 0 to 1, what is done (null when its loops don't count their rounds: a single fit in compiled code); etapes, its loops that count their rounds, the outermost first, each {quoi, fait, total}: quoi a word the interface translates (validation, preparation, composantes, permutations, simulations, departs, arbres, tirages, intervalles, k, reponses, etapes), fait the round under way, from 1 to total}. |
+| `attente` | `string[]` | The requests waiting, in the order they came: computations waiting for the second R, and requests waiting for the end of a computation on their project (always an array). |
 
 **Errors:** none of its own.
 

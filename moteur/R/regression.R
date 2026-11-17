@@ -312,7 +312,7 @@ validation_lineaire <- function(donnees, termes, groupe, niveaux = 0, car1 = FAL
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
-    verifier_arret()
+    verifier_arret(match(g, sort(unique(groupe))), length(unique(groupe)), "validation")
     ici <- groupe == g
     apprentissage <- droplevels(donnees[!ici, , drop = FALSE])
     m <- ajuster_lineaire(apprentissage, termes_utiles(apprentissage, termes), niveaux, car1, "REML", pentes)
@@ -1693,7 +1693,7 @@ validation_mgcv <- function(donnees, termes, lisses, k, groupe, niveaux, famille
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
-    verifier_arret()
+    verifier_arret(match(g, sort(unique(groupe))), length(unique(groupe)), "validation")
     ici <- groupe == g
     appris <- droplevels(donnees[!ici, , drop = FALSE])
     u <- termes_utiles(appris, termes)
@@ -1794,7 +1794,7 @@ validation_gamm <- function(donnees, termes, lisses, k, groupe, niveaux, pentes 
   prediction <- rep(NA_real_, nrow(donnees))
   echecs <- 0
   for (g in sort(unique(groupe))) {
-    verifier_arret()
+    verifier_arret(match(g, sort(unique(groupe))), length(unique(groupe)), "validation")
     ici <- groupe == g
     appris <- droplevels(donnees[!ici, , drop = FALSE])
     u <- termes_utiles(appris, termes)
