@@ -22,11 +22,11 @@ const nomCopie = (fichier) => fichier.split('/').pop();
 const PAGE = typeof window !== 'undefined' && window.NUEE_MOTEUR === 'webr' && !new URLSearchParams(window.location.search).get('vue');
 if (PAGE && navigator.locks) navigator.locks.request(verrou(ONGLET), () => new Promise(() => {})).catch(() => {});
 
-// ---- the storage: OPFS, else IndexedDB (a browser without OPFS or its createWritable)
-let stockage = null;
-async function opfs() {
+// ---- the storage: OPFS, else IndexedDB (a browser without OPFS or its createWritable), a folder
+// (a database) for each use: the recovery copies, the plugins installed (moteur_webr.js)
+async function opfs(dossier) {
   const racine = await navigator.storage.getDirectory();
-  const d = await racine.getDirectoryHandle(DOSSIER, { create: true });
+  const d = await racine.getDirectoryHandle(dossier, { create: true });
   const essai = await d.getFileHandle('.essai', { create: true });
   if (typeof essai.createWritable !== 'function') throw new Error('createWritable');
   return {
@@ -41,9 +41,9 @@ async function opfs() {
     async noms() { const n = []; for await (const k of d.keys()) if (k !== '.essai') n.push(k); return n; },
   };
 }
-function indexedDb() {
+function indexedDb(dossier) {
   return new Promise((ok, ko) => {
-    const r = indexedDB.open(DOSSIER, 1);
+    const r = indexedDB.open(dossier, 1);
     r.onupgradeneeded = () => r.result.createObjectStore('fichiers');
     r.onerror = () => ko(r.error);
     r.onsuccess = () => {
@@ -65,14 +65,18 @@ function indexedDb() {
     };
   });
 }
-function lieu() {
-  stockage ||= opfs().catch(() => indexedDb()).then((s) => {
-    // (kept by the browser even when the disk fills up, when it allows it; Firefox asks)
-    if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
-    return s;
-  });
-  return stockage;
+const magasins = new Map();
+export function magasin(dossier) {
+  if (!magasins.has(dossier)) {
+    magasins.set(dossier, opfs(dossier).catch(() => indexedDb(dossier)).then((s) => {
+      // (kept by the browser even when the disk fills up, when it allows it; Firefox asks)
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
+      return s;
+    }));
+  }
+  return magasins.get(dossier);
 }
+const lieu = () => magasin(DOSSIER);
 export const typeStockage = async () => (await lieu()).type;
 
 const texte = (o) => new TextEncoder().encode(JSON.stringify(o));

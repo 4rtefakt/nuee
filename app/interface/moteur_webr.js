@@ -6,6 +6,8 @@
 // saved, an export) are downloaded from it. Nothing leaves the page.
 import { langueActuelle } from './i18n.js';
 import { PAQUETS_WEBR, SANS_WEBR } from './paquets_webr.js';
+import { magasin } from './secours_navigateur.js';
+import { VERSION } from './nouveautes.js';
 
 const TEXTES = {
   fr: { r: 'Démarrage de R dans le navigateur…', fichiers: 'Fichiers du moteur…', paquet: 'Paquets R : {p} ({i}/{n})', moteur: 'Chargement du moteur…',
@@ -56,6 +58,29 @@ async function ecrireFichier(webR, chemin, octets) {
   await webR.FS.writeFile(chemin, octets);
 }
 
+// The plugins installed in the page (File › Plugins…: vues_greffons.js) are in R's folder
+// NUEE_GREFFONS (moteur/R/greffons.R), kept in the browser's storage after each install or removal
+// and put back at each visit (secours_navigateur.js: magasin, a file for each of theirs); the R code
+// and the plugins approved here (vues_code.js: approuver) are given back to the engine at each visit,
+// as the desktop app keeps them in its settings (main.js: reglages.codeApprouve, the latest 10,000).
+const GREFFONS = '/greffons';
+const MAGASIN_GREFFONS = 'nuee-greffons';
+const APPROUVES = 'nuee-code-approuve';
+const approuves = () => {
+  try { return [].concat(JSON.parse(localStorage.getItem(APPROUVES) || '[]')).filter((x) => /^[0-9a-f]{64}$/.test(x)); } catch { return []; }
+};
+async function rendreGreffons(webR) {
+  const s = await magasin(MAGASIN_GREFFONS);
+  for (const nom of await s.noms()) await ecrireFichier(webR, `${GREFFONS}/${decodeURIComponent(nom)}`, await s.lire(nom));
+}
+async function garderGreffons(webR) {
+  const s = await magasin(MAGASIN_GREFFONS);
+  const fichiers = [].concat(await webR.evalRRaw(`list.files("${GREFFONS}", recursive = TRUE)`, 'string[]'));
+  const gardes = new Set(fichiers.map((f) => encodeURIComponent(f)));
+  for (const f of fichiers) await s.ecrire(encodeURIComponent(f), await webR.FS.readFile(`${GREFFONS}/${f}`));
+  for (const nom of await s.noms()) if (!gardes.has(nom)) await s.supprimer(nom);
+}
+
 // The packages to install: PAQUETS_WEBR, less those of ?sans=a,b (to see the browser version
 // without them: their features say they need the desktop application)
 const sansPaquets = () => (new URLSearchParams(location.search).get('sans') || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -96,16 +121,22 @@ async function nouveauR(progres = () => {}, aide = false) {
     }
   }
   progres(texte('moteur'), 0.97);
-  // (navigateur.R: what needs a package left out says it needs the desktop application). The
-  // engine's request layer, serveur.R, read up to its HTTP server, as the engine's checks read it
-  // (moteur/tests/verifier_etapes.R): each request goes to traiter_demande() from here.
-  await webR.evalRVoid(`options(nuee.navigateur = TRUE, nuee.paquets_absents = absents[nzchar(absents)])
+  try { await rendreGreffons(webR); } catch (e) { console.warn('Nuée : les greffons installés n’ont pas pu être lus', e); }
+  await creerDossiers(webR, GREFFONS);
+  // (navigateur.R: what needs a package left out says it needs the desktop application; a model's
+  // packages webR can't load are never installed). The engine's request layer, serveur.R, read up
+  // to its HTTP server, as the engine's checks read it (moteur/tests/verifier_etapes.R): each
+  // request goes to traiter_demande() from here.
+  await webR.evalRVoid(`options(nuee.navigateur = TRUE, nuee.paquets_absents = absents[nzchar(absents)], nuee.paquets_sans_webr = sans_webr)
+    Sys.setenv(NUEE_GREFFONS = greffons, NUEE_VERSION = version)
     setwd("/nuee")
     for (e in parse("moteur/serveur.R", encoding = "UTF-8", keep.source = FALSE)) {
       if (is.call(e) && identical(e[[1]], as.name("<-")) && identical(e[[2]], as.name("appli"))) break
       eval(e, globalenv())
     }
-    rm(e)`, { env: { absents: absents.length ? absents : [''] } });
+    rm(e)`, { env: { absents: absents.length ? absents : [''], sans_webr: Object.keys(SANS_WEBR), greffons: GREFFONS, version: VERSION } });
+  const empreintes = approuves();
+  if (empreintes.length) await webR.evalRVoid('approuver_codes(empreintes)', { env: { empreintes } });
   return { webR, absents };
 }
 
@@ -177,10 +208,25 @@ export async function demarrer() {
         file = r.catch(() => {});
         return r;
       }
-      return traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
+      const r = await traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
+      // (a plugin installed or removed: the plugins' folder kept in the browser's storage)
+      if (r.statut === 200 && (nom === 'greffon_installer' || nom === 'greffon_retirer')) {
+        await garderGreffons(webR).catch((e) => console.warn('Nuée : les greffons installés n’ont pas pu être gardés', e));
+      }
+      return r;
     },
     // the packages the browser version doesn't have (SANS_WEBR, ?sans=, failed installs)
     absents: () => absents,
+    // a plugin's packages installed from webR's repository (navigateur.R:
+    // installer_paquets_navigateur): those still missing
+    async installerPaquets(paquets) {
+      return [].concat(await webR.evalRRaw('installer_paquets_navigateur(paquets)', 'string[]', { env: { paquets: paquets.length ? paquets : [''] } }));
+    },
+    // R code or plugins approved in the page: remembered for the next visits (the latest 10,000)
+    garderApprobations(empreintes) {
+      const liste = [...new Set([...approuves(), ...empreintes])].slice(-10000);
+      try { localStorage.setItem(APPROUVES, JSON.stringify(liste)); } catch { /* only for this visit */ }
+    },
     // (for measuring: the main R, the others, a shareable request with k of them, 0: alone)
     r: () => webR,
     aides: () => aides,

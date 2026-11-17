@@ -6,7 +6,7 @@
 // never runs code from it; the engine refuses code nobody approved on this computer). Imported by app.js.
 import { t, ajouterTextes, deuxPoints, separateurIntervalle } from './i18n.js';
 import { el, fmt, decimal, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { VUES, PALETTE, choix, outils, couleursTheme, tracer, brancherSelection, tableau, notesModele, valeurP, ficheCondition, etendue } from './panneaux.js';
 import { ANALYSES } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
@@ -23,13 +23,17 @@ let appli = null;  // (the application, given by installerCode)
 
 // Code approved by this user on this computer (typed and fitted, or read and run): its fingerprint,
 // computed by the engine, kept by the desktop app (main.js: approuver-code), which tells the engine;
-// in a browser (an engine started by hand), told to the engine directly, for its session. (A plugin
-// is approved the same way: vues_greffons.js.)
+// in a browser (an engine started by hand), told to the engine directly, for its session; in the
+// browser version, also kept by the browser for the next visits (moteur_webr.js). (A plugin is
+// approved the same way: vues_greffons.js.)
 export async function approuver(empreintes) {
   if (!empreintes.length) return;
   if (bureau && bureau.approuverCode) {
     if (!(await bureau.approuverCode(empreintes))) throw new Error(t('code_approbation_echec'));
-  } else await demander('code_approuve', { empreintes });
+  } else {
+    await demander('code_approuve', { empreintes });
+    if (MOTEUR_WEBR) (await moteurWebR()).garderApprobations(empreintes);
+  }
 }
 async function approuverCodeTape(q) {
   const { empreinte } = await demander('empreinte_code', { code: (q.options || {}).code || '' });
