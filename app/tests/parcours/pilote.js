@@ -351,15 +351,16 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   const lister = async (port) => { try { return await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) })).json(); } catch { return null; } };
 
   try {
-    // the main process first: its dialogs answered before the window can ask anything
-    const cibleNode = await jusqua(async () => ((await lister(portNode)) || [])[0], 30000, 'the main process’s inspector');
+    // the main process first: its dialogs answered before the window can ask anything (90 s at
+    // most: a program started again on a busy macOS Intel runner took more than 30)
+    const cibleNode = await jusqua(async () => ((await lister(portNode)) || [])[0], 90000, 'the main process’s inspector');
     const principal = await session(cibleNode.webSocketDebuggerUrl);
     const evaluerPrincipal = async (expression) => {
       const r = await principal.envoyer('Runtime.evaluate', { expression, includeCommandLineAPI: true, returnByValue: true, awaitPromise: true });
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
       return r.result.value;
     };
-    await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
+    await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 90000, 'the main process’s modules');
     await evaluerPrincipal(GARDIEN(process.pid));
     if (HORS_ECRAN) await evaluerPrincipal(SANS_ECRAN);
 
