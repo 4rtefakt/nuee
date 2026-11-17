@@ -295,26 +295,20 @@ donnees_conformes <- function(p) {
 # viennent, comme une observation sans nom, dont l'identifiant n'est jamais vide ; elles se retrouvent
 # par ce rang, ce que la mise à jour dit (aligner_projet : repetees). Un tableau sans colonne qui les
 # nomme a pour noms les numéros de ses lignes : ses observations se retrouvent par leur place.
-# Seules les observations dont le nom revient prennent les valeurs de `colonnes` : celles du projet, ou
-# des projets qu'une mise à jour ou une fusion compare (colonnes_cle les dit, attribut « repetes »),
-# pour que l'observation d'un nom qui ne revient que d'un côté ait la même clé des deux. Une observation
-# d'un nom à elle se retrouve par son nom seul, quoi qu'une correction fasse à ces colonnes (une
-# présence 0/1 qui distinguait les deux lignes d'un seul nom répété).
+# Toutes les observations prennent les valeurs de `colonnes`, celles d'un nom à elles aussi : une étape
+# notée quand un nom ne revenait pas retrouve son observation quand il revient dans le fichier suivant
+# (un site relevé une année, puis deux). colonnes_cle n'en donne que quand les noms reviennent pour de
+# bon (un tableau en long), pas pour un ou deux noms répétés par erreur.
 cles_observations <- function(p, colonnes = colonnes_cle(p)) {
   noms <- premiers_noms(p)
   base <- noms
   if (length(colonnes)) {
-    repetes <- attr(colonnes, "repetes")
-    if (is.null(repetes)) repetes <- unique(noms[duplicated(noms)])
-    concernees <- noms %in% repetes
-    if (any(concernees)) {
-      lignes <- lignes_observations(p)
-      base[concernees] <- do.call(paste, c(list(noms[concernees]), lapply(as.character(colonnes), function(x) {
-        v <- valeurs_colonne_cle(p, x, lignes)[concernees]
-        v[is.na(v)] <- ""
-        v
-      }), sep = "\u001e"))
-    }
+    lignes <- lignes_observations(p)
+    base <- do.call(paste, c(list(noms), lapply(as.character(colonnes), function(x) {
+      v <- valeurs_colonne_cle(p, x, lignes)
+      v[is.na(v)] <- ""
+      v
+    }), sep = "\u001e"))
   }
   numerotees <- !nzchar(base) | duplicated(base) | duplicated(base, fromLast = TRUE)
   if (!any(numerotees)) return(base)
@@ -335,9 +329,20 @@ cles_observations <- function(p, colonnes = colonnes_cle(p)) {
 # qu'ils ont tous, une à une celle qui distingue le plus d'observations encore confondues (à égalité, un
 # identifiant d'abord, puis celle qui a le moins de valeurs : l'année plutôt qu'un comptage, puis la
 # première), tant qu'il en reste et qu'une colonne en distingue. Des « id:nom » et des « var:nom » ;
-# character(0) quand les noms ne reviennent pas, ou que rien ne distingue leurs observations.
+# character(0) quand les noms ne reviennent pas pour de bon (un ou deux répétés par erreur), ou que rien
+# ne distingue leurs observations.
 colonnes_cle <- function(projets) {
   if (inherits(projets, "projet_nuee")) projets <- list(projets)
+  # (des noms qui reviennent pour de bon, dans l'un des projets : cinq noms au moins, ou le quart des
+  # observations. Un ou deux noms répétés par erreur dans un tableau large se retrouvent par leur rang,
+  # les autres par leur nom seul : une colonne qui les distinguerait, une présence 0/1, serait sinon
+  # dans la clé de chaque station, et une présence corrigée l'année suivante en ferait une autre)
+  pour_de_bon <- vapply(projets, function(p) {
+    n <- premiers_noms(p)
+    repetees <- n %in% n[duplicated(n)]
+    length(unique(n[repetees])) >= 5 || (length(n) > 0 && sum(repetees) >= length(n) / 4)
+  }, NA)
+  if (!any(pour_de_bon)) return(character(0))
   # (le groupe de chaque observation : celles d'un même nom, puis d'un même nom et de mêmes valeurs)
   groupes <- lapply(projets, function(p) { n <- premiers_noms(p); match(n, unique(n)) })
   confondues <- function(gs) sum(vapply(gs, function(g) sum(duplicated(g)), 0))
@@ -371,10 +376,7 @@ colonnes_cle <- function(projets) {
     reste <- restes[k]
     libres <- libres[-k]
   }
-  # (les noms qui reviennent dans l'un des projets : seules leurs observations en prennent les valeurs,
-  # cles_observations)
-  if (!length(choisies)) return(character(0))
-  structure(choisies, repetes = unique(unlist(lapply(projets, function(p) { n <- premiers_noms(p); n[duplicated(n)] }))))
+  choisies
 }
 
 # Les colonnes d'un projet qui peuvent distinguer ses observations d'un même nom (colonnes_cle) : ses
@@ -1269,7 +1271,11 @@ reglages_etapes <- function(etapes) {
     q <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = FALSE), error = function(err) list())
     noms <- function(x) as.character(unlist(x))
     switch(premier_texte(e$demande),
-           type_variable = , categories = { r$types <- c(r$types, noms(q$variable)) },
+           # (le type ou les catégories : une variable en catégories ou en nombres, ses catégories renommées,
+           # rangées ou fusionnées, des valeurs remplacées ou collées qui en font des nombres ou en ajoutent,
+           # la classe d'une sélection)
+           type_variable = , categories = , classe_selection = { r$types <- c(r$types, noms(q$variable)) },
+           remplacer = , coller_cellules = { r$types <- c(r$types, noms(q$variables)) },
            decrire_variables = { r$descriptions <- c(r$descriptions, noms(lapply(q$descriptions, function(d) d$variable))) },
            variable_calculee = { r$formules <- c(r$formules, noms(q$nom)) },
            coordonnees = { r$coordonnees <- TRUE },

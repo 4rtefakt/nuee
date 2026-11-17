@@ -363,6 +363,14 @@ m_renum <- ajuste_code(code_renum, "O4")
 verifier("un sous-ensemble aux lignes renumérotées par le code (rownames(d2) <- NULL), sa réponse une catégorie : ses valeurs rapportées à aucune observation, les observations prises dites inconnues",
          length(m_renum$ajustees$residu) == sum(df$x > 2) && !length(m_renum$ajustees$uid) && !isTRUE(e_de(m_renum)$modele$utilisees_connues))
 
+# (un X centré sur place par le code : ses lignes restent celles des observations, ses résidus leur
+# sont rapportés)
+code_centre <- "donnees$x <- donnees$x - 5\nlm(y ~ x + g, data = donnees)"
+approuver(code_centre)
+m_centre <- ajuste_code(code_centre, "O5")
+verifier("x centré sur place par le code : ses résidus rapportés à leurs 58 observations, les observations prises connues",
+         length(m_centre$ajustees$uid) == 58 && isTRUE(e_de(m_centre)$modele$utilisees_connues))
+
 # ---------------------------------------------------------------- l'export vers R
 
 cat("L'export vers R : lancé seul, les mêmes nombres\n")

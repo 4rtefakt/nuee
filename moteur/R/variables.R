@@ -487,6 +487,7 @@ logiques_nommes <- function(x, noms) {
   if (!is.call(x)) return(x)
   arguments <- names(x)
   for (i in seq_along(x)[-1]) {
+    if (identical(x[[i]], quote(expr = ))) next  # (x[, 2] : un indice vide, qu'aucune variable ne peut tenir)
     a <- x[[i]]
     if (is.name(a) && as.character(a) %in% c("T", "F") && !as.character(a) %in% noms && length(arguments) && nzchar(arguments[i])) {
       x[[i]] <- identical(as.character(a), "T")

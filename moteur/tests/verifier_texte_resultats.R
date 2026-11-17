@@ -159,5 +159,19 @@ verifier(sprintf("une année non centrée croisée avec l'habitat (des coefficie
                  paste(round(m_an$resultat$coefficients$p, 2), collapse = ", "), min(m_an$resultat$ajuste), max(m_an$resultat$ajuste)),
          is.null(Find(function(v) identical(v$cle, "separation"), verifications_regression(pn, m_an, d_an))) &&
            grepl("une courbe du modèle sépare sans doute les présences des absences", v_courbe %||% "", fixed = TRUE))
+# (une catégorie rare, toutes ses lignes des absences, dans 400 observations : ses probabilités ajustées
+# s'arrêtent vers 1e-6, signalée, les coefficients des autres catégories, rapportés à elle, nommés ; la
+# même pente raide mais finie, en courbe d'un GAM : pas signalée)
+set.seed(1)
+dr <- data.frame(nom = sprintf("r%03d", 1:400), hab = c("z", sample(c("a", "b"), 399, TRUE)), x = stats::rnorm(400), stringsAsFactors = FALSE)
+dr$y <- stats::rbinom(400, 1, stats::plogis(0.3 + 0.8 * dr$x))
+dr$y[dr$hab == "z"] <- 0
+pr <- projet_depuis_tableau(dr, "rare")
+v_rare <- texte_separation(pr, definir_modele(pr, "GLM", x = numeros(pr, c("hab", "x")), y = numeros(pr, "y"), observations = numeros_observations(pr),
+                                              echelle = c(defaut = "none"), famille = "binomiale"))
+v_gam_raide <- texte_separation(pa, definir_modele(pa, "GAM", x = numeros(pa, "altitude"), y = numeros(pa, "raide"), observations = numeros_observations(pa),
+                                                   echelle = c(defaut = "none"), famille = "binomiale", lisses = numeros(pa, "altitude")))
+verifier("une catégorie rare sans présence dans 400 observations : signalée ; la pente raide en courbe d'un GAM : pas signalée",
+         grepl("« hab(a) »", v_rare %||% "", fixed = TRUE) && !grepl("« x »", v_rare %||% "", fixed = TRUE) && is.null(v_gam_raide))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)

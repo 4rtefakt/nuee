@@ -1255,6 +1255,39 @@ verifier("formule : na.rm = T lu TRUE sans colonne T (et la mise à jour ne le d
            !length(noms_absents_formule(p_tf, "mean(x, na.rm = T)")) && identical(noms_absents_formule(p_tf, "x * T"), "T") &&
            is.character(v_tf("x * T")) && grepl("T", v_tf("x * T")))
 
+# (la troisième revue : un site relevé une seule année quand on corrige sa valeur, deux dans le fichier
+# suivant : chaque observation garde dans sa clé l'année qui la distingue, même d'un nom à elle, et la
+# correction la retrouve)
+long_cles <- function(annees) do.call(rbind, lapply(names(annees), function(s) {
+  a <- annees[[s]]
+  data.frame(site = s, annee = a, x = a - 2000 + (s == "S2") * 100, y = round(sin(a + (s == "S2")), 3))
+}))
+ligne_de <- function(p, site, annee) numeros_observations(p)[names(valeurs(p, "annee")) == site & unname(valeurs(p, "annee")) == annee]
+csv_l1 <- fichier("long_cles.csv")
+utils::write.csv(long_cles(list(S1 = 2016:2020, S2 = 2016:2020, S3 = 2020)), csv_l1, row.names = FALSE)
+lid <- demande("ouvrir", list(chemin = csv_l1))$id
+demande("modifier_valeur", list(projet = lid, observation = ligne_de(projet(lid), "S3", 2020), variable = uid_de(projet(lid), "x"), valeur = "999"))
+utils::write.csv(long_cles(list(S1 = 2016:2021, S2 = 2016:2021, S3 = 2020:2021)), csv_l1, row.names = FALSE)
+r_l1 <- demande("mettre_a_jour", list(projet = lid, chemin = csv_l1))
+pl <- projet(lid)
+verifier("un site relevé une seule année quand on corrige sa valeur, deux dans le fichier suivant : la correction le retrouve par son année",
+         all(statuts(r_l1) == "ok") && isTRUE(unname(valeurs(pl, "x"))[numeros_observations(pl) == ligne_de(pl, "S3", 2020)] == 999))
+
+# (des valeurs « 0.5? » faites nombres en remplaçant « ? », puis ce remplacement retiré : le texte d'avant
+# revient, ce que le remplacement avait réglé venant du rejeu)
+csv_c <- fichier("conc.csv")
+writeLines(c("nom,conc,x,hab", "o1,0.5?,1,a", "o2,1.2?,2,b", "o3,0.5?,3,a", "o4,2,4,b", "o5,1.2?,5,a", "o6,2,6,b"), csv_c)
+cid <- demande("ouvrir", list(chemin = csv_c))$id
+demande("remplacer", list(projet = cid, variables = uid_de(projet(cid), "conc"), chercher = "?", remplacer = "", partie = TRUE))
+demande("modifier_valeur", list(projet = cid, observation = numeros_observations(projet(cid), "o2"), variable = uid_de(projet(cid), "x"), valeur = "20"))
+demande("retirer_etape", list(projet = cid, n = 1))
+pc <- projet(cid)
+verifier("des valeurs faites nombres par un remplacement, ce remplacement retiré : le texte d'avant revient, aucune case perdue",
+         identical(unname(as.character(valeurs(pc, "conc"))), c("0.5?", "1.2?", "0.5?", "2", "1.2?", "2")) && length(pc$etapes) == 1 &&
+           isTRUE(unname(valeurs(pc, "x")["o2"]) == 20))
+verifier("formule : un indice vide (cbind(x, x * 2)[, 2]) se lit toujours, à côté de na.rm = T",
+         isTRUE(all.equal(v_tf("cbind(x, x * 2)[, 2]"), c(2, 4, NA, 10))) && !length(noms_absents_formule(p_tf, "cbind(x, x * 2)[, 2]")))
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

@@ -1520,8 +1520,9 @@ async function sauvegarderSecours({ moi = false } = {}) {
     const moteur = await bureau.idMoteur();
     if (moteur !== moteurEtat) return;
     // (each project's unsaved state as the engine has it now: a document written or saved in a window
-    // of its own, or in another main window, changes it without this window hearing of it)
-    const modifies = new Set(((await demander('etat')).projets || []).filter((p) => p.modifie).map((p) => p.id));
+    // of its own, or in another main window, changes it without this window hearing of it. Asked in the
+    // background, the light way: an engine that stopped isn't said again every two minutes)
+    const modifies = new Set([].concat((await demander('projets_modifies', {}, { silencieux: true })).ids || []));
     const dossier = await bureau.secoursDossier();
     const faites = new Map();
     for (const p of Object.values(etat.projets)) {

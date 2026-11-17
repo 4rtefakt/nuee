@@ -1599,7 +1599,11 @@ etat_complet <- function() {
 DEMANDES <- list(
   etat = function(q) etat_complet(),
   # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
-  projets_modifies = function(q) list(noms = I(unname(vapply(Filter(function(p) isTRUE(p$modifie), etat$projets), function(p) p$nom, "")))),
+  # (et leurs identifiants : les copies de secours de l'interface, toutes les deux minutes, sans lire tout l'état)
+  projets_modifies = function(q) {
+    m <- Filter(function(p) isTRUE(p$modifie), etat$projets)
+    list(noms = I(unname(vapply(m, function(p) p$nom, ""))), ids = I(unname(vapply(m, function(p) p$id, ""))))
+  },
   fermer_projet = function(q) {
     projet(q$projet)  # (un projet inconnu : refusé, plutôt que fermé sans rien dire)
     etat$modeles <- Filter(function(e) !identical(e$projet, q$projet), etat$modeles)
