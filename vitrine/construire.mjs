@@ -1,7 +1,10 @@
 // Builds nuee.io into dist/: the page in English (/) and in French (/fr/), their 404 pages, the
-// assets, and what Cloudflare reads beside them (_headers, robots.txt, sitemap.xml).
+// assets, the browser version (/app/), and what Cloudflare reads beside them (_headers, robots.txt,
+// sitemap.xml).
 //   node vitrine/construire.mjs        (wrangler runs it before `dev` and `deploy`)
-// It needs Node 22 or later and nothing else. It reads:
+// It needs Node 22 or later, the application's npm packages for the browser version (npm install,
+// then node copier-vendor.js, in app/) and, for R's packages not yet in their cache, repo.r-wasm.org.
+// It reads:
 //   - src/gabarit.html, the page, where {{key}} is a text of src/textes.mjs or a block made here;
 //   - src/donnees.json, the figures and the quoted texts, computed by donnees.R;
 //   - the application itself: the rules and texts of Which analysis?
@@ -10,6 +13,7 @@
 //   - the screenshots of the documentation site (docs/site/images);
 //   - src/assets/carte.webp, the map under the tour's last figure, made by carte.py.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -281,6 +285,17 @@ ecrire(path.join(DIST, 'index.html'), page('en', v));
 ecrire(path.join(DIST, 'fr', 'index.html'), page('fr', v));
 ecrire(path.join(DIST, '404.html'), page404('en', v));
 ecrire(path.join(DIST, 'fr', '404.html'), page404('fr', v));
+
+// The browser version at /app/: the site its checks use (app/construire_navigateur.js), with its own
+// copy of the R packages it installs (app/miroir_webr.mjs), so that a first visit asks nothing of
+// another site. Its headers, webR's two (its _headers, written for a site of its own), go under
+// /app/ after the page's rules, which Cloudflare applies in order: there they also take the page's
+// security policy off, since the app's page has its own.
+const APP = path.join(DIST, 'app');
+for (const script of ['construire_navigateur.js', 'miroir_webr.mjs']) execFileSync(process.execPath, [path.join(DEPOT, 'app', script), APP], { stdio: 'inherit' });
+const entetesApp = lire(APP, '_headers').replace(/^\/(.*)$/gm, '/app/$1\n  ! Content-Security-Policy');
+rmSync(path.join(APP, '_headers'));
+
 ecrire(path.join(DIST, '_headers'), `/assets/*
   Cache-Control: public, max-age=31536000, immutable
 
@@ -290,7 +305,8 @@ ecrire(path.join(DIST, '_headers'), `/assets/*
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), microphone=()
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
-`);
+
+${entetesApp}`);
 ecrire(path.join(DIST, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://nuee.io/sitemap.xml\n');
 const alternees = '<xhtml:link rel="alternate" hreflang="en" href="https://nuee.io/"/><xhtml:link rel="alternate" hreflang="fr" href="https://nuee.io/fr/"/>';
 ecrire(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
@@ -299,4 +315,11 @@ ecrire(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
   <url><loc>https://nuee.io/fr/</loc>${alternees}</url>
 </urlset>
 `);
+
+// Cloudflare serves no file larger than 25 MiB: the build stops before one is refused
+const tropGros = fichiers(DIST).filter((f) => statSync(f).size > 25 * 2 ** 20);
+if (tropGros.length) {
+  console.error(`${tropGros.map((f) => `dist/${path.relative(DIST, f).replace(/\\/g, '/')} is ${(statSync(f).size / 2 ** 20).toFixed(1)} MiB`).join(', ')}: Cloudflare serves no file larger than 25 MiB.`);
+  process.exit(1);
+}
 console.log(`dist/ built, assets ${v}`);
