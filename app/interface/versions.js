@@ -168,7 +168,7 @@ async function evenement(app, e) {
   else if (e.type === 'conflit') vus.set(chemin, { type: 'conflit', mien: e.mien, leur: e.leur, fichiers: e.fichiers });
   const p = projetDuFichier(app, chemin);
   if (p && (await fenetreQuiAgit())) {
-    if (e.type === 'pret') await recuPret(app, p, e.version);
+    if (e.type === 'pret') await recuPret(app, p, e.version, hote);
     else if (e.type === 'recu') await recuEnArrierePlan(app, p, e.version);
     else if (e.type === 'conflit') {
       montrerAvis(app, t('versions_conflit_avis', { nom: sansExtension(p.nom) }), [{ libelle: t('versions_choisir'), action: () => resoudreConflit(app, p.id) }]);
@@ -185,13 +185,15 @@ async function evenement(app, e) {
 // state asked of the engine, whichever window made the changes. Unsaved changes: the version waits,
 // said, with Save and get; none: the main process told so, then the version received (recevoir),
 // the project read again, with What changed (apresEchange).
-async function recuPret(app, p, version) {
+// (hoteConnu: the host evenement() read before forgetting what it knew of the file, which hoteDe()
+// would no longer find)
+async function recuPret(app, p, version, hoteConnu = null) {
   const chemin = fichierProjet(p);
   if (!chemin) return;
   await vider(app, p.id);
   const q = app.projet(p.id);
   if (!q) return;
-  const hote = hoteDe(chemin);
+  const hote = hoteConnu || hoteDe(chemin);
   if (q.modifie) {
     vus.set(chemin, { type: 'attente' });
     montrerAvis(app, t('versions_attente', { nom: sansExtension(q.nom), hote }), [{ libelle: t('versions_enregistrer_recevoir'), action: () => recevoirMaintenant(app, q.id) }]);

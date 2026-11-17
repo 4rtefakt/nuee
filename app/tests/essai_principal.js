@@ -249,6 +249,22 @@ async function reglagesEcrits(dossier) {
   verifier(!!relu && relu.port === 47863 && relu.rscript === '/opt/R/4.5.2/bin/Rscript' && egal(fs.readdirSync(profil), ['reglages.json']),
     'une écriture interrompue (disque plein) laisse les réglages tels qu’ils étaient, et rien à côté', relu || fs.readdirSync(profil));
 
+  // (Windows: an antivirus or an indexer holding the file refuses the rename for a moment, EPERM)
+  let refusees = 0;
+  const renommer = espion.renameSync;
+  espion.renameSync = (a, b) => {
+    if (path.basename(String(b)) === 'reglages.json' && refusees < 2) {
+      refusees += 1;
+      throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    }
+    return renommer(a, b);
+  };
+  m.evaluer('reglages.port = 50001; ecrireReglages()');
+  espion.renameSync = renommer;
+  const apres = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+  verifier(refusees === 2 && apres.port === 50001 && egal(fs.readdirSync(profil), ['reglages.json']),
+    'le renommage refusé deux fois (EPERM : un antivirus qui tient le fichier) : les réglages écrits à la troisième, rien à côté', { refusees, port: apres.port });
+
   ecritures = 0;
   const fenetre = m.evaluer('fenetrePrincipale()');
   for (let i = 1; i <= 100; i += 1) { fenetre.bornes.x = 10 + i; fenetre.emit('move'); }

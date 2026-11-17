@@ -713,6 +713,9 @@ const app = {
     if (moteur !== moteurEtat) await synchroniser().catch(() => {});
     if (copies) {
       await bureau.viderFenetres().catch(() => {});
+      // (the projects as the engine has them now, their unsaved state included: a document written,
+      // or saved, in a window of its own or another main window isn't in this window's record of them)
+      await synchroniser().catch(() => {});
       await sauvegarderSecours({ moi: true });
     }
     moteur = moteurEtat;
@@ -1516,10 +1519,13 @@ async function sauvegarderSecours({ moi = false } = {}) {
     }
     const moteur = await bureau.idMoteur();
     if (moteur !== moteurEtat) return;
+    // (each project's unsaved state as the engine has it now: a document written or saved in a window
+    // of its own, or in another main window, changes it without this window hearing of it)
+    const modifies = new Set(((await demander('etat')).projets || []).filter((p) => p.modifie).map((p) => p.id));
     const dossier = await bureau.secoursDossier();
     const faites = new Map();
     for (const p of Object.values(etat.projets)) {
-      if (!p.modifie) continue;
+      if (!modifies.has(p.id)) continue;
       const fichier = `${dossier}/${LANCEMENT}-${moteur}-${p.id}.json`;
       try {
         // (lu: the state of the project's file when it was read or saved, for the question
@@ -1534,7 +1540,7 @@ async function sauvegarderSecours({ moi = false } = {}) {
     await changerSecours((index) => {
       const dernieres = new Map(index.filter((e) => !e.attente && e.moteur === moteur).map((e) => [e.projet, e]));
       return [...index.filter((e) => e.attente),
-        ...Object.values(etat.projets).filter((p) => p.modifie).map((p) => faites.get(p.id) || dernieres.get(p.id)).filter(Boolean)];
+        ...Object.values(etat.projets).filter((p) => modifies.has(p.id)).map((p) => faites.get(p.id) || dernieres.get(p.id)).filter(Boolean)];
     });
   } catch { /* tried again two minutes later */ }
 }

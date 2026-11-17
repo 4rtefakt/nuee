@@ -99,12 +99,22 @@ function lireReglages() {
 // Written beside, then put in its place in one step: a stop meanwhile (a crash, a full disk, the
 // computer switched off) leaves the settings as they were, never a cut file, which would read as a
 // first start (the R chosen, the approvals, the GitLab application IDs, the session, the port lost).
+// (Windows: an antivirus, an indexer or a backup holding the file for a moment refuses the rename,
+// EPERM or EBUSY: tried again a few times, 50 ms apart, before giving up on this write)
 function ecrireReglages() {
   const fichier = fichierReglages();
   const temporaire = `${fichier}.${process.pid}.tmp`;
   try {
     fs.writeFileSync(temporaire, JSON.stringify(reglages, null, 1));
-    fs.renameSync(temporaire, fichier);
+    for (let essai = 1; ; essai += 1) {
+      try {
+        fs.renameSync(temporaire, fichier);
+        break;
+      } catch (e) {
+        if (essai >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      }
+    }
   } catch {
     try { fs.rmSync(temporaire, { force: true }); } catch { /* read-only profile */ }
   }
