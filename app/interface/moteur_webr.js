@@ -11,10 +11,10 @@ import { VERSION } from './nouveautes.js';
 
 const TEXTES = {
   fr: { r: 'Démarrage de R dans le navigateur…', fichiers: 'Fichiers du moteur…', paquet: 'Paquets R : {p} ({i}/{n})', moteur: 'Chargement du moteur…',
-    note: 'Nuée calcule dans cet onglet : vos données ne le quittent pas. La première visite télécharge R et ses paquets (une minute environ).',
+    note: 'Nuée calcule dans cet onglet : vos données ne le quittent pas. La première visite charge R et ses paquets ; les suivantes sont plus rapides.',
     echec: 'R n’a pas pu démarrer dans ce navigateur : {e}' },
   en: { r: 'Starting R in the browser…', fichiers: 'Engine files…', paquet: 'R packages: {p} ({i}/{n})', moteur: 'Loading the engine…',
-    note: 'Nuée computes in this tab: your data never leaves it. The first visit downloads R and its packages (about a minute).',
+    note: 'Nuée computes in this tab: your data never leaves it. The first visit loads R and its packages; the next ones are quicker.',
     echec: 'R couldn’t start in this browser: {e}' },
 };
 const texte = (cle, v = {}) => (TEXTES[langueActuelle()] || TEXTES.fr)[cle].replace(/\{(\w+)\}/g, (_, k) => v[k]);
