@@ -1116,19 +1116,20 @@ The browser version against native R, with the same requests (`app/tests/banc_na
 each request as the interface sends it, timed from the page or from Node, a first round to load
 what each R loads once, then the median of three; one PC, Windows 11, Ryzen 7 5800X, headless
 Chromium 159, webR 0.6.1 and R 4.6.0 against R 4.6.2 and its reference BLAS through the local
-server; two runs, other programs running beside, so a range), in seconds:
+server; Nuée 1.1, two runs, the second one R first, so a range), in seconds:
 
 | | R 4.6.2 | the page, one R | the page, 4 other R |
 |---|---|---|---|
-| Open the example project | 0.04 | 0.07–0.08 | 0.07–0.12 |
-| Fit its PCA (M1) | 0.13–0.19 | 0.45–0.47 | 0.44–0.69 |
-| Fit its PLS (M2) | 0.07–0.10 | 0.24 | 0.23–0.34 |
-| Fit its PLS-DA (M3) | 0.13–0.18 | 0.47–0.48 | 0.45–0.71 |
-| Fit its OPLS-DA (M4) | 0.06–0.07 | 0.21–0.22 | 0.20–0.29 |
-| A mixed model (taste ~ sugar + firmness + acidity, orchard at random) | 0.07–0.09 | 0.14–0.15 | 0.17–0.21 |
-| A PCoA (Gower on 14 variables, 99 permutations) | 0.05–0.07 | 0.16–0.17 | 0.17–0.23 |
-| M2's permutation test (100 permutations) | 2.6–3.8 | 10.4–10.8 | 2.5–2.7 |
+| Open the example project | 0.03 | 0.06–0.07 | 0.07–0.08 |
+| Fit its PCA (M1) | 0.12–0.13 | 0.38–0.44 | 0.39–0.43 |
+| Fit its PLS (M2) | 0.07 | 0.21–0.22 | 0.20–0.22 |
+| Fit its PLS-DA (M3) | 0.12–0.13 | 0.39–0.43 | 0.39–0.44 |
+| Fit its OPLS-DA (M4) | 0.06 | 0.16–0.18 | 0.16–0.18 |
+| A mixed model (taste ~ sugar + firmness + acidity, orchard at random) | 0.06–0.07 | 0.13–0.15 | 0.12–0.14 |
+| A PCoA (Gower on 14 variables, 99 permutations) | 0.05–0.06 | 0.15–0.16 | 0.15–0.17 |
+| M2's permutation test (100 permutations) | 2.6–2.7 | 8.9–9.6 | 2.0–2.4 |
 
-A fit takes 1.5 to 3.9 times as long in the page; the permutation test, shared with 4 other R of
-the page (`TRAVAUX`), as long as natively. R is ready in the page 15 to 18 s after a first visit
-(R's packages downloaded from repo.r-wasm.org), 8.4 to 8.8 s at the next one.
+A fit takes 1.8 to 3.5 times as long in the page; the permutation test, shared with 4 other R of
+the page (`TRAVAUX`), a little less than natively (0.8 to 0.9 times). R is ready in the page 14 to
+17 s after a first visit (R's packages downloaded from repo.r-wasm.org), 7.6 to 8.5 s at the next
+one.
