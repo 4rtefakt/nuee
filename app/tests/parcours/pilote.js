@@ -108,8 +108,11 @@ async function session(url) {
 // What the main process does instead of the system's dialogs, opening files and following links
 // (installed once its inspector answers; main.js holds the same `dialog`, `shell` and `app`).
 const SUBSTITUTS = `(() => {
-  // (the inspector's own require, until main.js is the main module)
-  const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  // (not before main.js is the main module: until Electron has set itself up, the inspector's own
+  // require finds the npm package electron from the program's working folder, whose index.js
+  // downloads Electron when it isn't there, holding the main process for good: GitHub's arm64 Mac)
+  if (!process.mainModule) return false;
+  const { dialog, shell, app } = process.mainModule.require('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
@@ -147,7 +150,7 @@ const SUBSTITUTS = `(() => {
 // tracking off, demarrer; their pages never throttled as hidden ones).
 const HORS_ECRAN = process.env.NUEE_HORS_ECRAN === '1';
 const SANS_ECRAN = `(() => {
-  const { app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const { app, BrowserWindow } = process.mainModule.require('electron');  // (after SUBSTITUTS)
   const cacher = (w) => { w.setPosition(-32000, -32000); w.setSkipTaskbar(true); w.webContents.setBackgroundThrottling(false); };
   BrowserWindow.prototype.show = function show() { cacher(this); this.showInactive(); };
   BrowserWindow.prototype.focus = function focus() {};
