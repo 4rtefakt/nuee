@@ -265,7 +265,8 @@
       </header>
       <div class="ciel-fin" id="ciel-fin" aria-hidden="true"><div class="figure" data-figure="fin"><div class="zone"></div></div></div>
     </div>
-    <!-- a card per system; data-fichier: its file of the release (worker.js), said missing when it is -->
+    <!-- a card per system (data-fichier: its file of the release, worker.js, said missing when it
+         is), and the browser version's -->
     <div class="dl-grille">
       <article class="dl-carte" data-systeme="windows" data-fichier="windows">
         <h3>{{dl_win_titre}}</h3>
@@ -287,6 +288,12 @@
         <div class="dl-boutons"><a class="bouton" href="/download/deb">{{dl_linux_bouton}}</a></div>
         <p class="dl-absent" hidden>{{dl_absent}}</p>
         <p class="dl-note">{{dl_linux_note}}</p>
+      </article>
+      <article class="dl-carte">
+        <h3>{{dl_nav_titre}}</h3>
+        <p>{{dl_nav_p}}</p>
+        <div class="dl-boutons"><a class="bouton" href="{{url_app}}">{{dl_nav_bouton}}</a></div>
+        <p class="dl-note">{{dl_nav_note}}</p>
       </article>
     </div>
     <ul class="dl-liens">

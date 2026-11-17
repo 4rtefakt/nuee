@@ -1623,7 +1623,9 @@ export function ecrire(k, v) {
 // English unless the person chose French (View › Language). Until 1.0 the default was French, and
 // the choice was kept only when changed: a profile that has shown an earlier version's What's new
 // (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
-// profile's What's new doesn't turn it French at its next start.
+// profile's What's new doesn't turn it French at its next start. With no language kept yet, the
+// application's page takes its address's (?langue=fr: the browser version opened from nuee.io's
+// French page; not another window, ?vue=…), kept the same way: a choice made since wins over it.
 // (the hidden page that draws a document's tables and plots in the other language, app.js:
 // ?vue=hors_ecran&langue=…: that language, its own, never kept as the person's choice. A global
 // language held across the awaits of a drawing would switch the window's menus, dialogs, status bar
@@ -1632,7 +1634,8 @@ const page = typeof location !== 'undefined' ? new URLSearchParams(location.sear
 const langueDePage = page && page.get('vue') === 'hors_ecran' ? page.get('langue') : null;
 let langue = langueDePage === 'fr' || langueDePage === 'en' ? langueDePage : lire('langue');
 if (langue !== 'fr' && langue !== 'en') {
-  langue = lire('version_vue') ? 'fr' : 'en';
+  const demandee = page && !page.get('vue') && page.get('langue');
+  langue = demandee === 'fr' || demandee === 'en' ? demandee : lire('version_vue') ? 'fr' : 'en';
   ecrire('langue', langue);
 }
 

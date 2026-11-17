@@ -1,6 +1,6 @@
 // The R packages the engine loads, for the browser version: webR has R's base packages only, and
 // moteur_webr.js installs these from webR's repository (repo.r-wasm.org, built for webR 0.6.1 and
-// R 4.6), with what they depend on. The desktop's list (construire.js: paquetsR), less httpuv
+// R 4.6), or from the site's copy of it (miroir_webr.mjs, as on nuee.io), with what they depend on. The desktop's list (construire.js: paquetsR), less httpuv
 // (no server in the page) and those of SANS_WEBR. tests/essai_moteur_webr.mjs installs them too,
 // to run the engine's checks in webR. One webR can't install leaves only its features out: the
 // engine says they need the desktop application (moteur/R/navigateur.R).

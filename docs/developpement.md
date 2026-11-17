@@ -77,7 +77,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis; two classes paired by a key: paired t or Wilcoxon signed-rank on the keys both have) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; paired tests (paired t, Wilcoxon signed-rank) between two levels, on the keys both have (`paires_cle()`, shared with the tests by variable), every pair of levels (or those within each group: the sectors of a site) with Holm's correction, after Friedman's omnibus test (`tests_friedman()`: on the keys where every level has a value, with Kendall's W; one per group, Holm over the groups), or two measurements of the same rows; before/after with a control (`baci()`: at each time the gap between the impact's and the controls' means, after against before by Welch's t, Student's t or Mann–Whitney; the time, the event and the end numbers or dates) and its mixed model (`modele_baci()`: the two 0/1 variables of the period and the impact, `variables_baci()`, reused when they exist with these values, refused when another variable has their name; `definition_baci()`, y ~ period × impact + (1 \| unit) with CAR1 within each unit if chosen, its settings kept in `d$baci_origine`; `effet_baci()`, the period × impact coefficient and its sentence); the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/R/travaux.R` | Long requests shared among several R (the browser version): `travail_morceau()` runs a piece of a request listed in `TRAVAUX` (`serveur.R`) from a file of tasks |
-| `moteur/R/navigateur.R` | The browser version's limits (see Browser version): `dans_navigateur()` (`options(nuee.navigateur)`), a refusal for a package the page lacks said as "needs the desktop application" (`erreur_navigateur`, from `repondre_erreur`; `nuee.paquets_absents`, `FONCTIONS_PAQUETS`), and what the page can't run at all (`refus_navigateur`: `.usp` files); texts in the desktop's order in webR (`trier_textes`: the browser's `Intl.Collator`); the packages of R code and plugins installed from webR's repository (`installer_paquets_navigateur`, `evaluer_navigateur`, never those of `nuee.paquets_sans_webr`; `paquets_absents_navigateur`); Stop in the page (`calcul_arretable`, `hors_interruptions`, `passer_interruption`) |
+| `moteur/R/navigateur.R` | The browser version's limits (see Browser version): `dans_navigateur()` (`options(nuee.navigateur)`), a refusal for a package the page lacks said as "needs the desktop application" (`erreur_navigateur`, from `repondre_erreur`; `nuee.paquets_absents`, `FONCTIONS_PAQUETS`), and what the page can't run at all (`refus_navigateur`: `.usp` files); texts in the desktop's order in webR (`trier_textes`: the browser's `Intl.Collator`); the packages of R code and plugins installed from the repositories of `webr_pkg_repos`, the site's copy of webR's repository first (`installer_paquets_navigateur`, `evaluer_navigateur`, never those of `nuee.paquets_sans_webr`; `paquets_absents_navigateur`); Stop in the page (`calcul_arretable`, `hors_interruptions`, `passer_interruption`) |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them; the models, validated like the files (their default: the full model's centres and weights) with the groups read in the files, are compared on Q2 and Q2(cum) and on their coefficients' jack-knife intervals too |
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
 | `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed; data with no variation left: a clear message, and automatic fitting stops without error |
@@ -163,10 +163,11 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/comptes_ids.js` | The OAuth client ids of Nuée's applications on github.com and gitlab.com (see [Signing in to GitHub and GitLab](#signing-in-to-github-and-gitlab)); with a placeholder instead (a copy built without its own applications), signing in says it isn't set up for that server |
 | `app/tests/essai_comptes.js`, `app/tests/serveur_comptes.js` | comptes.js without Electron (`npx electron tests/essai_comptes.js`: the same through `net.fetch`), against `serveur_comptes.js`, a local stand-in of GitHub's and GitLab's device flow and REST API (the fetch it gives refuses any other host): approved, refused, expired (said, or the code's time over), `slow_down`, cancelled; not set up, an unknown application, the device flow off, a GitLab without it, a self-hosted GitLab's ID; the account and its picture, the server unreachable, a token refused, revoked, or given in Versions; a GitLab token renewed, at start-up too, then refused; repositories and invitations; `git credential fill` with a stand-in git first on the PATH (a shell script, or on Windows a `git.exe` compiled by the .NET Framework's `csc.exe`): what it is given, nothing, refused, too slow, cancelled, absent, asked again quietly; signing out; no token, refresh token or device code in a message, return value, log, address, page opened or file in clear |
 | `app/interface/connexion.js` | The sign-in and invitation dialogs over `window.bureau.comptes`, which History and Share call (versions.js): `ouvrirConnexion(app, { hote })` → `{ ok, compte }` (without `hote`, GitHub, GitLab or the institution's GitLab chosen first; the code big and copyable, Open the page, which copies it too, the wait, refused or expired with a new code, the account's card; this computer's git sign-in when git is found, a token under "Use a token instead"; a self-hosted GitLab without its application ID asks for it), `ouvrirInvitation(app, { hote, url })` → `{ ok, invites }`, and `carteCompte(hote, compte)`, the account's card. The accounts' refusals reach the page as an object with its `message` and `code` (preload.js: an Error crossing the context bridge keeps its message only) |
-| `app/interface/moteur_webr.js` | The engine in the page, for the browser version: webR started with the engine's files and packages (each on its own: those it lacks given to R), `serveur.R` read up to its HTTP server, each request sent to `traiter_demande()`, files in and out of webR's file system, other webR instances for the requests in `TRAVAUX`; the plugins installed in the page (`NUEE_GREFFONS=/greffons`, kept in the browser's storage: `garderGreffons`, `rendreGreffons`), the code approved there (`garderApprobations`, given back at each visit), a plugin's packages from webR's repository (`installerPaquets`), Stop (`arreter`: `webR.interrupt()`) |
+| `app/interface/moteur_webr.js` | The engine in the page, for the browser version: webR started with the engine's files and packages (each on its own: those it lacks given to R; from the site's copy of webR's repository when it has one, `depotsPaquets`), `serveur.R` read up to its HTTP server, each request sent to `traiter_demande()`, files in and out of webR's file system, other webR instances for the requests in `TRAVAUX`; the plugins installed in the page (`NUEE_GREFFONS=/greffons`, kept in the browser's storage: `garderGreffons`, `rendreGreffons`), the code approved there (`garderApprobations`, given back at each visit), a plugin's packages from the same repositories (`installerPaquets`), Stop (`arreter`: `webR.interrupt()`) |
 | `app/interface/paquets_webr.js` | The R packages of the browser version (`PAQUETS_WEBR`), and those it leaves out, with why (`SANS_WEBR`) |
 | `app/interface/secours_navigateur.js` | The browser version's recovery copies: OPFS, else IndexedDB (`magasin(name)`, a folder or database for each use: the recovery copies, the plugins installed); a tab's copies and index under its name, its lock while it is open; a closed tab's copies offered by the next one (see Browser version) |
 | `app/construire_navigateur.js`, `app/servir_navigateur.js` | Builds the browser version: a static site with the interface, the engine's files (with the user guide and `app/package.json`) and webR; and serves it on 127.0.0.1 with the headers webR needs (see Browser version) |
+| `app/miroir_webr.mjs` | The browser version's own copy of webR's repository, for a site that serves R's packages itself (nuee.io/app/): the webR binaries of the packages the page installs, checked against repo.r-wasm.org's index, and their own index (see Browser version) |
 | `app/tests/essai_moteur_webr.mjs`, `app/tests/webr_rscript.mjs`, `app/tests/webr_chemins.mjs` | The engine's checks in webR's R, in Node, each as Rscript runs it (see Browser version) |
 | `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), 1.1's features in the page included, and its speed against native R (see Browser version and Speed) |
 | `app/interface/references.js` | The `{{model.path[:format] [#label] [\| caption]}}` references, pure: reading them, their values in the document's language (`formeReference`: how a value is written, a number, a percentage, a p-value, a coefficient with its interval; `texteForme` writes it, and a reproducible `.qmd` the same in R), what each kind of model offers, the numbering of figures and tables |
@@ -799,12 +800,29 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
 - Any web server will do, if it sends `Cross-Origin-Opener-Policy: same-origin` and
   `Cross-Origin-Embedder-Policy: require-corp` (webR then shares memory with its worker).
   `node app/servir_navigateur.js [<folder>] [<port>]` serves it so on 127.0.0.1.
+- `node app/miroir_webr.mjs [<folder>]` gives a built site its own copy of webR's repository,
+  for a host that serves R's packages itself: the webR binaries of `PAQUETS_WEBR` and what they
+  depend on (Depends and Imports, as `webr::install` follows them, less what webR's R has: 39
+  packages, 38 MB, stringi's 14 MB the largest), for the R of the site's webR (4.6), in
+  `repo/bin/emscripten/contrib/4.6/` with their own index (`PACKAGES`, `PACKAGES.gz` and
+  `PACKAGES.rds`, R's own serialization of the matrix `read.dcf` gives: R reads the `.rds` first).
+  Each binary is downloaded once from repo.r-wasm.org into `app/node_modules/.cache/nuee-webr/miroir/4.6`
+  and checked against its index, read again at each build (the version its name says, its MD5).
+  The site's `navigateur.js` then says `window.NUEE_MIROIR_WEBR = 'repo/'`.
+- It is served at **https://nuee.io/app/**: `vitrine/construire.mjs` builds it into
+  `vitrine/dist/app` with these two scripts, the landing page's `_headers` gives `/app/*` the two
+  headers above and takes the landing page's security policy off it (the app's page has its own),
+  and `/app` redirects to `/app/` (see `vitrine/README.md`). Without a copy of webR's repository,
+  as `servir_navigateur.js` serves a site by default, R's packages come from repo.r-wasm.org.
+  nuee.io's French page links to `/app/?langue=fr`: when the browser keeps no language yet, the
+  address's (`fr` or `en`) is the interface's and is kept as View › Language keeps it, so that a
+  choice made since wins over it (`i18n.js`).
 
 **The engine in the page.**
 - `api.js` sends each request to `moteur_webr.js` instead of the local server. That module starts
-  webR, writes the engine's files into its file system, installs R's packages from webR's
-  repository, and reads `moteur/serveur.R` up to its HTTP server (`appli <- list(`), as the
-  engine's checks of the requests read it (`verifier_etapes.R`): every request goes to
+  webR, writes the engine's files into its file system, installs R's packages (below), and reads
+  `moteur/serveur.R` up to its HTTP server (`appli <- list(`), as the engine's checks of the
+  requests read it (`verifier_etapes.R`): every request goes to
   `traiter_demande()`, which the HTTP server calls too, with 1.1's handling (the approval secret,
   Stop's `faire_demande`, the refusals that say more than their message): the same code, the same
   numbers.
@@ -817,6 +835,12 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
   whose library fails to load leaves webR unable to load any library after it (Emscripten keeps
   its missing symbol), so these are never installed. Each package is installed on its own: one
   that fails leaves only its features out (`?sans=a,b` leaves those out, to see it).
+- Where they come from (`depotsPaquets`): from the site's own copy of webR's repository when
+  `navigateur.js` declares one (`miroir_webr.mjs`, as on nuee.io), a package that copy has from
+  it alone (`webR.installPackages([p], { repos: [copy] })`): a first visit then asks nothing of
+  another site. Otherwise, and for what the copy lacks, from webR's repository, repo.r-wasm.org.
+  With a copy, R gets `options(webr_pkg_repos = c(<copy>, "https://repo.r-wasm.org"))`, in that
+  order, for the packages of R code and plugins below.
 - R gets `options(nuee.navigateur = TRUE, nuee.paquets_absents = ..., nuee.paquets_sans_webr = ...)`.
   A request refused for a package the page lacks, by `loadNamespace()` or by the engine's own
   refusal that names it, says that it needs the desktop application (`navigateur.R`:
@@ -824,8 +848,10 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
   class): "Random forests: Nuée's desktop application is needed (the R package ranger isn't in
   the browser version)." So do `.usp` files (`convertir_usp`: their converter is a program, and
   the page starts none). The rest goes on.
-- R code and plugins (1.1): the packages a model's code or a plugin names are installed from
-  webR's repository before it runs, and any still missing when it runs, then it runs again
+- R code and plugins (1.1): the packages a model's code or a plugin names are installed from the
+  repositories of `webr_pkg_repos` (the site's copy, then webR's repository: for an R-code
+  model's own package such as Kendall, repo.r-wasm.org) before it runs, and any still missing
+  when it runs, then it runs again
   (`navigateur.R`: `installer_paquets_navigateur`, from `evaluer_navigateur` in `ajuster_code` and
   `evaluer_greffon`, and `exiger_paquets_greffon`); never one whose dependencies include a package
   of `SANS_WEBR`. One the repository doesn't have, or webR can't load, says that the desktop
@@ -930,7 +956,14 @@ go; the question closed without an answer keeps them for next time.
   downloaded each time; an R-code model whose package (Kendall) comes from webR's repository, one
   needing ranger refused; a plugin installed from its file and fitted; Stop in the shared
   permutation test and in a PCoA's permutations, the next request as usual; the help panel's
-  guide; reloaded, the plugin and the approvals still there.
+  guide; reloaded, the plugin and the approvals still there. And the site as served: the page's
+  headers (the two above, no security policy but its own), where R's packages came from (with a
+  copy of webR's repository, every one from the site and nothing from another site until R is
+  ready; Kendall from repo.r-wasm.org either way), and, for a site under a path, that path
+  without its last slash redirected to it; last, `?langue=fr` in a new profile: the interface in
+  French, then English after View › Language, the address unchanged. `--adresse=<url>` uses a
+  site another server serves, neither built nor served by the check: nuee.io's, with
+  `npx wrangler dev` in `vitrine/`, `--adresse=http://localhost:8787/app/`.
 - `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
   R server (see Speed).
 
@@ -1139,4 +1172,9 @@ server; Nuée 1.1, two runs, the second one R first, so a range), in seconds:
 A fit takes 1.8 to 3.5 times as long in the page; the permutation test, shared with 4 other R of
 the page (`TRAVAUX`), a little less than natively (0.8 to 0.9 times). R is ready in the page 14 to
 17 s after a first visit (R's packages downloaded from repo.r-wasm.org), 7.6 to 8.5 s at the next
-one.
+one. With the site's own copy of webR's repository (`miroir_webr.mjs`, as on nuee.io), measured
+on the same PC (2026-11-17, three first visits each, from the page's address to R's first answer):
+3.7 to 3.8 s through the local server (13.5 s from the same server with the packages from
+repo.r-wasm.org), 4.9 to 7.5 s through `wrangler dev`. Served from this computer, the copy leaves
+R's own start and the mounting of its 39 packages; on nuee.io their 38 MB still cross the network,
+from the site instead of repo.r-wasm.org.

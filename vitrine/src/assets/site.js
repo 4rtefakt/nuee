@@ -768,7 +768,7 @@ function telechargements() {
     for (const e of $$('[data-version-phrase]')) e.textContent = `Nuée ${x.version}`;
     $('#dl-version').hidden = false;
     // a card whose file the release doesn't have says so, in place of its buttons
-    for (const c of $$('.dl-carte')) {
+    for (const c of $$('.dl-carte[data-fichier]')) {
       const absent = (x.fichiers || {})[c.dataset.fichier] === false;
       c.classList.toggle('absent', absent);
       $('.dl-absent', c).hidden = !absent;

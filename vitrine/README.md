@@ -3,7 +3,7 @@
 Nuée's landing page, in English (`/`) and in French (`/fr/`), on Cloudflare Workers. Plain HTML,
 CSS and JavaScript, no framework; two typefaces served from the site; no cookie, nothing loaded
 from another site. The documentation stays where it is (`docs/site`, on GitHub Pages): this page
-links to it.
+links to it. Nuée's browser version is served beside it, at `/app/` (below).
 
 What it shows is taken from the application, not written beside it:
 
@@ -30,7 +30,7 @@ What it shows is taken from the application, not written beside it:
 | `src/donnees.json` | the figures and the quoted texts, written by `donnees.R`: don't edit it by hand |
 | `src/carte.json` | where the map's tiles are, written by `carte.py` for `donnees.R` |
 | `src/worker.js` | what no file answers: `/download/<windows, mac-arm64, mac-x64, deb, appimage, tar>`, `/version.json`, the 404 pages |
-| `construire.mjs` | builds `dist/` (not committed) |
+| `construire.mjs` | builds `dist/` (not committed), the browser version in `dist/app/` |
 | `donnees.R` | computes `src/donnees.json` with the engine |
 | `image.mjs` | makes `src/assets/og.png`, the picture of a shared link |
 | `carte.py` | makes `src/assets/carte.webp`, the map, and `src/carte.json` |
@@ -44,8 +44,11 @@ npm install          # once: Wrangler
 npx wrangler dev     # http://localhost:8787, rebuilt when src/ changes
 ```
 
-`node construire.mjs` alone builds `dist/`; it needs Node 22 or later and nothing else. The build
-stops when a text is missing in one language, or when the page names a text that doesn't exist.
+`node construire.mjs` alone builds `dist/`; it needs Node 22 or later and, for the browser
+version, the application's npm packages (`npm install`, then `node copier-vendor.js`, in `app/`).
+The build stops when a text is missing in one language, when the page names a text that doesn't
+exist, or when a file is larger than 25 MiB, the most Cloudflare serves (webR's `R.wasm`, the
+largest, has 17.8 MiB).
 
 ## Publishing
 
@@ -59,12 +62,48 @@ Worker, in the Cloudflare account that holds the `nuee.io` zone; `npx wrangler l
 new computer). Assets are stamped (`?v=…`) and kept a year by browsers; the pages are always
 checked again.
 
-**After a release, nothing to do:** the buttons and the version shown follow the latest release
-within ten minutes. A system whose file the latest release doesn't have (macOS before 1.0.0, or
-a release whose packages are still being added) says so on its card, in place of its buttons,
-and its `/download/…` address goes to the release's page. Publish again when the page's texts
-change; a new kind of file is one more line in `FICHIERS` (`src/worker.js`) and its button in
-the page.
+**After a release, nothing to do for the downloads:** the buttons and the version shown follow
+the latest release within ten minutes. A system whose file the latest release doesn't have (macOS
+before 1.0.0, or a release whose packages are still being added) says so on its card, in place of
+its buttons, and its `/download/…` address goes to the release's page. Publish again when the
+page's texts change, and for the browser version: `/app/` is built from the checkout you publish
+from, so publish from the release's commit to bring it to that release. A new kind of file is one
+more line in `FICHIERS` (`src/worker.js`) and its button in the page.
+
+## The browser version, at `/app/`
+
+`construire.mjs` builds it into `dist/app/` with `app/construire_navigateur.js`, the same site as
+its checks use (see *Browser version* in `docs/developpement.md`): the interface, the engine's
+files and webR, R compiled to WebAssembly. The page's card *In your browser* links to it, the
+French page's to `/app/?langue=fr`: the application opens in French when that browser keeps no
+language yet (*View › Language*, which wins from then on).
+
+**R's packages come from the site too.** `app/miroir_webr.mjs` copies the webR binaries of the
+packages the page installs (`app/interface/paquets_webr.js`, with what they depend on: 39
+packages, 36.6 MiB, stringi's 13.4 MiB the largest) from webR's repository, repo.r-wasm.org, into
+`dist/app/repo/bin/emscripten/contrib/4.6/` with their own index (`PACKAGES`, `PACKAGES.gz`,
+`PACKAGES.rds`), and the page installs them from there: a first visit asks nothing of another
+site. Only a package that copy lacks, such as an R-code model's own (Kendall), comes from
+repo.r-wasm.org. The binaries are downloaded once into `app/node_modules/.cache/nuee-webr/miroir/`,
+each checked against repo.r-wasm.org's index (the version its name says, its MD5); the index is
+read again at each build, so a build takes the latest versions. None of it is committed.
+
+**Its headers.** `_headers` gives `/app/*` the two webR needs to share memory with its worker,
+`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (taken
+from the `_headers` that `construire_navigateur.js` writes for a site of its own, then removed),
+and takes the landing page's security policy off it: the app's page has its own, which lets R compile
+(`'wasm-unsafe-eval'`) and fetch from repo.r-wasm.org. Workers' static assets redirect `/app` to
+`/app/` themselves (`html_handling`), the query kept; the Worker isn't involved. The copy's
+`.tgz` files, whose names carry their version, are kept a year (`/app/repo/bin/*.tgz`,
+`immutable`); its index (`PACKAGES`, `.gz`, `.rds`) is checked again at each visit, so that a new
+copy is seen at once. `robots.txt` keeps crawlers out of `/app/repo/`.
+
+To check it as served, with `npx wrangler dev` running:
+
+```
+cd app
+node tests/essai_navigateur.mjs --adresse=http://localhost:8787/app/
+```
 
 ## After a change to the engine, the example or the tutorials' data
 
