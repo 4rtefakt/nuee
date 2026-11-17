@@ -581,7 +581,7 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
   tx <- function(fr, en) if (langue == "en") en else fr
   ca <- identical(m$type, "CA")
   obs <- as.numeric(d$observations)
-  rangs <- unname(tab$rangs[as.character(obs)])
+  rangs <- unname(tab$rangs[nom_numero(obs)])
   pc <- plan_condition(projet, d, tab)  # (une condition les choisit : condition.R)
   lignes_obs <- if (!is.null(pc)) {
     c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle.", length(obs)), sprintf("The %d observations of the model.", length(obs)))), "d <- donnees[lignes, ]")
@@ -592,7 +592,7 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
       code_valeurs(morceaux_rangs(rangs), "lignes <- "), "d <- donnees[lignes, ]")
   }
   n_exclues <- length(m$exclues)
-  noms_exclues <- if (n_exclues && n_exclues <= 8) sprintf(" (%s)", liste_textes(texte_sur(unname(projet$noms_obs[as.character(m$exclues)])), tx("et", "and"))) else ""
+  noms_exclues <- if (n_exclues && n_exclues <= 8) sprintf(" (%s)", liste_textes(texte_sur(unname(projet$noms_obs[nom_numero(m$exclues)])), tx("et", "and"))) else ""
   cca <- identical(m$type, "CCA")
   profil <- ca || cca || m$options$transformation %in% c("hellinger", "corde")
   exclusion <- if (n_exclues) commentaire(tx(sprintf("Ici, %d observation%s%s : une valeur y manque%s.", n_exclues, if (n_exclues > 1) "s" else "", noms_exclues,
@@ -619,7 +619,7 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
   o <- m$options
   z <- termes_variables(projet, o$z, o$z_transformations)
   strates <- if (!is.null(o$strates)) {
-    col <- if (identical(as.character(o$strates$by)[1], "id")) tab$ids[[as.character(o$strates$id)[1]]] else tab$noms[[as.character(o$strates$variable)[1]]]
+    col <- if (identical(as.character(o$strates$by)[1], "id")) tab$ids[[as.character(o$strates$id)[1]]] else tab$noms[[nom_numero(o$strates$variable)[1]]]
     c(commentaire(tx(sprintf("Les groupes des permutations : « %s » (les observations ne sont permutées qu'à l'intérieur de chacun).", texte_sur(col)),
                      sprintf("The groups of the permutations: “%s” (the observations are only permuted within each).", texte_sur(col)))),
       sprintf("strates <- d[[%s]]", code_texte(col)))
@@ -635,7 +635,7 @@ code_calcul_ordination <- function(projet, d, m, tab, langue) {
     NULL)
   avec_z <- length(z) > 0
   avec_s <- !is.null(o$strates)
-  facteurs <- unique(unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0) as.character(t$variables[1]))))
+  facteurs <- unique(unlist(lapply(d$x, function(t) if (length(t$variables) == 1 && categorie(t) != 0) nom_numero(t$variables[1]))))
   code_facteurs <- if (length(facteurs)) {
     sprintf("facteurs <- list(%s)", paste(vapply(facteurs, function(u) sprintf("%s = droplevels(d[[%s]][complet])", deparse(as.name(as.character(variable_du_projet(projet, u)$ids[1])), backtick = TRUE),
                                                                        code_texte(tab$noms[[u]])), ""), collapse = ", "))
@@ -877,7 +877,8 @@ ecrire_script_ordination <- function(projet, d, chemin_script, m, donnees = "scr
   }
   objets <- vapply(c("m", "r2", "echelle_1", "echelle_2", "echelle_3", "inertie", "valeurs_propres", "test", "permutations", "contributions",
                      "tests_axes", "tests_termes", "tests_sequentiels", "selection", "partition", "Y", "X", "Z", "Ybar"), nom_ordination, "", langue = langue)
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), if (format != "R") c("knitr", "rmarkdown"))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), objets), if (format != "R") c("knitr", "rmarkdown"),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = graphiques)
 }

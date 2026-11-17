@@ -241,7 +241,7 @@ donnees_communaute <- function(projet, d, o, quoi, aussi = NULL) {
     stop(sprintf(traduire("Trop peu d'observations ont toutes leurs valeurs pour %s (3 au moins).", "Too few observations have all their values for %s (3 or more)."), quoi), call. = FALSE)
   }
   Y <- Y[connu, , drop = FALSE]
-  noms <- unname(projet$noms_obs[as.character(garde)])
+  noms <- unname(projet$noms_obs[nom_numero(garde)])
   W <- transformer_communaute(Y, o$transformation)
   D <- distance_communaute(W, o$distance, o$binaire, noms)
   if (all(D == 0)) stop(traduire("Toutes les distances entre observations sont nulles : rien à analyser.", "All the distances between observations are zero: nothing to analyse."), call. = FALSE)
@@ -367,6 +367,7 @@ ajustement_environnement <- function(S, Xq, facteurs, P) {
     p <- rep(NA_real_, ncol(Xq))
     if (B) {
       perm <- vapply(seq_len(B), function(b) {
+        verifier_arret()
         Xp <- scale(Xq[P[b, ], , drop = FALSE], scale = FALSE)
         correlations_colonnes(qr.fitted(Q, Xp), Xp)^2
       }, numeric(ncol(Xq)))
@@ -383,7 +384,7 @@ ajustement_environnement <- function(S, Xq, facteurs, P) {
     lignes <- lapply(names(facteurs), function(nom) {
       f <- droplevels(facteurs[[nom]])
       r2 <- 1 - intra(f) / totale
-      p <- if (B) valeur_p_superieure(vapply(seq_len(B), function(b) 1 - intra(f[P[b, ]]) / totale, 0), r2) else NA_real_
+      p <- if (B) valeur_p_superieure(vapply(seq_len(B), function(b) { verifier_arret(); 1 - intra(f[P[b, ]]) / totale }, 0), r2) else NA_real_
       list(variable = nom, r2 = r2, p = p, niveaux = levels(f), n = as.vector(table(f)))
     })
     facteurs_fit <- lignes
@@ -490,6 +491,7 @@ nmds_noyau <- function(D, k, departs, graine) {
     meilleur <- 0
     retrouvee <- 0
     for (i in seq_len(departs)) {
+      verifier_arret()
       s <- MASS::isoMDS(dis, matrix(stats::runif(n * k), n, k), k = k, maxit = 200, tol = 1e-7, trace = FALSE)
       stress <- c(stress, s$stress)
       if (s0$stress - s$stress > -EPS) {
@@ -502,7 +504,11 @@ nmds_noyau <- function(D, k, departs, graine) {
         if (pr$rmse < 0.005 && max(pr$residus) < 0.01) retrouvee <- retrouvee + 1
       }
     }
-    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee)
+    # (les autres départs qui atteignent le stress de la meilleure solution à 0,0001 près, quelle que
+    # soit leur configuration : des minimums presque égaux, où quelques observations se placent un peu
+    # autrement, ne sont pas « retrouvés » par Procrustes, et le stress est pourtant atteint)
+    meme_stress <- sum(abs(stress - s0$stress) < 0.01) - 1
+    list(s0 = s0, stress = stress, meilleur = meilleur, retrouvee = retrouvee, meme_stress = meme_stress)
   })
   X <- scale(r$s0$points, scale = FALSE)
   X <- stats::prcomp(X, center = TRUE)$x
@@ -520,7 +526,7 @@ nmds_noyau <- function(D, k, departs, graine) {
   M[lower.tri(M)] <- part
   M <- M + t(M)
   list(points = X, stress = sqrt(sum(ecarts)), stress_departs = r$stress / 100, meilleur = r$meilleur, retrouvee = r$retrouvee,
-       nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
+       meme_stress = r$meme_stress, nuls = nuls, remplacement = if (nuls) min(dis[dis > 0]) else NA_real_, shepard = list(dissimilarite = sh$x, distance = sh$y, ajustee = sh$yf),
        stress_observations = sqrt(colSums(M) / 2))
 }
 
@@ -587,6 +593,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
     F0 <- (ss / ddl) / ((totale - ajuste) / ddl_res)
     Fp <- matrix(NA_real_, B, length(gardes))
     for (b in seq_len(B)) {
+      verifier_arret()
       cb <- contributions(B0, P[b, ])
       fb <- sum(cb)
       Fp[b, ] <- (vapply(gardes, function(g) sum(cb[termes == g]), 0) / ddl) / ((totale - fb) / ddl_res)
@@ -602,6 +609,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
     F0 <- (ss / ddl) / ((totale - ajuste) / ddl_res)
     Fp <- matrix(NA_real_, B, length(testables))
     for (b in seq_len(B)) {
+      verifier_arret()
       fb <- sum(contributions(B0, P[b, ]))
       Fp[b, ] <- vapply(seq_along(bases), function(j) ((fb - sum(contributions(bases[[j]], P[b, ]))) / ddl[j]) / ((totale - fb) / ddl_res), 0)
       Fp_modele[b] <- (fb / r) / ((totale - fb) / ddl_res)
@@ -610,6 +618,7 @@ permanova_noyau <- function(G, X, groupes, par, P) {
                          p = if (B) vapply(seq_along(testables), function(j) valeur_p_superieure(Fp[, j], F0[j]), 0) else NA_real_, stringsAsFactors = FALSE)
   } else {
     for (b in seq_len(B)) {
+      verifier_arret()
       fb <- sum(contributions(B0, P[b, ]))
       Fp_modele[b] <- (fb / r) / ((totale - fb) / ddl_res)
     }
@@ -686,6 +695,7 @@ dispersion_noyau <- function(D, groupe, type = "centroide", P = NULL) {
     res <- qr.resid(Qm, z)
     n <- length(z)
     Fp <- vapply(seq_len(B), function(b) {
+      verifier_arret()
       rb <- res[P[b, ]]
       f <- qr.fitted(Qm, rb)
       ((sum((f - mean(f))^2)) / (k - 1)) / (sum(qr.resid(Qm, rb)^2) / (n - k))
@@ -767,7 +777,7 @@ distance_euclidienne_termes <- function(projet, termes, observations) {
   connues <- stats::complete.cases(b$X)
   if (!all(connues)) b <- construire_bloc(projet, termes, observations[connues])
   D <- as.matrix(stats::dist(b$X))
-  dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+  dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
   list(D = D, connues = connues, termes = b$noms, echelles = unique(b$type))
 }
 
@@ -785,7 +795,7 @@ distances_mantel_x <- function(projet, d, observations) {
     connues <- is.finite(pts$x) & is.finite(pts$y)
     if (sum(connues) < 3) stop(traduire("Moins de 3 observations ont des coordonnées : pas de distance géographique.", "Fewer than 3 observations have coordinates: no geographic distance."), call. = FALSE)
     D <- distances_points(pts$x[connues], pts$y[connues], pts$systeme) / 1000
-    dimnames(D) <- list(as.character(observations[connues]), as.character(observations[connues]))
+    dimnames(D) <- list(nom_numero(observations[connues]), nom_numero(observations[connues]))
     s <- systeme_coordonnees(pts$systeme)
     co <- pts$coordonnees
     lonlat <- s$type == "lonlat"
@@ -806,9 +816,9 @@ distances_mantel_x <- function(projet, d, observations) {
 # échelle (UV par défaut).
 termes_z_mantel <- function(projet, o) {
   unlist(lapply(o$z, function(u) {
-    tr <- o$z_transformations[[as.character(u)]]
+    tr <- o$z_transformations[[nom_numero(u)]]
     tr <- if (length(tr) && nzchar(as.character(tr[1]))) lire_transformation(as.character(tr[1]))
-    ech <- as.character(unlist(o$z_echelles[[as.character(u)]] %||% "UV"))[1]
+    ech <- as.character(unlist(o$z_echelles[[nom_numero(u)]] %||% "UV"))[1]
     termes_variable(projet, u, if (ech %in% c("UV", "Par", "Ctr", "none")) ech else "UV", tr)
   }), recursive = FALSE)
 }
@@ -844,6 +854,7 @@ mantel_noyau <- function(Dy, Dx, methode, P, Dz = NULL) {
   B <- nrow(P)
   perm <- perm_p <- numeric(B)
   for (b in seq_len(B)) {
+    verifier_arret()
     p <- P[b, ]
     yb <- Ry[cbind(p[pr$i], p[pr$j])]
     perm[b] <- stats::cor(yb, x)
@@ -901,6 +912,7 @@ correlogramme_noyau <- function(Dy, Dx, methode, P, classes = 0) {
     # (permuter les observations de la matrice d'appartenance par p, c'est permuter celles de Dy par
     # order(p) : une permutation pour toutes les classes à la fois)
     for (b in seq_len(B)) {
+      verifier_arret()
       q <- order(P[b, ])
       perm[b, ] <- stats::cor(M, Ry[cbind(q[pr$i], q[pr$j])])
     }
@@ -943,10 +955,10 @@ ajuster_mantel <- function(projet, d) {
     dx <- distances_mantel_x(projet, d, garde)
     if (!is.null(dz)) dz <- distance_euclidienne_termes(projet, tz, garde)
   }
-  Dx <- dx$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dx <- dx$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   if (all(Dx == 0)) stop(if (identical(o$distance_x, "geographique")) traduire("Toutes les observations sont au même endroit : leurs distances sont nulles.", "All the observations are at the same place: their distances are zero.")
                          else traduire("Les variables X ne varient pas : toutes leurs distances sont nulles.", "The X variables don't vary: all their distances are zero."), call. = FALSE)
-  Dz <- if (!is.null(dz)) dz$D[as.character(garde), as.character(garde), drop = FALSE]
+  Dz <- if (!is.null(dz)) dz$D[nom_numero(garde), nom_numero(garde), drop = FALSE]
   strates <- if (!is.null(strates)) strates[dc$connu]
   verifier_strates(strates)
   P <- permutations_lignes(length(garde), o$permutations, strates, o$graine)
@@ -1017,12 +1029,12 @@ resultat_communaute <- function(id, extra) {
          demande = d$demande %||% list(type = d$type, numero = d$number)), extra(p, m, d))
 }
 
-pourcent_chiffre <- function(x) paste0(formatC(100 * x, format = "f", digits = 1), " %")
-
+# (la ligne de l'explorateur de chacune dans la langue de l'interface : sa virgule décimale)
 resultat_pcoa <- function(id) resultat_communaute(id, function(p, m, d) {
   k <- m$noyau
   vp <- table_valeurs_pcoa(k)
-  list(chiffres = sprintf("%s · PCoA1 %s", nom_court_distance(m$options$distance, m$options$binaire), pourcent_chiffre(vp$part[1])),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("%s · PCoA1 %s", nom_court_distance(m$options$distance, m$options$binaire), pourcent_texte(vp$part[1], fr)),
        vues_defaut = I(c("ordination_dist", "valeurs_propres_pcoa")),
        observations = cbind(data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE), colonnes_axes(k$points)),
        axes = I(utils::head(colnames(k$points), AXES_INTERFACE)), valeurs_propres = vp, inertie = list(totale = k$totale),
@@ -1042,9 +1054,9 @@ resultat_nmds <- function(id) resultat_communaute(id, function(p, m, d) {
   garde <- if (length(sh$dissimilarite) > SHEPARD_MAX) unique(round(seq(1, length(sh$dissimilarite), length.out = SHEPARD_MAX))) else seq_along(sh$dissimilarite)
   obs <- cbind(data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE), colonnes_axes(k$points))
   obs$stress <- k$stress_observations
-  list(chiffres = sprintf("stress %s · k = %d", formatC(k$stress, format = "f", digits = 3), m$options$k),
+  list(chiffres = sprintf("stress %s · k = %d", nombre_texte(k$stress, 3, !identical(getOption("nuee.langue"), "en")), m$options$k),
        vues_defaut = I(c("ordination_dist", "shepard")), observations = obs, axes = I(colnames(k$points)),
-       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, nuls = k$nuls,
+       stress = k$stress, k = m$options$k, departs = m$options$departs, meilleur = k$meilleur, retrouvee = k$retrouvee, meme_stress = k$meme_stress %||% 0, nuls = k$nuls,
        stress_departs = data.frame(depart = seq_along(k$stress_departs) - 1, stress = k$stress_departs),
        shepard = list(dissimilarite = sh$dissimilarite[garde], distance = sh$distance[garde], ajustee = sh$ajustee[garde], total = length(sh$dissimilarite)),
        especes = scores_table(m$especes), ajustement = ajustement_interface(m$ajustement),
@@ -1069,7 +1081,8 @@ resultat_permanova <- function(id) resultat_communaute(id, function(p, m, d) {
     obs$classe <- as.character(premiere$groupe)[match(m$observations, premiere$observations)]
     for (r in m$dispersions) obs[[sprintf(traduire("distance au centre (%s)", "distance to centre (%s)"), r$variable)]] <- unname(r$distances)[match(m$observations, r$observations)]
   }
-  list(chiffres = sprintf("R2 %s · p %s", formatC(k$modele$R2, format = "f", digits = 2), if (is.na(k$modele$p)) "—" else format(signif(k$modele$p, 2))),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("R2 %s · p %s", nombre_texte(k$modele$R2, 2, fr), p_explorateur(k$modele$p, fr)),
        vues_defaut = I(c("permanova", if (length(m$dispersions)) "dispersion" else "liste_obs")), observations = obs,
        table = k$table, par = m$options$par, modele = k$modele, alias = I(k$alias), termes = I(unique(m$X$groupes)),
        dispersions = unname(lapply(m$dispersions, dispersion_interface)), dispersion_type = m$options$dispersion,
@@ -1081,7 +1094,8 @@ resultat_mantel <- function(id) resultat_communaute(id, function(p, m, d) {
   np <- length(m$paires$y)
   garde <- if (np > SHEPARD_MAX) sort(avec_graine(1, sample.int(np, SHEPARD_MAX))) else seq_len(np)
   t <- m$test
-  list(chiffres = sprintf("r %s · p %s", formatC(t$r, format = "f", digits = 2), if (is.na(t$p)) "—" else format(signif(t$p, 2))),
+  fr <- !identical(getOption("nuee.langue"), "en")
+  list(chiffres = sprintf("r %s · p %s", nombre_texte(t$r, 2, fr), p_explorateur(t$p, fr)),
        vues_defaut = I(c("mantel", if (!is.null(m$correlogramme)) "correlogramme" else "liste_obs")),
        observations = data.frame(uid = m$observations, nom = m$noms, stringsAsFactors = FALSE),
        test = t, methode = m$options$methode, termes_x = I(m$X$termes), echelles_x = I(m$X$echelles), termes_z = I(m$Z$termes),
@@ -1143,7 +1157,7 @@ tables_permanova <- function(projet, m) {
     out$dispersion_groupes <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$groupes)))
     out$dispersion_tests <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$anova)))
     out$dispersion_paires <- do.call(rbind, lapply(ds, function(r) cbind(variable = r$variable, r$tukey)))
-    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[as.character(r$observations)]), variable = r$variable,
+    out$dispersion_distances <- do.call(rbind, lapply(ds, function(r) data.frame(Observation = unname(projet$noms_obs[nom_numero(r$observations)]), variable = r$variable,
                                                                                  groupe = as.character(r$groupe), distance = unname(r$distances), stringsAsFactors = FALSE)))
     rownames(out$dispersion_groupes) <- rownames(out$dispersion_tests) <- rownames(out$dispersion_paires) <- rownames(out$dispersion_distances) <- NULL
   }
@@ -1270,7 +1284,10 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
                             "The configuration in %d dimension%s is that of the isoMDS function of the MASS package (Venables & Ripley, 2002), which minimizes Kruskal's stress between the ordination distances and the monotone regression of the dissimilarities, from the PCoA configuration then %d random configurations (seed %d), as vegan::metaMDS; the lowest-stress solution was kept (stress = %s)"),
                          o$k, if (o$k > 1) "s" else "", o$departs, o$graine, nombre(k$stress, 3)),
                  if (o$departs > 0) {
-                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %d fois (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %d times (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "), k$retrouvee)
+                   if (k$retrouvee > 0) sprintf(tx(" et retrouvée %s (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01). ", " and found again %s (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01). "),
+                                                if (k$retrouvee == 1) tx("une fois", "once") else sprintf(tx("%d fois", "%d times"), k$retrouvee))
+                   else if (isTRUE(k$meme_stress > 0)) sprintf(tx(" ; aucun autre départ n'a retrouvé sa configuration (analyse procrustéenne : erreur quadratique moyenne < 0,005 et plus grand résidu < 0,01), mais %d ont atteint son stress à 0,0001 près, quelques observations placées un peu autrement : le stress est atteint, la place de ces observations est incertaine. ",
+                                                                   "; no other start found its configuration again (Procrustes analysis: root mean square error < 0.005 and largest residual < 0.01), but %d reached its stress to 0.0001, with some observations placed slightly differently: the stress is reached, the place of those observations is uncertain. "), k$meme_stress)
                    else tx(" ; aucun autre départ ne l'a retrouvée : ce peut être un minimum local. ", "; no other start found it again: it may be a local minimum. ")
                  } else ". ",
                  if (k$nuls) sprintf(tx("%d dissimilarités nulles entre observations distinctes ont été remplacées par la moitié de la plus petite non nulle. ", "%d zero dissimilarities between distinct observations were replaced by half the smallest non-zero one. "), k$nuls) else "",
@@ -1287,7 +1304,8 @@ texte_methodes_communaute <- function(projet, d, m, langue = "fr", version = "")
       marges = tx("de chaque terme après tous les autres (effets marginaux)", "of each term after all the others (marginal effects)"),
       modele = tx("du modèle entier", "of the whole model"))
     p1 <- sprintf(tx("Une analyse de variance multivariée par permutation (PERMANOVA ; Anderson, 2001 ; McArdle et Anderson, 2001) a testé l'effet de %s sur %s. %s",
-                     "A permutational multivariate analysis of variance (PERMANOVA; Anderson, 2001; McArdle & Anderson, 2001) tested the effect of %s on %s. %s"), court(termes), tableau, donnees)
+                     "A permutational multivariate analysis of variance (PERMANOVA; Anderson, 2001; McArdle & Anderson, 2001) tested the effect of %s on %s. %s"),
+                  court(vapply(termes, guillemets_texte, "", fr = fr)), tableau, donnees)  # (les termes entre guillemets, comme les autres textes : l'effet de « habitat »)
     t <- k$table[seq_len(nrow(k$table) - 2), , drop = FALSE]
     resultats <- paste(sprintf("%s : R² = %s, pseudo-F = %s, %s", t$terme, nombre(t$R2, 3), nombre(t$F, 2), vapply(t$p, valeur_p, "")), collapse = tx(" ; ", "; "))
     if (!fr) resultats <- gsub(" : ", ": ", resultats, fixed = TRUE)

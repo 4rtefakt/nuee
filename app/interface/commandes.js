@@ -30,6 +30,11 @@ export function creerCommandes(app) {
     kobo_importer: { icone: 'smartphone', action: () => app.importerKobo() },
     enregistrer: { icone: 'save', raccourci: 'Ctrl+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), false) },
     enregistrer_sous: { raccourci: 'Ctrl+Shift+S', actif: () => !!app.projetActif(), action: () => app.enregistrer(app.projetActif(), true) },
+    // (versions.js: the project's history, kept by itself beside it; shared with GitHub or GitLab;
+    // a colleague's project opened from there)
+    versions: { icone: 'history', actif: () => !!app.projetActif(), action: () => app.versions(app.projetActif()) },
+    versions_partager: { icone: 'cloud-upload', actif: () => !!app.bureau && !!app.projetActif(), action: () => app.partagerProjet(app.projetActif()) },
+    versions_ouvrir_distant: { icone: 'cloud-download', actif: () => !!app.bureau, action: () => app.ouvrirDepuisDistant() },
     exporter_donnees: { icone: 'file-output', actif: () => !!app.projetActif(), action: () => app.exporterDonnees(app.projetActif()) },
     // (from Compare models showing the coefficients side by side: that table)
     exporter: { icone: 'file-down', raccourci: 'Ctrl+E', actif: () => avecModele() || !!app.coefficientsActifs(),
@@ -40,6 +45,10 @@ export function creerCommandes(app) {
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
     texte_methodes: { icone: 'quote', actif: avecModele, action: () => app.texteMethodes(m()) },
     fermer_projet: { actif: () => !!app.projetActif(), action: () => app.fermerProjet(app.projetActif()) },
+    // (reglages.js: the R the engine runs on)
+    reglages: { actif: () => !!app.bureau, action: () => app.reglages() },
+    // (vues_greffons.js: the plugins installed, Install from file…)
+    greffons: { icone: 'puzzle', action: () => app.gererGreffons() },
     quitter: { raccourci: 'Ctrl+Q', actif: () => !!app.bureau, action: () => app.quitter() },
 
     copier_image: { icone: 'copy', raccourci: 'Ctrl+Shift+C', actif: () => !!app.grapheActif(), action: () => app.copierImage() },
@@ -54,6 +63,9 @@ export function creerCommandes(app) {
     classe_selection: { icone: 'tag', actif: avecSelection, action: () => app.classeSelection(m()) },
     annuler_action: { icone: 'undo-2', raccourci: 'Ctrl+Z', actif: () => { const p = app.projet(app.projetActif()); return !!(p && p.annulable); },
       action: () => app.annulerAction(app.projetActif()) },
+    // (`autres`: its other shortcut, app.js)
+    retablir_action: { icone: 'redo-2', raccourci: 'Ctrl+Y', autres: ['Ctrl+Shift+Z'], actif: () => { const p = app.projet(app.projetActif()); return !!(p && p.retablissable); },
+      action: () => app.retablirAction(app.projetActif()) },
     selection_liee: { coche: () => app.selectionLiee(), action: () => app.basculerSelectionLiee() },
     nouvelle_variable: { icone: 'calculator', actif: () => !!app.projetActif(), action: () => app.nouvelleVariable(app.projetActif()) },
     ajouter_colonnes: { icone: 'file-spreadsheet', actif: () => !!app.projetActif(), action: () => app.ajouterColonnes(app.projetActif()) },
@@ -65,6 +77,9 @@ export function creerCommandes(app) {
     atelier_categories: { icone: 'tag', actif: () => { const p = app.projet(app.projetActif()); return !!p && p.variables.some((v) => v.qualitative); },
       action: () => app.categoriesVariable(app.projetActif()) },
     atelier_variables: { icone: 'ruler', actif: () => !!app.projetActif(), action: () => app.variablesProjet(app.projetActif()) },
+    // the data's source and steps, and the data read again from it or from next year's file (etapes.js)
+    etapes_donnees: { icone: 'list', actif: () => !!app.projetActif(), action: () => app.etapesDonnees(app.projetActif()) },
+    etapes_mettre_a_jour: { icone: 'refresh-cw', actif: () => !!app.projetActif(), action: () => app.miseAJourDonnees(app.projetActif()) },
 
     nouveau_modele: { icone: 'file-plus', raccourci: 'Ctrl+N', actif: () => !!app.projetActif(), action: () => app.nouveauModele(app.projetActif()) },
     // (a few questions, then New model already filled in: quelle_analyse.js, choix_analyse.js)
@@ -108,6 +123,12 @@ export function creerCommandes(app) {
     nouvelle_fenetre: { icone: 'app-window', raccourci: 'Ctrl+Shift+N', action: () => app.nouvelleFenetre() },
     detacher: { icone: 'external-link', raccourci: 'Ctrl+Shift+D', actif: () => !!app.panneauActif(), action: () => app.detacher() },
     fermer_panneau: { raccourci: 'Ctrl+W', actif: () => !!app.panneauActif(), action: () => app.fermerPanneau() },
+    fermer_vues: { actif: () => app.avecVues(), action: () => app.fermerVues() },
+    // the keyboard from tab to tab of the group in use, and from area to area (app.js; accessibilite.js's strings)
+    onglet_suivant: { raccourci: 'Ctrl+Tab', action: () => app.ongletVoisin(1) },
+    onglet_precedent: { raccourci: 'Ctrl+Shift+Tab', action: () => app.ongletVoisin(-1) },
+    region_suivante: { raccourci: 'F6', action: () => app.regionVoisine(1) },
+    region_precedente: { raccourci: 'Shift+F6', action: () => app.regionVoisine(-1) },
     reinitialiser: { icone: 'layout-dashboard', action: () => app.reinitialiser() },
 
     chercher_commande: { icone: 'search', raccourci: 'Ctrl+K', action: () => app.palette() },
@@ -119,11 +140,17 @@ export function creerCommandes(app) {
     zoom_normal: { raccourci: 'Ctrl+0', actif: () => !!app.bureau, action: () => app.zoom(0) },
 
     guide: { icone: 'circle-help', raccourci: 'F1', action: () => app.aide('guide') },
+    // (aide.js: the documentation site, in the browser)
+    tutoriels: { icone: 'book-open', action: () => app.tutoriels() },
+    guide_en_ligne: { icone: 'external-link', action: () => app.guideEnLigne() },
     quoi_de_neuf: { action: () => app.quoiDeNeuf(true) },
     maj_auto: { coche: () => app.majAuto() === true, action: () => app.basculerMajAuto() },
     chercher_maj: { icone: 'refresh-ccw-dot', action: () => app.chercherMiseAJour() },
     diagnostic: { icone: 'stethoscope', action: () => app.diagnostic() },
-    projet_exemple: { icone: 'apple', action: () => app.ouvrirExemple() },
+    // Help › Example projects (app.js: ouvrirExemple): made-up apples; the tutorials' simulated skylarks and trout
+    exemple_pommes: { icone: 'apple', action: () => app.ouvrirExemple('pommes') },
+    exemple_alouettes: { icone: 'trending-up', action: () => app.ouvrirExemple('alouettes') },
+    exemple_baci: { icone: 'chart-column', action: () => app.ouvrirExemple('baci') },
     redemarrer_moteur: { icone: 'refresh-cw', actif: () => !!app.bureau, action: () => app.confirmerRedemarrage() },
     differences: { action: () => app.aide('differences') },
     apropos: { icone: 'info', action: () => app.aide('apropos') },
@@ -139,7 +166,7 @@ export const ICONES_VUES = {
   permutations: 'shuffle', cvanova: 'scale', classification: 'grid-3x3', contributions: 'sliders-horizontal',
   liste_obs: 'list', liste_vars: 'list', donnees: 'database', predictions: 'target', comparaison: 'columns-2',
   statistiques: 'chart-column-big', tests: 'flask-conical', coomans: 'shapes', biplot: 'crosshair', scores3d: 'axis-3d', splot: 'chart-scatter',
-  series: 'trending-up', document: 'file-text', figure: 'layout-grid',
+  series: 'trending-up', document: 'file-text', figure: 'layout-grid', versions: 'history', changements: 'diff',
 };
 
 // A menu item for a command, evaluated now (enabled state, check mark).
@@ -152,35 +179,80 @@ export function item(C, id) {
 export function menus(app, C) {
   const it = (id) => item(C, id);
   const recents = app.recents();
-  const annuler = () => {  // "Undo" names what it undoes
+  const annuler = () => {  // "Undo" names what it undoes, "Redo" what it redoes
     const p = app.projet(app.projetActif());
-    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} « ${p.annulable} »` : t('annuler_action') };
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    return { ...it('annuler_action'), libelle: p && p.annulable ? `${t('annuler_action')} ${entre(p.annulable)}` : t('annuler_action') };
+  };
+  const retablir = () => {
+    const p = app.projet(app.projetActif());
+    const entre = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+    return { ...it('retablir_action'), libelle: p && p.retablissable ? `${t('retablir_action')} ${entre(p.retablissable)}` : t('retablir_action') };
   };
   return [
     { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
-      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
-      .concat(app.bureau ? ['-', it('quitter')] : []) },
-    { cle: 'm_edition', items: () => [annuler(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
+      '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-', it('nouveau_document'), '-', it('fermer_projet')]
+      .concat(app.bureau ? ['-', it('reglages'), it('greffons'), '-', it('quitter')] : ['-', it('greffons')]) },
+    { cle: 'm_edition', items: () => [annuler(), retablir(), '-', it('copier_tableau'), it('copier_image'), it('image_png'), it('image_svg'), it('mise_en_forme'), '-', it('effacer_selection'), it('exclure_reajuster'),
       it('classe_selection'), '-', it('selection_liee'), '-', it('atelier_remplacer'), it('atelier_categories'), it('atelier_variables'), '-',
-      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes')] },
-    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
+      it('nouvelle_variable'), it('ajouter_colonnes'), it('raster_valeurs'), it('resumer_groupes'), '-', it('etapes_donnees'), it('etapes_mettre_a_jour')] },
+    // (Model › Plugins: a New model of each plugin installed, then File › Plugins…: vues_greffons.js)
+    { cle: 'm_modele', items: () => [it('quelle_analyse'), it('nouveau_modele'), { libelle: t('greffons_menu'), icone: 'puzzle', sous: app.menuGreffons ? app.menuGreffons() : [] },
+      it('modifier_modele'), '-', it('autoajuster'), it('plus_comp'), it('moins_comp'),
       it('reajuster_vip'), '-', it('scores_variables'), it('par_reponse'), it('texte_methodes'), '-', it('supprimer_modele')] },
-    { cle: 'm_graphiques', items: () => [it('resume'), '-', it('scores'), it('loadings'), it('profils'), it('ipls'), it('biplot'), it('scores3d'), it('splot'), it('dmodx'), it('t2'), it('contributions'), '-',
-      it('vip'), it('coefficients'), it('obspred'), it('effets'), it('moyennes'), it('residus'), it('acf'), it('apports'), it('selection_aic'), it('puissance'), '-', it('permutations'), it('cvanova'), it('classification'), '-',
-      it('dendrogramme'), it('coomans'), '-', it('liste_obs'), it('liste_vars'), it('donnees'), it('statistiques'), it('tests'), it('series'), it('carte'), it('autocorrelation_spatiale'), it('rarefaction'),
-      '-', it('figure_composer')] },
+    { cle: 'm_graphiques', items: () => itemsGraphiques(app, C, it) },
     { cle: 'm_prediction', items: () => [it('predire'), it('predire_fichier'), '-', it('comparaison')] },
-    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), '-', it('reinitialiser')]
+    { cle: 'm_fenetre', items: () => [it('nouvelle_fenetre'), it('detacher'), it('fermer_panneau'), it('fermer_vues'), '-', it('onglet_suivant'), it('onglet_precedent'),
+      it('region_suivante'), it('region_precedente'), '-', it('reinitialiser')]
       .concat(app.fenetres().length > 1 ? ['-', ...app.fenetres().map((f) => ({ libelle: f.titre, coche: f.actuelle, action: () => app.focusFenetre(f.id) }))] : []) },
     { cle: 'm_affichage', items: () => [it('chercher_commande'), '-', it('explorateur'), it('console_r'), it('theme_sombre'),
       { libelle: t('langue'), sous: [['fr', 'Français'], ['en', 'English']].map(([l, n]) => ({ libelle: n, coche: langueActuelle() === l, action: () => app.changerLangue(l) })) },
       '-', it('zoom_plus'), it('zoom_moins'), it('zoom_normal')] },
-    { cle: 'm_aide', items: () => [it('guide'), it('projet_exemple'), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
+    { cle: 'm_aide', items: () => [it('guide'), it('tutoriels'), it('guide_en_ligne'), '-', menuExemples(C), it('quoi_de_neuf')].concat(app.majAuto() !== null ? [it('chercher_maj'), it('maj_auto')] : [])
       .concat([it('differences'), '-', it('redemarrer_moteur'), it('diagnostic'), '-', it('apropos')]) },
   ];
 }
+
+// The Plots menu: the views of the active model, then the project's. Another analysis's own views
+// (TRIM's indices, the detection function...) come after its summary; the model views the active
+// model doesn't have (all of them, with no model in front) are folded under Other plots.
+const GRAPHIQUES_MODELE = ['resume', '-', 'scores', 'loadings', 'profils', 'ipls', 'biplot', 'scores3d', 'splot', 'dmodx', 't2', 'contributions', '-',
+  'vip', 'coefficients', 'obspred', 'effets', 'moyennes', 'residus', 'acf', 'apports', 'selection_aic', 'puissance', '-', 'permutations', 'cvanova', 'classification', '-',
+  'dendrogramme', 'coomans'];
+const GRAPHIQUES_PROJET = ['donnees', 'statistiques', 'tests', 'series', 'carte', 'autocorrelation_spatiale', 'rarefaction'];
+function itemsGraphiques(app, C, it) {
+  const id = app.modeleActif();
+  const x = app.modele(id);
+  const propres = x ? vuesDe(x).filter((v) => !C[v] && v !== 'predictions')
+    .map((v) => ({ libelle: t(v), icone: ICONES_VUES[v], action: () => app.ouvrirVue(v, id) })) : [];
+  const ici = [];
+  const ailleurs = [];
+  for (const k of GRAPHIQUES_MODELE) {
+    if (k === '-') { ici.push('-'); ailleurs.push('-'); continue; }
+    const i = it(k);
+    (i.actif ? ici : ailleurs).push(i);
+    if (k === 'resume' && propres.length) ici.push('-', ...propres);
+  }
+  const listes = ['liste_obs', 'liste_vars'].map(it);
+  ailleurs.push('-', ...listes.filter((i) => !i.actif));
+  const autres = sansSeparateursEnTrop(ailleurs);
+  return sansSeparateursEnTrop([...ici, ...(autres.length ? ['-', { libelle: t('autres_graphiques'), sous: autres }] : []), '-',
+    ...listes.filter((i) => i.actif), ...GRAPHIQUES_PROJET.map(it), '-', it('figure_composer')]);
+}
+// (a menu's separators between items only, one at a time)
+const sansSeparateursEnTrop = (l) => l.filter((x, i) => x !== '-' || (i > 0 && l[i - 1] !== '-' && l.slice(i + 1).some((y) => y !== '-')));
+
+// A view of the active model without a command of its own (another analysis's: TRIM's indices,
+// the detection function...), for the toolbar.
+export function commandeVue(app, nom) {
+  return { id: nom, icone: ICONES_VUES[nom] || 'chart-scatter', action: () => app.ouvrirVue(nom, app.modeleActif()),
+    actif: () => { const x = app.modele(app.modeleActif()); return !!x && vuesDe(x).includes(nom); } };
+}
+
+// Help › Example projects, and the start page's button (app.js)
+export const menuExemples = (C) => ({ libelle: t('projet_exemple'), icone: 'apple', sous: ['exemple_pommes', 'exemple_alouettes', 'exemple_baci'].map((id) => item(C, id)) });
 
 export const BARRE_OUTILS = [
   ['ouvrir', 'enregistrer'],
@@ -188,6 +260,16 @@ export const BARRE_OUTILS = [
   ['resume', 'scores', 'loadings', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'dendrogramme'],
   ['permutations', 'classification', 'predire', 'comparaison', 'exporter'],
 ];
+// The toolbar for the model in front. A PCA, PLS or OPLS, or no model, has BARRE_OUTILS as it is
+// (SIMCA's buttons, where hands know them); a regression or another analysis has its own views in
+// the middle (vuesDe, explorateur.js: its lists left out, at most 12), without the buttons of
+// components and of views it never has.
+const HORS_BARRE = ['liste_obs', 'liste_vars', 'predictions'];
+export function barreOutils(app) {
+  const x = app.modele(app.modeleActif());
+  if (!x || (!x.regression && !x.analyse)) return BARRE_OUTILS;
+  return [BARRE_OUTILS[0], ['nouveau_modele', 'modifier_modele'], vuesDe(x).filter((v) => !HORS_BARRE.includes(v)).slice(0, 12), ['predire', 'comparaison', 'exporter']];
+}
 
 const MAC = /Mac/.test(navigator.platform);
 export function afficherRaccourci(r) {

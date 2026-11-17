@@ -6,7 +6,9 @@
 //   - target: a model of the project by its name (M1, or "M2 (1)": names can hold spaces), a dot,
 //     then what to take from it: a value (Q2, R2Y, N, gain, vip.sucre, coef.annee...), a table
 //     (table.composantes), a plot (scores, loadings, vip...), the Methods text (methodes) or the
-//     results text (resultats, moteur/R/resultats_texte.R);
+//     results text (resultats, moteur/R/resultats_texte.R); another analysis (TRIM, distance
+//     sampling, RDA, PERMANOVA, NMDS...), its key results by the keys What changed compares
+//     (pente, pente.ic, pente.pourcent, D, D.cv, R2_ajuste, test.modele.p, stress...);
 //     or ref:<label>, the number of a figure or table labelled #<label> ("Figure 2");
 //   - format: a number of decimals (:3), or a percentage (:% or :%1);
 //   - #label: a name for a figure or table, for {{ref:label}} elsewhere;
@@ -132,6 +134,13 @@ export function texteForme(f, langue = 'fr') {
       const { n, ic } = avecIntervalle(f.est, f.est - f.ic, f.est + f.ic, f.decimales, langue);
       return ic ? `${n(f.est)} ${ic}` : n(f.est);
     }
+    // (an interval alone, in numbers or percentages: "[0,962 ; 0,978]", "[−3,8 % ; −2,2 %]")
+    case 'ic': {
+      const n = (x) => (f.pourcentage ? pourcentage(x, { decimales: f.decimales, langue }) : nombre(x, { decimales: f.decimales, langue }));
+      return `[${n(f.bas)}${langue === 'fr' ? ' ; ' : ', '}${n(f.haut)}]`;
+    }
+    // (a text in the document's language: TRIM's class of a slope)
+    case 'texte': return (f.textes || {})[langue] ?? f.texte ?? '';
     default: return nombre(f.x, { decimales: f.decimales, significatifs: f.significatifs, langue });
   }
 }
@@ -178,6 +187,117 @@ const VALEURS_REGRESSION = {
   BIC: { f: (m) => (m.qualite || {}).BIC, decimales: 1 },
 };
 
+// The values of an R-code model (moteur/R/code.R): those the engine could take from the model, its
+// coefficients (coef, est, ic, p and se, by term) and the values its code gives (valeurs.<name>).
+const statistiqueCode = (k) => (m) => (m.statistiques || {})[k];
+const VALEURS_CODE = {
+  N: { f: (m) => m.N, entier: true },
+  K: { f: (m) => m.K, entier: true },
+  logLik: { f: statistiqueCode('logLik'), decimales: 2, si: (m) => statistiqueCode('logLik')(m) !== undefined },
+  AIC: { f: statistiqueCode('AIC'), decimales: 1, si: (m) => statistiqueCode('AIC')(m) !== undefined },
+  BIC: { f: statistiqueCode('BIC'), decimales: 1, si: (m) => statistiqueCode('BIC')(m) !== undefined },
+};
+const valeursCode = (m) => m.valeurs || {};
+function referenceCode(m, nom, reste, ref) {
+  const c = m.coefficients || {};
+  const terme = reste.join('.');
+  if (['coef', 'est', 'p', 'ic', 'se'].includes(nom)) {
+    const i = colonne(c.terme).indexOf(terme);
+    if (i < 0) return { erreur: 'terme_inconnu' };
+    if (nom === 'se') return formeValeur(colonne(c.erreur_type)[i], ref, { significatifs: 3 });
+    return { forme: 'coef', quoi: nom, est: colonne(c.estimation)[i], bas: colonne(c.bas)[i], haut: colonne(c.haut)[i], p: colonne(c.p)[i], decimales: decimalesDe(ref) };
+  }
+  if (nom === 'valeurs') {
+    const i = colonne(valeursCode(m).nom).indexOf(terme);
+    if (i < 0) return { erreur: 'valeur_inconnue' };
+    return formeValeur(colonne(valeursCode(m).valeur)[i], ref, { significatifs: 3 });
+  }
+  const v = VALEURS_CODE[nom];
+  if (!v || (v.si && !v.si(m))) return { erreur: 'valeur_inconnue' };
+  return formeValeur(v.f(m, reste), ref, v);
+}
+
+// Another analysis's key results (moteur/R/resultats_cles.R: resume_resultats, m.cles), the numbers
+// What changed compares, under the same keys: {{M1.pente}} an entry's value; .ic, .bas, .haut its 95 %
+// interval; .p its p-value; a multiplicative value (a TRIM slope, an index: limite 1) .pourcent its
+// change in % (.pourcent.ic...); TRIM's overall slope .classe its class in words; distance sampling's
+// density or abundance .cv their coefficient of variation (m.densite). A value: an integer, a
+// percentage (1 decimal), a multiplicative value (4 decimals, as TRIM writes them), otherwise 3
+// significant digits; the decimals of a reference (:3) or a percentage (:%) win. Null: not a key.
+const CLASSES_TRIM = {
+  fr: { forte_hausse: 'forte augmentation', hausse_moderee: 'augmentation modérée', stable: 'stable', incertaine: 'incertaine',
+    declin_modere: 'déclin modéré', fort_declin: 'fort déclin', inconnue: 'inconnue' },
+  en: { forte_hausse: 'strong increase', hausse_moderee: 'moderate increase', stable: 'stable', incertaine: 'uncertain',
+    declin_modere: 'moderate decline', fort_declin: 'steep decline', inconnue: 'unknown' },
+};
+const PARTIES = ['ic', 'bas', 'haut', 'p', 'classe', 'cv'];
+const entreesCles = (m) => colonne(m.cles);
+function referenceCle(m, chemin, ref) {
+  const cles = entreesCles(m);
+  if (!cles.length) return null;
+  const trouver = (k) => cles.find((e) => e.cle === k && e.valeur !== undefined && e.valeur !== null);
+  // the longest key first (keys hold dots: indice.2010, D.Nord, permanova.habitat), then its part
+  let e = trouver(chemin.join('.'));
+  let partie = '';
+  let pourcent = false;
+  if (!e && PARTIES.includes(chemin[chemin.length - 1])) {
+    partie = chemin[chemin.length - 1];
+    e = trouver(chemin.slice(0, -1).join('.'));
+    if (!e && chemin[chemin.length - 2] === 'pourcent') { pourcent = true; e = trouver(chemin.slice(0, -2).join('.')); }
+  }
+  if (!e && chemin[chemin.length - 1] === 'pourcent') { pourcent = true; e = trouver(chemin.slice(0, -1).join('.')); }
+  if (!e) return null;
+  const v = Number(e.valeur);
+  const ic = colonne(e.ic);
+  const fixe = decimalesDe(ref);
+  if (pourcent) {
+    if (Number(e.limite) !== 1 || (partie && !['ic', 'bas', 'haut'].includes(partie))) return { erreur: 'valeur_inconnue' };
+    const d = fixe ?? 1;
+    if (!partie) return { forme: 'pourcentage', x: v - 1, decimales: d };
+    if (ic.length !== 2) return { erreur: 'valeur_absente' };
+    if (partie === 'ic') return { forme: 'ic', bas: ic[0] - 1, haut: ic[1] - 1, decimales: d, pourcentage: true };
+    return { forme: 'pourcentage', x: (partie === 'bas' ? ic[0] : ic[1]) - 1, decimales: d };
+  }
+  // (the decimals of the value, those of its interval too)
+  const decimales = fixe ?? (e.forme === 'entier' ? 0 : e.forme === 'pourcentage' ? 1 : Number(e.limite) === 1 ? 4 : decimalesSignificatives(v));
+  const enPourcentage = e.forme === 'pourcentage';
+  const valeur = (x) => (enPourcentage ? { forme: 'pourcentage', x, decimales } : { forme: 'nombre', x, decimales });
+  switch (partie) {
+    case '': return /^%/.test(ref.format) ? formeValeur(v, ref) : valeur(v);
+    case 'p': return e.p === undefined || e.p === null ? { erreur: 'valeur_absente' } : { forme: 'p', x: e.p, decimales: fixe ?? 3 };
+    case 'ic': return ic.length === 2 ? { forme: 'ic', bas: ic[0], haut: ic[1], decimales, pourcentage: enPourcentage } : { erreur: 'valeur_absente' };
+    case 'bas': case 'haut': return ic.length === 2 ? valeur(ic[partie === 'bas' ? 0 : 1]) : { erreur: 'valeur_absente' };
+    case 'classe': {
+      if (e.cle !== 'pente' || !e.classe) return { erreur: 'valeur_inconnue' };
+      return { forme: 'texte', textes: { fr: CLASSES_TRIM.fr[e.classe] ?? e.classe, en: CLASSES_TRIM.en[e.classe] ?? e.classe } };
+    }
+    case 'cv': {
+      // (distance sampling: the CV of the density or abundance, of the total or of a stratum)
+      const d = m.densite || {};
+      const strate = e.cle.startsWith('D.') ? e.cle.slice(2) : null;
+      if (!(e.cle === 'D' || e.cle === 'abondance' || strate)) return { erreur: 'valeur_inconnue' };
+      const i = strate ? colonne(d.strate).indexOf(strate) : colonne(d.cv).length - 1;
+      const cv = colonne(d.cv)[i];
+      return cv === undefined || cv === null ? { erreur: 'valeur_absente' } : { forme: 'pourcentage', x: cv, decimales: fixe ?? 1 };
+    }
+    default: return null;
+  }
+}
+// What another analysis offers from its key results: each value, its interval and p-value when it
+// has them, a multiplicative value's change in %, TRIM's class, distance sampling's CV; not A, nor a
+// K of 0 (distance sampling has no X term).
+function offreCles(m, valeur) {
+  for (const e of entreesCles(m)) {
+    if (e.valeur === undefined || e.valeur === null || e.cle === 'A' || (e.cle === 'K' && Number(e.valeur) === 0)) continue;
+    valeur(e.cle);
+    if (colonne(e.ic).length === 2) valeur(`${e.cle}.ic`);
+    if (e.p !== undefined && e.p !== null) valeur(`${e.cle}.p`);
+    if (Number(e.limite) === 1) valeur(`${e.cle}.pourcent`);
+    if (e.cle === 'pente' && e.classe) valeur('pente.classe');
+    if (m.type === 'DISTANCE' && (e.cle === 'D' || e.cle === 'abondance' || e.cle.startsWith('D.'))) valeur(`${e.cle}.cv`);
+  }
+}
+
 // The terms a regression has coefficients for, and its columns.
 const coefficientsRegression = (m) => m.coefficients_regression || {};
 const termesRegression = (m) => colonne(coefficientsRegression(m).terme);
@@ -194,16 +314,23 @@ export function valeurReference(m, chemin, ref, langue = 'fr') {
 // x, decimales, significatifs }, a percentage { forme: 'pourcentage', x, decimales }, a p-value
 // { forme: 'p', x, decimales }, a regression's coefficient { forme: 'coef', quoi (coef, est, ic or p),
 // est, bas, haut, p, decimales }, a PLS coefficient with its interval { forme: 'coef_cs', est, ic,
-// decimales }; or { erreur }. A reproducible Quarto file writes the same in R (documents.js;
-// moteur/R/document_reproductible.R).
+// decimales }, an interval alone { forme: 'ic', bas, haut, decimales, pourcentage }, a text in each
+// language { forme: 'texte', textes }; or { erreur }. A reproducible Quarto file writes the same in R
+// (documents.js; moteur/R/document_reproductible.R).
 export function formeReference(m, chemin, ref) {
   const [nom, ...reste] = chemin;
   const err = (e) => ({ erreur: e });
+  if (m.code_r) return referenceCode(m, nom, reste, ref);
   if (m.regression) {
     if (['coef', 'est', 'p', 'ic'].includes(nom)) return coefficientRegression(m, nom, reste.join('.'), ref);
     const v = VALEURS_REGRESSION[nom];
     if (!v || (v.si && !v.si(m))) return err('valeur_inconnue');
     return formeValeur(v.f(m, reste), ref, v);
+  }
+  // another analysis: its key results first (then, as before, what it shares with a model of components)
+  if (m.analyse && m.cles) {
+    const f = referenceCle(m, chemin, ref);
+    if (f) return f;
   }
   if (nom === 'vip' && reste.length) {
     const i = termesComposantes(m).indexOf(reste.join('.'));
@@ -252,9 +379,15 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
     const r = valeurReference(m, chemin.split('.'), { format: '' }, langue);
     if (!r.erreur) offre.push({ chemin, type: 'valeur', detail: r.texte });
   };
-  if (m.regression) {
+  if (m.code_r) {
+    Object.keys(VALEURS_CODE).forEach(valeur);
+    for (const terme of colonne((m.coefficients || {}).terme)) valeur(`coef.${terme}`);
+    for (const nom of colonne(valeursCode(m).nom)) valeur(`valeurs.${nom}`);
+  } else if (m.regression) {
     Object.keys(VALEURS_REGRESSION).forEach(valeur);
     for (const terme of termesRegression(m)) valeur(`coef.${terme}`);
+  } else if (m.analyse && m.cles) {
+    offreCles(m, valeur);
   } else {
     Object.keys(VALEURS_COMPOSANTES).forEach(valeur);
     if (m.cv_anova && Object.keys(m.cv_anova).length) valeur('cvanova.p');
@@ -264,6 +397,8 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
   for (const t of tableaux) offre.push({ chemin: `table.${t}`, type: 'tableau', detail: t });
   for (const v of vues) offre.push({ chemin: v, type: 'graphique', detail: v });
   offre.push({ chemin: 'methodes', type: 'texte', detail: '' });
+  // (the Methods text's references alone, in the document's list of references: documents.js)
+  offre.push({ chemin: 'methodes.references', type: 'texte', detail: '' });
   offre.push({ chemin: 'resultats', type: 'texte', detail: 'resultats' });
   return offre;
 }
@@ -273,6 +408,7 @@ export function offreModele(m, { vues = [], tableaux = [], langue = 'fr' } = {})
 export function genreChemin(chemin, vues = []) {
   if (chemin[0] === 'table') return 'tableau';
   if ((chemin[0] === 'methodes' || chemin[0] === 'resultats') && chemin.length === 1) return 'texte';
+  if (chemin[0] === 'methodes' && chemin[1] === 'references' && chemin.length === 2) return 'texte';
   if (chemin.length === 1 && vues.includes(chemin[0])) return 'graphique';
   return 'valeur';
 }

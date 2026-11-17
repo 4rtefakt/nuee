@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tutorials · Nuée</title>
-<meta name="description" content="Three Nuée tutorials: a before-after with controls (BACI), a PLS on near-infrared spectra, and the monitoring of a bird population (TRIM and distance sampling).">
+<meta name="description" content="Six Nuée tutorials: a before-after with controls (BACI), a PLS on near-infrared spectra, the monitoring of a bird population (TRIM and distance sampling), community ecology, maps and spatial models, and a report document.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -32,21 +32,24 @@
 </header>
 <div class="corps">
 <main id="contenu">
-<!-- description: Three Nuée tutorials: a before-after with controls (BACI), a PLS on near-infrared spectra, and the monitoring of a bird population (TRIM and distance sampling). -->
+<!-- description: Six Nuée tutorials: a before-after with controls (BACI), a PLS on near-infrared spectra, the monitoring of a bird population (TRIM and distance sampling), community ecology, maps and spatial models, and a report document. -->
 <h1>Tutorials</h1>
-<p>Three studies followed from start to finish: the question, the data, Nuée's windows one after
+<p>Six studies followed from start to finish: the question, the data, Nuée's windows one after
 the other, how to read the results, and the Methods text. Each has its table to download.</p>
 <ul class="cartes">
 <li><h3><a href="baci.html">Before-after with controls (BACI)</a></h3><p>Did removing a weir raise the density of young trout? Six stations over 14 years: the impact − control gap, the BACI mixed model and its conditions, the interaction read correctly, the adjusted means, the Methods text and Export to R.</p></li>
 <li><h3><a href="pls-spectra.html">PLS on spectra</a></h3><p>Predicting the organic carbon of soils from their near-infrared spectrum: the preprocessing (SNV, detrending), the number of components by cross-validation, VIP, observed against predicted, the permutation test, then predicting new samples.</p></li>
 <li><h3><a href="trends.html">Monitoring a population</a></h3><p>A skylark counted on 40 sites over 17 years: from Which analysis? to TRIM's indices and trend and its class, then the density from line transects (distance sampling), and a figure for the report.</p></li>
+<li><h3><a href="communities.html">Community ecology</a></h3><p>The ground beetles of woodland, hedgerows and fields: rarefaction and species accumulation, an NMDS on Bray–Curtis, a PERMANOVA and its dispersion test, the indicator species, and what to write in a paper.</p></li>
+<li><h3><a href="maps.html">Maps and spatial models</a></h3><p>Hay biomass on a mountain plateau: coordinates in Lambert-93 and the map, the elevation read from a raster, Moran's I of a model's residuals, a GAM with a spatial smooth, and a GeoPackage for QGIS.</p></li>
+<li><h3><a href="report.html">A report document</a></h3><p>The meadows' study written up: values that follow the models, the Methods and Results texts, citations from a BibTeX file, a two-panel figure at a journal's size, Word and PDF, and a reproducible Quarto file.</p></li>
 </ul>
 <h2 id="before-you-start">Before you start</h2>
 <ul>
-<li><a href="../installation.html">Install Nuée</a>: version 1.0.0 or later.</li>
+<li><a href="../installation.html">Install Nuée</a>: version 1.1.0 or later.</li>
 <li>The tutorials' data are <strong>simulated</strong>: they were made for the exercise by an R script, with a
 fixed seed; the script is next to each table. No result is to be cited as an observation.</li>
-<li>The screenshots come from Nuée 1.0.0 in English (the French pages show the interface in
+<li>The screenshots come from Nuée 1.1.0 in English (the French pages show the interface in
 French). They were taken in Nuée's browser version: the desktop application's window is the
 same, but for a few buttons (<em>Download</em> there becomes <em>Choose where…</em>).</li>
 <li>The interface is in English and French (<em>View › Language</em>).</li>
@@ -76,13 +79,28 @@ same, but for a few buttons (<em>Download</em> there becomes <em>Choose where…
 <td><a href="../../donnees/skylark_counts.csv">skylark_counts.csv</a>, <a href="../../donnees/skylark_transects.csv">skylark_transects.csv</a></td>
 <td><a href="../../donnees/suivi.R">suivi.R</a></td>
 </tr>
+<tr>
+<td>Communities</td>
+<td><a href="../../donnees/ground_beetles.csv">ground_beetles.csv</a></td>
+<td><a href="../../donnees/communautes.R">communautes.R</a></td>
+</tr>
+<tr>
+<td>Maps</td>
+<td><a href="../../donnees/meadows.csv">meadows.csv</a>, <a href="../../donnees/elevation.tif">elevation.tif</a></td>
+<td><a href="../../donnees/cartes.R">cartes.R</a></td>
+</tr>
+<tr>
+<td>Report</td>
+<td>the maps tutorial's, and <a href="../../donnees/references.bib">references.bib</a> (four published papers and books)</td>
+<td><a href="../../donnees/cartes.R">cartes.R</a></td>
+</tr>
 </tbody>
 </table>
 <p>The same tables exist with French column names (see the <a href="../../fr/tutoriels/index.html">French tutorials</a>).
-<code>Rscript baci.R</code> (and the two others) writes them again, identical, with R 3.6 or later.</p>
+<code>Rscript baci.R</code> (and the others) writes them again, identical, with R 3.6 or later.</p>
 
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
 </body>
 </html>

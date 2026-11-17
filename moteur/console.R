@@ -58,6 +58,13 @@ colonne_r <- function(df, nom) if (identical(make.names(nom), nom)) sprintf("%s$
 # Les lignes R d'une action de l'interface (NULL pour celles qui ne font qu'afficher).
 journaliser <- function(nom, q, r) {
   pm <- function(id) etat$modeles[[id]]$projet
+  # (le projet d'un modèle tel qu'il l'a vu, quand ses catégories ont changé d'ordre depuis : atelier.R,
+  # projet_tel_ajuste ; definition() est celle de son ajustement)
+  projet_vu <- function(id) {
+    vu <- etat$modeles[[id]]
+    if (length(vu$ordres) && !identical(projet_tel_ajuste(projet(vu$projet), vu$ordres), projet(vu$projet))) sprintf("projet_tel_ajuste(%s, etat$modeles[[%s]]$ordres)", pm(id), code_r(id))
+    else pm(id)
+  }
   variable_r <- function(x) if (is.numeric(x)) as.character(x) else code_r(x)  # (un numéro de variable, ou "id:k")
   definition_modele <- function(id, commentaire) {
     e <- etat$modeles[[id]]
@@ -85,11 +92,12 @@ journaliser <- function(nom, q, r) {
                                                      vecteur_r(as.character(unlist(q$temoins))), code_r(q$evenement)),
                     definition_modele(r$modele$id, sprintf("# modèle mixte BACI %s du projet %s", r$modele$nom, projet(r$modele$projet)$nom))),
     selection_aic = sprintf("selection_aic(%s, definition(%s))", q$modele, code_r(q$modele)),
-    puissance_tendance = if (length(setdiff(names(q), "modele"))) sprintf("puissance_tendance(%s, definition(%s), %s)", q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
-    moyennes = if (length(setdiff(names(q), "modele"))) sprintf("moyennes_ajustees(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q[setdiff(names(q), "modele")])),
-    predire = sprintf("predire(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele),
+    puissance_tendance = if (length(intersect(names(q), REGLAGES_PUISSANCE))) sprintf("puissance_tendance(%s, definition(%s), %s)", q$modele, code_r(q$modele), code_r(q[intersect(names(q), REGLAGES_PUISSANCE)])),
+    moyennes = if (length(intersect(names(q), REGLAGES_MOYENNES))) sprintf("moyennes_ajustees(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q[intersect(names(q), REGLAGES_MOYENNES)])),
+    # (sur le projet tel que le modèle l'a vu, comme serveur.R le prédit : pour_predire)
+    predire = sprintf("predire(%s, %s, definition(%s), %s)", projet_vu(q$modele), q$modele, code_r(q$modele),
                       if (is.null(q$jeu)) sprintf("numeros_observations(%s)", pm(q$modele)) else sprintf("%s$prediction_sets[[%s]]$observations", pm(q$modele), q$jeu)),
-    predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", pm(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
+    predire_fichier = sprintf("predire_fichier(%s, %s, definition(%s), %s)", projet_vu(q$modele), q$modele, code_r(q$modele), code_r(q$chemin)),
     hca = sprintf("classification(%s, %s)", q$modele, q$composantes %||% sprintf("%s$A", q$modele)),
     permutations = sprintf("permutations(%s, %s, definition(%s), y = %s, n = %s)", pm(q$modele), q$modele, code_r(q$modele), q$y %||% 1, q$n %||% 20),
     contributions = sprintf("contributions(%s, %s, %s)", q$modele, vecteur_r(as.numeric(q$observations)), code_r(q$type %||% "DModX")),
@@ -99,7 +107,7 @@ journaliser <- function(nom, q, r) {
     classe_selection = sprintf("%s <- ajouter_classe(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$variable), code_r(q$etiquette), vecteur_r(as.numeric(q$observations))),
     variable_calculee = sprintf("%s <- variable_calculee(%s, %s, %s)", q$projet, q$projet, code_r(q$nom), code_r(q$formule)),
     classes_valeurs = sprintf("%s <- classes_valeurs(%s, %s, %s, %s)", q$projet, q$projet, code_r(q$nom), q$variable,
-                              if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q$n)),
+                              if (length(q$bornes)) sprintf("bornes = %s", vecteur_r(q$bornes)) else sprintf("n = %s", q[["n"]])),
     # (et, en commentaire, le même calcul fait avec match() sur le tableau des données)
     ajouter_colonnes = {
       p <- projet(q$projet)
@@ -126,7 +134,7 @@ journaliser <- function(nom, q, r) {
                 maximum = "max(x, na.rm = TRUE)", ecart_type = "sd(x, na.rm = TRUE)", n = "sum(!is.na(x))")
       c(sprintf("%s <- resumer_par_groupe(%s, %s, variables = %s, statistiques = %s)", r$id, q$projet, colonnes_projet_r(groupes), vecteur_r(variables), vecteur_r(stats)),
         sprintf("# soit, sur le tableau des données : d <- tableau_projet(%s) ; aggregate(d[%s], d[%s], function(x) c(%s))", q$projet,
-                vecteur_r(unname(p$noms_var[as.character(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
+                vecteur_r(unname(p$noms_var[nom_numero(variables)])), vecteur_r(noms_groupes), paste(sprintf("%s = %s", stats, en_r[stats]), collapse = ", ")))
     },
     modifier_valeur = sprintf("%s <- modifier_valeur(%s, %s, %s, %s)", q$projet, q$projet, q$observation, q$variable, code_r(q$valeur %||% "")),
     # (l'atelier des données : atelier.R ; l'aperçu de Chercher et remplacer ne change rien)
@@ -139,6 +147,9 @@ journaliser <- function(nom, q, r) {
                               vecteur_r(as.numeric(unlist(q$variables))), code_r(as.matrix(q$valeurs))),
     categories = sprintf("%s <- changer_categories(%s, %s, %s%s)", q$projet, q$projet, q$variable, vecteur_r(as.character(unlist(q$noms))),
                          if (length(q$ordre)) paste(", ordre =", vecteur_r(as.character(unlist(q$ordre)))) else ""),
+    renommer_variable = if (!isTRUE(q$apercu)) sprintf("%s <- renommer_variable(%s, %s, %s)", q$projet, q$projet, q$variable, code_r(as.character(q$nom))),
+    supprimer_variable = if (!isTRUE(q$apercu)) sprintf("%s <- supprimer_variable(%s, %s)", q$projet, q$projet, q$variable),
+    type_variable = if (!isTRUE(q$apercu)) sprintf("%s <- changer_type_variable(%s, %s, %s)", q$projet, q$projet, q$variable, code_r(as.character(q$type))),
     decrire_variables = {
       d <- q$descriptions
       if (is.data.frame(d)) d <- lapply(seq_len(nrow(d)), function(i) as.list(d[i, , drop = FALSE]))
@@ -167,6 +178,12 @@ journaliser <- function(nom, q, r) {
     },
     coordonnees = if (isTRUE(q$regler)) sprintf("%s <- regler_coordonnees(%s, %s, %s, %s)", q$projet, q$projet,
                                                  if (length(q$x)) q$x else "NULL", if (length(q$y)) q$y else "NULL", code_r(q$systeme %||% "plan")),
+    # (les rapports vivants : etapes.R ; l'aperçu ne change rien)
+    mettre_a_jour = if (!isTRUE(q$apercu) && !is.null(r$projet)) sprintf("%s <- mise_a_jour(%s)$projet", q$projet, paste(c(q$projet,
+      if (length(q$chemin) && nzchar(as.character(q$chemin)[1])) code_r(as.character(q$chemin)[1]),
+      if (length(q$table) && nzchar(as.character(q$table)[1])) paste("table =", code_r(as.character(q$table)[1])),
+      if (length(q$sans_nouvelles)) paste("sans_nouvelles =", vecteur_r(as.character(unlist(q$sans_nouvelles))))), collapse = ", ")),
+    retirer_etape = if (!is.null(r$projet)) sprintf("%s <- mise_a_jour(%s, etapes = %s$etapes[-%d])$projet", q$projet, q$projet, q$projet, as.integer(q$n)),
     carte = sprintf("points_projet(%s)", q$projet),
     par_reponse = sprintf("modeles_par_reponse(%s, definition(%s), %s, %s)", pm(q$modele), code_r(q$modele), vecteur_r(as.numeric(unlist(q$reponses))),
                           code_r(q$correction %||% "BH")),
@@ -176,21 +193,49 @@ journaliser <- function(nom, q, r) {
       if (length(q$voisinage)) paste("voisinage =", code_r(q$voisinage)), if (isTRUE(q$par_lieu)) "par_lieu = TRUE"), collapse = ", ")),
     historique = sprintf("historique_projet(%s)", q$projet),
     enregistrer = sprintf("enregistrer_projet(%s, %s)", q$projet, code_r(r$chemin)),
+    # (comme script_demande l'écrit, serveur.R : un modèle sur le projet tel qu'il l'a vu, quand ses
+    # catégories ont changé d'ordre depuis (atelier.R : projet_tel_ajuste) ; les modèles d'une séance
+    # avec leur définition rapportée aux catégories d'aujourd'hui, quand elle l'est (modele) ; la langue)
     script_r = if (length(q$modeles) > 1) {
       ids <- as.character(unlist(q$modeles))
-      sprintf("ecrire_script_seance(%s, lapply(%s, definition), list(%s), %s, dossier_moteur(), donnees = %s%s)", pm(ids[1]), code_r(ids),
+      rapportees <- !all(vapply(ids, function(id) identical(modele(id)$definition, etat$modeles[[id]]$definition), TRUE))
+      sprintf("ecrire_script_seance(%s, lapply(%s, %s), list(%s), %s, dossier_moteur(), donnees = %s%s%s)", pm(ids[1]), code_r(ids),
+              if (rapportees) "function(id) modele(id, TRUE)$definition" else "definition",
               paste(ids, collapse = ", "), code_r(r$script), code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
-              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""))
-    } else sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s)", pm(q$modele), code_r(q$modele),
-                   code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
-                   paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = "")),
+              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""),
+              if (identical(q$langue, "en")) ", langue = \"en\"" else "")
+    } else {
+      vu <- etat$modeles[[q$modele]]
+      p_r <- pm(q$modele)
+      if (length(vu$ordres) && !identical(projet_tel_ajuste(projet(vu$projet), vu$ordres), projet(vu$projet))) {
+        p_r <- sprintf("projet_tel_ajuste(%s, etat$modeles[[%s]]$ordres)", p_r, code_r(q$modele))
+      }
+      sprintf("ecrire_script(%s, definition(%s), %s, dossier_moteur(), m = %s, donnees = %s%s%s)", p_r, code_r(q$modele),
+              code_r(r$script), q$modele, code_r(if (identical(q$donnees, "csv")) "csv" else "script"),
+              paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""),
+              if (identical(q$langue, "en")) ", langue = \"en\"" else "")
+    },
     NULL)
   if (length(lignes)) noter("appel", lignes)
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
   if (nom %in% c("ajuster", "reajuster", "baci_modele")) {
     id <- if (nom == "baci_modele") r$modele$id else r$id
-    if (!is.null(etat$modeles[[id]])) noter("resultat", utils::capture.output(print(etat$modeles[[id]]$modele)))
+    if (!is.null(etat$modeles[[id]])) noter("resultat", affichage_console(etat$modeles[[id]]))
   }
+}
+
+# Ce que la console affiche d'un modèle ajusté. Une analyse sans méthode print (une forêt, des arbres
+# boostés, un arbre, une LDA, des k-moyennes) est une liste qui garde ses données et ses arbres :
+# affichée telle quelle, elle prenait de 4 à 8 secondes et des pages ; ses résultats clés à la place
+# (resultats_cles.R : resume_resultats), ceux de l'ajustement et des tests.
+affichage_console <- function(e) {
+  m <- e$modele
+  if (!is.null(oldClass(m))) return(utils::capture.output(print(m)))
+  titre <- sprintf("%s (%s)", e$definition$name %||% "", m$type %||% e$definition$type %||% "")
+  E <- tryCatch(resume_resultats(projet(e$projet), e), error = function(err) NULL)
+  E <- Filter(function(x) x$groupe %in% c("ajustement", "tests"), E %||% list())
+  valeur <- function(x) if (!is.null(x$valeur)) format(x$valeur, digits = 4) else as.character(x$classe_texte %||% x$classe %||% "")
+  c(titre, vapply(utils::head(E, 20), function(x) sprintf("  %s : %s", x$libelle, valeur(x)), ""))
 }
 
 # ---------------------------------------------------------------- la console
@@ -208,7 +253,7 @@ lier_objets <- function() {
     makeActiveBinding(k, function(v) {
       if (missing(v)) return(etat$projets[[k]])
       if (!inherits(v, "projet_nuee")) stop(sprintf(traduire("%s est un projet de l'application : lui donner un autre nom", "%s is one of the application's projects: give it another name"), k))
-      memoriser(etat$projets[[k]], "changement depuis la console")
+      memoriser(etat$projets[[k]], "changement depuis la console", modeles = modeles_ajoutes(etat$projets[[k]], v))
       v$id <- k
       v$modifie <- TRUE
       etat$projets[[k]] <- v
@@ -274,8 +319,15 @@ local({
   assign("quit", quitter, console)
 })
 
-# m et p : le modèle et le projet affichés dans l'application.
+# m et p : le modèle et le projet affichés dans l'application ; un modèle ou un projet que la
+# séance n'a pas est refusé (m ou p seraient sinon ceux d'avant, sans rien dire).
 lier_m_p <- function(modele = NULL, projet = NULL) {
+  if (length(modele) && nzchar(as.character(modele)[1]) && is.null(etat$modeles[[as.character(modele)[1]]])) {
+    stop(traduire("Modèle inconnu : ", "Unknown model: "), modele, call. = FALSE)
+  }
+  if (length(projet) && nzchar(as.character(projet)[1]) && is.null(etat$projets[[as.character(projet)[1]]])) {
+    stop(traduire("Projet inconnu : ", "Unknown project: "), projet, call. = FALSE)
+  }
   lier_objets()
   if (!is.null(modele) && !is.null(etat$modeles[[modele]])) {
     assign("m", etat$modeles[[modele]]$modele, envir = console)
@@ -346,6 +398,7 @@ completer_console <- function(texte, curseur = nchar(texte), modele = NULL, proj
 # m et p dans la commande. Le texte affiché, les avertissements, les erreurs et les
 # graphiques vont au journal ; renvoie les entrées nouvelles et les projets modifiés.
 evaluer_console <- function(texte, modele = NULL, projet = NULL) {
+  texte <- texte %||% ""  # (parse(text = NULL) lirait l'entrée standard du moteur, et l'attendrait)
   depart <- etat$n_journal
   lier_m_p(modele, projet)
   noter("commande", texte)

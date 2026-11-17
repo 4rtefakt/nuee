@@ -2,11 +2,28 @@
 // X-Langue: the language of the messages the engine sends back (moteur/R/langue.R).
 import { langueActuelle } from './i18n.js';
 
+// The requests the user waits for (not those made in the background), by number, and when each
+// began: after a moment the status bar offers to stop the computation (app.js, Stop). A change
+// is told to the page ('requetes').
+const enAttente = new Map();
+let numeroRequete = 0;
+export const debutAttente = () => (enAttente.size ? Math.min(...enAttente.values()) : null);
+const attente = (n, oui) => {
+  if (oui) enAttente.set(n, Date.now()); else enAttente.delete(n);
+  window.dispatchEvent(new CustomEvent('requetes'));
+};
+
 // silencieux: a request made in the background (the console's log), which doesn't report a
 // stopped engine: only what the user asks for does. garder: a request that must reach the engine
 // even if the window closes meanwhile (a document's last words; the browser keeps those of 64 kB
 // at most).
 export async function demander(nom, corps = {}, { silencieux = false, garder = false } = {}) {
+  const n = silencieux ? 0 : (numeroRequete += 1);
+  if (n) attente(n, true);
+  try { return await envoyer(nom, corps, silencieux, garder); } finally { if (n) attente(n, false); }
+}
+
+async function envoyer(nom, corps, silencieux, garder) {
   let r;
   try {
     const body = JSON.stringify(corps);

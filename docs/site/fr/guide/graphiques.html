@@ -46,7 +46,11 @@
 <li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
 <li><a href="cartes.html">Cartes et données spatiales</a></li>
 <li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="code-r.html">Votre propre modèle en code R</a></li>
+<li><a href="greffons.html">Greffons</a></li>
+<li><a href="ecrire-un-greffon.html">Écrire un greffon</a></li>
 <li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="versions.html">Versions et travail à plusieurs</a></li>
 <li><a href="projets-usp.html">Projets .usp</a></li>
 </ul>
 </details>
@@ -80,7 +84,8 @@
 </section>
 <section id="mise-en-forme-des-graphiques">
 <h2>Mise en forme des graphiques (pour un article, un rapport)</h2>
-<p>Clic droit sur un graphique › Mise en forme, ou Édition › Mise en forme du graphique : titre et titres des axes de ce graphique ; pour tous les graphiques : police, taille du texte, taille des points, couleurs (dont une palette lisible par les daltoniens et des niveaux de gris), grille, légende ; et « Exporter l'image » à la taille voulue (en pixels, résolution ×1 à ×6) en PNG, SVG ou JPEG. Ces réglages sont gardés d'une fois sur l'autre.</p>
+<p>Clic droit sur un graphique › Mise en forme, ou Édition › Mise en forme du graphique : titre et titres des axes de ce graphique ; pour tous les graphiques : police, taille du texte, taille des points, couleurs (dont une palette lisible par les daltoniens et des niveaux de gris), grille, légende, « Écarter les étiquettes » ; et « Exporter l'image » à la taille voulue (en pixels, résolution ×1 à ×6) en PNG, SVG ou JPEG. Ces réglages sont gardés d'une fois sur l'autre.</p>
+<p><strong>Écarter les étiquettes :</strong> les noms écrits près des points des scores, des loadings, des biplots et des ordinations ne se chevauchent plus. Une étiquette qui en couvrirait une autre, ou un point, se place à côté de son point, ou plus loin avec un trait fin jusqu'à lui (comme ggrepel dans R) ; une étiquette sans chevauchement reste où elle était. Les figures, les rapports et les documents les placent de nouveau à leur propre taille. (Jusqu'à 500 étiquettes par graphique ; au-delà, elles restent telles quelles.)</p>
 </section>
 <section id="contributions">
 <h2>Contributions</h2>
@@ -90,19 +95,19 @@
 <h2>Figures pour publication</h2>
 <p>Graphiques › Composer une figure… (ou clic droit sur un graphique › Ajouter à une figure, ou clic droit sur le projet dans l'explorateur) : des graphiques côte à côte dans une figure, à la taille où une revue l'imprime, pour un article.</p>
 <ul>
-<li><strong>Panneaux :</strong> les graphiques ouverts dans la fenêtre, de n'importe quel modèle ou du projet (scores, loadings, effets, carte, séries...) : « Ajouter un graphique ouvert... » les liste, le graphique au premier plan vient en premier. Chacun a sa lettre dans l'ordre de la liste (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non, dans le coin choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux lignes ; la grille (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau ajouté n'y tient pas, et un panneau qui n'a pas de place est en rouge.</li>
+<li><strong>Panneaux :</strong> chaque graphique des modèles ajustés du projet, ouvert ou non (scores, loadings, effets, indices... : ceux qu'un rapport dessine, et les profils des spectres, le dendrogramme, le graphique de Coomans), et les graphiques du projet ouverts dans la fenêtre (carte, séries...) : « Ajouter un graphique... » les liste par modèle (« M1 · PCA »), le graphique au premier plan vient en premier. Un graphique pas ouvert est dessiné avec les réglages habituels de sa vue, un graphique ouvert, marqué comme tel, avec les siens. Chacun a sa lettre dans l'ordre de la liste (les flèches le changent) : A, B, C, ou a, b, c, (A), (a), en gras ou non, dans le coin choisi. Un panneau prend une case de la grille, ou deux colonnes, ou deux lignes ; la grille (lignes × colonnes : 1 × 2, 2 × 2, 1 × 3...) s'agrandit quand un panneau ajouté n'y tient pas, et un panneau qui n'a pas de place est en rouge.</li>
 <li><strong>Taille :</strong> la largeur de la revue en millimètres : une colonne (85 ou 90 mm), une et demie (114 ou 140 mm), deux colonnes (174 ou 190 mm), ou une autre ; la hauteur donnée, ou tirée des panneaux (la forme des graphiques à l'écran).</li>
 <li><strong>Texte et traits :</strong> la taille du texte en points une fois imprimé (graduations, titres des axes, légendes : de 6 à 8 pt pour la plupart des revues ; les étiquettes des points et les notes en proportion), la largeur des traits des courbes en points (axes et grille à la moitié), les titres des graphiques (cachés d'abord : la lettre et la légende suffisent) et les légendes.</li>
 <li><strong>Export :</strong> PDF (vectoriel, polices incluses, la page juste à la taille de la figure), SVG (vectoriel, dimensionné en millimètres), ou PNG et TIFF à 300 ou 600 points par pouce, cette résolution écrite dans le fichier (pHYs du PNG, étiquettes de résolution du TIFF) pour les vérifications des revues ; le TIFF compressé en LZW, sans perte, ou pas compressé. Dans le navigateur, le PDF passe par sa fenêtre d'impression (choisir « Enregistrer au format PDF », sans marges).</li>
 <li><strong>Cartes sur fond (OpenStreetMap, IGN) :</strong> dans le fichier, les points, la légende et l'échelle de couleurs sont des vecteurs sur une image des tuiles de la carte à la résolution de l'export (300 points par pouce dans un PDF ou un SVG), téléchargées de nouveau pour lui à un niveau de zoom plus proche que celui de l'aperçu : plus de détails, des noms de lieux plus petits. Chaque carte demande au plus 200 tuiles à son serveur, d'au plus deux niveaux de zoom au-dessus de celui de l'écran et d'aucun au-delà du niveau 19 ; la barre d'état dit quand le fond en est moins net que demandé. L'attribution (© OpenStreetMap contributors, © IGN) reste dans un coin de la carte.</li>
 </ul>
-<p>Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs, étiquettes, titres de Mise en forme, zoom), dans le thème clair, sans la sélection, sur fond blanc ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure est gardée dans le projet et enregistrée avec lui (dans l'explorateur, sous Figures : ouvrir, exporter, renommer, dupliquer, supprimer) ; elle prend toujours le dernier ajustement de chaque modèle (un modèle pas encore calculé l'est quand la figure est dessinée) : après un réajustement, on l'exporte de nouveau. Édition › Annuler ne touche pas aux figures.</p>
+<p>Chaque graphique est dessiné comme dans sa vue au moment où il a été ajouté (axes, couleurs, étiquettes, titres de Mise en forme, zoom), ou avec ses réglages habituels s'il n'était pas ouvert, dans le thème clair, sans la sélection, sur fond blanc ; les étiquettes écartées (Mise en forme) sont placées de nouveau dans sa case ; le bouton d'actualisation d'un panneau reprend les réglages de sa vue ouverte. La figure est gardée dans le projet et enregistrée avec lui (dans l'explorateur, sous Figures : ouvrir, exporter, renommer, dupliquer, supprimer) ; elle prend toujours le dernier ajustement de chaque modèle (un modèle pas encore calculé l'est quand la figure est dessinée) : après un réajustement, on l'exporte de nouveau. Édition › Annuler ne touche pas aux figures.</p>
 </section>
 </div>
 <p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
 <nav class="suite" aria-label="Pages voisines"><a rel="prev" href="modeles.html">← Choisir et construire un modèle</a><a rel="next" href="acp-pls.html">ACP, PLS, OPLS et spectres →</a></nav>
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
 </body>
 </html>

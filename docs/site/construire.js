@@ -5,7 +5,8 @@
 //     Help › What's new shows;
 //   - the home page, the installation and the tutorials, from the Markdown files of sources/fr and
 //     sources/en;
-//   - the download links, from the version in app/package.json.
+//   - the download links, from the version in app/package.json;
+//   - the example plugins of exemple/plugins, as .nueeplugin files in greffons/ (greffons()).
 //   node docs/site/construire.js        (markdown-it comes from app/node_modules: npm install in app/)
 // The pages are plain HTML and CSS (assets/), with a small script for the light or dark theme.
 // In the Markdown sources, `page:<id>` links to another page of the same language (page:guide.regressions,
@@ -50,14 +51,14 @@ const TEXTES = {
 // guide has the same sections in the same order). A section the guide gains must be given a page.
 const PAGES_GUIDE = [
   { id: 'demarrer', slug: { fr: 'demarrer', en: 'getting-started' }, titre: { fr: 'Démarrer', en: 'Getting started' },
-    resume: { fr: 'Installer, ouvrir un tableau, enregistrer et retrouver son travail, l’explorateur, les menus, les fenêtres.',
-      en: 'Installing, opening a table, saving and getting your work back, the explorer, the menus, the windows.' },
-    sections: ['Getting started', 'Opening', 'Saving and getting your work back', 'If the R engine stops', 'The explorer (on the left)', 'Menus and toolbar', 'Windows'] },
+    resume: { fr: 'Installer, ouvrir un tableau, enregistrer et retrouver son travail, le R utilisé par Nuée, l’explorateur, les menus, les fenêtres.',
+      en: 'Installing, opening a table, saving and getting your work back, the R Nuée uses, the explorer, the menus, the windows.' },
+    sections: ['Getting started', 'Opening', 'Saving and getting your work back', 'If the R engine stops', 'R used by Nuée', 'The explorer (on the left)', 'Menus and toolbar', 'Windows'] },
   { id: 'donnees', slug: { fr: 'donnees', en: 'data' }, titre: { fr: 'Les données', en: 'The data' },
-    resume: { fr: 'Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, résumer par groupe, les dates.',
-      en: 'Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, summarizing by group, dates.' },
+    resume: { fr: 'Les données de terrain de KoboToolbox ou d’ODK, modifier les données, créer des variables, nettoyer, joindre un autre tableau, les étapes des données et leur mise à jour, résumer par groupe, les dates.',
+      en: 'Field data from KoboToolbox or ODK, editing the data, making variables, cleaning, joining another table, data steps and updating the data, summarizing by group, dates.' },
     sections: ['Field data from KoboToolbox or ODK', 'Editing the data, making variables', 'Cleaning the data: find and replace, categories, units', 'Adding columns from another table',
-      'Summarizing by group', 'Variable statistics', 'Dates as time'] },
+      'Data steps and updating the data', 'Summarizing by group', 'Variable statistics', 'Dates as time'] },
   { id: 'modeles', slug: { fr: 'modeles', en: 'models' }, titre: { fr: 'Choisir et construire un modèle', en: 'Choosing and building a model' },
     resume: { fr: 'Quelle analyse ?, Nouveau modèle, les observations, la validation croisée, le jeu de test, prédire.',
       en: 'Which analysis?, New model, the observations, cross-validation, the test set, predicting.' },
@@ -96,11 +97,27 @@ const PAGES_GUIDE = [
     resume: { fr: 'Arbres de décision, analyse discriminante linéaire, k-moyennes, forêts aléatoires, arbres boostés.',
       en: 'Decision trees, linear discriminant analysis, k-means, random forests, boosted trees.' },
     sections: ['Decision trees, linear discriminant analysis and k-means', 'Random forests and boosted trees'] },
+  { id: 'code-r', slug: { fr: 'code-r', en: 'r-code' }, titre: { fr: 'Votre propre modèle en code R', en: 'Your own model in R code' },
+    resume: { fr: 'Un modèle écrit en R par vous (lm, glm, nls, mgcv, nlme, glmmTMB…) : ses données, ses résultats, ses textes, son export, et le code venu d’ailleurs.',
+      en: 'A model you write in R (lm, glm, nls, mgcv, nlme, glmmTMB…): its data, its results, its texts, its export, and code from elsewhere.' },
+    sections: ['Your own model in R code'] },
+  { id: 'greffons', slug: { fr: 'greffons', en: 'plugins' }, titre: { fr: 'Greffons', en: 'Plugins' },
+    resume: { fr: 'Installer un greffon, l’utiliser, le partager avec un projet, la confiance qu’il demande ; ceux de votre organisation.',
+      en: 'Installing a plugin, using it, sharing it with a project, the trust it asks for; your organisation’s plugins.' },
+    sections: ['Plugins'] },
+  { id: 'ecrire-greffon', slug: { fr: 'ecrire-un-greffon', en: 'writing-a-plugin' }, titre: { fr: 'Écrire un greffon', en: 'Writing a plugin' },
+    resume: { fr: 'Le manifeste, la fonction, ce qu’elle reçoit et ce qu’elle rend, l’essayer dans Nuée, l’empaqueter.',
+      en: 'The manifest, the function, what it receives and what it returns, testing it in Nuée, packaging it.' },
+    sections: ['Writing a plugin'] },
   { id: 'resultats', slug: { fr: 'resultats', en: 'results' }, titre: { fr: 'Résultats, documents et R', en: 'Results, documents and R' },
     resume: { fr: 'Texte des méthodes, rapport, documents avec citations, exports vers d’autres logiciels, export vers R, console R.',
       en: 'Methods text, report, documents with citations, exports to other software, Export to R, R console.' },
     sections: ['Methods text', 'Model report', 'Documents (articles, reports)', 'Exporting to other software', 'Export to R (script, R Markdown, Quarto)',
       'R console', 'The code'] },
+  { id: 'versions', slug: { fr: 'versions', en: 'versions' }, titre: { fr: 'Versions et travail à plusieurs', en: 'Versions and working together' },
+    resume: { fr: 'L’historique des versions d’un projet, Ce qui a changé, le partage sur GitHub ou GitLab et la connexion, travailler à plusieurs sur un projet.',
+      en: 'A project’s history of versions, What changed, sharing on GitHub or GitLab and signing in, working together on a project.' },
+    sections: ['History and versions (File › History)', 'What changed', 'Sharing on GitHub or GitLab', 'Signing in to GitHub or GitLab', 'Working together'] },
   { id: 'usp', slug: { fr: 'projets-usp', en: 'usp-projects' }, titre: { fr: 'Projets .usp', en: '.usp projects' },
     resume: { fr: 'L’historique du fichier, ce qui est identique aux valeurs enregistrées et ce qui diffère.',
       en: 'The file history, what matches the stored values and what differs.' },
@@ -117,6 +134,9 @@ const PAGES = [
   { id: 'tutoriels.baci', chemin: { fr: 'fr/tutoriels/baci.html', en: 'en/tutorials/baci.html' }, source: { fr: 'tutoriel-baci.md', en: 'tutorial-baci.md' }, nav: 'tutoriels' },
   { id: 'tutoriels.pls', chemin: { fr: 'fr/tutoriels/pls-spectres.html', en: 'en/tutorials/pls-spectra.html' }, source: { fr: 'tutoriel-pls.md', en: 'tutorial-pls.md' }, nav: 'tutoriels' },
   { id: 'tutoriels.suivi', chemin: { fr: 'fr/tutoriels/tendances.html', en: 'en/tutorials/trends.html' }, source: { fr: 'tutoriel-suivi.md', en: 'tutorial-trends.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.communautes', chemin: { fr: 'fr/tutoriels/communautes.html', en: 'en/tutorials/communities.html' }, source: { fr: 'tutoriel-communautes.md', en: 'tutorial-communities.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.cartes', chemin: { fr: 'fr/tutoriels/cartes.html', en: 'en/tutorials/maps.html' }, source: { fr: 'tutoriel-cartes.md', en: 'tutorial-maps.md' }, nav: 'tutoriels' },
+  { id: 'tutoriels.rapport', chemin: { fr: 'fr/tutoriels/rapport.html', en: 'en/tutorials/report.html' }, source: { fr: 'tutoriel-rapport.md', en: 'tutorial-report.md' }, nav: 'tutoriels' },
   { id: 'nouveautes', chemin: { fr: 'fr/nouveautes.html', en: 'en/whats-new.html' }, nav: 'nouveautes' },
 ];
 const PAGE = Object.fromEntries(PAGES.map((p) => [p.id, p]));
@@ -371,6 +391,31 @@ async function nouveautes() {
   return { fr: versionsFr, en: versionsEn };
 }
 
+// ------------------------------------------------------------ the example plugins
+
+// Each example plugin of exemple/plugins as a .nueeplugin, the file Nuée installs (File › Plugins…):
+// its folder's files in a zip archive, written by the interface's own zip writer (app/interface/zip.js)
+// with a fixed date, so that an unchanged plugin gives the same bytes at each build.
+async function greffons() {
+  const source = path.join(RACINE, 'exemple', 'plugins');
+  const copie = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-site-')), 'zip.mjs');
+  fs.copyFileSync(path.join(RACINE, 'app', 'interface', 'zip.js'), copie);
+  const { zip } = await import(pathToFileURL(copie).href);
+  fs.rmSync(path.dirname(copie), { recursive: true, force: true });
+  const ecrits = [];
+  fs.mkdirSync(path.join(SITE, 'greffons'), { recursive: true });
+  for (const id of fs.readdirSync(source).filter((d) => fs.existsSync(path.join(source, d, 'plugin.json'))).sort()) {
+    const lister = (d) => fs.readdirSync(path.join(source, id, d), { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? lister(path.posix.join(d, e.name)) : [path.posix.join(d, e.name)]));
+    // (their text with LF line ends, whatever the checkout: the same bytes on every system)
+    const fichiers = lister('').sort().map((f) => [f, new TextEncoder().encode(fs.readFileSync(path.join(source, id, f), 'utf8').replace(/\r\n?/g, '\n'))]);
+    const nom = path.posix.join('greffons', `${id}.nueeplugin`);
+    fs.writeFileSync(path.join(SITE, nom), zip(fichiers, new Date(2026, 10, 16, 12, 0, 0)));
+    ecrits.push(nom);
+  }
+  return ecrits;
+}
+
 const dateLongue = (iso, langue) => new Intl.DateTimeFormat(langue === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   .format(new Date(`${iso}T00:00:00Z`));
 
@@ -556,9 +601,9 @@ async function construire() {
     }).join('\n');
     const introGuide = langue === 'fr'
       ? `<h1>Guide d’utilisation</h1>
-<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation › Guide complet), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent trois études du début à la fin.</p>`
+<p>Le guide complet de Nuée, en pages. C’est le guide installé avec l’application (Aide › Guide d’utilisation, F1), écrit pour la version ${VERSION}. Pour commencer, les <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.fr)}">tutoriels</a> suivent six études du début à la fin.</p>`
       : `<h1>User guide</h1>
-<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide › Full guide), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow three studies from start to finish.</p>`;
+<p>Nuée’s full guide, in pages. It is the guide installed with the application (Help › User guide, F1), written for version ${VERSION}. To start with, the <a href="${relatif(cheminIndex, PAGE.tutoriels.chemin.en)}">tutorials</a> follow six studies from start to finish.</p>`;
     ecrire(cheminIndex, gabarit({ langue, page: indexGuide, titre: langue === 'fr' ? 'Guide d’utilisation' : 'User guide',
       description: langue === 'fr' ? 'Le guide d’utilisation de Nuée, en pages.' : 'Nuée’s user guide, in pages.',
       contenu: `${introGuide}\n<ul class="liste-guide">\n${listeGuide}\n</ul>\n<p class="note">${T.sourceGuide(g.fichier)}</p>`,
@@ -624,6 +669,7 @@ async function construire() {
 </html>
 `);
   ecrits.push('index.html');
+  ecrits.push(...await greffons());
   return ecrits;
 }
 

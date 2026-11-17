@@ -1,7 +1,8 @@
 // The data workbench (Edit menu, the Data view's toolbar and the right-click on a column's
 // header): Find and replace, the categories of a qualitative variable, the units and descriptions
-// of the variables. R makes each change (moteur/R/atelier.R), undone by a single Ctrl+Z like the
-// other changes of the data; models already fitted keep their results until they are fitted again.
+// of the variables; from a column's header, a variable renamed, deleted, or treated as categories or
+// as numbers. R makes each change (moteur/R/atelier.R), undone by a single Ctrl+Z like the other
+// changes of the data; models already fitted keep their results until they are fitted again.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander } from './api.js';
@@ -228,7 +229,7 @@ export function dialogueVariables(app, p, uid = null) {
         el('td', {}, v.qualitative ? el('button', { onclick: () => { d.fermer(); app.categoriesVariable(p.id, v.uid); } }, icone('tag'), t('atelier_categories')) : ''));
     }));
     zone.replaceChildren(el('table', { class: 'tableau compact' },
-      el('thead', {}, el('tr', {}, [t('variables'), t('atelier_unite'), t('atelier_description'), ''].map((h) => el('th', {}, h)))), corps));
+      el('thead', {}, el('tr', {}, [t('variables'), t('atelier_unite'), t('atelier_description'), el('span', { class: 'lecteur-seul' }, t('atelier_categories'))].map((h) => el('th', {}, h)))), corps));
     infos.textContent = vues.length === LIGNES_MAX ? t('atelier_premieres', { n: LIGNES_MAX }) : '';
   };
   async function valider() {
@@ -246,6 +247,129 @@ export function dialogueVariables(app, p, uid = null) {
   const d = dialogue({ titre: `${t('atelier_variables').replace('…', '')} — ${p.nom}`, large: true, contenu: el('div', {}, contenu, erreur),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('appliquer'), principal: true, action: () => { valider(); return false; } }] });
   if (premier) { premier.focus(); premier.scrollIntoView({ block: 'center' }); }
+}
+
+// ------------------------------------------------------------ a variable renamed, deleted, of another type
+
+// What a column's header (and a variable of Variable statistics) offers besides the above: Rename…,
+// Treat as categories (or as numbers), Delete…, each one change of the data that Ctrl+Z undoes.
+export function actionsVariable(app, p, uid) {
+  const v = p && p.variables.find((x) => x.uid === uid);
+  if (!v) return [];
+  const nom = entre(v.nom);
+  return ['-',
+    { libelle: t('atelier_renommer_de', { nom }), icone: 'pencil', action: () => dialogueRenommer(app, p, uid) },
+    v.qualitative ? { libelle: t('atelier_en_nombres', { nom }), icone: 'hash', action: () => changerType(app, p, uid, 'quantitative') }
+      : { libelle: t('atelier_en_categories', { nom }), icone: 'tag', action: () => changerType(app, p, uid, 'qualitative') },
+    { libelle: t('atelier_supprimer_de', { nom }), icone: 'trash-2', action: () => dialogueSupprimer(app, p, uid) }];
+}
+
+// A variable's new name: R says, as it is typed, what follows it (the models' definitions, the
+// formulas of computed variables, the documents' references) and what doesn't (an R-code model's
+// code), or why the name is refused. The models whose fit has the old name can be fitted again at
+// once, their results then taking the new one (otherwise they keep it until fitted again).
+export function dialogueRenommer(app, p, uid) {
+  const v = p.variables.find((x) => x.uid === uid);
+  if (!v) return;
+  const st = { nom: v.nom, refaire: true, ajustes: [] };
+  const apercu = el('div', { class: 'apercu-remplacer', 'aria-live': 'polite' });
+  const erreur = el('p', { class: 'erreur' });
+  const ligneRefaire = el('div', {});
+  let minuterie = null;
+  let numero = 0;
+  const montrer = (info, message) => {
+    apercu.replaceChildren(...(info ? liste(info.phrases).map((x, i) => el('p', { class: i ? '' : 'resume-remplacer' }, x))
+      : [el('p', { class: message ? 'erreur' : 'doux' }, message || t('atelier_renommer_vide'))]));
+    st.ajustes = info ? liste(info.ajustes) : [];
+    const noms = st.ajustes.map((n) => (p.modeles.find((m) => m.numero === n) || {}).nom).filter(Boolean);
+    ligneRefaire.replaceChildren(noms.length ? el('label', { class: 'champ' },
+      el('input', { type: 'checkbox', checked: st.refaire, onchange: (e) => { st.refaire = e.target.checked; } }),
+      t('atelier_refaire_ajustes', { modeles: noms.join(', ') })) : '');
+  };
+  const previsualiser = () => {
+    clearTimeout(minuterie);
+    const k = ++numero;
+    if (!st.nom.trim() || st.nom.trim() === v.nom) { montrer(null, ''); return; }
+    minuterie = setTimeout(async () => {
+      try {
+        const r = await demander('renommer_variable', { projet: p.id, variable: uid, nom: st.nom, apercu: true });
+        if (k === numero) montrer(r.renommage, '');
+      } catch (e) { if (k === numero) montrer(null, e.message); }
+    }, 250);
+  };
+  const champ = el('input', { value: v.nom, class: 'nouveau-nom', style: 'width:22em', 'aria-label': t('atelier_nouveau_nom'),
+    oninput: (e) => { st.nom = e.target.value; previsualiser(); },
+    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } } });
+  let enCours = false;
+  async function valider() {
+    if (enCours) return;
+    enCours = true;
+    try { await renommer(); } finally { enCours = false; }
+  }
+  async function renommer() {
+    erreur.textContent = '';
+    clearTimeout(minuterie);
+    numero += 1;
+    const nom = st.nom.trim();
+    if (nom === v.nom) { d.fermer(); return; }
+    // (what is being typed in a document goes in first: its references follow the new name)
+    if (app.viderDocuments) await app.viderDocuments(p.id);
+    let res;
+    try { res = await app.changerDonnees('renommer_variable', p.id, { variable: uid, nom }); } catch (e) { erreur.textContent = e.message; return; }
+    d.fermer();
+    const info = res.renommage;
+    app.relireDocuments(p.id, liste(info.documents));
+    let refaits = 0;
+    if (st.refaire) {
+      for (const n of liste(info.ajustes)) {
+        try {
+          await app.occupe(() => app.ajusterDeNouveau(p.id, n));
+          refaits += 1;
+        } catch (e) { if (e.reponse && e.reponse.arrete) break; }
+      }
+    }
+    app.statut([...liste(info.phrases), refaits ? t('atelier_reajustes', { n: refaits }) : '', t('atelier_annuler')].filter(Boolean).join(' '));
+  }
+  const d = dialogue({ titre: `${t('atelier_renommer_titre', { nom: entre(v.nom) })} — ${p.nom}`,
+    contenu: el('div', {}, el('div', { class: 'grille-champs' },
+      el('label', {}, t('atelier_nouveau_nom')), champ,
+      el('label', {}, t('atelier_apercu')), apercu,
+      el('label', {}, ''), ligneRefaire,
+      el('label', {}, ''), el('p', { class: 'note' }, t('atelier_note_renommer'))), erreur),
+    boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('atelier_renommer'), principal: true, action: () => { valider(); return false; } }] });
+  montrer(null, '');
+  champ.select();
+}
+
+// Treat as categories, or as numbers: done at once (one Ctrl+Z), the status bar says what it did
+// (its categories; the models whose definitions follow; an R-code model that will see it otherwise),
+// or why R refused it (a model that has it as Y, as a class, a curve or a random effect; categories
+// that aren't numbers).
+async function changerType(app, p, uid, type) {
+  let res;
+  try { res = await app.changerDonnees('type_variable', p.id, { variable: uid, type }); } catch { return; }  // (occupe said why)
+  app.statut(`${liste(res.type.phrases).join(' ')} ${t('atelier_annuler')}`);
+}
+
+// Delete: asked first, with what it leaves (an R-code model that names it, a computed variable's
+// formula, the coordinates); refused, with the reason, while a model uses it.
+async function dialogueSupprimer(app, p, uid) {
+  const v = p.variables.find((x) => x.uid === uid);
+  if (!v) return;
+  const titre = `${t('atelier_supprimer_titre', { nom: entre(v.nom) })} — ${p.nom}`;
+  let info;
+  try { info = (await demander('supprimer_variable', { projet: p.id, variable: uid, apercu: true })).suppression; } catch (e) {
+    dialogue({ titre, contenu: el('p', {}, e.message), boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+    return;
+  }
+  const supprimer = async () => {
+    let res;
+    try { res = await app.changerDonnees('supprimer_variable', p.id, { variable: uid }); } catch { return; }
+    app.statut(`${liste(res.suppression.phrases).join(' ')} ${t('atelier_annuler')}`);
+  };
+  dialogue({ titre, contenu: el('div', {}, el('p', {}, t('atelier_supprimer_question', { nom: entre(v.nom) })),
+    liste(info.phrases).slice(1).map((x) => el('p', { class: 'note' }, x))),
+  boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('atelier_supprimer'), principal: true, action: () => { supprimer(); return true; } }] });
 }
 
 ajouterTextes({
@@ -274,13 +398,21 @@ ajouterTextes({
   atelier_premieres: 'les {n} premières : filtrez pour les autres',
   atelier_note_unites: 'L’unité vient dans les titres des axes (« densité (ind./ha) »), l’en-tête de la vue Données, les textes des Méthodes et des résultats ; la description dans la bulle de l’en-tête. Les deux sont enregistrées dans le projet, gardées par Fichier › Exporter les données en Excel (une feuille « Variables »), GeoPackage, jamovi et R, et écrites en commentaire dans l’export vers R.',
   atelier_unites_gardees: 'Unités et descriptions de {n} variable(s) gardées. Ctrl+Z annule.',
-  atelier_entete_aide: 'Clic : trier. Clic droit : unité et description, catégories, chercher et remplacer.',
+  atelier_entete_aide: 'Clic : trier. Clic droit : unité et description, catégories, chercher et remplacer, renommer, traiter en catégories ou en nombres, supprimer.',
   atelier_vides_n: '{n} vides', atelier_distinctes: '{n} distinctes', atelier_resume: 'Résumé des colonnes',
   atelier_resume_aide: 'Sous chaque nom de colonne : le nombre de cellules vides et de valeurs distinctes.',
   atelier_remplacer_dans: 'Chercher et remplacer dans {nom}…', atelier_categories_de: 'Catégories de {nom}…', atelier_unite_de: 'Unité et description de {nom}…',
   atelier_coller_aide: 'Choisissez d’un clic la case d’où coller, puis Ctrl+V : un bloc de cellules copiées dans un tableur s’y colle.',
   atelier_colle: '{n} cellule(s) collée(s). Ctrl+Z annule.', atelier_coller_hors: 'Les cases au-delà du tableau sont laissées.',
   atelier_aide_cellule: 'Double-clic : modifier. Clic, puis Ctrl+V : coller à partir d’ici des cellules copiées dans un tableur.',
+  atelier_renommer_de: 'Renommer {nom}…', atelier_en_categories: 'Traiter {nom} en catégories', atelier_en_nombres: 'Traiter {nom} en nombres',
+  atelier_supprimer_de: 'Supprimer {nom}…', atelier_renommer_titre: 'Renommer {nom}', atelier_nouveau_nom: 'Nouveau nom', atelier_renommer: 'Renommer',
+  atelier_renommer_vide: 'Tapez le nouveau nom : ce qui le suivra s’écrit ici.',
+  atelier_refaire_ajustes: 'Ajuster à nouveau tout de suite ce qui a été ajusté avec l’ancien nom ({modeles}), pour que les résultats prennent le nouveau',
+  atelier_note_renommer: 'Les définitions des modèles du projet suivent, leurs conditions aussi, de même que les formules des variables calculées et les références des documents à ses termes ({{M1.coef.site}}). Le code d’un modèle de code R n’est pas réécrit. Les étapes des données rejouent le changement de nom à sa place, après celles qui gardent l’ancien. Un seul Ctrl+Z annule le tout, références comprises.',
+  atelier_reajustes: '{n} modèle(s) ajusté(s) à nouveau.',
+  atelier_supprimer_titre: 'Supprimer {nom}', atelier_supprimer: 'Supprimer',
+  atelier_supprimer_question: 'Supprimer la colonne {nom} et ses valeurs ? Ctrl+Z la rend.',
 }, {
   atelier_remplacer: 'Find and replace…', atelier_categories: 'Categories…', atelier_variables: 'Units and descriptions…',
   atelier_quantitative: 'quantitative', atelier_qualitative: 'qualitative, {n} categories', atelier_qualitative_une: 'qualitative, 1 category',
@@ -307,11 +439,19 @@ ajouterTextes({
   atelier_premieres: 'the first {n}: filter for the others',
   atelier_note_unites: 'The unit goes into the axis titles (“density (ind./ha)”), the Data view’s header, the Methods and Results texts; the description into the header’s tooltip. Both are saved in the project, kept by File › Export data as Excel (a “Variables” sheet), GeoPackage, jamovi and R, and written as comments in the export to R.',
   atelier_unites_gardees: 'Units and descriptions of {n} variable(s) kept. Ctrl+Z undoes it.',
-  atelier_entete_aide: 'Click: sort. Right-click: unit and description, categories, find and replace.',
+  atelier_entete_aide: 'Click: sort. Right-click: unit and description, categories, find and replace, rename, treat as categories or as numbers, delete.',
   atelier_vides_n: '{n} empty', atelier_distinctes: '{n} distinct', atelier_resume: 'Column summary',
   atelier_resume_aide: 'Under each column’s name: the number of empty cells and of distinct values.',
   atelier_remplacer_dans: 'Find and replace in {nom}…', atelier_categories_de: 'Categories of {nom}…', atelier_unite_de: 'Unit and description of {nom}…',
   atelier_coller_aide: 'Click the cell to paste from, then Ctrl+V: a block of cells copied from a spreadsheet goes there.',
   atelier_colle: '{n} cell(s) pasted. Ctrl+Z undoes it.', atelier_coller_hors: 'Cells beyond the table were left out.',
   atelier_aide_cellule: 'Double-click: edit. Click, then Ctrl+V: paste cells copied from a spreadsheet from here on.',
+  atelier_renommer_de: 'Rename {nom}…', atelier_en_categories: 'Treat {nom} as categories', atelier_en_nombres: 'Treat {nom} as numbers',
+  atelier_supprimer_de: 'Delete {nom}…', atelier_renommer_titre: 'Rename {nom}', atelier_nouveau_nom: 'New name', atelier_renommer: 'Rename',
+  atelier_renommer_vide: 'Type the new name: what will follow it is written here.',
+  atelier_refaire_ajustes: 'Fit again now what was fitted with the old name ({modeles}), so that the results take the new one',
+  atelier_note_renommer: 'The definitions of the project’s models follow, their conditions too, as do the formulas of computed variables and the documents’ references to its terms ({{M1.coef.site}}). An R-code model’s code isn’t rewritten. The data steps replay the renaming in its place, after those that keep the old name. A single Ctrl+Z undoes it all, references included.',
+  atelier_reajustes: '{n} model(s) fitted again.',
+  atelier_supprimer_titre: 'Delete {nom}', atelier_supprimer: 'Delete',
+  atelier_supprimer_question: 'Delete the column {nom} and its values? Ctrl+Z brings it back.',
 });

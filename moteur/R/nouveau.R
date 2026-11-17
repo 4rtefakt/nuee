@@ -12,13 +12,20 @@
 # pour un fichier à prédire : quelques lignes peuvent avoir chacune une catégorie différente).
 # Un GeoPackage donne aussi les coordonnées du projet (spatial.R) : ses deux colonnes de
 # coordonnées et leur système.
-importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL) {
+#   `reglages` : ce qu'un import a décidé des colonnes, pour que celui du même fichier, ou de sa
+# version de l'année suivante, en décide de même (etapes.R : la source d'un projet). list() pour un
+# premier import : attr(, "reglages") rend ses décisions (projet_depuis_tableau, et `quantitatives`,
+# les colonnes lues en nombres). Avec des décisions, ces colonnes sont lues en nombres quoi qu'il
+# arrive : une colonne de mesures où des « absent » sont venus reste quantitative, et les modèles
+# qui l'utilisent aussi.
+importer_tableau <- function(chemin, table = NULL, secondaires = TRUE, quantitatives = NULL, reglages = NULL) {
   # (un classeur ou un GeoPackage écrit par l'export des données : sa feuille « Variables » rend les
   # unités et descriptions des variables, et n'est pas le tableau à ouvrir : atelier.R)
   variables <- if (extension(chemin) %in% c("xlsx", "xlsm", "xls", "gpkg")) tableau_variables_fichier(chemin)
   if (is.null(table) && !is.null(variables)) table <- tables_fichier(chemin)[1]
-  df <- lire_tableau(chemin, table, quantitatives)
-  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires), variables)
+  df <- lire_tableau(chemin, table, c(quantitatives, as.character(unlist(reglages$quantitatives))))
+  p <- appliquer_descriptions(projet_depuis_tableau(df, basename(chemin), secondaires, identifiants = reglages), variables)
+  if (!is.null(reglages)) attr(p, "reglages")$quantitatives <- names(df)[vapply(df, is.numeric, TRUE)]
   p$note <- unname(attr(df, "note"))
   co <- attr(df, "coordonnees")
   if (!is.null(co)) p$coordonnees <- tryCatch(list(x = numeros(p, co$x), y = numeros(p, co$y), systeme = co$systeme), error = function(e) NULL)
@@ -37,18 +44,39 @@ importer_texte <- function(texte, nom = "tableau", secondaires = TRUE) {
 # `toutes_modalites` : garder aussi les modalités d'un facteur sans observation (script R
 # autonome : les catégories restent celles du projet d'origine). `qualitatives` : des noms de
 # colonnes qui restent des variables même quand leurs valeurs diffèrent toutes (une question à
-# choix unique d'un formulaire : kobo.R).
-projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL) {
+# choix unique d'un formulaire : kobo.R). `identifiants` : list() pour savoir ce qui a été décidé
+# (attr(, "reglages") : `identifiant`, le nom de la première colonne quand elle nomme les
+# observations, "" quand ce sont les numéros des lignes ; `secondaires`, les colonnes gardées en
+# identifiants secondaires) ; ces décisions, pour les reprendre telles quelles quand le même
+# tableau est relu (etapes.R), une colonne de codes qui reçoit un doublon restant un identifiant.
+# La colonne qui nommait les observations reprend alors la première place si elle l'a quittée (un
+# fichier aux colonnes rangées autrement) ; sans elle, les observations ne se retrouveraient pas :
+# refusé.
+projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toutes_modalites = FALSE, qualitatives = NULL, identifiants = NULL) {
   if (!ncol(df) || !nrow(df)) stop(traduire("Le tableau est vide", "The table is empty"))
-  premiere_id <- is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
+  impose <- as.character(unlist(identifiants$identifiant))
+  if (length(impose) && nzchar(impose[1])) {
+    k <- match(impose[1], names(df))
+    if (is.na(k)) {
+      stop(sprintf(traduire("Le tableau n'a plus de colonne « %s », qui nommait les observations : elles ne peuvent pas se retrouver.",
+                            "The table no longer has the column “%s”, which named the observations: they can't be matched."), impose[1]), call. = FALSE)
+    }
+    if (k > 1) df <- df[c(k, seq_along(df)[-k])]
+  }
+  premiere_id <- if (length(impose)) nzchar(impose[1]) else is.character(df[[1]]) || (anyDuplicated(df[[1]]) == 0 &&
     (is.factor(df[[1]]) || grepl("^(primary )?id$|^obs|^nom|^name", names(df)[1], ignore.case = TRUE)))
+  colonne_id <- if (premiere_id) names(df)[1] else ""
   ids <- if (premiere_id) as.character(df[[1]]) else as.character(seq_len(nrow(df)))
+  # (une case vide de la colonne des noms : un nom vide, "", comme un identifiant secondaire vide ;
+  # manquant, le fichier du projet l'écrirait null, et ne se rouvrirait plus)
+  ids[is.na(ids)] <- ""
   if (premiere_id) df <- df[-1]
   # Une colonne de texte dont toutes les valeurs diffèrent (un code par observation) n'est
   # pas une variable : on la garde en identifiant secondaire, pour les étiquettes.
-  secondaire <- vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
-    !names(df) %in% qualitatives
-  ids_secondaires <- lapply(df[secondaire], as.character)
+  secondaire <- if (!is.null(identifiants$secondaires)) names(df) %in% as.character(unlist(identifiants$secondaires))
+    else vapply(df, function(x) secondaires && (is.character(x) || is.factor(x)) && !anyNA(x) && anyDuplicated(x) == 0, TRUE) &
+      !names(df) %in% qualitatives
+  ids_secondaires <- lapply(df[secondaire], function(x) { x <- as.character(x); x[is.na(x)] <- ""; x })
   df <- df[!secondaire]
   vars <- list()
   donnees <- matrix(NA_real_, nrow(df), ncol(df))
@@ -76,6 +104,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
   p$noms_obs <- stats::setNames(ids, as.character(seq_len(nrow(df))))
   p$noms_var <- stats::setNames(names(df), as.character(seq_along(df)))
   class(p) <- "projet_nuee"
+  if (!is.null(identifiants)) attr(p, "reglages") <- list(identifiant = colonne_id, secondaires = names(ids_secondaires))
   p
 }
 
@@ -122,7 +151,7 @@ resumer_par_groupe <- function(projet, groupes, variables = NULL, statistiques =
   noms_groupes <- vapply(g, `[[`, "", "nom")
   # « site, secteur et annee »
   enumerer <- function(et) if (length(noms_groupes) == 1) noms_groupes else paste(paste(utils::head(noms_groupes, -1), collapse = ", "), utils::tail(noms_groupes, 1), sep = et)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   uids <- vapply(vars, function(v) as.numeric(v$uid), 0)
   dans_groupes <- uids %in% suppressWarnings(as.numeric(groupes[!startsWith(groupes, "id:")]))
   qualitative <- vapply(vars, function(v) length(v$categories) > 0, TRUE)
@@ -378,12 +407,16 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
                            vc = NULL, blocs = NULL, modificateurs = NULL, aleatoires = NULL, correlation = NULL,
                            famille = NULL, lisses = NULL, decalage = NULL, croises_reglages = NULL, k_courbes = NULL, options = NULL,
                            condition = NULL, par_courbes = NULL, validation = NULL, lisse_spatial = NULL) {
+  # (un type inconnu serait ajusté comme une PLS, sans rien dire)
+  if (!isTRUE(as.character(type)[1] %in% c("PCA", "PLS", "PLS-DA", "OPLS", "OPLS-DA", REGRESSIONS, AUTRES_ANALYSES))) {
+    stop(sprintf(traduire("Type de modèle inconnu : %s.", "Unknown model type: %s."), paste(as.character(type), collapse = " ")), call. = FALSE)
+  }
   ech <- function(uid) {
     if (is.null(names(echelle))) return(echelle[[1]])
-    if (as.character(uid) %in% names(echelle)) return(echelle[[as.character(uid)]])
+    if (nom_numero(uid) %in% names(echelle)) return(echelle[[nom_numero(uid)]])
     if ("defaut" %in% names(echelle)) echelle[["defaut"]] else "UV"
   }
-  par_variable <- function(valeurs, uid) if (as.character(uid) %in% names(valeurs)) valeurs[[as.character(uid)]]
+  par_variable <- function(valeurs, uid) if (nom_numero(uid) %in% names(valeurs)) valeurs[[nom_numero(uid)]]
   # (chaque variable cherchée par son numéro dans un index fait une fois : variable_du_projet parcourt
   # toutes les variables à chaque appel, des millions de fois pour des milliers de longueurs d'onde ;
   # elle reste pour dire qu'un numéro n'existe pas)
@@ -394,7 +427,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   }
   termes <- function(u) termes_variable(projet, u, ech(u), trans(u), par_variable(blocs, u), par_variable(modificateurs, u), v = variable(u))
   trans <- function(uid) {
-    n <- if (as.character(uid) %in% names(transformations)) transformations[[as.character(uid)]]
+    n <- if (nom_numero(uid) %in% names(transformations)) transformations[[nom_numero(uid)]]
     if (is.null(n) || !nzchar(n)) return(NULL)
     lire_transformation(n)
   }
@@ -412,6 +445,7 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   obs <- observations %||% vapply(projet$observations, function(o) as.numeric(o$uid), 0)
   test <- unique(as.numeric(test))
   obs <- setdiff(obs, test)
+  exiger_observations(obs)  # (condition.R : avant les vérifications des groupes et des classes, qui en diraient une autre raison)
   x <- unique(as.numeric(x))
   y <- unique(as.numeric(y))
   spectres <- etapes_spectres(spectres)
@@ -431,12 +465,15 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
   if (nzchar(condition)) obs <- observations_condition(projet, condition, cochees)
   Ap <- if (opls) (if (plsda) length(unique(colonne(projet, classe, obs))) - 1 else length(y))
   if (opls && (is.na(Ap) || Ap < 1)) stop(if (plsda) traduire("Une OPLS-DA demande au moins deux classes", "An OPLS-DA needs at least two classes") else traduire("Une OPLS demande au moins une variable Y", "An OPLS needs at least one Y variable"))
+  # (une seule classe : son Y est constant, que trop_de_composantes dirait « sans variation »)
+  if (plsda && !opls && length(unique(colonne(projet, classe, obs))) < 2) stop(traduire("Une PLS-DA demande au moins deux classes", "A PLS-DA needs at least two classes"), call. = FALSE)
   if (opls && !is.null(A) && A > 0) A <- max(A, Ap)
   regression <- type %in% REGRESSIONS
   # (une régression : les facteurs de ses termes croisés qui ne sont pas en X, sans effet principal)
   seuls <- if (regression) setdiff(unique(as.numeric(unlist(croises))), x) else numeric(0)
   facteur_seul <- function(u) lapply(termes(u), function(t) c(t, list(facteur_seul = TRUE)))
   autre <- type %in% AUTRES_ANALYSES  # (analyses.R : RDA, CA, LDA, TREE, KMEANS)
+  if (!regression && !autre && !length(x)) stop(traduire("Choisissez au moins une variable X.", "Choose at least one X variable."), call. = FALSE)
   if (autre && length(test) && is.null(fonction_analyse("tester_", type))) {
     stop(traduire("Cette analyse ne prédit pas d'observations laissées de côté : elle ne prend pas de jeu de test.",
                   "This analysis doesn't predict left-out observations: it takes no test set."), call. = FALSE)
@@ -481,9 +518,17 @@ definir_modele <- function(projet, type, x, y = NULL, classe = NULL, observation
     d$A <- 0
     if (length(options)) d$options <- options  # (les réglages propres de l'analyse)
     if (length(classe) && !is.na(classe[1])) d$classe <- as.numeric(classe)[1]  # (sa variable de classe : LDA, arbre de classement)
+    f <- fonction_analyse("definir_", type)  # (analyses.R : sa définition complétée, ou refusée ; CODE, code.R)
+    if (!is.null(f)) d <- f(projet, d)
   }
   # (ACP, PLS, OPLS : la façon de valider, validation_croisee.R : mode_validation)
-  if (!regression && !autre && length(validation) && as.character(validation)[1] %in% MODES_VALIDATION) d$validation <- as.character(validation)[1]
+  # (une façon inconnue serait celle par défaut, sans rien dire)
+  if (!regression && !autre && length(validation) && nzchar(as.character(validation)[1])) {
+    if (!as.character(validation)[1] %in% MODES_VALIDATION) {
+      stop(sprintf(traduire("Validation croisée inconnue : %s (sans_fuite, centres ou complet).", "Unknown cross-validation: %s (sans_fuite, centres or complet)."), as.character(validation)[1]), call. = FALSE)
+    }
+    d$validation <- as.character(validation)[1]
+  }
   if (length(vc$by) && !identical(as.character(vc$by), "order")) {
     d$groupes_vc <- vc
     groupes_definition(projet, d)  # (une erreur claire maintenant : un seul groupe, identifiant inconnu)
@@ -536,7 +581,7 @@ reglages_modele <- function(projet, d) {
   modificateurs <- list()
   for (t in c(d$x, d$y)) {
     if (length(t$variables) != 1) next
-    k <- as.character(t$variables)
+    k <- nom_numero(t$variables)
     echelles[[k]] <- t$scaling$type %||% "UV"
     tr <- nom_transformation(t$transform)
     if (!is.null(tr)) transformations[[k]] <- tr
@@ -650,25 +695,45 @@ autoajuster_modele <- function(projet, definition, A_max = NULL, garder = TRUE) 
 # Enregistre un projet (données et définitions de modèles) au format lu par lire_projet(), avec
 # ce qui l'a écrit : le format (FORMAT_PROJET, projet.R), la version de Nuée (`version`), de R et
 # des paquets R qui calculent les modèles (PAQUETS_CALCUL), pour savoir plus tard avec quoi un
-# résultat a été obtenu.
+# résultat a été obtenu. La source de ses données et les fichiers de ses étapes y prennent leur
+# chemin depuis `dossier` (etapes.R : chemins_relatifs), celui du fichier ; une copie de secours
+# garde ceux depuis le dossier du projet. `auteur` : qui l'enregistre, écrit avec ce qui l'a écrit
+# quand il est donné (un collègue qui a ouvert le même fichier le voit : serveur.R, fichier_change).
+# `copie` : un fichier de la séance où l'écrire d'abord, puis le copier à sa place ; il reste, tel que
+# le fichier est écrit (la base d'une fusion avec ce que d'autres y enregistreront : fusion.R).
 PAQUETS_CALCUL <- c("stats", "mgcv", "nlme", "MASS", "rpart", "cluster")
 version_paquet <- function(x) tryCatch(as.character(utils::packageVersion(x)), error = function(e) NA_character_)
-enregistrer_projet <- function(projet, chemin, version = "") {
-  p <- unclass(projet)
+enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(chemin), copie = NULL, auteur = NULL) {
+  p <- unclass(chemins_relatifs(projet, dossier))
   for (i in seq_along(p$datasets)) {
     d <- p$datasets[[i]]
-    p$datasets[[i]]$values <- unname(projet$donnees[as.character(d$observations), as.character(d$variables), drop = FALSE])
+    p$datasets[[i]]$values <- unname(projet$donnees[nom_numero(d$observations), nom_numero(d$variables), drop = FALSE])
   }
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
+  p$lecture_seule <- p$cache <- NULL  # (une ancienne version ouverte, un projet caché : serveur.R, ouvrir)
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
+  # (un nom seulement : l'auteur des versions, { nom, email }, n'y laisse pas son courriel)
+  auteur <- as.character(unlist(if (is.list(auteur)) auteur$nom else auteur))
+  if (length(auteur) && !is.na(auteur[1]) && nzchar(trimws(auteur[1]))) p$nuee$auteur <- trimws(auteur[1])
   # (des milliers de petites listes, que jsonlite écrit une à une : les observations, écrites d'un coup
   # comme les lignes d'un tableau, et les termes d'un modèle, écrits une fois pour tous les modèles
   # qui ont les mêmes ; le même texte, que write_json reprend tel quel, json_verbatim)
   p$observations <- json_observations(p$observations)
   p$models <- json_termes_modeles(p$models)
-  ecrire_sans_risque(chemin, function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE))
+  ecrire <- function(f) jsonlite::write_json(p, f, auto_unbox = TRUE, null = "null", na = "null", digits = NA, json_verbatim = TRUE)
+  # (une copie qui ne s'écrit pas, le disque de la séance plein : le fichier s'écrit comme avant, sans elle ;
+  # attr(, "copie") dit si elle est là)
+  if (!is.null(copie) && !isTRUE(tryCatch(suppressWarnings({ ecrire(copie); TRUE }), error = function(e) FALSE))) {
+    unlink(copie)
+    copie <- NULL
+  }
+  if (is.null(copie)) return(invisible(structure(ecrire_sans_risque(chemin, ecrire), copie = NULL)))
+  ecrire_sans_risque(chemin, function(f) {
+    if (!file.copy(copie, f, overwrite = TRUE)) stop(sprintf(traduire("Impossible d'écrire %s", "Couldn't write %s"), chemin), call. = FALSE)
+  })
+  invisible(structure(chemin, copie = copie))
 }
 
 # Les observations d'un projet (list(uid, ids) chacune) en JSON, tel que jsonlite les écrirait une à

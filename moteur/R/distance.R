@@ -103,19 +103,22 @@ serie_ajustement <- function(serie, u, ordres) {
 }
 
 # La clé k(x) et ses dérivées par ln b et ln σ. Hasard : k = 1 − exp(−z), z = (x/σ)^−b ; dk/dln σ =
-# b z e^−z, dk/dln b = z e^−z ln z (nulles en x = 0, où z est infini).
-cle_detection <- function(fd, theta, x) {
-  ix <- indices_detection(fd)
+# b z e^−z, dk/dln b = z e^−z ln z (nulles en x = 0, où z est infini). `ix` : indices_detection(fd),
+# s'il est déjà calculé ; sans `derivees`, k seule (la quadrature d'une intégrale demande la clé en des
+# milliers de points, et ses dérivées quand c'est celle d'une dérivée).
+cle_detection <- function(fd, theta, x, ix = indices_detection(fd), derivees = TRUE) {
   if (fd$cle == "unif") return(list(k = rep(1, length(x))))
   sigma <- exp(theta[ix$echelle])
   if (fd$cle == "hn") {
     k <- exp(-(x / sigma)^2 / 2)
+    if (!derivees) return(list(k = k))
     return(list(k = k, dechelle = k * (x / sigma)^2))
   }
   b <- exp(theta[ix$forme])
   lz <- -b * log(x / sigma)
   z <- exp(lz)
   k <- -expm1(-z)
+  if (!derivees) return(list(k = k))
   ze <- z * exp(-z)
   ze[!is.finite(z)] <- 0
   dforme <- ze * lz
@@ -124,10 +127,10 @@ cle_detection <- function(fd, theta, x) {
 }
 
 # g̃(x) = k(x) (1 + Σ aj fj(x/h)), sans la division par sa valeur en 0, 1 + s0 (k(0) = 1 pour les
-# trois clés), et, sur demande, leurs dérivées par θ (une colonne par paramètre).
-detection_distance <- function(fd, theta, x, derivees = FALSE) {
-  ix <- indices_detection(fd)
-  kk <- cle_detection(fd, theta, x)
+# trois clés), et, sur demande, leurs dérivées par θ (une colonne par paramètre). `ix` :
+# indices_detection(fd), s'il est déjà calculé.
+detection_distance <- function(fd, theta, x, derivees = FALSE, ix = indices_detection(fd)) {
+  kk <- cle_detection(fd, theta, x, ix, derivees)
   m <- length(fd$ordres)
   s <- 0
   s0 <- 0
@@ -167,16 +170,19 @@ poids_detection <- function(fd, x) if (fd$point) 2 * x / fd$w^2 else rep(1 / (fd
 # Φ(a/σ)) / (w − L) ; points : 2 σ² (exp(−a²/2σ²) − exp(−b²/2σ²)) / w²), et la dérivée par ln σ tirée
 # de l'intégrale, g ne dépendant que de x/σ (∂g/∂ln σ = −x ∂g/∂x, intégrée par parties : I − (b g(b) −
 # a g(a)) / (w − L) pour des lignes, 2 I − 2 (b² g(b) − a² g(a)) / w² pour des points) ; restent
-# numériques l'intégrale du hasard et sa dérivée par ln b.
+# numériques l'intégrale du hasard et sa dérivée par ln b. Les fonctions intégrées sont appelées des
+# milliers de fois : les indices des paramètres sont calculés une fois, et pour une clé seule, g̃ = k
+# (k × 1, exactement), elles prennent la clé et sa dérivée par ln b de cle_detection, sans passer par
+# detection_distance.
 integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
+  ix <- indices_detection(fd)
+  cle_seule <- !length(fd$ordres) && fd$cle != "unif"
   valeur <- function(x) {
-    v <- poids_detection(fd, x) * detection_distance(fd, theta, x)$gt
+    v <- poids_detection(fd, x) * (if (cle_seule) cle_detection(fd, theta, x, ix, FALSE)$k else detection_distance(fd, theta, x, ix = ix)$gt)
     v[!(v >= 1e-16)] <- 0
     v
   }
   a <- rep_len(a, length(b))
-  ix <- indices_detection(fd)
-  cle_seule <- !length(fd$ordres) && fd$cle != "unif"
   if (cle_seule && fd$cle == "hn") {
     s <- exp(theta[ix$echelle])
     ua <- a^2 / (2 * s^2)
@@ -184,11 +190,16 @@ integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
     I <- if (fd$point) 2 * s^2 * ifelse(ua > 0.5, exp(-ua) - exp(-ub), expm1(-ua) - expm1(-ub)) / fd$w^2
          else s * sqrt(2 * pi) * (stats::pnorm(a / s, lower.tail = FALSE) - stats::pnorm(b / s, lower.tail = FALSE)) / (fd$w - fd$L)
   } else I <- vapply(seq_along(b), function(i) integrer_detection(valeur, a[i], b[i]), 0)
-  e0 <- detection_distance(fd, theta, 0, derivees)
+  e0 <- detection_distance(fd, theta, 0, derivees, ix)
   if (!derivees) return(list(I = I, s0 = e0$s0))
   derivee <- function(j) function(x) {
-    e <- detection_distance(fd, theta, x, TRUE)
     pd <- poids_detection(fd, x)
+    if (cle_seule) {  # (j : ln b, le seul paramètre d'une clé seule dont la dérivée s'intègre)
+      kk <- cle_detection(fd, theta, x, ix)
+      v <- pd * kk$k
+      return(pd * kk$dforme * (!is.na(v) & v >= 1e-16))
+    }
+    e <- detection_distance(fd, theta, x, TRUE, ix)
     v <- pd * e$gt
     pd * e$dgt[, j] * (!is.na(v) & v >= 1e-16)
   }
@@ -197,7 +208,7 @@ integrale_detection <- function(fd, theta, a, b, derivees = FALSE) {
     dI[, j] <- vapply(seq_along(b), function(i) integrer_detection(derivee(j), a[i], b[i]), 0)
   }
   if (cle_seule) {
-    k <- function(x) cle_detection(fd, theta, x)$k
+    k <- function(x) cle_detection(fd, theta, x, ix, FALSE)$k
     dI[, ix$echelle] <- if (fd$point) 2 * I - 2 * (b^2 * k(b) - a^2 * k(a)) / fd$w^2 else I - (b * k(b) - a * k(a)) / (fd$w - fd$L)
   }
   list(I = I, dI = dI, s0 = e0$s0, ds0 = e0$ds0)
@@ -1001,7 +1012,7 @@ donnees_echantillonnage <- function(projet, d, r) {
                effort = if (!is.null(r$effort)) quant(r$effort, "L'effort", "The effort"), aire = if (!is.null(r$aire)) quant(r$aire, "L'aire", "The area"),
                taille = if (!is.null(r$taille)) quant(r$taille, "La taille des groupes", "The group size"))
   obs <- as.numeric(d$observations)
-  noms_obs <- unname(projet$noms_obs[as.character(obs)])
+  noms_obs <- unname(projet$noms_obs[nom_numero(obs)])
   x <- colonne(projet, uy, obs)
   tr <- textes_echantillonnage(valeurs_groupement(projet, r$echantillon, obs))
   st <- if (!is.null(r$strate)) textes_echantillonnage(valeurs_groupement(projet, r$strate, obs)) else rep("", length(obs))

@@ -75,12 +75,14 @@ d_per <- definir_modele(p, "PERMANOVA", x = u("habitat", "temp"), y = u(sprintf(
 # (et une PLS validée avec les centres et les poids du modèle complet, comme celles des fichiers
 # .usp : son script n'a pas l'intervalle de ses coefficients)
 d_plc <- definir_modele(p, "PLS", x = u("temp", "ph", "altitude"), y = u("biomasse"), A = 2, nom = "M4", validation = "complet")
-p$models <- list(d_pls, d_glm, d_per, d_plc)
+# (et un GAM, une courbe de la température et une droite de l'altitude : ses effets, vue Effets)
+d_gam <- definir_modele(p, "GAM", x = u("temp", "altitude"), y = u("biomasse"), famille = "gaussienne", lisses = u("temp"), echelle = "none", nom = "M5")
+p$models <- list(d_pls, d_glm, d_per, d_plc, d_gam)
 m_pls <- ajuster(p, d_pls)
 m_glm <- ajuster(p, d_glm)
 m_per <- ajuster(p, d_per)
 modeles <- list(m1 = list(definition = d_pls, modele = m_pls), m2 = list(definition = d_glm, modele = m_glm), m3 = list(definition = d_per, modele = m_per),
-                m4 = list(definition = d_plc, modele = ajuster(p, d_plc)))
+                m4 = list(definition = d_plc, modele = ajuster(p, d_plc)), m5 = list(definition = d_gam, modele = ajuster(p, d_gam)))
 
 # Les valeurs citées : ce que l'interface envoie (references.js : formeReference) et ce que Nuée en
 # écrit (les nombres du moteur, écrits par nuee.R).
@@ -133,7 +135,16 @@ BLOCS <- list(
   list(modele = "m2", chemin = list("residus"), genre = "figure", vue = "residus", variante = list(mode = "ajustes", residus = "standard"), etiquette = "fig-residus", legende = "Résidus"),
   list(modele = "m2", chemin = list("table", "coefficients"), genre = "tableau", cle = "coefficients", etiquette = "tbl-coefficients", legende = "Coefficients"),
   list(modele = "m3", chemin = list("permanova"), genre = "figure", vue = "permanova", variante = list(), etiquette = "fig-permanova", legende = "PERMANOVA"),
-  list(modele = "m3", chemin = list("table", "permanova"), genre = "tableau", cle = "permanova", etiquette = "tbl-permanova", legende = "Table de la PERMANOVA"))
+  list(modele = "m3", chemin = list("table", "permanova"), genre = "tableau", cle = "permanova", etiquette = "tbl-permanova", legende = "Table de la PERMANOVA"),
+  # (les effets du GAM, vue Effets : le premier terme, {{M5.effets}}, puis la droite de l'altitude, {{M5.effets.altitude}})
+  list(modele = "m5", chemin = list("effets"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = FALSE), etiquette = "fig-effets", legende = "Effet de la température"),
+  list(modele = "m5", chemin = list("effets", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE), etiquette = "fig-effet-altitude",
+       legende = "Effet de l'altitude"),
+  # (et les seuils de sa courbe, la vue Effets avec ses seuils : sa seule courbe, {{M5.seuils}})
+  list(modele = "m5", chemin = list("seuils"), genre = "figure", vue = "effets", variante = list(terme = "temp", seuils = TRUE), etiquette = "fig-seuils", legende = "Seuils"),
+  # (et les valeurs prédites de l'altitude sur l'échelle de la réponse, {{M5.valeurs_predites.altitude}} : le graphique prediction-k du script)
+  list(modele = "m5", chemin = list("valeurs_predites", "altitude"), genre = "figure", vue = "effets", variante = list(terme = "altitude", seuils = FALSE, echelle = "reponse"),
+       etiquette = "fig-predites", legende = "Valeurs prédites de l'altitude"))
 EN_DUR <- list(
   list(modele = "m1", chemin = list("biplot"), genre = "figure", vue = "biplot", variante = list()),
   list(modele = "m4", chemin = list("coef", "temp"), genre = "valeur", forme = list(forme = "coef_cs"), texte = "0,12 [0,05 ; 0,19]"),
@@ -156,7 +167,7 @@ for (langue in c("fr", "en")) {
   nb_blocs <- length(BLOCS)
   sous <- file.path(ici, "Mon article_R")
   verifier("à côté du .qmd : nuee.R, et pour chaque modèle son script et ses données en CSV",
-           identical(sort(basename(rr$fichiers)), sort(c("nuee.R", paste0("M", 1:4, ".R"), sprintf(if (langue == "en") "M%d - data.csv" else "M%d - donnees.csv", 1:4)))) &&
+           identical(sort(basename(rr$fichiers)), sort(c("nuee.R", paste0("M", 1:5, ".R"), sprintf(if (langue == "en") "M%d - data.csv" else "M%d - donnees.csv", 1:5)))) &&
              all(file.exists(rr$fichiers)) && all(startsWith(rr$relatifs, "Mon article_R/")) && dir.exists(sous))
   codes <- vapply(rr$references[seq_len(nv)], function(z) z$code %||% NA_character_, "")
   manquent <- which(is.na(codes))
@@ -186,6 +197,21 @@ for (langue in c("fr", "en")) {
   writeBin(charToRaw(enc2utf8(paste0(c("---", "title: \"Essai\"", sprintf("lang: %s", langue), "---", "", inst, "",
                                        sprintf("- v%d: `r %s`", seq_len(nv), codes), "", unlist(Map(bloc, BLOCS, blocs))), "\n", collapse = ""))), qmd)
   attendus <- vapply(refs[seq_len(nv)], `[[`, "", "texte")
+  # Le code R du .qmd lancé sans knitr dans une session neuve, depuis son dossier : le bloc du début
+  # (nuee.R, les modèles refaits), puis chaque graphique dans un PNG à lui ; chacun est dessiné (les
+  # effets du GAM compris : le script les refait, script.R, effets_script)
+  figures <- which(vapply(BLOCS, function(b) b$genre == "figure", TRUE))
+  code_r <- c(grep("^```", inst, value = TRUE, invert = TRUE),
+              unlist(lapply(figures, function(k) c(sprintf("grDevices::png(%s)", deparse(sprintf("figure-%d.png", k))), blocs[[k]]$lignes, "invisible(grDevices::dev.off())"))))
+  f_code <- file.path(ici, "figures.R")
+  writeBin(charToRaw(enc2utf8(paste0(code_r, "\n", collapse = ""))), f_code)
+  avant <- setwd(ici)
+  sortie_r <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), c("--vanilla", shQuote(basename(f_code))), stdout = TRUE, stderr = TRUE))
+  setwd(avant)
+  dessinees <- file.exists(file.path(ici, sprintf("figure-%d.png", figures)))
+  verifier(sprintf("le code de ses %d graphiques, lancé seul dans une session neuve, les dessine, les effets du GAM compris%s", length(figures),
+                   if (!all(dessinees)) sprintf(" ; NON : %s", paste(c(vapply(BLOCS[figures[!dessinees]], `[[`, "", "etiquette"), utils::tail(sortie_r, 3)), collapse = " / ")) else ""),
+           all(dessinees))
 
   # Rendu par Quarto, s'il est là (et knitr et rmarkdown pour R) : les nombres de la page, ses figures et ses tableaux
   quarto <- Filter(function(f) nzchar(f) && file.exists(f), c(Sys.getenv("QUARTO_PATH"), unname(Sys.which("quarto")),
@@ -229,6 +255,127 @@ z <- x$r$references[vapply(x$refs, function(r) identical(r$modele, "m3"), TRUE)]
 verifier("ses valeurs, graphiques et tableaux restent en dur ; le premier bloc le dit, sans le refaire",
          all(vapply(z, function(y) identical(y$raison, ms$m3$erreur), TRUE)) && !any(grepl("^M3 <- ", x$r$installation)) &&
            any(grepl("^#   M3 : une catégorie", x$r$installation)) && any(grepl("^M1 <- nuee_refaire", x$r$installation)))
+cat("Les effets que le script d'une régression ne dessine pas\n")
+# deux courbes : leurs seuils, que le script dessine ensemble, restent l'image de Nuée (leurs effets
+# sont refaits) ; un terme croisé avec des catégories, une droite par catégorie, aussi (la droite
+# seule d'un autre terme est refaite)
+d_gam2 <- definir_modele(p, "GAM", x = u("temp", "altitude"), y = u("biomasse"), famille = "gaussienne", lisses = u("temp", "altitude"), echelle = "none", nom = "M6")
+d_lmx <- definir_modele(p, "LM", x = u("temp", "habitat", "ph"), y = u("biomasse"), echelle = "none", croises = list(u("temp", "habitat")), nom = "M7")
+figure <- function(modele, chemin, variante) list(modele = modele, chemin = as.list(chemin), genre = "figure", vue = "effets", variante = variante)
+ici <- file.path(dossier, "effets")
+dir.create(ici)
+re <- ecrire_document_reproductible(p, list(m6 = list(definition = d_gam2, modele = ajuster(p, d_gam2)), m7 = list(definition = d_lmx, modele = ajuster(p, d_lmx))),
+                                    list(figure("m6", "seuils", list(terme = "temp", seuils = TRUE)), figure("m6", c("effets", "altitude"), list(terme = "altitude", seuils = FALSE)),
+                                         figure("m7", "effets", list(terme = "temp", seuils = FALSE)), figure("m7", c("effets", "ph"), list(terme = "ph", seuils = FALSE))),
+                                    ici, "Effets", "fr", "essai")
+code <- vapply(re$references, function(z) length(z$lignes) > 0, TRUE)
+verifier("en dur : les seuils d'un GAM à deux courbes et l'effet d'un terme croisé avec l'habitat ; refaits : la courbe de l'altitude et la droite du pH",
+         identical(code, c(FALSE, TRUE, FALSE, TRUE)) && all(vapply(re$references[!code], function(z) nzchar(z$raison %||% ""), TRUE)))
+cat("Les résultats clés des autres analyses, cités et refaits par leur script\n")
+# (references.js : referenceCle ; document_reproductible.R : expression_cle) la pente globale de TRIM,
+# sa variation en %, sa classe, σ² et ρ, sur les comptages d'alouettes du tutoriel ; la densité de
+# l'échantillonnage par distances, son intervalle et son CV, p et ESW, sur ses transects ; le R² ajusté
+# et le test d'une RDA, le stress d'une NMDS, le R² et la valeur p d'une PERMANOVA. La forme de chaque
+# valeur : celle que l'interface envoie ; son texte : celui de Nuée, écrit ici par nuee.R.
+sig3 <- function(v) max(0, min(6, 2 - floor(log10(abs(v)))))
+pa <- projet_depuis_tableau(utils::read.csv("docs/site/donnees/skylark_counts.csv", stringsAsFactors = FALSE), "alouettes")
+ua <- function(...) numeros(pa, c(...))
+d_trim <- definir_modele(pa, "TRIM", x = NULL, y = ua("skylarks"), echelle = "none", nom = "T1",
+                         options = list(site = list(by = "variable", variable = ua("site")), temps = list(by = "variable", variable = ua("year")), modele = 2,
+                                        surdispersion = TRUE, correlation = TRUE))
+m_trim <- ajuster(pa, d_trim)
+pt <- m_trim$pentes[m_trim$pentes$quoi == "imputee", ]
+pd <- projet_depuis_tableau(cbind(nom = sprintf("d%03d", seq_len(nrow(utils::read.csv("docs/site/donnees/skylark_transects.csv")))),
+                                  utils::read.csv("docs/site/donnees/skylark_transects.csv", stringsAsFactors = FALSE), stringsAsFactors = FALSE), "transects")
+ud <- function(x) numeros(pd, x)
+d_dist <- definir_modele(pd, "DISTANCE", x = NULL, y = ud("distance"), echelle = "none", nom = "D1",
+                         options = list(transect = "ligne", echantillon = list(by = "variable", variable = ud("Sample.Label")), strate = list(by = "variable", variable = ud("Region.Label")),
+                                        effort = ud("Effort"), aire = ud("Area"), taille = ud("size"), troncature = list(type = "aucune"), gauche = 0, cle = "hn", serie = "cos",
+                                        ajustements = "aic", monotonie = "stricte", echelle_ajustements = "largeur", unites = list(distance = "m", effort = "km", aire = "km2")))
+m_dist <- ajuster(pd, d_dist)
+tot <- m_dist$densite[nrow(m_dist$densite), ]
+# (les mêmes transects en deux strates, nord et sud, de 60 km² : la densité de chacune, son intervalle et son CV)
+tr2 <- utils::read.csv("docs/site/donnees/skylark_transects.csv", stringsAsFactors = FALSE)
+tr2$Region.Label <- ifelse(tr2$Sample.Label <= "T12", "nord", "sud")
+tr2$Area <- 60
+pd2 <- projet_depuis_tableau(cbind(nom = sprintf("d%03d", seq_len(nrow(tr2))), tr2, stringsAsFactors = FALSE), "transects_strates")
+ud2 <- function(x) numeros(pd2, x)
+d_dist2 <- definir_modele(pd2, "DISTANCE", x = NULL, y = ud2("distance"), echelle = "none", nom = "D2",
+                          options = list(transect = "ligne", echantillon = list(by = "variable", variable = ud2("Sample.Label")), strate = list(by = "variable", variable = ud2("Region.Label")),
+                                         effort = ud2("Effort"), aire = ud2("Area"), taille = ud2("size"), troncature = list(type = "aucune"), gauche = 0, cle = "hn", serie = "cos",
+                                         ajustements = "aic", monotonie = "stricte", echelle_ajustements = "largeur", unites = list(distance = "m", effort = "km", aire = "km2")))
+m_dist2 <- ajuster(pd2, d_dist2)
+st_nord <- m_dist2$densite[m_dist2$densite$strate %in% "nord", ]
+st_sud <- m_dist2$densite[m_dist2$densite$strate %in% "sud", ]
+d_rda <- definir_modele(p, "RDA", x = u("temp", "ph", "habitat"), y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "R1",
+                        options = list(transformation = "hellinger", permutations = 99, graine = 3))
+m_rda <- ajuster(p, d_rda)
+d_nmds <- definir_modele(p, "NMDS", x = NULL, y = u(sprintf("sp%d", 1:6)), echelle = "none", nom = "N1", options = list(distance = "bray", k = 2, departs = 5, graine = 5))
+m_nmds <- ajuster(p, d_nmds)
+ia <- list(t1 = list(definition = d_trim, modele = m_trim, projet = pa), d1 = list(definition = d_dist, modele = m_dist, projet = pd),
+           d2 = list(definition = d_dist2, modele = m_dist2, projet = pd2),
+           r1 = list(definition = d_rda, modele = m_rda), n1 = list(definition = d_nmds, modele = m_nmds), m3 = modeles$m3)
+pc <- function(d = 1) list(forme = "pourcentage", decimales = d)
+pv <- list(forme = "p", decimales = 3)
+ic_f <- function(d, pourcentage = FALSE) list(forme = "ic", decimales = d, pourcentage = pourcentage)
+CLES <- list(
+  valeur("t1", "pente", nb(4), function(f) f$nuee_nombre(pt$multiplicative, 4)),
+  valeur("t1", c("pente", "ic"), ic_f(4), function(f) f$nuee_ic(pt$bas, pt$haut, 4)),
+  valeur("t1", c("pente", "p"), pv, function(f) f$nuee_p(pt$p)),
+  valeur("t1", c("pente", "pourcent"), pc(1), function(f) f$nuee_pourcentage(pt$multiplicative - 1, 1)),
+  valeur("t1", c("pente", "pourcent", "ic"), ic_f(1, TRUE), function(f) f$nuee_ic(pt$bas - 1, pt$haut - 1, 1, TRUE)),
+  c(valeur("t1", c("pente", "classe"), list(forme = "texte"), NULL), list(classe = pt$classe)),
+  valeur("t1", "sigma2", nb(sig3(m_trim$sigma2)), function(f) f$nuee_nombre(m_trim$sigma2, sig3(m_trim$sigma2))),
+  valeur("t1", "rho", nb(sig3(m_trim$rho)), function(f) f$nuee_nombre(m_trim$rho, sig3(m_trim$rho))),
+  valeur("d1", "D", nb(sig3(tot$D)), function(f) f$nuee_nombre(tot$D, sig3(tot$D))),
+  valeur("d1", c("D", "ic"), ic_f(sig3(tot$D)), function(f) f$nuee_ic(tot$bas_D, tot$haut_D, sig3(tot$D))),
+  valeur("d1", c("D", "cv"), pc(1), function(f) f$nuee_pourcentage(tot$cv, 1)),
+  valeur("d1", "abondance", nb(sig3(tot$N)), function(f) f$nuee_nombre(tot$N, sig3(tot$N))),
+  valeur("d1", "p", nb(sig3(m_dist$p)), function(f) f$nuee_nombre(m_dist$p, sig3(m_dist$p))),
+  valeur("d1", "ESW", nb(sig3(m_dist$effectif$valeur)), function(f) f$nuee_nombre(m_dist$effectif$valeur, sig3(m_dist$effectif$valeur))),
+  # (la densité d'une strate, {{D2.D.nord}}, son intervalle et son CV : la strate par son nom, avant une partie de la densité totale)
+  valeur("d2", c("D", "nord"), nb(sig3(st_nord$D)), function(f) f$nuee_nombre(st_nord$D, sig3(st_nord$D))),
+  valeur("d2", c("D", "nord", "ic"), ic_f(sig3(st_nord$D)), function(f) f$nuee_ic(st_nord$bas_D, st_nord$haut_D, sig3(st_nord$D))),
+  valeur("d2", c("D", "sud", "cv"), pc(1), function(f) f$nuee_pourcentage(st_sud$cv, 1)),
+  valeur("r1", "R2_ajuste", nb(sig3(m_rda$r2_ajuste)), function(f) f$nuee_nombre(m_rda$r2_ajuste, sig3(m_rda$r2_ajuste))),
+  valeur("r1", c("test", "modele", "p"), pv, function(f) f$nuee_p(m_rda$test$p)),
+  valeur("n1", "stress", nb(sig3(m_nmds$noyau$stress)), function(f) f$nuee_nombre(m_nmds$noyau$stress, sig3(m_nmds$noyau$stress))),
+  valeur("m3", c("permanova", "modele"), nb(sig3(m_per$noyau$modele$R2)), function(f) f$nuee_nombre(m_per$noyau$modele$R2, sig3(m_per$noyau$modele$R2))),
+  valeur("m3", c("permanova", "modele", "p"), pv, function(f) f$nuee_p(m_per$noyau$modele$p)))
+for (langue in c("fr", "en")) {
+  f <- if (langue == "en") en else fr
+  refs_c <- lapply(CLES, function(v) c(v[c("modele", "chemin", "genre", "forme")],
+                                        list(texte = if (!is.null(v$classe)) libelle_classe_trim(v$classe, langue == "fr") else v$nombre(f))))
+  ici <- file.path(dossier, paste0("cles_", langue))
+  dir.create(ici)
+  rc <- ecrire_document_reproductible(p, ia, refs_c, ici, "Suivi", langue, "essai")
+  codes <- vapply(rc$references, function(z) z$code %||% NA_character_, "")
+  manquent <- which(is.na(codes))
+  verifier(sprintf("en %s : chaque résultat clé cité (pente de TRIM et sa classe, densité totale et d'une strate, et leur CV, R² ajusté, stress, PERMANOVA) est une expression du script qui redonne le texte de Nuée (%d)%s",
+                   langue, length(CLES), if (length(manquent)) sprintf(" ; EN DUR : %s", paste(sprintf("%s (%s)", vapply(CLES[manquent], function(v) paste(unlist(v$chemin), collapse = "."), ""),
+                                                                                                          vapply(rc$references[manquent], function(z) z$raison %||% "?", "")), collapse = " | ")) else ""),
+           !length(manquent) && all(vapply(rc$modeles, function(x) is.null(x$erreur), TRUE)))
+}
+
+cat("Un modèle ajusté avant un nouvel ordre de ses catégories\n")
+# (Édition › Catégories : l'habitat dans un autre ordre ; le modèle reste valide, sa définition suit le
+# nouvel ordre. Le script de la PERMANOVA, écrit sur le projet d'aujourd'hui, donnerait ses
+# dispersions dans un autre ordre : écrit sur le projet tel qu'elle l'a vu, avec la définition de son
+# ajustement, comme le serveur le fait (serveur.R : document_reproductible ; atelier.R :
+# projet_tel_ajuste), il la refait)
+p_ordre <- changer_categories(p, u("habitat"), c("bois", "lande", "prairie"), c("prairie", "lande", "bois"))
+refs_ordre <- list(valeur("m3", "N", nb(0), NULL), list(modele = "m3", chemin = list("permanova"), genre = "figure", vue = "permanova", variante = list()))
+refs_ordre[[1]]$texte <- fr$nuee_nombre(m_per$N, 0)
+ici <- file.path(dossier, "ordre")
+dir.create(ici)
+aujourdhui <- ecrire_document_reproductible(p_ordre, list(m3 = list(definition = aligner_categories(p_ordre, d_per, categories_definition(p, d_per)), modele = m_per)),
+                                            refs_ordre, ici, "Aujourdhui", "fr", "essai")
+tel_vu <- ecrire_document_reproductible(p_ordre, list(m3 = list(definition = d_per, modele = m_per, projet = projet_tel_ajuste(p_ordre, ordres_categories(p)))),
+                                        refs_ordre, ici, "Tel vu", "fr", "essai")
+verifier("sur le projet tel qu'il l'a vu : refait, sa valeur et son graphique par R (sur celui d'aujourd'hui : ses dispersions dans un autre ordre)",
+         grepl("dispersion", aujourdhui$modeles[[1]]$erreur %||% "") && is.null(tel_vu$modeles[[1]]$erreur) &&
+           identical(tel_vu$references[[1]]$code, "nuee_nombre(nrow(M3$Y), 0)") && length(tel_vu$references[[2]]$lignes) > 0)
+
 if (is.null(fonction_analyse("ecrire_script_", "DISTANCE"))) {
   verifier("un type sans export vers R le dit (raison_sans_export), dans la langue demandée", grepl("export vers R", raison_sans_export(list(type = "DISTANCE"))) &&
              grepl("No export to R", raison_sans_export(list(type = "DISTANCE"), function(fr, en) en)) &&

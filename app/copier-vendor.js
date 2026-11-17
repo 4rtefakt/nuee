@@ -10,24 +10,25 @@ for (const f of ['plotly.js-dist-min/plotly.min.js', 'dockview-core/dist/dockvie
 }
 
 // The document editor (interface/documents.js): CodeMirror 6 and markdown-it (MIT licences), in
-// one file loaded when a document is first opened, as window.CM and window.markdownit. The
-// licence of each package it holds is written at its end.
+// one file loaded when a document is first opened, as window.CM and window.markdownit (an R-code
+// model's editor too, with line numbers and its own R highlighting on StreamLanguage:
+// interface/vues_code.js). The licence of each package it holds is written at its end.
 const editeur = require('esbuild').buildSync({
   stdin: {
     contents: `
-      import { EditorState, Compartment } from '@codemirror/state';
-      import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType } from '@codemirror/view';
+      import { EditorState, Compartment, Transaction } from '@codemirror/state';
+      import { EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator, WidgetType, lineNumbers } from '@codemirror/view';
       import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-      import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput } from '@codemirror/language';
+      import { syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput, StreamLanguage, bracketMatching } from '@codemirror/language';
       import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
       import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion } from '@codemirror/autocomplete';
       import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
       import { tags } from '@lezer/highlight';
       import markdownit from 'markdown-it';
-      window.CM = { EditorState, Compartment, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
+      window.CM = { EditorState, Compartment, Transaction, EditorView, keymap, drawSelection, highlightActiveLine, placeholder, Decoration, ViewPlugin, MatchDecorator,
         WidgetType, defaultKeymap, history, historyKeymap, indentWithTab, syntaxHighlighting, defaultHighlightStyle, HighlightStyle, indentOnInput,
         markdown, markdownLanguage, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, startCompletion, search, searchKeymap,
-        highlightSelectionMatches, openSearchPanel, tags };
+        highlightSelectionMatches, openSearchPanel, tags, lineNumbers, StreamLanguage, bracketMatching };
       window.markdownit = markdownit;`,
     resolveDir: __dirname,
     loader: 'js',
@@ -58,7 +59,10 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   layout-dashboard ruler arrow-up-down scissors file-spreadsheet undo-2 check shuffle grid-3x3 scale git-merge
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
   quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open map radar layers signpost smartphone
-  layout-grid arrow-up arrow-down`.split(/\s+/);
+  layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert user-round
+  log-in log-out user-plus key-round circle-user-round monitor puzzle`.split(/\s+/);
+// (Redo; a column treated as numbers; Stop, in the status bar)
+ICONES.push('redo-2', 'hash', 'circle-stop');
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');

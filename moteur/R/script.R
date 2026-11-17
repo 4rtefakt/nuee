@@ -47,7 +47,8 @@ ecrire_script <- function(projet, d, chemin_script, dossier_moteur, m = NULL, do
   } else {
     lignes_rapport(format, pl, langue, texte_methodes(projet, d, m, langue, version), fonctions, code_donnees, x)
   }
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), x$objets), c(if (format != "R") c("knitr", "rmarkdown"), paquets_script(b)),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = x$ecart), graphiques = x$graphiques)
 }
@@ -130,7 +131,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
               titre_partie(1, langue), fonctions,
               titre_partie(2, langue), donnees_script(tab, fichiers, langue), "",
               sprintf("# 3. %s ----", tx("Modèles et résultats", "Models and results")), "", morceaux)
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), noms), paquets_script(b))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), noms), paquets_script(b), langue = langue, version = version)
   list(script = chemin_script, chemins = unname(fichiers), ecart = if (length(ecarts)) paste(ecarts, collapse = " ; "))
 }
 
@@ -210,7 +211,7 @@ plan_modele <- function(projet, d, m, tab) {
        # la façon de valider (validation_croisee.R : sans_fuite, centres ou complet), et des termes UV
        # ou Pareto, dont l'écart-type d'un sous-modèle peut venir du modèle complet
        validation = mode_validation(d), ecarts = any(vapply(c(x$termes, y$termes), function(t) t$type %in% c("UV", "Par"), TRUE)),
-       rangs = unname(tab$rangs[as.character(m$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       rangs = unname(tab$rangs[nom_numero(m$observations)]), rangs_test = unname(tab$rangs[nom_numero(test)]),
        condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x$termes, y = y$termes, spectres = plan_spectres(projet, d, x$termes),
@@ -241,7 +242,7 @@ plan_bloc <- function(projet, termes, mb, tab, obs, bloc, cles = list()) {
               bloc_ponderation = if (length(t$scaling$block)) as.character(t$scaling$block[1]))
     if (!p$croise) {
       v <- variable_du_projet(projet, t$variables[1])
-      p$colonne <- unname(tab$noms[as.character(v$uid)])
+      p$colonne <- unname(tab$noms[nom_numero(v$uid)])
       p$categorie <- categorie(t)
       p$qualitative <- length(v$categories) > 0
       p$etiquette <- if (p$categorie != 0 && p$qualitative) as.character(v$categories[p$categorie])
@@ -324,7 +325,9 @@ besoins_script <- function(plans, seance) {
        # (le Poisson à excès de zéros : sa fonction de répartition, pour ses résidus quantiles, et la
        # valeur attendue d'un comptage, pour ses moyennes ajustées sur l'échelle de la réponse)
        repartition_zip = any(vapply(reg, function(pl) isTRUE(pl$quantiles) && identical(pl$famille, "poisson_zi"), TRUE)),
-       esperance_zip = any(vapply(reg, function(pl) identical(pl$famille, "poisson_zi") && identical(pl$moyennes$echelle, "reponse"), TRUE)),
+       esperance_zip = any(vapply(reg, function(pl) identical(pl$famille, "poisson_zi") && (identical(pl$moyennes$echelle, "reponse") || !is.null(pl$predictions)), TRUE)),
+       # (les valeurs prédites de la vue Effets : colonnes_grille, comme les moyennes ajustées)
+       predictions = any(vapply(reg, function(pl) !is.null(pl$predictions), TRUE)),
        # (ziP ou betar sans effet aléatoire : leur ajustement en ML sans terme pénalisé, profil_loi)
        profil_loi = any(vapply(reg, function(pl) isTRUE(pl$famille %in% c("poisson_zi", "beta")) && !length(pl$niveaux), TRUE)),
        dates = any(vapply(reg, function(pl) isTRUE(pl$temps$dates), TRUE)),
@@ -1169,7 +1172,7 @@ plan_regression <- function(projet, d, m, tab) {
       return(if (nombre && dates) sprintf("temps_en_nombres(%s)", col) else if (nombre) sprintf("suppressWarnings(as.numeric(%s))", col) else col)
     }
     v <- variable_du_projet(projet, s$variable)
-    col <- sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]]))
+    col <- sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(v$uid)]]))
     if (!length(v$categories)) return(col)
     if (nombre && dates) sprintf("temps_en_nombres(%s)", col)
     else if (nombre) sprintf("suppressWarnings(as.numeric(as.character(%s)))", col) else sprintf("as.character(%s)", col)
@@ -1197,7 +1200,7 @@ plan_regression <- function(projet, d, m, tab) {
     en_courbe <- vapply(termes[match(q, m$termes)], function(t) as.numeric(t$variables) %in% as.numeric(d$lisses), TRUE)
     lisses <- termes_r[match(q[en_courbe], m$termes)]
     for (t in q[en_courbe]) {
-      u <- as.character(as.numeric(termes[[match(t, m$termes)]]$variables))
+      u <- nom_numero(as.numeric(termes[[match(t, m$termes)]]$variables))
       k <- d$k_courbes[[u]]
       if (length(k)) k_demandes[termes_r[match(t, m$termes)]] <- as.integer(k)
       f <- d$par_courbes[[u]]
@@ -1230,12 +1233,12 @@ plan_regression <- function(projet, d, m, tab) {
        type = "regression", regression = TRUE, modele = as.character(d$type), generalise = generalise, gamm = gamm,
        famille = m$famille, lien = m$lien %||% "identity", plsda = FALSE, opls = FALSE,
        N = m$N, K = K, A = 0, Ap = 0, M = 1, manquantes = FALSE, y_manquantes = FALSE, vides = FALSE,
-       rangs = unname(tab$rangs[as.character(d$observations)]), rangs_test = unname(tab$rangs[as.character(test)]),
+       rangs = unname(tab$rangs[nom_numero(d$observations)]), rangs_test = unname(tab$rangs[nom_numero(test)]),
        condition = plan_condition(projet, d, tab),  # (condition.R)
        noms_tableau = as.character(tab$donnees[[1]]), colonnes = names(tab$donnees),
        x = x, na_termes = K > 0 && anyNA(m$bloc$X),
        croises_tr = any(vapply(x, function(t) t$croise && !is.null(t$tr) && !identite(t$tr), TRUE)),
-       y = list(colonne = tab$noms[[as.character(vy$uid)]], nom = m$y$noms, tr = ty$transform,
+       y = list(colonne = tab$noms[[nom_numero(vy$uid)]], nom = m$y$noms, tr = ty$transform,
                 garde = !is.null(ty$transform) && hors_domaine(ty$transform, valeurs_simples(projet, ty, candidates))),
        reponse = nr[1], termes = termes_r, noms_termes = m$noms_termes,
        # (les termes qui peuvent entrer dans l'ajustement, d'ordre plus bas d'abord, sans les facteurs
@@ -1250,12 +1253,12 @@ plan_regression <- function(projet, d, m, tab) {
        temps = if (!is.null(temps)) list(nom = nr[avant + 1], affiche = m$temps, code = lecture(temps, TRUE), dates = dates),
        dans = if (!is.null(dans)) list(nom = nr[avant + 2], affiche = m$dans, code = lecture(dans)),
        effort = if (!is.null(d$decalage)) list(nom = nr[length(nr)], affiche = m$decalage,
-                                               code = sprintf("d[[%s]]", code_texte(tab$noms[[as.character(d$decalage)]]))),
+                                               code = sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(d$decalage)]]))),
        # (les courbes des termes ; le tableau des courbes a aussi la ligne du lissage spatial)
        lisses = lisses, n_courbes = NROW(m$resultat$courbes) - !is.null(sp), k_demandes = k_demandes,
        # (le lissage spatial : le code de ses deux colonnes, sa base, la dimension demandée, son nom
        # dans Nuée et son étiquette dans mgcv, le terme de la formule à sa dimension)
-       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[as.character(u)]])), ""),
+       spatial = if (!is.null(sp)) list(code = vapply(sp$variables, function(u) sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(u)]])), ""),
                                         noms = sp$noms, base = sp$base, k = sp$k_demande, nom = sp$nom, etiquette = etiquette_spatial(sp),
                                         terme = if (identical(sp$base, "sos")) "s(sy, sx, bs = \"sos\", k = %d)" else "s(sx, sy, k = %d)"),
        par = par, facteurs = lapply(seq_along(facteurs), function(j) list(nom = noms_f[j], affiche = facteurs[[j]]$nom,
@@ -1264,6 +1267,10 @@ plan_regression <- function(projet, d, m, tab) {
        # (les seuils de chaque courbe, et de chaque catégorie d'une courbe par catégorie ou de termes
        # croisés : regression.R, variantes_seuils et courbes_seuils ; vide pour des courbes seules)
        seuils = plan_seuils(m, termes_r, par),
+       # (les effets de la vue Effets que le script refait : effets_script ; leurs valeurs prédites sur
+       # l'échelle de la réponse : plan_predictions)
+       effets = effets_script(m, termes_r),
+       predictions = plan_predictions(projet, m, d, termes_r),
        quantiles = !is.null(m$resultat$residus_quantiles),  # (les résidus quantiles d'un modèle de comptages... : regression_diagnostics.R)
        groupes_vc = groupes, en_tour = identical(groupes, as.integer((seq_along(groupes) - 1) %% G + 1)), G_tour = G,
        # (les groupes de la validation croisée sont-ils les niveaux du premier effet aléatoire, comme par défaut ?)
@@ -1280,6 +1287,47 @@ plan_regression <- function(projet, d, m, tab) {
        choisi = if (!is.null(d$selection_origine) && length(d$termes_complets))
          list(modele = as.character(d$selection_origine$modele)[1],
               hors = match(setdiff(as.numeric(d$observations), m$observations), as.numeric(d$observations))))
+}
+
+# Les effets de la vue Effets d'une régression que son script refait (regression.R :
+# effets_regression) : ceux d'un terme quantitatif seul, une courbe ou une droite, dans leur ordre ;
+# leur nom R et leur nom dans Nuée, courbe ou non, et leurs valeurs dans Nuée (abscisses, effet,
+# bas, haut), que le script doit redonner (ecart_regression). Un terme croisé avec des catégories
+# (une droite par catégorie) ou une courbe par catégorie n'en a pas dans le script : son graphique
+# reste celui de Nuée. NULL sans effet (ou si la vue n'en a pas pour ce modèle).
+effets_script <- function(m, termes_r) {
+  ve <- Filter(function(e) is.null(e$niveaux), tryCatch(effets_regression(m), error = function(e) NULL))
+  if (!length(ve)) return(NULL)
+  noms <- vapply(ve, function(e) as.character(e$terme), "")
+  list(terme = termes_r[match(m$termes[match(noms, m$noms_termes)], m$termes)], nom = noms, courbe = vapply(ve, function(e) isTRUE(e$courbe), TRUE),
+       valeurs = lapply(ve, function(e) c(e$x, e$effet, e$bas, e$haut)))
+}
+
+# Les valeurs prédites de la vue Effets d'une régression (Effets › Valeurs prédites, moyennes.R :
+# effets_reponse) que son script refait, les mêmes : chaque ligne (un terme, ou une catégorie d'un terme
+# croisé ou d'une courbe par catégorie) avec le nom R de son terme, sa catégorie (NA seule), l'étendue de
+# la variable (dans ses unités, transformée s'il y a lieu) et la valeur de chaque terme simple sur la
+# grille (`S`, par nom R ; NA : le terme lui-même et les termes croisés, que colonnes_grille calcule),
+# et ses valeurs dans Nuée (x, effet, bas, haut), que le script doit redonner (ecart_regression) ; les
+# rangs des facteurs de chaque terme croisé, et les termes croisés transformés (comme plan_moyennes).
+# NULL sans terme quantitatif, ou quand le moteur ne les calcule pas.
+plan_predictions <- function(projet, m, d, termes_r) {
+  r <- tryCatch(effets_reponse(projet, m, d), error = function(e) NULL)
+  if (is.null(r) || !length(r$effets)) return(NULL)
+  comp <- m$composition
+  termes <- termes_regression(d$x)
+  cles <- vapply(comp, function(ct) if (length(ct$variables) == 1) paste(ct$variables, ct$categories) else "", "")
+  facteurs <- lapply(comp, function(ct) if (length(ct$variables) > 1) match(paste(ct$variables, ct$categories), cles) else integer(0))
+  croises_tr <- which(lengths(facteurs) > 0 & vapply(termes, function(t) !is.null(t$transform) && !identite(t$transform), TRUE))
+  noms <- vapply(r$effets, function(e) as.character(e$terme), "")
+  lignes <- unlist(lapply(r$effets, function(e) {
+    t_r <- termes_r[match(e$terme, m$noms_termes)]
+    ls <- if (!is.null(e$niveaux)) e$niveaux else list(c(list(niveau = NA_character_), e))
+    lapply(ls, function(l) list(terme = t_r, niveau = as.character(l$niveau), de = l$grille$de, a = l$grille$a,
+                                S = stats::setNames(unname(l$grille$S), termes_r), valeurs = cbind(l$x, l$effet, l$bas, l$haut)))
+  }), recursive = FALSE)
+  list(lignes = lignes, noms = noms, termes = termes_r[match(noms, m$noms_termes)], par = vapply(r$effets, function(e) as.character(e$par %||% NA_character_), ""),
+       facteurs = unname(facteurs), transformations = lapply(stats::setNames(croises_tr, croises_tr), function(k) termes[[k]]$transform))
 }
 
 # Les seuils d'une régression que son script calcule un par un (regression.R : variantes_seuils et
@@ -1916,6 +1964,87 @@ code_regression <- function(pl, b, langue, seance = NULL) {
                      "And the value of the spatial smooth at each observation, on the link scale (the one Nuée's map shows).")),
       sprintf("observations$lissage_spatial <- as.vector(predict(%s, type = \"terms\")[, %s])", if (gamm) "m$gam" else "m", code_texte(sp$etiquette)))
   }
+  # (les effets de la vue Effets : plan_regression, effets_script)
+  ef <- pl$effets
+  if (length(ef$terme)) {
+    ind <- if (any(ef$courbe)) "    " else "  "  # (une droite : dans le else des courbes, s'il y en a)
+    statistiques <- c(statistiques, "",
+      commentaire(tx("Les effets (la vue Effets de Nuée) : pour chaque terme quantitatif, son effet sur l'échelle du lien quand sa variable parcourt ses valeurs, les autres termes fixés, avec son intervalle à 95 % ; une courbe telle que mgcv l'a ajustée, une droite par son coefficient, centrée sur la moyenne de la variable ; les abscisses dans les unités de la variable.",
+                     "The effects (Nuée's Effects view): for each quantitative term, its effect on the link scale as its variable runs over its values, the other terms held, with its 95% interval; a curve as mgcv fitted it, a line by its coefficient, centred on the variable's mean; the abscissas in the variable's units.")),
+      sprintf("effets <- lapply(%s, function(t) {", code_textes(ef$terme)),
+      "  j <- match(t, termes)",
+      "  x <- seq(min(cadre[[t]]), max(cadre[[t]]), length.out = 80)",
+      if (any(ef$courbe)) c(
+        sprintf("  if (t %%in%% %s) {", code_textes(ef$terme[ef$courbe])),
+        "    nd <- cadre[rep(1, length(x)), , drop = FALSE]",
+        "    nd[[t]] <- x",
+        sprintf("    p <- predict(%s, nd, type = \"terms\", terms = sprintf(\"s(%%s)\", t), se.fit = TRUE)", if (gamm) "m$gam" else "m"),
+        "    effet <- as.vector(p$fit[, 1])",
+        "    se <- as.vector(p$se.fit[, 1])",
+        "  } else {"),
+      paste0(ind, c(sprintf("k <- match(%s, coefficients[[1]])", if (meme_noms) "t" else "noms_termes[j]"),
+                    "dx <- x - mean(cadre[[t]])",
+                    "effet <- coefficients[[2]][k] * dx",
+                    "se <- abs(dx) * coefficients[[3]][k]")),
+      if (any(ef$courbe)) "  }",
+      "  data.frame(x = x / poids_x[j] + centre_x[j], effet = effet, bas = effet - 1.96 * se, haut = effet + 1.96 * se)",
+      "})",
+      sprintf("names(effets) <- %s", code_textes(ef$nom)))
+  }
+  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : plan_predictions ; celle d'une
+  # réponse transformée nommée par sa formule, log10(compte + 1), comme dans Nuée)
+  pr <- pl$predictions
+  y_predite <- function(x) if (!is.null(pl$y$tr) && !identite(pl$y$tr)) formule_transformation(pl$y$tr, x, langue != "en") else x
+  if (!is.null(pr)) {
+    ajuste_r <- if (gamm) "m$gam" else "m"
+    inverse <- if (identical(pl$famille, "poisson_zi")) "function(eta) esperance_zip(eta, parametre_loi)"
+               else switch(pl$lien, log = "exp", logit = "plogis", "identity")
+    transformations <- if (length(pr$transformations)) {
+      sprintf(", list(%s)", paste(vapply(names(pr$transformations), function(k) sprintf("\"%s\" = function(x) %s", k, code_transformation(pr$transformations[[k]], "x", TRUE)), ""), collapse = ", "))
+    } else ""
+    ligne_s <- function(l) sprintf("list(terme = %s, niveau = %s, x_min = %s, x_max = %s, S = c(%s))", code_texte(l$terme), code_texte(l$niveau),
+                                   texte_exact(l$de), texte_exact(l$a), paste(sprintf("%s = %s", vapply(names(l$S), code_texte, ""), texte_exact(unname(l$S))), collapse = ", "))
+    exclusion <- mgcv && mixte && !gamm
+    # (l'effort à 1 : des densités, sauf les comptages attendus du Poisson à excès de zéros)
+    effort_fr <- if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", l'effort à 1" else ", l'effort à 1 (des densités)"
+    effort_en <- if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", the effort at 1" else ", the effort at 1 (densities)"
+    statistiques <- c(statistiques, "",
+      commentaire(tx(sprintf("Les valeurs prédites (la vue Effets de Nuée, Valeurs prédites) : pour chaque terme quantitatif, %s quand sa variable parcourt 80 valeurs de son étendue (dans chaque catégorie des variables qualitatives croisées avec lui, sur ses valeurs dans la catégorie), les autres variables quantitatives à leur moyenne sur les observations du modèle (avant leur transformation), les variables qualitatives dans leur catégorie de référence%s%s%s ; la bande à 95 %% du prédicteur linéaire (± 1,96 erreur-type), ramenée sur l'échelle de la réponse par l'inverse du lien. `lignes_predites` : chaque ligne, son terme, sa catégorie, l'étendue de la variable et la valeur de chaque terme simple sur la grille (`S` ; NA : le terme lui-même, et les termes croisés, que colonnes_grille() calcule).",
+                             sprintf("la valeur de %s que prédit le modèle", y_predite(guillemets(pl$y$nom))), if (mixte) ", les effets aléatoires à 0 (la population)" else "",
+                             effort_fr, if (spatial) ", le lissage spatial au point moyen des coordonnées" else ""),
+                     sprintf("The predicted values (Nuée's Effects view, Predicted values): for each quantitative term, the value of %s the model predicts as its variable runs over 80 values of its range (within each category of the qualitative variables crossed with it, over its values in the category), the other quantitative variables at their mean over the model's observations (before their transformation), the qualitative variables in their reference category%s%s%s; the 95%% band of the linear predictor (±1.96 standard errors), brought back to the response scale by the inverse of the link. `predicted_lines`: each line, its term, its category, the variable's range and the value of each simple term on the grid (`S`; NA: the term itself, and the cross terms, which grid_columns() computes).",
+                             y_predite(guillemets(pl$y$nom)), if (mixte) ", the random effects at 0 (the population)" else "",
+                             effort_en, if (spatial) ", the spatial smooth at the mean point of the coordinates" else ""))),
+      code_valeurs(vapply(pr$facteurs, function(fs) if (length(fs)) sprintf("c(%s)", paste0(fs, "L", collapse = ", ")) else "integer(0)", ""), "facteurs_grille <- list(", ")", ouvrir = ""),
+      code_valeurs(vapply(pr$lignes, ligne_s, ""), "lignes_predites <- list(", ")", ouvrir = ""),
+      "predire_lignes <- function(S) {",
+      sprintf("  Xg <- colonnes_grille(S, facteurs_grille, centre_x, poids_x%s)", transformations),
+      "  colnames(Xg) <- termes",
+      if (mgcv) c(
+        "  nd <- as.data.frame(Xg)",
+        vapply(pl$facteurs, function(fc) sprintf("  nd[[%s]] <- facteur_courbe(nd[%s], %s)", code_texte(fc$nom), code_textes(unname(fc$colonnes)), code_textes(names(fc$colonnes))), ""),
+        if (par_cat) "  nd <- niveaux_appris(nd, cadre, par_courbes)",
+        if (exclusion) "  for (g in aleatoires) nd[[g]] <- factor(rep(levels(cadre[[g]])[1], nrow(nd)), levels = levels(cadre[[g]]))",
+        if (!is.null(pl$effort)) sprintf("  nd[[%s]] <- 1", code_texte(pl$effort$nom)),
+        if (spatial) c("  nd$sx <- mean(cadre$sx)", "  nd$sy <- mean(cadre$sy)"),
+        if (exclusion) "  exclus <- vapply(Filter(function(s) inherits(s, \"random.effect\"), m$smooth), function(s) s$label, \"\")",
+        sprintf("  L <- predict(%s, nd, type = \"lpmatrix\"%s)", ajuste_r, if (exclusion) ", exclude = exclus" else ""),
+        sprintf("  b <- coef(%s)", ajuste_r))
+      else c("  L <- cbind(\"(Intercept)\" = 1, Xg[, utiles, drop = FALSE])", sprintf("  b <- %s", if (mixte) "nlme::fixef(m)" else "coef(m)")),
+      sprintf("  V <- vcov(%s)[colnames(L), colnames(L), drop = FALSE]", ajuste_r),
+      "  eta <- as.vector(L %*% b[colnames(L)])",
+      "  se <- sqrt(pmax(0, rowSums((L %*% V) * L)))",
+      sprintf("  inverse_lien <- %s", inverse),
+      "  data.frame(effet = inverse_lien(eta), bas = inverse_lien(eta - 1.96 * se), haut = inverse_lien(eta + 1.96 * se))",
+      "}",
+      "valeurs_predites <- lapply(unique(vapply(lignes_predites, function(l) l$terme, \"\")), function(terme) do.call(rbind, lapply(Filter(function(l) identical(l$terme, terme), lignes_predites), function(l) {",
+      "  x <- seq(l$x_min, l$x_max, length.out = 80)",
+      "  S <- matrix(l$S, length(x), length(l$S), byrow = TRUE, dimnames = list(NULL, names(l$S)))",
+      "  S[, l$terme] <- x",
+      "  cbind(data.frame(niveau = l$niveau, x = x), predire_lignes(S))",
+      "})))",
+      sprintf("names(valeurs_predites) <- %s", code_textes(pr$noms)))
+  }
 
   # --- la sélection par l'AIC (regression.R : selection_aic), quand elle a été faite dans Nuée
   sel <- pl$selection
@@ -2146,7 +2275,38 @@ code_regression <- function(pl, b, langue, seance = NULL) {
               code_texte(if (identical(mo$mode, "pentes")) tx("Pentes par catégorie", "Slopes by category") else tx("Moyennes ajustées", "Adjusted means"))),
       "arrows(x, mo$bas, x, mo$haut, angle = 90, code = 3, length = 0.04)",
       "axis(1, at = x, labels = if (all(is.na(mo$groupe))) mo$niveau else paste(mo$niveau, mo$groupe, sep = \" · \"))")))
-  objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations",
+  # (les effets : un graphique par terme, comme la vue Effets en montre un ; `terme`, son nom dans
+  # Nuée, le désigne au document reproductible : document_reproductible.R, graphique_reproductible)
+  if (length(ef$terme)) graphiques <- c(graphiques, lapply(seq_along(ef$terme), function(k) {
+    j <- match(ef$terme[k], pl$termes)
+    list(nom = sprintf("effet-%d", k), terme = ef$nom[k], largeur = 6, hauteur = 4.5, code = c(
+      sprintf("e <- effets[[%d]]", k),
+      sprintf("plot(e$x, e$effet, type = \"n\", ylim = range(e$bas, e$haut), xlab = %s, ylab = %s, main = %s)", code_texte(ef$nom[k]), code_texte(ylab),
+              code_texte(sprintf(tx("Effet : %s", "Effect: %s"), ef$nom[k]))),
+      "polygon(c(e$x, rev(e$x)), c(e$bas, rev(e$haut)), col = \"#2f6fb52e\", border = NA)",
+      "lines(e$x, e$effet, lwd = 2, col = \"#2f6fb5\")",
+      sprintf("rug(cadre[[%s]] / poids_x[%d] + centre_x[%d])", code_texte(ef$terme[k]), j, j),
+      "abline(h = 0, lty = 3, col = \"grey\")"))
+  }))
+  # (les valeurs prédites : un graphique par terme, une courbe et sa bande par catégorie)
+  if (!is.null(pr)) graphiques <- c(graphiques, lapply(seq_along(pr$termes), function(k) {
+    j <- match(pr$termes[k], pl$termes)
+    ylab_p <- sprintf(tx("%s, valeurs prédites", "Predicted %s"), y_predite(pl$y$nom))
+    list(nom = sprintf("prediction-%d", k), terme = pr$noms[k], largeur = 6, hauteur = 4.5, code = c(
+      sprintf("v <- valeurs_predites[[%d]]", k),
+      "niveaux_v <- unique(v$niveau)",
+      "couleurs <- c(\"#2f6fb5\", \"#e24b5a\", \"#35905f\", \"#e0a451\", \"#795b99\", \"#2a9d8f\", \"#8c564b\", \"#bd5d9d\", \"#6b6b6b\", \"#a3a322\")",
+      sprintf("plot(v$x, v$effet, type = \"n\", ylim = range(v$bas, v$haut), xlab = %s, ylab = %s, main = %s)", code_texte(pr$noms[k]), code_texte(ylab_p),
+              code_texte(sprintf(tx("Valeurs prédites : %s", "Predicted values: %s"), pr$noms[k]))),
+      "for (i in seq_along(niveaux_v)) {",
+      "  l <- v[v$niveau %in% niveaux_v[i], ]",
+      "  polygon(c(l$x, rev(l$x)), c(l$bas, rev(l$haut)), col = adjustcolor(couleurs[(i - 1) %% 10 + 1], 0.18), border = NA)",
+      "  lines(l$x, l$effet, lwd = 2, col = couleurs[(i - 1) %% 10 + 1])",
+      "}",
+      if (!is.na(pr$par[k])) sprintf("legend(\"topleft\", legend = niveaux_v, col = couleurs[(seq_along(niveaux_v) - 1) %%%% 10 + 1], lwd = 2, bty = \"n\", title = %s)", code_texte(pr$par[k])),
+      sprintf("rug(cadre[[%s]] / poids_x[%d] + centre_x[%d])", code_texte(pr$termes[k]), j, j)))
+  }))
+  objets <- c("m", "m_ml", "cadre", if (test) "cadre_test", "coefficients", "criteres", "r2", "vc", "observations", if (length(ef$terme)) "effets", if (!is.null(pr)) "valeurs_predites",
               if (mixte) "variances", if (car1) "phi", if (loi) "parametre_loi", if (poisson) "dispersion", if (courbes || spatial) "courbes", if (courbes) c("seuils", "plages_seuils"),
               if (!is.null(sel)) "selection", if (!is.null(pu)) c("puissance", "annees_80"), if (!is.null(pu$resultat$simulation)) "simulation_puissance",
               if (!is.null(mo)) "moyennes_ajustees", if (test) c("test", "predictions_test"))
@@ -2237,9 +2397,9 @@ code_moyennes_regression <- function(pl, tx, guillemets, liste) {
                        holm = tx("ajustées par la méthode de Holm (leurs intervalles par celle de Bonferroni)", "adjusted by Holm's method (their intervals by Bonferroni's)"),
                        tx("sans ajustement", "unadjusted"))
   c(commentaire(tx(sprintf("Les moyennes ajustées faites dans Nuée (Graphiques › Moyennes ajustées), comme les calcule le paquet emmeans : %s, d'après les prédictions du modèle sur une grille de référence, chaque combinaison des catégories observées de %s, chaque variable quantitative à sa moyenne sur les observations du modèle (avant sa transformation), en moyenne à poids égaux sur les catégories des autres variables qualitatives%s ; les paires de catégories, %s.",
-                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", l'effort à 1 (des densités)" else "", ajustement),
+                           quoi, liste(guillemets(noms_q)), if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", l'effort à 1" else ", l'effort à 1 (des densités)", ajustement),
                    sprintf("The adjusted means done in Nuée (Plots › Adjusted means), as the emmeans package computes them: %s, from the model's predictions on a reference grid, each combination of the observed categories of %s, each quantitative variable at its mean over the model's observations (before its transformation), averaged with equal weights over the categories of the other qualitative variables%s; the pairs of categories, %s.",
-                           quoi, liste(guillemets(noms_q)), if (!is.null(pl$effort)) ", the effort at 1 (densities)" else "", ajustement))),
+                           quoi, liste(guillemets(noms_q)), if (is.null(pl$effort)) "" else if (identical(pl$famille, "poisson_zi")) ", the effort at 1" else ", the effort at 1 (densities)", ajustement))),
     grille,
     if (length(cov)) code_valeurs(sprintf("%s = %s", vapply(names(cov), code_texte, ""), texte_exact(unname(cov))), "moyennes_x <- c(", ")", ouvrir = "") else "moyennes_x <- numeric(0)",
     commentaire(tx("Les termes simples à chaque ligne de la grille (une catégorie : 0 ou 1 ; une variable quantitative : sa valeur `v`, transformée) ; les termes croisés en découlent (facteurs_grille : les rangs de leurs facteurs).",
@@ -2295,6 +2455,11 @@ ecart_regression <- function(pl, m, e, langue) {
       list(unlist(lapply(seq_len(nrow(v)), function(i) { s <- seuils_courbe(m, v$terme[i], v$categorie[i]); c(s$x, s$effet, s$pente) })),
            unlist(lapply(unname(r("seuils")), function(s) s[nom_script(c("x", "effet", "pente"), langue)])))
     },
+    # (les effets de la vue Effets que le script refait : abscisses, effet et intervalle de chaque terme)
+    effets = if (length(pl$effets$terme)) list(unlist(pl$effets$valeurs), if (is.list(r("effets"))) unlist(lapply(unname(r("effets")), unlist, use.names = FALSE))),
+    # (les valeurs prédites, ligne après ligne : x, effet, bas, haut)
+    "valeurs prédites" = if (!is.null(pl$predictions)) list(do.call(rbind, lapply(pl$predictions$lignes, `[[`, "valeurs")),
+                                                           if (is.list(r("valeurs_predites"))) do.call(rbind, lapply(unname(r("valeurs_predites")), function(v) as.matrix(v[nom_script(c("x", "effet", "bas", "haut"), langue)])))),
     "validation croisée" = list(c(m$vc$Q2, m$vc$RMSEcv, m$vc$echecs), if (!is.null(vc)) c(vc$Q2, vc$RMSEcv, vc[[nom_script("echecs", langue)]])),
     "prédictions de la validation croisée" = list(m$vc$prediction, vc$prediction),
     "valeurs ajustées et résidus" = list(cbind(res$ajuste, res$residus), colonnes(r("observations"), 3:4)),
@@ -2355,6 +2520,7 @@ code_fonctions <- function(b, plans, langue) {
     if (isTRUE(b$lmm) || isTRUE(b$gamm)) modele_variances_niveaux(tx),
     if (isTRUE(b$pentes_nlme)) modele_variances_pentes(tx),
     if (isTRUE(b$puissance)) modele_puissance_tendance(tx, isTRUE(b$simulation_puissance)),
+    if (isTRUE(b$moyennes) || isTRUE(b$predictions)) modele_colonnes_grille(tx),
     if (isTRUE(b$moyennes)) modele_moyennes_ajustees(tx, isTRUE(b$moyennes_confinement)),
     if (isTRUE(b$lmm)) modele_r2_mixte(tx),
     if (isTRUE(b$gamm)) modele_r2_gamm(tx),
@@ -3074,12 +3240,11 @@ modele_puissance_tendance <- function(tx, simulation) c(
     "  list(annees = annees, unites = unites, n = n, puissance = puissance, erreur_mc = sqrt(puissance * (1 - puissance) / sum(ok)), echecs = sum(!ok), p = p)",
     "}"))
 
-# Les moyennes ajustées (moyennes.R : moyennes_ajustees), écrites pour le script : les colonnes du
-# modèle à des lignes de la grille, l'estimabilité, les degrés de liberté de nlme (`confinement`),
-# l'ajustement des paires, et les moyennes (ou les pentes) et leurs paires.
-modele_moyennes_ajustees <- function(tx, confinement) c(
-  commentaire(tx("Les moyennes ajustées (des moyennes marginales estimées ; Searle et al., 1980), comme les calcule le paquet emmeans (Lenth) : les prédictions du modèle sur une grille de référence. colonnes_grille() : les colonnes du modèle à des lignes de la grille, comme celles des données ; les termes simples (`S` : leur valeur, transformée) centrés et mis à l'échelle (`centre`, `poids`), puis chaque terme croisé, le produit de ses facteurs mis à l'échelle (`facteurs` : leurs rangs), transformé s'il l'est (`transformations`), mis à l'échelle à son tour.",
-                 "Adjusted means (estimated marginal means; Searle et al., 1980), as the emmeans package computes them (Lenth): the model's predictions on a reference grid. grid_columns(): the model's columns at rows of the grid, as those of the data; the simple terms (`S`: their value, transformed) centred and scaled (`centre`, `weight`), then each cross term, the product of its scaled factors (`factors`: their ranks), transformed if it is (`transformations`), scaled in turn.")),
+# Les colonnes du modèle à des lignes d'une grille (moyennes.R : colonnes_grille), écrites pour le script :
+# celles des moyennes ajustées et des valeurs prédites de la vue Effets.
+modele_colonnes_grille <- function(tx) c(
+  commentaire(tx("Les prédictions du modèle sur une grille (les moyennes ajustées, les valeurs prédites de la vue Effets). colonnes_grille() : les colonnes du modèle à des lignes de la grille, comme celles des données ; les termes simples (`S` : leur valeur, transformée) centrés et mis à l'échelle (`centre`, `poids`), puis chaque terme croisé, le produit de ses facteurs mis à l'échelle (`facteurs` : leurs rangs), transformé s'il l'est (`transformations`), mis à l'échelle à son tour.",
+                 "The model's predictions on a grid (the adjusted means, the predicted values of the Effects view). grid_columns(): the model's columns at rows of the grid, as those of the data; the simple terms (`S`: their value, transformed) centred and scaled (`centre`, `weight`), then each cross term, the product of its scaled factors (`factors`: their ranks), transformed if it is (`transformations`), scaled in turn.")),
   "colonnes_grille <- function(S, facteurs, centre, poids, transformations = list()) {",
   "  X <- sweep(sweep(S, 2, centre), 2, poids, \"*\")",
   "  for (k in which(lengths(facteurs) > 0)) {",
@@ -3088,7 +3253,14 @@ modele_moyennes_ajustees <- function(tx, confinement) c(
   "    X[, k] <- (x - centre[k]) * poids[k]",
   "  }",
   "  X",
-  "}",
+  "}")
+
+# Les moyennes ajustées (moyennes.R : moyennes_ajustees), écrites pour le script : l'estimabilité, les
+# degrés de liberté de nlme (`confinement`), l'ajustement des paires, et les moyennes (ou les pentes) et
+# leurs paires, sur les colonnes de la grille (modele_colonnes_grille).
+modele_moyennes_ajustees <- function(tx, confinement) c(
+  commentaire(tx("Les moyennes ajustées (des moyennes marginales estimées ; Searle et al., 1980), comme les calcule le paquet emmeans (Lenth) : les prédictions du modèle sur une grille de référence (colonnes_grille() ci-dessus).",
+                 "Adjusted means (estimated marginal means; Searle et al., 1980), as the emmeans package computes them (Lenth): the model's predictions on a reference grid (grid_columns() above).")),
   commentaire(tx("Une ligne L est estimable quand elle est orthogonale à l'espace nul des colonnes du modèle `X` (base_nulle() : une base orthonormée de cet espace, de rang celui de la décomposition QR pivotée de lm()) ; une combinaison de catégories qu'aucune observation n'a ne l'est pas. Le critère du paquet estimability, que prend emmeans.",
                  "A row L is estimable when it is orthogonal to the null space of the model's columns `X` (null_basis(): an orthonormal basis of that space, of the rank of lm()'s pivoted QR decomposition); a combination of categories no observation has isn't. The criterion of the estimability package, which emmeans uses.")),
   "base_nulle <- function(X, tol = 1e-7) {",
@@ -3575,7 +3747,7 @@ modele_ligne_base <- function(tx) c(
 # en anglais, ses noms (pas ses textes ni ses commentaires, écrits dans les deux langues) sont
 # remplacés d'après cette table. Les noms venus des données sont toujours dans des chaînes.
 NOMS_SCRIPT_EN <- c(
-  residus_normalises_car1 = "car1_normalized_residuals",
+  residus_normalises_car1 = "car1_normalized_residuals", effets = "effects",
   temps_en_nombres = "times_as_numbers", morceaux = "parts", motif = "pattern", numeros = "group_numbers", debut = "first", fin = "last",
   heure = "time_of_day", jma = "day_first", bissextile = "leap", jour_annee = "day_of_year",
   donnees = "data", lignes = "rows", lignes_test = "test_rows", modele = "in_model", y_observe = "y_observed",
@@ -3657,7 +3829,10 @@ NOMS_SCRIPT_EN <- c(
   niveau_1 = "level_1", niveau_2 = "level_2", erreur_type_lien = "link_std_error", bas_lien = "link_lower", haut_lien = "link_upper",
   p_brute = "raw_p", taille_famille = "family_size", adaptatif = "adaptive", ajustement = "adjustment", lien = "link",
   echelle_reponse = "response_scale", etiquettes = "labels", etiquette = "label", moy = "means_table", dfc = "cell_df",
-  facteurs = "factors", groupes = "groups")
+  facteurs = "factors", groupes = "groups",
+  # (les valeurs prédites de la vue Effets)
+  valeurs_predites = "predicted_values", lignes_predites = "predicted_lines", predire_lignes = "predict_rows", inverse_lien = "inverse_link",
+  niveaux_v = "line_levels", couleurs = "colours")
 
 nom_script <- function(x, langue) if (identical(langue, "en")) ifelse(x %in% names(NOMS_SCRIPT_EN), NOMS_SCRIPT_EN[x], x) else x
 
@@ -3948,11 +4123,41 @@ commentaire_variables <- function(descriptions, langue) {
                                                               if (nzchar(x$description)) paste0(tx(" : ", ": "), x$description))))))
 }
 
+# L'avis que porte tout fichier de code R que Nuée écrit pour ses utilisateurs (ecrire_fichiers_script,
+# le nuee.R d'un document reproductible) : ce qu'ils peuvent en faire, sous les conditions de leur
+# choix (l'exception à la GPL que Clément Boutin, titulaire des droits, donne pour ce que Nuée écrit :
+# LICENSE-EXCEPTION.md), et comment citer Nuée (methodes.R : REFERENCES$nuee, comme le texte des
+# méthodes). Une demande, pas une condition.
+avis_licence_script <- function(langue = "fr", version = "") {
+  tx <- function(fr, en) if (identical(langue, "en")) en else fr
+  citation <- sprintf(REFERENCES$nuee, format(Sys.Date(), "%Y"), if (nzchar(version)) sprintf(" (version %s)", version) else "")
+  c("#",
+    commentaire(tx("Licence : vous pouvez utiliser, modifier et partager ce fichier sous les conditions de votre choix, y compris les parties du moteur de Nuée qu'il contient (une exception à la licence GPL-3.0-ou-ultérieure de Nuée : https://github.com/4rtefakt/nuee/blob/main/LICENSE-EXCEPTION.md).",
+                   "License: you may use, change and share this file under terms of your choice, including the parts of Nuée's engine it contains (an exception to Nuée's GPL-3.0-or-later license: https://github.com/4rtefakt/nuee/blob/main/LICENSE-EXCEPTION.md).")),
+    commentaire(paste(tx("Si vous publiez des résultats obtenus avec ce fichier, merci de citer Nuée :", "If you publish results obtained with this file, please cite Nuée:"), citation)))
+}
+
+# Les lignes d'un fichier de code, l'avis ajouté à la fin des commentaires qui l'ouvrent (leur suite
+# sans ligne vide depuis la première ligne), ou en tête s'il n'en a pas. Un rapport R Markdown ou
+# Quarto commence par son en-tête YAML : l'avis le suit, en commentaire HTML (absent du rendu).
+avec_avis_licence <- function(lignes, langue = "fr", version = "") {
+  # (un élément de `lignes` peut en porter plusieurs : elles sont séparées, les lignes vides gardées)
+  lignes <- head(strsplit(paste0(paste(lignes, collapse = "\n"), "\n."), "\n", fixed = TRUE)[[1]], -1)
+  if (length(lignes) && identical(trimws(lignes[1]), "---")) {
+    fin <- which(trimws(lignes) == "---")[2]
+    if (!is.na(fin)) return(append(lignes, c("", "<!--", sub("^# ?", "", avis_licence_script(langue, version)[-1]), "-->"), after = fin))
+  }
+  commentaires <- grepl("^\\s*#", lignes)
+  k <- if (length(lignes) && commentaires[1]) { fin <- which(!commentaires)[1]; if (is.na(fin)) length(lignes) else fin - 1L } else 0L
+  if (k == 0) return(c(avis_licence_script(langue, version)[-1], "", lignes))
+  append(lignes, avis_licence_script(langue, version), after = k)
+}
+
 # Écrit le script et les fichiers d'à côté ; `objets` : ce que le .RData garde de `e` (ses
 # fonctions, comme pretraiter(), y sont rattachées à l'environnement global de la session qui le
-# relira, et non à `e`, où le script a tourné ici).
-ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets) {
-  writeBin(charToRaw(enc2utf8(paste0(lignes, "\n", collapse = ""))), fichiers[["script"]])
+# relira, et non à `e`, où le script a tourné ici). Le script porte l'avis de licence (avec_avis_licence).
+ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets, langue = "fr", version = "") {
+  writeBin(charToRaw(enc2utf8(paste0(avec_avis_licence(lignes, langue, version), "\n", collapse = ""))), fichiers[["script"]])
   if ("rdata" %in% names(fichiers)) {
     global <- function(x) {
       if (is.function(x)) environment(x) <- globalenv()
@@ -3975,13 +4180,13 @@ ecrire_fichiers_script <- function(lignes, fichiers, e, objets, paquets) {
 # nom d'identifiant, `rangs` le rang de chaque observation (sa ligne dans le tableau).
 tableau_script <- function(projet, ids = character(0)) {
   obs <- rownames(projet$donnees)
-  vars <- Filter(function(v) as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1] %||% ""), "")
   noms[!nzchar(noms)] <- paste0("V", which(!nzchar(noms)))
   ids <- unique(as.character(ids))
   noms <- make.unique(c("Observation", noms, ids), sep = "_")
   colonnes <- c(list(unname(as.character(projet$noms_obs[obs]))), lapply(vars, function(v) {
-    x <- projet$donnees[, as.character(v$uid)]
+    x <- projet$donnees[, nom_numero(v$uid)]
     if (length(v$categories)) factor(as.character(v$categories)[x], levels = as.character(v$categories)) else unname(as.numeric(x))
   }), lapply(ids, function(id) {
     x <- identifiants_observations(projet, match(id, as.character(projet$observation_id_names)), as.numeric(obs))
@@ -3992,9 +4197,9 @@ tableau_script <- function(projet, ids = character(0)) {
   decrites <- Filter(function(k) nzchar(vars[[k]]$unite %||% "") || nzchar(vars[[k]]$description %||% ""), seq_along(vars))
   list(donnees = as.data.frame(colonnes, check.names = FALSE, stringsAsFactors = FALSE),
        descriptions = lapply(decrites, function(k) list(nom = noms[1 + k], unite = as.character(vars[[k]]$unite %||% ""), description = as.character(vars[[k]]$description %||% ""))),
-       noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) as.character(v$uid), "")),
+       noms = stats::setNames(noms[1 + seq_along(vars)], vapply(vars, function(v) nom_numero(v$uid), "")),
        ids = stats::setNames(noms[1 + length(vars) + seq_along(ids)], ids),
-       rangs = stats::setNames(seq_along(obs), obs))
+       rangs = stats::setNames(seq_along(obs), nom_numero(obs)))
 }
 
 # Les identifiants des observations dont les régressions de `definitions` font leurs groupes (effets
@@ -4199,7 +4404,7 @@ code_vecteur <- function(x) {
 # désignées par leur nom (pour le journal de la console).
 code_definition <- function(projet, d, p = "p") {
   q <- function(x) deparse(x, width.cutoff = 500L)
-  noms <- function(uids) unname(projet$noms_var[as.character(uids)])
+  noms <- function(uids) unname(projet$noms_var[nom_numero(uids)])
   vecteur <- function(x) if (length(x) == 1) q(x) else paste0("c(", paste(vapply(x, q, ""), collapse = ", "), ")")
   importe <- !isTRUE(d$app) && !is.null(d$number)
   if (importe) {
@@ -4211,16 +4416,16 @@ code_definition <- function(projet, d, p = "p") {
     r <- reglages_modele(projet, d)
     exclues <- noms(r$exclues)
     obs <- if (length(r$exclues)) {
-      sprintf("setdiff(numeros_observations(%s), numeros_observations(%s, %s))", p, p, vecteur(unname(projet$noms_obs[as.character(r$exclues)])))
+      sprintf("setdiff(numeros_observations(%s), numeros_observations(%s, %s))", p, p, vecteur(unname(projet$noms_obs[nom_numero(r$exclues)])))
     } else sprintf("numeros_observations(%s)", p)
     echelles <- unlist(r$echelles)
     autres <- echelles[echelles != "UV"]
     lignes_ech <- if (length(autres)) {
-      sprintf("echelles[as.character(numeros(%s, %s))] <- %s", p, vapply(names(autres), function(u) q(noms(as.numeric(u))), ""), vapply(autres, q, ""))
+      sprintf("echelles[nom_numero(numeros(%s, %s))] <- %s", p, vapply(names(autres), function(u) q(noms(as.numeric(u))), ""), vapply(autres, q, ""))
     }
     trans <- unlist(r$transformations)
     lignes_tr <- if (length(trans)) {
-      sprintf("transformations[as.character(numeros(%s, %s))] <- %s", p, vapply(names(trans), function(u) q(noms(as.numeric(u))), ""), vapply(trans, q, ""))
+      sprintf("transformations[nom_numero(numeros(%s, %s))] <- %s", p, vapply(names(trans), function(u) q(noms(as.numeric(u))), ""), vapply(trans, q, ""))
     }
     croises <- if (length(r$croises)) {
       paste0("list(", paste(vapply(r$croises, function(cr) sprintf("numeros(%s, %s)", p, vecteur(noms(cr))), ""), collapse = ",\n               "), ")")
@@ -4236,7 +4441,7 @@ code_definition <- function(projet, d, p = "p") {
       if (length(exclues)) "# observations exclues du modèle" else NULL,
       sprintf("observations <- %s", obs),
       if (length(r$test)) c("# jeu de test : hors du modèle, puis prédit par lui (jeu_test.R)",
-                            sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[as.character(r$test)])))),
+                            sprintf("test <- numeros_observations(%s, %s)", p, vecteur(unname(projet$noms_obs[nom_numero(r$test)])))),
       if (length(r$spectres)) c("# prétraitement des spectres, dans cet ordre (voir moteur/R/spectres.R)",
                                 sprintf("spectres <- %s", paste(deparse(r$spectres, width.cutoff = 500L), collapse = ""))),
       if (length(r$aleatoires)) c("# effets aléatoires emboîtés, du plus large au plus fin (voir moteur/R/regression.R)",

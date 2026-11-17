@@ -36,7 +36,7 @@ modeles_de_base <- function(projet, d, vus = character(0)) {
       absents <- c(absents, plus_bas$absents)
       bases[[x[2]]] <- list(definition = db, variables = list())
     }
-    bases[[x[2]]]$variables[[as.character(t$variables[1])]] <- as.integer(x[3])
+    bases[[x[2]]]$variables[[nom_numero(t$variables[1])]] <- as.integer(x[3])
   }
   list(bases = bases, absents = unique(absents))
 }

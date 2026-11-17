@@ -14,8 +14,8 @@ or later (Intel), and on Linux. The files are on GitHub's
 3. Windows may say it protected your PC, because the installer isn't signed: click *More info*,
    then *Run anyway*.
 
-R is included: there is nothing else to install, and an R already on the computer is neither used
-nor changed. Nuée appears in the Start menu; double-clicking a `.nuee` project opens it in Nuée.
+R is included: there is nothing else to install. An R already on the computer is never changed,
+and used only if you choose it in *File › Settings…*. Nuée appears in the Start menu; double-clicking a `.nuee` project opens it in Nuée.
 It is uninstalled from *Settings › Apps*; your projects stay where you saved them, and your
 settings are kept.
 
@@ -44,8 +44,8 @@ network: see [the deployment guide](https://github.com/4rtefakt/nuee/blob/main/d
    couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy & Security*,
    and confirm. Nuée then opens as any other application.
 
-R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
-neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At start-up,
+R is included, as on Windows: there is nothing else to install. An R already on the Mac is never
+changed, and used only if you choose it in *Nuée › Settings…*. Settings are kept in `~/Library/Application Support/Nuee`. At start-up,
 Nuée asks GitHub whether a newer version exists; a click in the status bar opens its page, whose
 `.dmg` replaces the application. Every change to Nuée is checked on Apple silicon and Intel Macs,
 from the `.dmg`, on a Mac without R.
@@ -98,5 +98,5 @@ Then either:
 
 ## Then
 
-Open a table (*File › Open*, Ctrl+O), or try *Help › Example project*, then follow
+Open a table (*File › Open*, Ctrl+O), or try *Help › Example projects*, then follow
 [a tutorial](page:tutoriels) or [the guide](page:guide.demarrer).

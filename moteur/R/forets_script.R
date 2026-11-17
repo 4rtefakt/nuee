@@ -34,7 +34,7 @@ code_x_ensemble <- function(m, tab, tx) {
   vars <- m$variables
   valeurs <- vapply(seq_along(vars), function(j) {
     v <- vars[[j]]
-    col <- sprintf("d[[%s]]", code_texte(tab$noms[[as.character(v$uid)]]))
+    col <- sprintf("d[[%s]]", code_texte(tab$noms[[nom_numero(v$uid)]]))
     sprintf("x%d = %s", j, if (!is.null(v$transform)) code_transformation(v$transform, col, TRUE) else col)
   }, "")
   transformees <- vapply(Filter(function(v) !is.null(v$transform), vars), `[[`, "", "nom")
@@ -53,7 +53,7 @@ code_x_ensemble <- function(m, tab, tx) {
 
 # La réponse d'une forêt de régression ou d'arbres boostés : une variable Y, transformée s'il y a lieu.
 code_y_ensemble <- function(m, d, tab, tx, nom = "y", lignes = "d") {
-  col <- sprintf("%s[[%s]]", lignes, code_texte(tab$noms[[as.character(d$y[[1]]$variables[1])]]))
+  col <- sprintf("%s[[%s]]", lignes, code_texte(tab$noms[[nom_numero(d$y[[1]]$variables[1])]]))
   sprintf("%s <- %s", nom, if (!is.null(m$y$transform)) code_transformation(m$y$transform, col, TRUE) else col)
 }
 
@@ -140,7 +140,7 @@ code_calcul_foret <- function(projet, d, m, tab, langue) {
   r <- m$reglages_foret
   test <- !is.null(m$test)
   classement <- m$classement
-  col_y <- tab$noms[[as.character(if (classement) d$classe else d$y[[1]]$variables[1])]]
+  col_y <- tab$noms[[nom_numero(if (classement) d$classe else d$y[[1]]$variables[1])]]
   reponse <- if (classement) c(commentaire(tx(sprintf("La réponse : la classe « %s » (ses classes présentes).", texte_sur(m$y$nom)), sprintf("The response: the class “%s” (its classes present).", texte_sur(m$y$nom)))),
                                sprintf("y <- droplevels(d[[%s]])", code_texte(col_y)), "classes <- levels(y)")
              else c(commentaire(tx(sprintf("La réponse : « %s »%s.", texte_sur(m$y$nom), if (!is.null(m$y$transform)) ", transformée" else ""),

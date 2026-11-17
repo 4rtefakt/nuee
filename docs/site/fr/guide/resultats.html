@@ -46,7 +46,11 @@
 <li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
 <li><a href="cartes.html">Cartes et données spatiales</a></li>
 <li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="code-r.html">Votre propre modèle en code R</a></li>
+<li><a href="greffons.html">Greffons</a></li>
+<li><a href="ecrire-un-greffon.html">Écrire un greffon</a></li>
 <li><a href="resultats.html" aria-current="page">Résultats, documents et R</a></li>
+<li><a href="versions.html">Versions et travail à plusieurs</a></li>
 <li><a href="projets-usp.html">Projets .usp</a></li>
 </ul>
 </details>
@@ -83,6 +87,20 @@
 {{M1.gain}}  {{M1.vip.sucre}}  {{M1.coef.sucre}} (coefficient centré-réduit et son intervalle à 95 %)
 {{M5.coef.annee}} (une régression : estimation, intervalle et p)  {{M5.p.annee}}  {{M1.cvanova.p}}
 {{M1.scores | légende}} (un graphique, comme dans sa fenêtre)  {{M5.effets.annee}} (le graphique d'un terme)
+{{M5.valeurs_predites.annee}} (ses valeurs prédites sur l'échelle de la réponse, Effets › Échelle)
+{{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+(TRIM : la pente globale des totaux imputés, à 4 décimales, son intervalle à 95 %, sa variation
+en % par pas de temps, sa classe dans la langue du document, σ² et ρ)  {{D1.D}} {{D1.D.ic}}
+{{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.Nord}} (échantillonnage par distances :
+la densité, son intervalle et son CV, l'effectif, p, ESW ou EDR, la densité d'une strate)
+{{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+{{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA : le R² et p du modèle, ceux
+d'un terme)  {{N1.stress}} (NMDS)
+Les résultats clés des autres analyses se citent de même, sous les clés que compare Ce qui a
+changé (un indice {{T1.indice.2015}}, le r d'un test de Mantel {{M1.mantel}}...) : une valeur,
+puis .ic, .bas, .haut et .p pour celles qui ont un intervalle ou une valeur p, .pourcent pour une
+valeur multiplicative ; A, et un K de 0, ne sont pas proposés là où ils ne veulent rien dire. Le
+fichier Quarto reproductible écrit ceux ci-dessus d'après les scripts des modèles.
 {{M1.table.resume | légende}} (un tableau du rapport du modèle)  {{M1.methodes}} (texte des méthodes)
 {{M1.resultats}} (texte des résultats : l'ajustement, chaque coefficient avec son intervalle et p,
 en facteur ou en rapport de cotes pour un lien log ou logit, les termes significatifs, les
@@ -110,7 +128,7 @@ la CV-ANOVA et les variables les plus importantes)</pre>
 </section>
 <section id="exporter-vers-d-autres-logiciels">
 <h2>Exporter vers d'autres logiciels</h2>
-<p><strong>Fichier › Exporter les données :</strong> le tableau du projet (noms des observations, identifiants, variables). Fichier › Exporter les résultats du modèle (Ctrl+E) : les tableaux du modèle (observations : scores, T², DModX, valeurs ajustées ; variables : loadings, VIP, intervalles ; composantes ; coefficients ; variables Y). Formats : Excel (une feuille par tableau), CSV, texte séparé par des tabulations, R (.rds : une liste de tableaux ; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) ; dans ces derniers, un fichier par tableau (« M1.sav », « M1 - variables.sav »...). Les variables qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les unités et descriptions des variables (Édition › Unités et descriptions) vont dans une feuille « Variables » d'un classeur Excel, relue quand Nuée l'ouvre, une table « Variables » d'un GeoPackage, les descriptions d'un fichier jamovi et les attributs d'un tableau R (voir <a href="donnees.html#nettoyer-les-donnees-chercher-et-remplacer-categories-unites">Nettoyer les données</a>).</p>
+<p><strong>Fichier › Exporter les données :</strong> le tableau du projet (noms des observations, identifiants, variables). Fichier › Exporter les résultats du modèle (Ctrl+E) : les tableaux du modèle (observations : scores, T², DModX, valeurs ajustées ; variables : loadings, VIP, intervalles ; composantes ; coefficients ; variables Y). Formats : Excel (une feuille par tableau), CSV, texte séparé par des tabulations, R (.rds : une liste de tableaux ; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) et Weka (.arff) ; dans ces derniers, un fichier par tableau (« vergers - M1 PCA.sav », « vergers - M1 PCA - variables.sav »...). Les fichiers d'un modèle portent par défaut le nom de son projet, son nom et son type (ses résultats, l'export vers R, son rapport, ses prédictions) : les M1 de deux projets ne prennent pas le même nom dans un dossier. Les variables qualitatives restent qualitatives (facteurs R, étiquettes de valeurs SPSS et Stata, nominales jamovi). Pour SPSS, Stata, SAS et dBase, les noms de variables sont rendus valides (lettres sans accent, chiffres, « _ ») ; le nom d'origine devient l'étiquette de la variable. Les unités et descriptions des variables (Édition › Unités et descriptions) vont dans une feuille « Variables » d'un classeur Excel, relue quand Nuée l'ouvre, une table « Variables » d'un GeoPackage, les descriptions d'un fichier jamovi et les attributs d'un tableau R (voir <a href="donnees.html#nettoyer-les-donnees-chercher-et-remplacer-categories-unites">Nettoyer les données</a>).</p>
 <p><strong>SAS :</strong> format de transport version 5, que SAS lit avec libname xport (noms de 8 caractères, étiquettes de 40, textes de 200 au plus). dBase : textes en Windows-1252 ; dans LibreOffice, choisir le jeu de caractères « Europe occidentale (Windows-1252) » à l'ouverture. Les fichiers écrits ont été ouverts dans jamovi, PSPP (pour SPSS), Weka, LibreOffice et pandas.</p>
 </section>
 <section id="exporter-vers-r">
@@ -125,6 +143,7 @@ la CV-ANOVA et les variables les plus importantes)</pre>
 <p><strong>Format :</strong> script R (.R) ; ou rapport R Markdown (.Rmd) ou Quarto (.qmd), qui y ajoute le texte des méthodes, des tableaux et des graphiques (scores, loadings, VIP, observé / prédit, T2, DModX) et les références ; il se compile dans RStudio (bouton Knit) ou avec quarto render, et demande le paquet knitr. Fichiers en plus, au choix : renv.lock (versions de R et des paquets, pour renv::restore()), les données et le modèle ajusté en .RData (load() les rend sans recalculer), un projet RStudio (.Rproj, à mettre dans un dossier à part).</p>
 <p><strong>Modèles :</strong> celui-ci, ou tous les modèles de la séance (le dernier ajustement de chacun) dans un seul script .R : les fonctions et les données une fois, puis un bloc par modèle sous son nom (M1, M2...).</p>
 <p>Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les mêmes résultats ; sinon elle le signale.</p>
+<p><strong>Le script est à vous :</strong> vous pouvez l'utiliser, le modifier et le partager sous les conditions de votre choix, y compris les parties du moteur de Nuée qu'il recopie (une exception à la licence GPL de Nuée, LICENSE-EXCEPTION.md). Ses commentaires du début le disent, et comment citer Nuée si vous publiez des résultats obtenus avec lui.</p>
 </section>
 <section id="console-r">
 <h2>Console R</h2>
@@ -173,9 +192,9 @@ modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustem
 </section>
 </div>
 <p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
-<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="arbres.html">← Arbres, forêts, discriminante, k-moyennes</a><a rel="next" href="projets-usp.html">Projets .usp →</a></nav>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="ecrire-un-greffon.html">← Écrire un greffon</a><a rel="next" href="versions.html">Versions et travail à plusieurs →</a></nav>
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
 </body>
 </html>

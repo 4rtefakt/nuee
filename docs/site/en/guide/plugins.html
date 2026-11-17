@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plugins · Nuée</title>
+<meta name="description" content="Installing a plugin, using it, sharing it with a project, the trust it asks for; your organisation’s plugins.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="plugins.html">
+<link rel="alternate" hreflang="fr" href="../../fr/guide/greffons.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutorials/index.html">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/guide/greffons.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Guide pages">
+<details open><summary>Guide pages</summary>
+<ul>
+<li><a href="index.html">The guide</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="data.html">The data</a></li>
+<li><a href="models.html">Choosing and building a model</a></li>
+<li><a href="plots.html">Plots and figures</a></li>
+<li><a href="pca-pls.html">PCA, PLS, OPLS and spectra</a></li>
+<li><a href="regressions.html">Linear, generalized and mixed models</a></li>
+<li><a href="tests.html">Statistical tests</a></li>
+<li><a href="communities.html">Community ecology</a></li>
+<li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
+<li><a href="maps.html">Maps and spatial data</a></li>
+<li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="r-code.html">Your own model in R code</a></li>
+<li><a href="plugins.html" aria-current="page">Plugins</a></li>
+<li><a href="writing-a-plugin.html">Writing a plugin</a></li>
+<li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
+<li><a href="usp-projects.html">.usp projects</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Plugins</h1>
+<div class="texte-guide">
+<section id="plugins">
+<p>A plugin adds a model type written in R by someone else to Nuée: an R function and its manifest (plugin.json), which become a menu item with its dialog, its results, its Methods text and citation, and its Export to R. It is shared as one file, a .nueeplugin. Two example plugins come with Nuée’s documentation: “Site occupancy (single season)”, the occupancy model of MacKenzie et al. (2002) fitted by maximum likelihood, and “Mann–Kendall trend test and Sen’s slope”. Download them from the documentation website, <a href="https://4rtefakt.github.io/nuee/greffons/occupancy.nueeplugin">https://4rtefakt.github.io/nuee/greffons/occupancy.nueeplugin</a> and <a href="https://4rtefakt.github.io/nuee/greffons/mann-kendall.nueeplugin">https://4rtefakt.github.io/nuee/greffons/mann-kendall.nueeplugin</a>, or find them in the repository: <a href="https://github.com/4rtefakt/nuee/tree/main/exemple/plugins">https://github.com/4rtefakt/nuee/tree/main/exemple/plugins</a> (and the data of the first, docs/site/donnees/woodpecker_occupancy.csv).</p>
+<ul>
+<li><strong>Installing one:</strong> File › Plugins…, Install from file…, then the .nueeplugin. Nuée reads it without running anything and shows its card (its name, version, authors and their ORCID, licence, citation, the R packages it needs, the oldest Nuée it works with) and its code. A plugin is R code: it runs with your rights, like code typed in the R console, and can read or change your files; install only the plugins you trust. Installing one approves it on this computer (its fingerprint, the SHA-256 of its files, joins the code you approved): models made with it are then fitted without asking. Another version of the same plugin replaces it.</li>
+<li>File › Plugins… lists the plugins installed, yours and those your organisation gives everyone, each with its card: Copy the BibTeX of its citation; its packages, present or missing (Install the missing packages installs them from CRAN into the user library of the R Nuée uses, as File › Settings… does for the engine’s own); Show (its code); New model…; Remove (yours only). A plugin whose files changed since it was installed doesn’t run until it is installed again.</li>
+<li><strong>Using one:</strong> Model › Plugins › its name… (it is also in New model’s Type list). Its dialog is made from its manifest: on the General tab its inputs, the project’s variables it takes (one, from a list, or several, to tick, with a search when the project has many; only the quantitative, qualitative or both that it accepts are offered) and its options (numbers, choices, boxes to tick, texts), each with its help; on the Observations tab the model’s observations, as for the other models (ticked, a condition). Fit: the plugin’s function receives the model’s data and what was chosen.</li>
+<li>Its results are those of an R-code model (see “<a href="r-code.html#your-own-model-in-r-code">Your own model in R code</a>”): Summary (what the plugin prints, and its card: the plugin, its version, its authors, the variables and options chosen; Edit the model), Coefficients, Residuals, Plots of the code, Values and tables, as the plugin gives them, and The plugin (its card, its fingerprint, its code). Model › Edit model opens its dialog again. What changed, documents ({{M1.valeurs.psi}}, {{M1.coef.psi.forest}}), Export, the report and Update the data as for the other models. The Methods text names the plugin, its version and its authors, cites what the plugin asks to be cited (MacKenzie et al., 2002) and the packages it uses, with their versions; Export to R writes the plugin’s code and the call of its function, a script that runs in R alone.</li>
+<li><strong>Sharing:</strong> a project that uses a plugin keeps it whole (its manifest and its code) in its file. Opened on another computer, its models wait, not fitted, under a bar that names the plugin, its version and its authors: Show (its card and its code), then Install and run (installed from the project, approved, its models fitted). When another version of the plugin is installed there, the bar says so, and the project’s own version is what redoes its models (Run version 1.0.0), unless you choose the installed one (Use version 1.1.0: its models are made again with it, their inputs and options kept, and fitted; Ctrl+Z undoes it). Removing a plugin doesn’t break your projects: they keep their copy, still approved on this computer.</li>
+<li><strong>Organisations:</strong> IT can give plugins to everyone (a folder set by the PluginsFolder policy: they are offered and run without asking), and, with the DisableCustomCode policy, allow only those: R-code models and the plugins users would install are then turned off. docs/deploiement.md, in Nuée’s repository, says how.</li>
+</ul>
+</section>
+</div>
+<p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="r-code.html">← Your own model in R code</a><a rel="next" href="writing-a-plugin.html">Writing a plugin →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

@@ -14,7 +14,12 @@
 #     elles qui s'ouvre ; dans l'export (feuille « Variables » d'un classeur, table d'un GeoPackage,
 #     description de jamovi, attributs de R ; rien en CSV) et relues à l'ouverture d'un classeur ou
 #     d'un GeoPackage ; dans le texte des Méthodes (la réponse et son unité), le texte des résultats
-#     (« par m ») et le script R (en commentaire, qui tourne encore).
+#     (« par m ») et le script R (en commentaire, qui tourne encore) ;
+#   - une variable renommée (la définition d'un modèle, sa condition, la formule d'une variable
+#     calculée qui suivent ; le même ajustement sous le nouveau nom ; les références d'un document ;
+#     les refus), traitée en catégories puis en nombres (un terme par catégorie, comme lm() avec
+#     factor() ; les refus), supprimée (ses jeux de données, une coordonnée ; refusée quand un modèle
+#     l'utilise) ; un modèle de la séance à qui l'on dit ce qui a changé depuis son ajustement.
 #   Rscript moteur/tests/verifier_donnees.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -209,6 +214,27 @@ verifier("un retour en arrière : rien à rapporter", identical(aligner_categori
 verifier("un nom changé : à ajuster à nouveau, et le message le dit", grepl("ont changé depuis l'ajustement de M1", attr(aligner_categories(r3, d_lm, vues), "perimee") %||% ""))
 pq <- remplacer_valeurs(p4, u4("habitat"), vides = TRUE, remplacer = "inconnue")
 verifier("une catégorie ajoutée : rien ne change pour le modèle", is.null(attr(aligner_categories(pq, d_lm, vues), "perimee")))
+# (la classe d'une LDA, d'un arbre de classement, d'espèces indicatrices… n'est pas faite de termes)
+d_lda <- definir_modele(p4, "LDA", x = u4("altitude", "densite"), classe = u4("habitat"), observations = obs, echelle = "UV")
+vues_lda <- categories_definition(p4, d_lda)
+verifier("la classe d'une LDA : ses catégories gardées avec le modèle ; un nom changé ou une fusion, à ajuster à nouveau ; un nouvel ordre, rapporté",
+         identical(vues_lda[[as.character(u4("habitat"))]], c("forêt", "lande", "prairie")) &&
+           grepl("ont changé depuis l'ajustement", attr(aligner_categories(r3, d_lda, vues_lda), "perimee") %||% "") &&
+           grepl("ont changé depuis l'ajustement", attr(aligner_categories(r2, d_lda, vues_lda), "perimee") %||% "") &&
+           is.null(attr(aligner_categories(r1, d_lda, vues_lda), "perimee")))
+# Son export vers R après le nouvel ordre (serveur.R : script_demande) : sur le projet tel qu'il l'a vu
+# (projet_tel_ajuste), avec la définition de son ajustement, le script redonne ses probabilités, ses
+# coefficients, sa validation croisée ; sur le projet d'aujourd'hui, ses classes viendraient dans un
+# autre ordre
+m_lda <- ajuster(p4, d_lda)
+vu <- projet_tel_ajuste(r1, ordres_categories(p4))
+r_vu <- ecrire_script(vu, d_lda, file.path(dossier, "lda_vu.R"), "moteur", m = m_lda)
+r_auj <- ecrire_script(r1, aligner_categories(r1, d_lda, vues_lda), file.path(dossier, "lda_aujourdhui.R"), "moteur", m = m_lda)
+verifier("le script d'une LDA ajustée avant un nouvel ordre de ses classes : sur le projet tel qu'elle l'a vu, ses résultats",
+         identical(categories_de(vu, "habitat"), categories_de(p4, "habitat")) && identical(valeurs(vu, "habitat"), valeurs(p4, "habitat")) &&
+           identical(unname(vu$donnees[, as.character(u4("habitat"))]), unname(p4$donnees[, as.character(u4("habitat"))])) &&
+           is.null(r_vu$ecart) && grepl("probabilites", r_auj$ecart %||% "") &&
+           identical(projet_tel_ajuste(r3, ordres_categories(p4)), r3) && identical(projet_tel_ajuste(p4, ordres_categories(p4)), p4))
 d_pls <- definir_modele(p4, "PLS", x = u4("habitat", "altitude"), y = u4("densite"), observations = obs, A = 1)
 p4b <- p4
 p4b$models <- list(d_pls)
@@ -303,6 +329,93 @@ p_piege$variables[[which(vapply(p_piege$variables, function(v) identical(v$ids[1
 invisible(ecrire_script(p_piege, d5, f_script, "moteur"))
 s2 <- readLines(f_script, encoding = "UTF-8")
 verifier("une description à retour à la ligne venue d'un projet reste un commentaire", !any(trimws(s2) == "stop(\"non\")"))
+
+cat("Une variable renommée, supprimée, en catégories ou en nombres\n")
+# trois sites codés 1, 2, 3 (des nombres), un habitat, une altitude, des remarques de terrain, une réponse
+set.seed(9)
+dv <- data.frame(nom = sprintf("R%02d", 1:30), site = rep(1:3, 10), habitat = rep(c("forêt", "prairie", "lande"), each = 10),
+                 altitude = round(runif(30, 100, 900)), remarques = sample(c("ras", "pluie", "vent"), 30, TRUE), stringsAsFactors = FALSE)
+dv$y <- round(2 + 0.5 * dv$site + (dv$habitat == "forêt") + dv$altitude / 300 + rnorm(30, 0, 0.3), 3)
+f_dv <- file.path(dossier, "sites.csv")
+utils::write.csv(dv, f_dv, row.names = FALSE)
+pv <- importer_tableau(f_dv)
+uv <- function(...) numeros(pv, c(...))
+obs_v <- numeros_observations(pv)
+dv1 <- definir_modele(pv, "LM", x = uv("site", "habitat", "altitude"), y = uv("y"), observations = obs_v, echelle = c(defaut = "none"),
+                      condition = 'altitude > 200 & habitat != "lande"')
+dv1$name <- "M1"
+pv <- variable_calculee(pv, "alt_km", "altitude/1000 +\taltitude * 0")
+pv$models <- list(dv1)
+m_v1 <- ajuster(pv, dv1)
+rv <- renommer_variable(pv, uv("altitude"), "alt")
+d_r <- rv$models[[1]]
+verifier("renommée : son nom, celui de son terme dans M1, sa condition et la formule qui la lit ; le reste tel quel",
+         identical(unname(rv$noms_var[as.character(uv("altitude"))]), "alt") && "alt" %in% vapply(d_r$x, `[[`, "", "name") &&
+           identical(texte_condition(d_r$condition), 'alt > 200 & habitat != "lande"') &&
+           identical(variable_du_projet(rv, numeros(rv, "alt_km"))$formula, "alt/1000 +\talt * 0") &&
+           identical(as.character(attr(rv, "renommage")$modeles), "M1") && identical(attr(rv, "termes")$M1, c(altitude = "alt")))
+m_r <- ajuster(sans_attributs(rv), d_r)
+verifier("le modèle renommé : le même ajustement, son coefficient sous le nouveau nom", isTRUE(all.equal(m_r$resultat$ajuste, m_v1$resultat$ajuste)) &&
+           "alt" %in% m_r$resultat$coefficients$terme && !"altitude" %in% m_r$resultat$coefficients$terme)
+verifier("refus : un nom vide, le même, celui d'une autre variable ou d'un identifiant, un $ en tête",
+         nzchar(erreur(renommer_variable(pv, uv("altitude"), " "))) && nzchar(erreur(renommer_variable(pv, uv("altitude"), "altitude"))) &&
+           grepl("s'appelle déjà « habitat »", erreur(renommer_variable(pv, uv("altitude"), "habitat"))) &&
+           grepl("identifiant", erreur(renommer_variable(pv, uv("altitude"), pv$observation_id_names[[1]]))) &&
+           nzchar(erreur(renommer_variable(pv, uv("altitude"), "$M1.t1"))))
+verifier("renommer_symbole : les symboles seuls, ni les textes, ni ce qui suit $, ni les arguments ; un nom qui n'est pas un nom de R entre accents graves",
+         identical(renommer_symbole('habitat == "habitat" & d$habitat > f(habitat = 1)', "habitat", "milieu"), 'milieu == "habitat" & d$habitat > f(habitat = 1)') &&
+           identical(renommer_symbole("`site id` %in% c(1, 2)", "site id", "site"), "site %in% c(1, 2)") &&
+           identical(renommer_symbole("forêt > 1", "forêt", "bois clair"), "`bois clair` > 1") && is.null(renommer_symbole("x >", "x", "y")) &&
+           is.null(renommer_symbole("altitude > 1", "alt", "z")))
+refs <- paste("{{M1.coef.altitude}}, {{M1.est.altitude:3 #pente | La pente}}, {{M1.Q2}}, {{M1 (2).coef.altitude}}, {{M1.coef.habitat(forêt)}},",
+              "{{M1.cvanova.p.altitude}}, {{< pagebreak >}}, {{M1.vip.altitude}}")
+sr <- suivre_references_texte(refs, c("M1", "M1 (2)"), list(M1 = c(altitude = "alt")))
+verifier("les références d'un document : celles du terme renommé de M1 (son format, son étiquette, sa légende gardés), pas celles d'un autre modèle ni d'autres valeurs",
+         attr(sr, "n") == 4 && identical(as.character(sr), paste("{{M1.coef.alt}}, {{M1.est.alt:3 #pente | La pente}}, {{M1.Q2}}, {{M1 (2).coef.altitude}}, {{M1.coef.habitat(forêt)}},",
+                                                                  "{{M1.cvanova.p.alt}}, {{< pagebreak >}}, {{M1.vip.alt}}")) &&
+           identical(as.character(suivre_references_texte(as.character(sr), c("M1", "M1 (2)"), carte_inverse(list(M1 = c(altitude = "alt"))))), refs))
+cv <- changer_type_variable(pv, uv("site"), "qualitative")
+d_c <- cv$models[[1]]
+dl_v <- data.frame(y = dv$y, site = factor(dv$site, levels = c(1, 2, 3)), habitat = factor(dv$habitat, levels = c("forêt", "lande", "prairie")), altitude = dv$altitude)
+garde_v <- dv$altitude > 200 & dv$habitat != "lande"
+m_c <- ajuster(sans_attributs(cv), d_c)
+verifier("le site en catégories : « 1 », « 2 », « 3 », chaque observation la sienne ; M1 prend un terme par site, à la place du sien",
+         identical(categories_de(cv, "site"), c("1", "2", "3")) && identical(valeurs(cv, "site"), as.character(dv$site)) &&
+           identical(vapply(d_c$x, `[[`, "", "name")[1:3], c("site(1)", "site(2)", "site(3)")) && isTRUE(attr(cv, "type")$type == "qualitative"))
+verifier("le modèle du site en catégories : comme lm() avec factor(site)", isTRUE(all.equal(unname(m_c$resultat$ajuste),
+                                                                                     unname(stats::fitted(stats::lm(y ~ site + habitat + altitude, dl_v[garde_v, ]))))))
+nv <- changer_type_variable(sans_attributs(cv), numeros(cv, "site"), "quantitative")
+verifier("en nombres de nouveau : les mêmes valeurs, M1 de nouveau un seul terme du site, le même ajustement qu'avant",
+         identical(valeurs(nv, "site"), as.numeric(dv$site)) && identical(vapply(nv$models[[1]]$x, `[[`, "", "name")[1], "site") &&
+           isTRUE(all.equal(ajuster(sans_attributs(nv), nv$models[[1]])$resultat$ajuste, m_v1$resultat$ajuste)))
+sans_modeles <- pv
+sans_modeles$models <- list()
+verifier("refus : déjà de ce type, des catégories qui ne sont pas des nombres (nommées), une variable en Y ou dans la condition d'un modèle",
+         grepl("déjà en nombres", erreur(changer_type_variable(pv, uv("site"), "quantitative"))) &&
+           grepl("« forêt »", erreur(changer_type_variable(sans_modeles, uv("habitat"), "quantitative"))) &&
+           grepl("M1 utilise « y »", erreur(changer_type_variable(pv, uv("y"), "qualitative"))) &&
+           grepl("M1 utilise « altitude »", erreur(changer_type_variable(pv, uv("altitude"), "qualitative"))))
+verifier("en catégories puis en nombres : les mêmes valeurs",
+         { tx <- changer_type_variable(changer_type_variable(sans_modeles, uv("altitude"), "qualitative"), uv("altitude"), "quantitative")
+           identical(valeurs(tx, "altitude"), as.numeric(dv$altitude)) })
+sv <- supprimer_variable(pv, uv("remarques"))
+verifier("les remarques supprimées : leur colonne, leur nom, leurs jeux de données ; M1 tel quel",
+         !"remarques" %in% sv$noms_var && !as.character(uv("remarques")) %in% colnames(sv$donnees) && identical(sv$models, pv$models) &&
+           !any(vapply(sv$datasets, function(d) uv("remarques") %in% as.numeric(unlist(d$variables)), TRUE)) && identical(attr(sv, "suppression")$nom, "remarques"))
+pc <- regler_coordonnees(pv, uv("altitude"), uv("y"), "2154")
+pc$models <- list()
+verifier("refus : une variable qu'un modèle utilise (nommé) ; une coordonnée supprimée retire les coordonnées, et le dit",
+         grepl("M1 utilise « habitat »", erreur(supprimer_variable(pv, uv("habitat")))) &&
+           { sc <- supprimer_variable(pc, uv("altitude")); is.null(sc$coordonnees) && isTRUE(attr(sc, "suppression")$coordonnee) && "alt_km" %in% attr(sc, "suppression")$formules })
+vues_v <- variables_vues(pv, dv1)
+verifier("un modèle ajusté avant : le nom changé, le type changé, la variable partie, chacun dit ; rien, rien",
+         is.null(variables_changees(pv, dv1, vues_v)) && grepl("s'appelle « alt » depuis l'ajustement de M1", variables_changees(sans_attributs(rv), dv1, vues_v)) &&
+           grepl("est en catégories depuis l'ajustement de M1", variables_changees(sans_attributs(cv), dv1, vues_v)) &&
+           grepl("n'est plus dans les données", variables_changees(supprimer_variable(pc, uv("altitude")), dv1, vues_v)))
+options(nuee.langue = "en")
+verifier("en anglais", grepl("“altitude” renamed “alt”", attr(renommer_variable(pv, uv("altitude"), "alt"), "renommage")$phrases[1]) &&
+           grepl("as categories: 3", attr(changer_type_variable(pv, uv("site"), "qualitative"), "type")$phrases[1]))
+options(nuee.langue = "fr")
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Getting started · Nuée</title>
-<meta name="description" content="Installing, opening a table, saving and getting your work back, the explorer, the menus, the windows.">
+<meta name="description" content="Installing, opening a table, saving and getting your work back, the R Nuée uses, the explorer, the menus, the windows.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -46,7 +46,11 @@
 <li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
 <li><a href="maps.html">Maps and spatial data</a></li>
 <li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="r-code.html">Your own model in R code</a></li>
+<li><a href="plugins.html">Plugins</a></li>
+<li><a href="writing-a-plugin.html">Writing a plugin</a></li>
 <li><a href="results.html">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
 <li><a href="usp-projects.html">.usp projects</a></li>
 </ul>
 </details>
@@ -61,6 +65,7 @@
 <li><a href="#opening">Opening</a></li>
 <li><a href="#saving-and-getting-your-work-back">Saving and getting your work back</a></li>
 <li><a href="#if-the-r-engine-stops">If the R engine stops</a></li>
+<li><a href="#r-used-by-nuee">R used by Nuée</a></li>
 <li><a href="#the-explorer">The explorer</a></li>
 <li><a href="#menus-and-toolbar">Menus and toolbar</a></li>
 <li><a href="#windows">Windows</a></li>
@@ -78,7 +83,7 @@
 <li><strong>Debian, Ubuntu and their derivatives:</strong> sudo apt install ./Nuee-&lt;version&gt;-amd64.deb also installs R and the R packages needed. Nuée appears in the applications menu.</li>
 <li><strong>Other distributions:</strong> Nuee-&lt;version&gt;-x86_64.AppImage (make it executable, then run it) or Nuee-&lt;version&gt;-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R: install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme", "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).</li>
 </ul>
-<p>.usp projects need python3. For another R than the PATH's: start Nuée with RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.</p>
+<p>.usp projects need python3. For another R than the PATH's: File › Settings... (see <a href="#r-used-by-nuee">R used by Nuée</a>), or start Nuée with RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.</p>
 </section>
 <section id="opening">
 <h2>Opening</h2>
@@ -102,54 +107,76 @@ GeoPackage .gpkg (a layer of QGIS: see Maps and spatial data)</pre>
 <p><strong>File › Import spectra:</strong> files of spectra made into one project (see <a href="pca-pls.html#spectra">Spectra</a>).</p>
 <p>Dropping files on the window (drag and drop from Explorer) opens them the same way: JCAMP-DX or SPC spectra together make one project, as Import spectra; other files each open as with File › Open. Double-clicking a .nuee project in Windows Explorer opens it in Nuée (in the window already open, if there is one).</p>
 <p>The last files opened are in File › Open recent.</p>
-<p><strong>To try it:</strong> Help › Example project opens 120 made-up apples (four varieties, organic or conventional growing, a dozen measurements and a tasting score) with four ready models: a PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The original table, orchards.csv, is next to it (resources\exemple), to try opening a table.</p>
+<p><strong>To try it, Help › Example projects:</strong></p>
+<ul>
+<li><strong>Apples:</strong> 120 made-up apples (four varieties, organic or conventional growing, a dozen measurements and a tasting score) with four ready models: a PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The original table, orchards.csv, is next to it (resources\exemple), to try opening a table.</li>
+<li><strong>Skylark monitoring:</strong> the two projects of the monitoring tutorial, a skylark counted on 40 sites over 17 years (TRIM and a negative binomial mixed model, fitted) and its line transects (distance sampling: density and abundance).</li>
+<li><strong>A weir removed:</strong> the young trout of the BACI tutorial, before and after a weir was removed, with the before/after view of Statistical tests and its mixed model.</li>
+</ul>
+<p>Their data are made up or simulated (the tutorials' tables can be downloaded from the documentation website). Each opens as a new project, its models fitted and its views open; Save asks where to put it. While a project of the skylarks or the trout is in front, the status bar links to its tutorial.</p>
 </section>
 <section id="saving-and-getting-your-work-back">
 <h2>Saving and getting your work back</h2>
 <p>File › Save project (Ctrl+S) writes the project (.nuee) with its data, its models and the current session: fitted models, open panels and their layout, plot settings (axes, colours, labels, titles), selections, VIP choices, dendrogram groups. When the project is opened again, the models are refitted and everything comes back in place.</p>
-<p>The project is written to a file next to the old one, which then takes its place: a network cut or a full disk during the save leaves the old file intact. If another program keeps the file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as it was and says so: save again, or Save as.... If the file was changed elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers Save as..., Overwrite or Cancel, also for a project recovered after a crash. The file also records which versions of Nuée and R wrote it; a project saved by a newer Nuée is pointed out when it opens.</p>
+<p>The project is written to a file next to the old one, which then takes its place: a network cut or a full disk during the save leaves the old file intact. If another program keeps the file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as it was and says so: save again, or Save as.... If the file was changed elsewhere since you opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers to merge their changes with yours (see <a href="versions.html#working-together">Working together</a>), Overwrite, Save as... or Cancel; for a project recovered after a crash, Save as..., Overwrite or Cancel. The file also records which versions of Nuée and R wrote it, and the name of who saved it; a project saved by a newer Nuée is pointed out when it opens. Nuée also keeps versions of each saved project by itself, to go back to: see <a href="versions.html#history-and-versions">History and versions</a>.</p>
 <p>Opening a file that is already open (a recent file, a double-click in Explorer) shows the open project instead of opening a second copy.</p>
 <p>Closing the application with unsaved changes offers "Save and close". Every two minutes it also keeps a recovery copy of unsaved projects: if it stops without being closed (crash, power cut), it offers to recover them at the next start. Closing that question without an answer keeps the copies for next time; only "Ignore" deletes them.</p>
-<p>Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new variable, class, scores as variables, deleted definition...), up to 20 steps back.</p>
+<p>File › Settings... › At start-up, "Reopen the projects that were open when Nuée was closed": at the next start, the saved projects (.nuee) open when Nuée closed come back, with their models and views; a file moved or deleted since is named in the status bar. Without it, the start page offers Reopen last session. After an unexpected stop, the recovery copies are offered instead.</p>
+<p>Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo (Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with its source and steps, the models fitted again on its data. Both menu items name the change they act on; any new change empties Redo.</p>
 <p><strong>Notes:</strong> each model's summary has a notes area, saved with the project and included in the report; a pencil marks it in the explorer.</p>
 <p>Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the project; for a model made in the application, a checkbox removes it as well (undoable).</p>
 </section>
 <section id="if-the-r-engine-stops">
 <h2>If the R engine stops</h2>
-<p>The application says so and offers to restart it; you can also do it yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and views, from their recovery copy if they had changes, otherwise from the file they save to; changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when the engine no longer answers keeps the recovery copies, offered at the next start. After a minute of computing, the status bar says so.</p>
+<p>A computation that takes more than a second and a half gets Stop in the status bar (above a dialog too, such as New model fitting). Stop ends it between two of its rounds, and nothing changes: the model isn't added, the data aren't changed, the view says "Computation stopped". The long loops stop this way: permutations (of a PLS, a PERMANOVA, a dispersion test, Mantel's test and its correlogram, indicator species, an RDA's tests, the variables fitted to an ordination's axes, Moran's I), the AIC selection's models, an NMDS's random starts, the power simulations, the cross-validation rounds (PCA, PLS, OPLS, linear models, GAMs, trees, random forests, boosted trees), boosted trees one tree at a time, a tree's stability draws, TRIM's stepwise selection of change points, iPLS's intervals, One model per response, k-means' choice of k, and the steps replayed by Update the data. What can't be stopped before it ends: a single fit in compiled code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's estimation), the R console's code and an R-code model's code; Stop then says so, and Help › Restart the R engine remains. During Update the data, its own Stop stops the model being fitted too. The application says when the engine stops and offers to restart it; you can also do it yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and views, from their recovery copy if they had changes, otherwise from the file they save to; changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when the engine no longer answers keeps the recovery copies, offered at the next start. After a minute of computing, the status bar says so.</p>
 <p><strong>Help › What's new:</strong> the changes in each version (shown once after an update). The installed copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar; on macOS and Linux, a click opens the version's page. On Windows, one click offers to update: the installer is downloaded and checked (its SHA-256 checksum must be the one GitHub gives), then Nuée closes (offering to save the projects you changed), installs it and starts again. For an installation for all users, Windows asks for permission. Help › Check for updates does the same at any time, even with the start-up check off; Help › Look for a new version at start-up turns the check off.</p>
+</section>
+<section id="r-used-by-nuee">
+<h2>R used by Nuée</h2>
+<p><strong>File › Settings...:</strong> Nuée computes with its own R (on Windows and macOS, R 4.6.2 with every package it needs), the recommended choice, or with an R already installed on the computer, R 4.3 or newer. The list shows those that R's installers put in the usual places: on Windows, those the registry knows and those in Program Files or in your own Programs folder; on macOS, CRAN's and Homebrew's; on Linux, where Nuée's default is the computer's R found on the PATH, those in /opt/R. Browse... adds any other, by its folder.</p>
+<p>Nuée runs the R chosen once to check it: its version, and the packages the engine needs (httpuv, jsonlite, openxlsx, haven, readxl, RSQLite and ranger, and R's recommended mgcv, nlme, MASS, rpart, cluster and foreign). "Install them" installs those missing from CRAN into that R's user library, made if needed, and shows what R says meanwhile; or copy the line shown and run it in that R (R or RStudio). With an R older than 4.4, .rds and .RData files don't open; older than 4.5, data files are fingerprinted with MD5 rather than SHA-256 (see <a href="data.html#data-steps-and-updating-the-data">Data steps and updating the data</a>).</p>
+<p>"Use this R" restarts the engine with it, and open projects reopen with their models, views and changes ("At the next start" waits). That R's packages and .Renviron apply, not your .Rprofile, so that it can't change the results. If the R chosen doesn't start (removed, broken), Nuée computes with its own R and says so once. An organisation can set everyone's R; Settings then shows it, and doesn't change it. Help › Diagnostic information and Help › About say which R is in use.</p>
 </section>
 <section id="the-explorer">
 <h2>The explorer (on the left)</h2>
 <p>Projects, data, models imported from a .usp file, fitted models and their views.</p>
 <p><strong>Double-click:</strong> open. Right-click: every action (fit, edit, add or remove a component, export, delete...). Double-clicking an imported model refits it in R; the Summary marks each value: "=" the same as the value stored in the file, "≈" close (less than 0.01), "≠" different. Q2 usually differs: an imported model is validated like the others (see "<a href="models.html#cross-validation">Cross-validation</a>"); "Full model's centres and weights" gives back the file's.</p>
+<p><strong>The explorer follows the work:</strong> a project opened, or a model fitted, comes into view at its top, and opening a project folds the other projects' fitted models to a line each (their arrow unfolds them).</p>
 </section>
 <section id="menus-and-toolbar">
 <h2>Menus and toolbar</h2>
 <p>File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:</p>
 <pre>Ctrl+O open              Ctrl+S save                Ctrl+E export the results
-Ctrl+V paste a table
+Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+Ctrl+Y (or Ctrl+Shift+Z) redo
+Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
 Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
 Esc    clear the selection       Ctrl+Del exclude the selection and refit
 Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
-Ctrl+B explorer          F1 guide</pre>
+Ctrl+B explorer          F1 guide
+Ctrl+Tab / Ctrl+Shift+Tab next / previous tab      F6 / Shift+F6 next / previous area</pre>
 <p><strong>View:</strong> dark theme, French / English, text size.</p>
+<p>The toolbar's views follow the model in front: a PCA, PLS or OPLS has SIMCA's (Summary, Scores, Loadings, DModX, T², Contrib., VIP, Coeff., Obs/pred, HCA, as always); a regression or another analysis has its own (a regression's Coefficients, Effects, Residuals, AIC selection...; TRIM's Indices and Totals; distance sampling's Detection and Density). The Plots menu starts with the active model's views; those it doesn't have are under Plots › Other plots.</p>
+<p><strong>Help › User guide (F1):</strong> this guide, in a panel at the window's right, beside the work, at the section of what is in front: the model's type, the view (F1 on a TRIM model opens TRIM's section, on Plots › AIC selection its paragraph). Its contents, the sections before and after, and a search through every section (accents and capitals don't matter, the words found are marked); the sections it refers to ("see <a href="models.html#cross-validation">Cross-validation</a>") and web addresses are links. It stays open while you work, like another panel (Ctrl+W closes it, F1 again goes to what is in front); its buttons open the guide online and as a text file.</p>
+<p><strong>Keyboard and screen readers:</strong> Alt (or F10) goes to the menu bar, the arrows through its menus, Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar), Ctrl+Tab from tab to tab; on a tab, the arrows and Delete. The explorer is a tree (arrows;</p>
+<p>Enter opens, Space chooses), a table a grid (arrows; Enter or F2 edits a cell, Space chooses a row, Enter on a header sorts). Shift+F10 or the menu key gives the menu of what has the keyboard (a node, a row, a column, a tab, a plot). A plot is named by what it shows for screen readers, and Ctrl+C copies its numbers as a table. Dialogs keep the keyboard until they close. Both themes meet WCAG AA contrast and follow the system's "reduce motion" setting; Format plot › Colours "colour-blind safe" (Okabe-Ito) is made for colour-vision deficiencies, and the default colours stay apart for them too.</p>
 </section>
 <section id="windows">
 <h2>Windows</h2>
-<p>In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data, Variable statistics, History). A model's tab is its page: its summary on the left, its scores and loadings on the right; its other views (VIP, DModX...) join it as tabs. Choosing a model in the explorer shows its page; closing a page's last view closes the page.</p>
-<p>In a page as in the centre, views move by their tab (drag and drop), split and stack; dragging a model's tab next to another one compares two models. Right-click on a tab, or the icon at the top right of a group: detach into its own window (on a second screen, for example), maximise, close.</p>
-<p>Window › New window opens a second full window. A selection of observations (box or lasso in a plot, click on a point or a list row) shows in every view and every window of the same model.</p>
+<p>In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data, Variable statistics, History). With several projects open, a model's tab, and the status bar, start with its project's name ("skylark_counts · M1 · TRIM"). A model's tab is its page: its summary on the left, its scores and loadings on the right; its other views (VIP, DModX...) join it as tabs. Choosing a model in the explorer shows its page; closing a page's last view closes the page.</p>
+<p>In a page as in the centre, views move by their tab (drag and drop), split and stack; dragging a model's tab next to another one compares two models. Right-click on a tab, or the icon at the top right of a group: detach into its own window (on a second screen, for example), maximise, close, close the others, close all the tabs of its project, close all views. Window › Close all views closes every tab of the centre, models' pages and project views (the explorer and the R console stay).</p>
+<p>Window › New window opens a second full window. A selection of observations (box or lasso in a plot, click on a point or a list row) shows in every view and every window of the same model. A window's title, which its taskbar button and the Window menu show, names the project in front: the one the menus act on.</p>
 <p><strong>Plots:</strong> mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the selection's contributions or make it a class.</p>
 <p>Ctrl+C in a view that shows a table (summary, lists, statistics...) copies the table as tab-separated text, to paste into Excel (a list: all its rows, at full precision); with text selected, Ctrl+C copies the text as usual.</p>
-<p><strong>View › Find a command (Ctrl+K):</strong> type part of the name of a command or of its menu ("vip", "export r"), then Enter.</p>
+<p><strong>View › Find a command (Ctrl+K):</strong> type part of the name of a command or of its menu ("vip", "export r"), or of an analysis, in English or French, or its code ("trim", "glm", "nmds", "random forest"), then Enter: the command runs, or New model opens with that type.</p>
 <p><strong>Help › Diagnostic information:</strong> the versions of Nuée, the system, R and its packages, to paste into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).</p>
+<p>Help › Tutorials and Help › User guide online open the documentation website in the browser, in the interface's language: six tutorials, from the question to the paper, and this guide in pages. Help › About gives the versions, the website (nuee.io), the source code and Report a problem, and how to cite Nuée: the sentence to copy, with Zenodo's DOI, which stands for every version (Model › Text for the Methods section writes it too).</p>
 </section>
 </div>
 <p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
 <nav class="suite" aria-label="Neighbouring pages"><span></span><a rel="next" href="data.html">The data →</a></nav>
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
 </body>
 </html>

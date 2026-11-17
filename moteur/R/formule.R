@@ -42,7 +42,7 @@ formule_reglages <- function(projet, r) {
   nom_variable <- function(u) as.character(variable_du_projet(projet, u)$ids[1])
   transformations <- r$transformations %||% list()
   terme <- function(u) {
-    n <- transformations[[as.character(u)]]
+    n <- transformations[[nom_numero(u)]]
     tr <- if (length(n) && nzchar(n[1]) && !identical(n[1], "autre")) lire_transformation(as.character(n[1]))
     texte_transformation(tr, nom_formule(nom_variable(u)))
   }
@@ -53,8 +53,8 @@ formule_reglages <- function(projet, r) {
   droite <- c(
     vapply(as.numeric(unlist(r$x)), function(u) {
       if (!u %in% lisses) return(terme(u))
-      k <- suppressWarnings(as.integer(unlist(r$k_courbes[[as.character(u)]])))
-      f <- suppressWarnings(as.numeric(unlist(r$par_courbes[[as.character(u)]])))  # (une courbe par catégorie de f)
+      k <- suppressWarnings(as.integer(unlist(r$k_courbes[[nom_numero(u)]])))
+      f <- suppressWarnings(as.numeric(unlist(r$par_courbes[[nom_numero(u)]])))  # (une courbe par catégorie de f)
       sprintf("s(%s)", paste(c(terme(u), if (length(f) && !is.na(f[1])) sprintf("by = %s", nom_formule(nom_variable(f[1]))),
                                if (length(k) && !is.na(k[1])) sprintf("k = %d", k[1])), collapse = ", "))
     }, ""),
@@ -436,12 +436,12 @@ lire_formule <- function(projet, texte, type = "LM", famille = NULL) {
         "The effort (offset) goes with a GLM or GAM with a Poisson, negative binomial, gamma, Tweedie or zero-inflated Poisson distribution: choose the type and the distribution of Y first.")
   }
   transformations <- stats::setNames(list(), character(0))
-  for (s in c(principaux, seuls, list(reponse))) if (!is.null(s$tr)) transformations[[as.character(uid(s$k))]] <- s$tr
+  for (s in c(principaux, seuls, list(reponse))) if (!is.null(s$tr)) transformations[[nom_numero(uid(s$k))]] <- s$tr
   croises_uid <- unique(lapply(croises, function(c) uid(c$ks)))
   list(type = type, x = I(vapply(principaux, function(s) uid(s$k), 0, USE.NAMES = FALSE)), y = I(uid(reponse$k)),
        transformations = transformations, croises = I(croises_uid), lisses = I(vapply(courbes, uid, 0)),
-       k_courbes = stats::setNames(k_courbes, vapply(as.integer(names(k_courbes)), uid, 0)),
-       par_courbes = stats::setNames(lapply(par_courbes, uid), vapply(as.integer(names(par_courbes)), uid, 0)),
+       k_courbes = stats::setNames(k_courbes, nom_numero(vapply(as.integer(names(k_courbes)), uid, 0))),
+       par_courbes = stats::setNames(lapply(par_courbes, uid), nom_numero(vapply(as.integer(names(par_courbes)), uid, 0))),
        aleatoires = I(lapply(aleatoires, function(a) { if (length(a$pentes)) a$pentes <- I(uid(a$pentes)); a })),
        decalage = if (!is.null(decalage)) uid(decalage),
        lisse_spatial = if (!is.null(spatial)) c(list(variables = I(uid(spatial$ks)), base = spatial$base), if (!is.null(spatial$k)) list(k = as.integer(spatial$k))))

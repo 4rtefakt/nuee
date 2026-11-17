@@ -36,12 +36,12 @@
 <h1>Nuée</h1>
 <p class="chapeau">ACP, PLS, écologie des communautés, modèles linéaires, généralisés et mixtes, suivis de populations et cartes, sous Windows, macOS et Linux, calculés en R.</p>
 <div class="boutons">
-<a class="bouton" href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Télécharger pour Windows</a>
+<a class="bouton" href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-Setup-1.1.0.exe">Télécharger pour Windows</a>
 <a class="bouton second" href="installation.html#macos">macOS</a>
 <a class="bouton second" href="installation.html#linux">Linux</a>
 <a class="bouton second" href="tutoriels/index.html">Tutoriels</a>
 </div>
-<p>Nuée (version 1.0.0) est une application de bureau pour analyser des données de terrain et de
+<p>Nuée (version 1.1.0) est une application de bureau pour analyser des données de terrain et de
 laboratoire. Ouvrez un tableau venant d'Excel, de R, de SPSS, de Stata, de SAS, de jamovi ou de
 QGIS, ou les relevés de terrain de KoboToolbox ou d'ODK, choisissez vos variables, et obtenez le
 modèle avec ses graphiques, ses diagnostics et sa validation. Les résultats repartent vers Excel,
@@ -70,32 +70,41 @@ français ou en anglais, avec leurs références.</li>
 <li><h3>Suivis</h3><p>Tendances de séries, avant/après avec témoins (BACI), indices de comptages (TRIM), densités par échantillonnage par distances.</p><p><a href="guide/suivis.html">Le guide</a></p></li>
 <li><h3>Cartes</h3><p>Coordonnées et systèmes (Lambert-93, UTM…), GeoPackage pour QGIS, valeurs de rasters, autocorrélation spatiale.</p><p><a href="guide/cartes.html">Le guide</a></p></li>
 <li><h3>Publication</h3><p>Figures composées à la taille d'une revue, rapports PDF et Word, documents avec citations, export vers R, R Markdown et Quarto.</p><p><a href="guide/resultats.html">Le guide</a></p></li>
+<li><h3>Rapports vivants</h3><p>Le fichier de données de l'année suivante lu dans le projet, ses changements rejoués, chaque modèle ajusté à nouveau, et les valeurs que citent vos documents mises à jour.</p><p><a href="guide/donnees.html#etapes-des-donnees-et-mise-a-jour">Le guide</a></p></li>
+<li><h3>Versions</h3><p>Les versions de chaque projet gardées d'elles-mêmes, nommées, ouvertes, restaurées, et comparées : ce qui a changé dans les résultats de chaque modèle, en phrases.</p><p><a href="guide/versions.html">Le guide</a></p></li>
+<li><h3>À plusieurs</h3><p>Un projet partagé sur GitHub ou GitLab, ou sur un dossier réseau, les changements des deux côtés réunis modèle par modèle, passage par passage.</p><p><a href="guide/versions.html#travailler-a-plusieurs">Le guide</a></p></li>
 </ul>
+<p>Nouveau dans la version 1.1 : les rapports vivants, les versions et le travail à plusieurs, et
+toute l'interface au clavier ou avec un lecteur d'écran. Tout ce qui a changé d'autre :
+<a href="nouveautes.html">Quoi de neuf</a>.</p>
 <h2 id="tout-en-r-sur-votre-ordinateur">Tout en R, sur votre ordinateur</h2>
 <p>Chaque calcul est écrit en R, commenté, dans le dossier de l'application : on peut lire ce qui a
 été calculé, et le modifier. La console R (Affichage › Console R) montre l'appel derrière chaque
 action. Les résultats sont ceux des paquets de référence (vegan, nlme, mgcv, emmeans, rtrim,
 Distance…), vérifiés à chaque changement.</p>
 <p>Vos données restent sur votre ordinateur : Nuée n'envoie rien, sauf une question à GitHub au
-démarrage pour savoir s'il existe une nouvelle version (elle se coupe dans le menu Aide), et la
-zone affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un fond de carte.</p>
+démarrage pour savoir s'il existe une nouvelle version (elle se coupe dans le menu Aide), la zone
+affichée aux serveurs d'OpenStreetMap ou de l'IGN quand vous choisissez un fond de carte, et les
+versions d'un projet au dépôt GitHub ou GitLab où vous le partagez.</p>
 <h2 id="telecharger">Télécharger</h2>
-<p>Nuée 1.0.0 :</p>
+<p>Nuée 1.1.0 :</p>
 <ul>
-<li><strong>Windows 10 et 11</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>, R inclus ;</li>
-<li><strong>macOS</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-arm64.dmg">Nuee-1.0.0-arm64.dmg</a> pour Apple silicon (macOS 14 ou plus récent), <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.dmg">Nuee-1.0.0-x64.dmg</a> pour Intel (macOS 13 ou plus récent), R inclus ;</li>
-<li><strong>Debian, Ubuntu et dérivées</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a> ;</li>
-<li><strong>autres distributions Linux</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a> ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a>.</li>
+<li><strong>Windows 10 et 11</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-Setup-1.1.0.exe">Nuee-Setup-1.1.0.exe</a>, R inclus ;</li>
+<li><strong>macOS</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-arm64.dmg">Nuee-1.1.0-arm64.dmg</a> pour Apple silicon (macOS 14 ou plus récent), <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.dmg">Nuee-1.1.0-x64.dmg</a> pour Intel (macOS 13 ou plus récent), R inclus ;</li>
+<li><strong>Debian, Ubuntu et dérivées</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-amd64.deb">Nuee-1.1.0-amd64.deb</a> ;</li>
+<li><strong>autres distributions Linux</strong> : <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x86_64.AppImage">Nuee-1.1.0-x86_64.AppImage</a> ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.tar.gz">Nuee-1.1.0-x64.tar.gz</a>.</li>
 </ul>
 <p>Comment installer : voir <a href="installation.html">Installation</a>. Toutes les versions et leurs notes :
 la page des <a href="https://github.com/4rtefakt/nuee/releases">publications sur GitHub</a> ; ce qui a changé :
 <a href="nouveautes.html">Quoi de neuf</a>.</p>
 <h2 id="pour-commencer">Pour commencer</h2>
 <ul>
-<li><a href="tutoriels/index.html">Les tutoriels</a> suivent trois études du début à la fin : un avant/après avec
-témoins (BACI), une PLS sur des spectres, et le suivi d'une population d'oiseaux.</li>
-<li>Dans l'application, Aide › Projet d'exemple ouvre 120 pommes inventées avec quatre modèles
-prêts.</li>
+<li><a href="tutoriels/index.html">Les tutoriels</a> suivent six études du début à la fin : un avant/après avec
+témoins (BACI), une PLS sur des spectres, le suivi d'une population d'oiseaux, les carabes de
+trois milieux (écologie des communautés), les cartes et les modèles spatiaux, et le rapport d'une
+étude.</li>
+<li>Dans l'application, Aide › Projets d'exemple ouvre 120 pommes inventées avec quatre modèles
+prêts, et les alouettes et les truites des tutoriels avec les leurs.</li>
 <li><a href="guide/index.html">Le guide d'utilisation</a> décrit chaque fenêtre et chaque calcul.</li>
 </ul>
 <p>Nuée est un logiciel libre (<a href="https://github.com/4rtefakt/nuee/blob/main/LICENSE">GPL-3.0</a>).
@@ -105,6 +114,6 @@ Aide › Informations de diagnostic donne les versions à y coller.</p>
 
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
 </body>
 </html>

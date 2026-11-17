@@ -9,7 +9,9 @@
 #   - des fichiers R qui portent du code (refusés sans l'exécuter) ; la prédiction d'un
 #     fichier ; les limites du format dBase ;
 #   - si le paquet jmvReadWrite est installé, les fichiers jamovi de ses exemples sont lus
-#     comme il les lit, et les fichiers .omv écrits ici se relisent avec lui.
+#     comme il les lit, et les fichiers .omv écrits ici se relisent avec lui ;
+#   - les projets d'exemple d'écologie : les données des tutoriels, leurs modèles et leur séance,
+#     sans chemin de l'ordinateur qui les a faits.
 #   Rscript moteur/tests/verifier_formats.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -396,7 +398,31 @@ verifier("export en anglais : les noms des tableaux", identical(names(en), c("su
 verifier("export en anglais : les colonnes du moteur traduites, celles des variables gardées",
          identical(names(en$summary), c("method", "seed")) && identical(names(en$coefficients), c("term", "estimate", "std_error", "lower", "upper")) &&
          identical(names(en$observations), c("Observation", "densite observed", "residual", "cv_group", "classe")))
+predictions <- data.frame(Observation = "o1", `classe prédite` = "A", `classe observée` = "B", `probabilité A` = 0.9,
+                          `densite prédit (lien)` = 0.1, hors_domaine = FALSE, dans_modele = FALSE, categorie_inconnue = FALSE, check.names = FALSE)
+verifier("prédictions exportées en anglais : les classes, l'échelle du lien, le domaine",
+         identical(names(noms_tables_langue(list(predictions = predictions), proj_noms, "en")[[1]]),
+                   c("Observation", "predicted class", "observed class", "probability A", "densite predicted (link)", "outside_domain", "in_model", "unknown_category")))
 verifier("export en français : rien ne change", identical(noms_tables_langue(tabs, proj_noms, "fr"), tabs))
+
+# Les projets d'exemple d'écologie (exemple/creer_exemples_ecologie.js) : les données mêmes des
+# tutoriels (docs/site/donnees), leurs modèles, une séance qui ne cite que ceux-là, et rien de l'endroit
+# d'où elles ont été lues.
+cat("Projets d'exemple d'écologie\n")
+for (x in list(list("skylark_counts", c("TRIM", "GLM")), list("comptages_alouette", c("TRIM", "GLM")), list("skylark_transects", "DISTANCE"),
+               list("transects_alouette", "DISTANCE"), list("baci_trout", "LMM"), list("baci_truite", "LMM"))) {
+  f <- file.path("exemple", paste0(x[[1]], ".json"))
+  pe <- lire_projet(f)
+  csv <- tableau_projet(importer_tableau(file.path("docs", "site", "donnees", paste0(x[[1]], ".csv"))))
+  te <- tableau_projet(pe)
+  s <- jsonlite::fromJSON(pe$session, simplifyVector = FALSE)
+  numeros <- vapply(s$modeles, function(m) as.numeric(m$numero), 0)
+  cites <- unlist(lapply(s$vues, function(v) v$modele))
+  verifier(sprintf("%s : les données du tutoriel, ses modèles (%s) et sa séance, sans chemin", x[[1]], paste(x[[2]], collapse = ", ")),
+           memes(te[names(csv)], csv) && identical(vapply(pe$models, function(m) as.character(m$type), ""), x[[2]]) &&
+             length(numeros) == length(pe$models) && all(sub("^@", "", cites) %in% numeros) &&
+             is.null(pe$source_donnees) && !length(pe$etapes) && !grepl("[A-Za-z]:[\\\\/]|/home/|/Users/", paste(readLines(f, warn = FALSE), collapse = "")))
+}
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

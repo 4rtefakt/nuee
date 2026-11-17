@@ -1,9 +1,10 @@
 # The engine's checks and the requests to the R server, on every push and pull request: on
 # Windows, on macOS (Apple silicon and Intel) and on Linux with the distributions' own R. Linux
 # also builds the packages (.deb, AppImage, .tar.gz), installs the .deb with what it depends on,
-# and uses the installed program end to end (app/tests/essai_appli.js); macOS builds Nuée.app
-# and its .dmg, and uses them the same way. The packages stay with the run, and are added to a
-# release when it is published.
+# and uses the installed program end to end (app/tests/essai_appli.js), then through the
+# workflows people do (app/tests/essai_parcours.js); Windows builds the program (no installer)
+# and macOS Nuée.app and its .dmg, and use them the same way. The packages stay with the run, and
+# are added to a release when it is published.
 # (verifier_references.R needs exported .usp projects that are not in the repository.)
 name: Vérifications
 
@@ -12,6 +13,13 @@ on:
   pull_request:
   release:
     types: [published]
+
+# A newer push to the same branch (or pull request) cancels the runs it makes useless: a branch
+# pushed several times an hour otherwise queues full runs, macOS's included, behind one another. A
+# published release always runs to the end: it attaches the packages.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   windows:
@@ -28,13 +36,14 @@ jobs:
           Start-Process "$env:RUNNER_TEMP\R.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES', '/DIR=C:\R' -Wait
           Add-Content $env:GITHUB_PATH 'C:\R\bin'
 
+      # (in R's own library, which the build copies)
       - name: Paquets R
-        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), repos = 'https://cloud.r-project.org')"
+        run: Rscript -e "install.packages(c('jsonlite', 'httpuv', 'openxlsx', 'haven', 'readxl', 'RSQLite', 'prospectr', 'knitr', 'jmvReadWrite', 'vegan', 'sf', 'spdep', 'gstat', 'rtrim', 'indicspecies', 'ranger', 'gbm', 'terra', 'Distance'), lib = .Library, repos = 'https://cloud.r-project.org')"
 
       - name: Vérifications du moteur
         shell: bash
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -44,7 +53,7 @@ jobs:
         with:
           node-version: 22
 
-      # (the documents' tests read Markdown with markdown-it; Electron itself isn't needed)
+      # (the checks before the build run in Node: Electron is fetched for the build, below)
       - name: Paquets de l'interface
         working-directory: app
         run: npm ci --ignore-scripts
@@ -53,10 +62,86 @@ jobs:
         working-directory: app
         run: node tests/essai_api.js Rscript
 
+      # (a project's versions, against the runner's git as a smart-HTTP server; a UNC path too)
+      - name: Versions d'un projet
+        working-directory: app
+        run: node tests/essai_versions.js
+
+      # (signing in to GitHub and GitLab, against a local stand-in of both; a stand-in git.exe
+      # compiled by the .NET Framework's csc.exe)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
+
       # (the updater reinstalls for all users or for this user, as the installer's entry says)
       - name: Mode d'installation, pour la mise à jour
         working-directory: app
         run: node tests/essai_installation.js
+
+      # the .usp converter, compiled with PyInstaller as the build does it
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: PyInstaller
+        run: python -m pip install pyinstaller
+
+      # Electron comes from GitHub's releases: kept between runs, and fetched through GitHub's API
+      # with this job's token (its own downloader goes anonymously, which GitHub throttles at times)
+      - uses: actions/cache@v6
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: electron-windows-${{ hashFiles('app/package-lock.json') }}
+
+      # The program as the network-share folder holds it (Nuee\application, R copied from C:\R),
+      # without its installer, which is never run here; essai_api.js ran above. Then used end to
+      # end (app/tests/essai_appli.js), and through the workflows people do (essai_parcours.js).
+      # Electron for it, and npm's Electron, which the accessibility check runs in, come through
+      # the local mirror of GitHub's release files, which runs each command and stops with it.
+      - name: Nuée pour Windows
+        working-directory: app
+        env:
+          SANS_ESSAI: '1'
+          SANS_INSTALLATEUR: '1'
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node ../.github/miroir-github.js 8123 node node_modules/electron/install.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node ../.github/miroir-github.js 8123 node construire.js ../dist C:\R
+
+      - name: Nuée, de bout en bout
+        working-directory: app
+        run: node tests/essai_appli.js ../dist/Nuee/application/Nuee.exe ../dist/windows.png
+
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: node tests/essai_parcours.js ../dist/Nuee/application/Nuee.exe ../dist/windows-parcours
+
+      - name: Accessibilité (axe-core, clavier)
+        working-directory: app
+        run: node tests/essai_accessibilite.js Rscript
+
+      # Another R of the computer, as people have it (File › Settings…, app/r-installes.js): R 4.5
+      # from CRAN beside C:\R, in Program Files and the registry (last: its installer makes it the
+      # registry's current R). Found, checked (the engine's packages missing), those installed into
+      # a temporary user library, then the program above run on it, and on an R that isn't there
+      # (app/tests/essai_r_installe.js). Start-Process joins its arguments with spaces as they are:
+      # the folder goes in quotes, or the installer gets /DIR=C:\Program and Files\R\R-4.5.3; and
+      # the installer's exit code is checked (-Wait alone would go on after a failed installation).
+      - name: Un autre R de l'ordinateur
+        shell: pwsh
+        working-directory: app
+        run: |
+          $v = '4.5.3'
+          Invoke-WebRequest "https://cloud.r-project.org/bin/windows/base/old/$v/R-$v-win.exe" -OutFile "$env:RUNNER_TEMP\R-$v.exe"
+          $installation = Start-Process "$env:RUNNER_TEMP\R-$v.exe" -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES', "/DIR=`"C:\Program Files\R\R-$v`"" -Wait -PassThru
+          if ($installation.ExitCode -ne 0) { throw "R $v's installer stopped with code $($installation.ExitCode)" }
+          node tests/essai_r_installe.js "C:\Program Files\R\R-$v" --neuf ../dist/Nuee/application/Nuee.exe
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-windows
+          path: dist/*.png
 
   # The update from 0.9.9 keeps Nuée's shortcuts and taskbar pin (app/installateur.nsh): 0.9.9 as
   # published, installed, then this version's installer around a stand-in application, run as
@@ -91,7 +176,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue robustesse code greffons arret protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -127,6 +212,16 @@ jobs:
           npm ci
           node construire.js ../dist
 
+      # (a project's versions, against the runner's git as a smart-HTTP server)
+      - name: Versions d'un projet
+        working-directory: app
+        run: node tests/essai_versions.js
+
+      # (signing in to GitHub and GitLab, against a local stand-in of both)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
+
       - name: Installation du .deb
         run: sudo apt-get install -y ./dist/installateur/Nuee-*-amd64.deb
 
@@ -143,6 +238,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends libfuse2t64
           chmod +x ../dist/installateur/Nuee-*.AppImage
           xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js ../dist/installateur/Nuee-*.AppImage ../dist/ubuntu-24.04-appimage.png --no-sandbox
+
+      # the workflows people do, through the window of the installed program (app/tests/essai_parcours.js)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_parcours.js '/opt/Nuée/nuee' ../dist/ubuntu-24.04-parcours
 
       - uses: actions/upload-artifact@v7
         with:
@@ -189,7 +289,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -211,6 +311,11 @@ jobs:
       - name: Nuée installée, de bout en bout
         working-directory: app
         run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_appli.js '/opt/Nuée/nuee' ../${{ matrix.nom }}.png --no-sandbox
+
+      # (app/tests/essai_parcours.js, with that distribution's R)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' node tests/essai_parcours.js '/opt/Nuée/nuee' ../${{ matrix.nom }}-parcours --no-sandbox
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -245,7 +350,7 @@ jobs:
 
       - name: Vérifications du moteur
         run: |
-          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats reproductible trim communautes familles forets boosting raster distance donnees kobo vitesse langue; do
+          for f in formats spectres fichiers_spectres opls jeu_test ipls comparaisons regression resultats moyennes script observations tableaux validation ordination classement spatial par_reponse indicatrices rarefaction texte_resultats resultats_cles reproductible trim communautes familles forets boosting raster distance donnees kobo etapes fusion vitesse langue code greffons arret protocole; do
             echo "::group::verifier_$f"
             Rscript moteur/tests/verifier_$f.R
             echo "::endgroup::"
@@ -286,6 +391,16 @@ jobs:
           node tests/essai_r_macos.js
           node construire.js ../dist
 
+      # (a project's versions, against the runner's git as a smart-HTTP server)
+      - name: Versions d'un projet
+        working-directory: app
+        run: node tests/essai_versions.js
+
+      # (signing in to GitHub and GitLab, against a local stand-in of both)
+      - name: Comptes GitHub et GitLab
+        working-directory: app
+        run: node tests/essai_comptes.js
+
       - name: Sans le R de /Library/Frameworks
         run: sudo mv /Library/Frameworks/R.framework "$RUNNER_TEMP/R.framework"
 
@@ -300,6 +415,11 @@ jobs:
           hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/dmg" ../dist/installateur/Nuee-*.dmg
           node tests/essai_appli.js "$RUNNER_TEMP/dmg/Nuée.app/Contents/MacOS/Nuée" ../dist/macos-${{ matrix.arch }}-dmg.png
           hdiutil detach "$RUNNER_TEMP/dmg"
+
+      # the workflows people do, through the window of Nuée.app (app/tests/essai_parcours.js)
+      - name: Les parcours, de bout en bout
+        working-directory: app
+        run: node tests/essai_parcours.js '../dist/Nuee/Nuée.app/Contents/MacOS/Nuée' ../dist/macos-${{ matrix.arch }}-parcours
 
       - uses: actions/upload-artifact@v7
         with:

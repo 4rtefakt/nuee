@@ -1,18 +1,24 @@
 /* ---------------------------------------------------------------- themes */
+/* WCAG AA in both themes: text 4.5:1 on every background it sits on (the tints included: --accent
+   on --accent-doux, --attention on --fond), fields' borders (--bord-champ) and the focus ring 3:1,
+   white on a main button (--principal) 4.5:1. */
 :root, :root[data-theme="clair"] {
   --fond: #eef0f3; --fond-panneau: #ffffff; --fond-barre: #f8f9fb; --texte: #1f2328; --texte-doux: #5f6773;
-  --bord: #d9dce1; --grille: #eceef1; --survol: #eef1f6; --accent: #2f6fb5; --accent-doux: #e3edf8;
-  --ligne-choisie: #fde8e4; --erreur: #b3261e; --ok: #2e7d32; --attention: #b26a00; --ligne-graphe: #9bb5d6;
+  --bord: #d9dce1; --bord-champ: #848a94; --grille: #eceef1; --survol: #eef1f6; --accent: #2d6cb0; --accent-doux: #e3edf8; --principal: var(--accent);
+  --ligne-choisie: #fde8e4; --selection: #e4572e; --erreur: #b3261e; --ok: #2d7931; --attention: #9b5c00; --ligne-graphe: #9bb5d6;
   --ombre: 0 8px 24px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .08);
   color-scheme: light;
 }
 :root[data-theme="sombre"] {
   --fond: #15171b; --fond-panneau: #1d2025; --fond-barre: #1a1c21; --texte: #e4e6ea; --texte-doux: #9aa2ad;
-  --bord: #33373f; --grille: #2b2f36; --survol: #262a31; --accent: #6aa5ea; --accent-doux: #22344b;
-  --ligne-choisie: #4a2b27; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
+  --bord: #33373f; --bord-champ: #656b75; --grille: #2b2f36; --survol: #262a31; --accent: #6aa5ea; --accent-doux: #22344b; --principal: #2f6fb5;
+  --ligne-choisie: #4a2b27; --selection: #e4572e; --erreur: #f2867c; --ok: #7cc47f; --attention: #e4a34a; --ligne-graphe: #4d6a8f;
   --ombre: 0 8px 24px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
   color-scheme: dark;
 }
+/* dockview's tabs: the hidden tabs of a group without the focus as readable as the others (4.5:1) */
+:root .dockview-theme-light { --dv-inactivegroup-hiddenpanel-tab-color: rgba(51, 51, 51, 0.7); }
+:root .dockview-theme-dark { --dv-inactivegroup-hiddenpanel-tab-color: #969696; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -22,11 +28,17 @@ button { font: inherit; color: var(--texte); background: var(--fond-panneau); bo
   padding: 3px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
-button.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.principal { background: var(--principal); border-color: var(--principal); color: #fff; }
 button.icone-seule { border-color: transparent; background: transparent; padding: 3px; }
 button.icone-seule:hover { background: var(--survol); }
-input, select, textarea { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px; padding: 2px 6px; }
+input, select, textarea { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord-champ); border-radius: 4px; padding: 2px 6px; }
+::placeholder { color: var(--texte-doux); opacity: 1; }
+/* the keyboard's place, in both themes: a ring of the accent colour (outside a main button, whose
+   colour it is) */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+button.principal:focus-visible { outline-offset: 2px; }
+.dv-tab:focus-visible::after, .dv-tab:has(:focus-visible)::after { outline: 2px solid var(--accent) !important; outline-offset: -2px; }
 .icone { display: inline-flex; width: 16px; height: 16px; flex: none; }
 .icone svg { width: 100%; height: 100%; }
 .icone.grand { width: 44px; height: 44px; color: var(--accent); }
@@ -35,20 +47,26 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .espace { flex: 1; }
 
 /* ---------------------------------------------------------------- frame */
-#appli { height: 100%; display: grid; grid-template-rows: auto auto 1fr auto; }
+#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+#entete { min-width: 0; }  /* (the menu bar and the toolbar: the window's banner landmark) */
 #menus { display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
 .menu-haut { border: 0; background: transparent; padding: 3px 9px; border-radius: 4px; }
 .menu-haut:hover, .menu-haut.ouvert { background: var(--survol); }
+/* a menu's letter (Alt+letter), underlined while the keyboard is in the menu bar */
+#menus.clavier .cle-acces { text-decoration: underline; text-underline-offset: 2px; }
 #barre-outils { display: flex; align-items: stretch; gap: 0; padding: 3px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); overflow-x: auto; }
 .groupe-outils { display: flex; gap: 1px; padding: 0 6px; border-right: 1px solid var(--bord); }
 .groupe-outils:last-child { border-right: 0; }
 .outil { flex-direction: column; gap: 1px; border: 1px solid transparent; background: transparent; padding: 3px 5px; min-width: 50px; }
 .outil .icone { width: 19px; height: 19px; color: var(--accent); }
-.outil span:last-child { font-size: 11px; white-space: nowrap; }
+.outil span:last-child { font-size: 11px; white-space: nowrap; max-width: 8em; overflow: hidden; text-overflow: ellipsis; }  /* (a view's long name: its title says it) */
 .outil:hover:not(:disabled) { background: var(--survol); border-color: transparent; }
 .outil:disabled .icone { color: var(--texte-doux); }
 #barre-outils { scrollbar-width: none; }
+/* (a narrow window, or text made larger, 200 % included: the toolbar's groups go on a second row
+   rather than out of sight) */
+#barre-outils { flex-wrap: wrap; row-gap: 2px; }
 @media (max-width: 1100px) {
   .outil { min-width: 34px; }
   .outil span:last-child { display: none; }
@@ -63,6 +81,12 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .moteur.erreur { color: var(--erreur); }
 .moteur.erreur .point { background: var(--erreur); }
 @keyframes pulse { 50% { opacity: .3; } }
+/* Motion only for those who haven't asked their system for less: no pulse, no transitions (dockview's
+   drop targets and sashes, a figure's preview) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+    transition-delay: 0s !important; scroll-behavior: auto !important; }
+}
 
 /* detached view window */
 #seul { display: none; }
@@ -74,11 +98,18 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 #seul > .panneau { flex: 1; min-height: 0; }
 
 /* ---------------------------------------------------------------- menus */
+/* (no text to select in them: a press on an item would take the page's selection out of the
+   document being written, and the keyboard given back to it after the command came back at
+   the start of its text) */
 .menu { position: fixed; z-index: 1000; min-width: 230px; padding: 4px; background: var(--fond-panneau); border: 1px solid var(--bord);
-  border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; }
+  border-radius: 6px; box-shadow: var(--ombre); max-height: calc(100vh - 8px); overflow-y: auto; overflow-x: hidden; user-select: none; }
 .menu .item { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
-.menu .item:hover:not(.desactive) { background: var(--accent-doux); }
-.menu .item.desactive { color: var(--texte-doux); opacity: .55; }
+.menu .item:hover:not(.desactive), .menu .item:focus { background: var(--accent-doux); }
+.menu .item.desactive { color: var(--texte-doux); }
+.menu .item.desactive > span { opacity: .55; }
+.menu .item.desactive:focus { background: var(--survol); }
+.menu:focus, .menu .item:focus { outline: none; }
+.clavier .menu .item:focus { box-shadow: inset 0 0 0 2px var(--accent); }
 .menu .coche { display: inline-flex; justify-content: center; color: var(--accent); }
 .menu .raccourci { color: var(--texte-doux); font-size: 12px; padding-left: 18px; display: inline-flex; }
 .menu .separateur { height: 1px; background: var(--bord); margin: 4px 6px; }
@@ -102,6 +133,11 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .note { color: var(--texte-doux); font-size: 11.5px; margin: 4px 0; }
 .attente { margin: 20px; }
 .graphe { flex: 1; min-height: 200px; }
+/* (a plot's ring outside it: Plotly's layers would cover one drawn inside; its tool buttons shown while
+   the keyboard is on it, their ring the accent's, which Plotly draws black whatever the theme) */
+.js-plotly-plot:focus-visible { outline-offset: 1px; }
+.js-plotly-plot:focus-visible .modebar--hover .modebar-group { opacity: 1; }
+.js-plotly-plot .plotly .modebar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .graphe.petit { flex: 0 0 230px; min-height: 180px; }
 .bas { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
 .defile { overflow: auto; flex: 1; min-height: 60px; }
@@ -114,6 +150,8 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .tableau .num { text-align: right; }
 .tableau tbody tr:hover td { background: var(--survol); }
 .tableau tr.choisie td { background: var(--ligne-choisie); }
+/* not by its tint alone (1.2:1): a bar at the start of a chosen row, of the plots' selection colour */
+.tableau tr.choisie td:first-child { box-shadow: inset 3px 0 0 var(--selection); }
 .tableau.compact { width: auto; min-width: 0; }
 .marque { margin-left: 4px; font-weight: 700; }
 .marque.egal { color: var(--ok); }
@@ -132,7 +170,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .arbre { user-select: none; }
 .noeud { display: flex; align-items: center; gap: 5px; padding: 3px 8px; cursor: default; white-space: nowrap; }
 .noeud:hover { background: var(--survol); }
-.noeud.actif { background: var(--accent-doux); }
+.noeud.actif { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .noeud:focus { outline: none; }
 .noeud:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* read by screen readers, not shown */
@@ -166,7 +204,7 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .palette-saisie { margin: 10px; padding: 7px 10px; font-size: 14px; }
 .palette-liste { max-height: 55vh; overflow-y: auto; padding: 0 6px 6px; }
 .palette-item { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
-.palette-item.actuel { background: var(--accent-doux); }
+.palette-item.actuel { background: var(--accent-doux); box-shadow: inset 2px 0 0 var(--accent); }
 .palette-item.inactif { opacity: .45; cursor: default; }
 .palette-chemin { color: var(--texte-doux); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-item .raccourci { color: var(--texte-doux); font-size: 12px; }
@@ -384,7 +422,7 @@ body.depot::after { content: ''; position: fixed; inset: 8px; border: 3px dashed
 .cm-tooltip { background: var(--fond-panneau) !important; color: var(--texte); border: 1px solid var(--bord) !important; border-radius: 4px; box-shadow: var(--ombre); }
 .cm-tooltip.cm-tooltip-autocomplete > ul { font-family: "Segoe UI", system-ui, sans-serif; max-height: 18em; }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li { padding: 2px 8px; }
-.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--accent); color: #fff; }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--principal); color: #fff; }
 .cm-completionDetail { color: var(--texte-doux); font-style: normal; margin-left: 1.2em; }
 li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .apercu-document { min-height: 0; overflow: auto; padding: 14px 24px 40vh; background: var(--fond-panneau); color: var(--texte);
@@ -462,7 +500,7 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .ligne-panneau:hover { background: var(--survol); }
 .ligne-panneau .lettre-panneau { flex: none; min-width: 2.1em; text-align: center; background: var(--accent-doux); color: var(--accent); border-radius: 3px; padding: 0 3px; }
 .ligne-panneau .nom-panneau { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); }
+.ligne-panneau.hors-grille .nom-panneau { color: var(--erreur); text-decoration: line-through; }  /* (left out of the figure) */
 .ligne-panneau select { max-width: 7.5em; }
 .apercu-figure { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; background: var(--fond); }
 .feuille-figure { background: #ffffff; box-shadow: var(--ombre); line-height: 0; max-width: 100%; transition: opacity .15s; }
@@ -498,3 +536,414 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-unites .unite-variable { width: 8em; }
 .dialogue-unites .description-variable { width: 30em; }
 .tableau td.ancre { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* The data's source and steps, Update the data (etapes.js): a file read and its state, the steps,
+   an update's preview by section, its progress, and the status bar's notice of a changed file */
+.dialogue-etapes, .dialogue-maj { flex: 1; min-height: 0; overflow: auto; gap: 2px; }
+.dialogue-etapes h3, .dialogue-maj h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texte-doux); margin: 12px 0 5px; }
+.dialogue-etapes h3:first-child, .dialogue-maj h3:first-child { margin-top: 2px; }
+.fiche-fichier { border: 1px solid var(--bord); border-radius: 6px; padding: 6px 10px; background: var(--fond-barre); margin-bottom: 6px; }
+.fiche-fichier.changee { border-color: var(--attention); }
+.fiche-fichier.introuvable { border-color: var(--erreur); }
+.fiche-fichier p { margin: 2px 0; }
+.fiche-fichier .ligne { gap: 6px; }
+.fiche-fichier .ligne > .icone { color: var(--accent); }
+.fiche-fichier.grand b { font-size: 14px; }
+.chemin-fichier { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 11.5px; color: var(--texte-doux); overflow-wrap: anywhere; user-select: text; }
+.note.attention { color: var(--attention); }
+.etat-fichier { display: inline-block; font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid currentColor; font-weight: 600; white-space: nowrap; }
+.etat-fichier.lue { color: var(--ok); }
+.etat-fichier.changee { color: var(--attention); }
+.etat-fichier.introuvable { color: var(--erreur); }
+.defile-etapes { border: 1px solid var(--grille); border-radius: 4px; overflow-x: auto; }
+.tableau.liste-etapes { width: 100%; }
+.liste-etapes td:last-child { text-align: right; }
+.liste-etapes .etape { gap: 6px; }
+.liste-etapes th { cursor: default; }
+.fichier-etape { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.etape-retiree { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.genre-etape { display: inline-flex; color: var(--accent); }
+.fichier-maj .ligne { flex-wrap: wrap; gap: 6px 10px; margin: 4px 0; }
+.fichier-maj .champ { color: var(--texte); }
+.fichier-maj .table-maj { align-items: flex-start; }
+.fichier-maj .liste-tables { width: auto; }
+.apercu-maj { min-height: 6em; }
+.resume-maj { font-weight: 600; margin: 4px 0 8px; }
+.resume-maj.rien { color: var(--ok); }
+.fichier-lu { margin: 2px 0; font-size: 11.5px; overflow-wrap: anywhere; }
+.sections-maj { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; align-items: start; }
+.section-maj { border: 1px solid var(--grille); border-left: 3px solid var(--ligne-graphe); border-radius: 4px; padding: 4px 10px 6px; background: var(--fond-barre); }
+.section-maj h4 { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; font-size: 12.5px; }
+.section-maj h4 .icone { width: 14px; height: 14px; color: var(--texte-doux); }
+.section-maj ul { margin: 0; padding-left: 16px; }
+.section-maj li { margin: 2px 0; overflow-wrap: anywhere; }
+.section-maj li.attention { color: var(--attention); }
+.section-maj li.erreur { color: var(--erreur); }
+.section-maj.nouveau { border-left-color: var(--ok); }
+.section-maj.nouveau h4 .icone { color: var(--ok); }
+.section-maj.absent { border-left-color: var(--attention); }
+.section-maj.absent h4 .icone { color: var(--attention); }
+.section-maj.change { border-left-color: var(--accent); }
+.section-maj.change h4 .icone { color: var(--accent); }
+.choix-maj { margin-top: 10px; display: flex; flex-direction: column; gap: 3px; }
+.choix-maj h4 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; }
+.choix-maj h4 .icone { width: 14px; height: 14px; color: var(--ok); }
+.choix-maj .note { margin: 0 0 2px; }
+.choix-maj .champ, .version-maj .champ { color: var(--texte); }
+.version-maj { margin-top: 10px; }
+.version-maj .note { margin: 2px 0 0 22px; }
+.progression-maj { min-width: min(32em, 80vw); }
+.progression-maj .etape-maj { margin: 4px 0 8px; font-weight: 600; }
+.barre-maj { width: 100%; height: 10px; accent-color: var(--accent); }
+.progression-maj .note { min-height: 1.4em; }
+#statut .avis-donnees { display: inline-flex; align-items: center; gap: 2px; }
+#statut .avis-donnees a { display: inline-flex; align-items: center; gap: 4px; color: var(--attention); font-weight: 600; text-decoration: none; }
+#statut .avis-donnees a:hover { text-decoration: underline; }
+/* What changed after an update of the data (changements.js): the data, then the values cited in
+   the documents, each a button that opens its document there; in a document's preview, those
+   values marked until Hide changes (documents.js) */
+.modele-change.donnees-change, .modele-change.documents-change { border-left: 3px solid var(--accent); }
+.modele-change h3 > .icone { color: var(--accent); }
+.documents-change h4 { margin: 6px 0 2px; font-size: 12.5px; }
+.valeurs-change { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.valeur-change { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; border-color: transparent; background: transparent; padding: 3px 6px; }
+.valeur-change:hover:not(:disabled) { background: var(--survol); border-color: var(--grille); }
+.valeur-change .avant-apres { font-variant-numeric: tabular-nums; }
+.valeur-change .avant-apres s { color: var(--texte-doux); }
+.valeur-change .perime { color: var(--attention); font-size: 11.5px; }
+.valeur-change .phrase-valeur { color: var(--texte-doux); font-size: 12px; white-space: normal; }
+.valeur-change mark, .apercu-document .ref-changee { background: color-mix(in srgb, var(--attention) 24%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+.apercu-document .ref-changee { border-bottom: 1px solid var(--attention); cursor: help; }
+.apercu-document .ref-changee.montree { outline: 2px solid var(--attention); outline-offset: 1px; }
+.changements-document { display: flex; align-items: center; gap: 8px; padding: 4px 8px; margin-bottom: 4px; font-size: 12px; border: 1px solid var(--attention); border-radius: 4px;
+  background: color-mix(in srgb, var(--attention) 8%, var(--fond-panneau)); }
+.changements-document > .icone { color: var(--attention); }
+.changements-document button { margin-left: auto; }
+.changements-document[hidden] { display: none; }
+
+/* File › History (versions.js): the versions grouped by day, each with its actions; sharing with
+   GitHub or GitLab above them; the status bar's clock and notice; the conflict, sharing and Open
+   from GitHub dialogs; an old version opened read-only, in the explorer and on its tabs */
+.versions { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
+.versions > p { margin: 2px 0; max-width: 60em; }
+.versions .note { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.versions a { color: var(--accent); }
+.versions .outils .interrupteur-versions { margin-left: auto; color: var(--texte); }
+.tete-versions .icone { width: 13px; height: 13px; }
+.attention-versions { color: var(--attention); }
+.attention-versions .icone { width: 14px; height: 14px; }
+.liste-versions { flex: 1; min-height: 80px; overflow: auto; border: 1px solid var(--grille); border-radius: 6px; }
+.jour-versions h4 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 4px 10px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--texte-doux); background: var(--fond-barre); border-bottom: 1px solid var(--grille); }
+.version { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--grille); }
+.jour-versions:last-child .version:last-child { border-bottom: 0; }
+.version:hover { background: var(--survol); }
+.version.actuelle { box-shadow: inset 3px 0 var(--ok); }
+.version.auto .version-tete b { font-weight: 500; }
+.heure-version { flex: none; width: 3.4em; color: var(--texte-doux); font-variant-numeric: tabular-nums; font-size: 12px; }
+.version-texte { flex: 1; min-width: 0; }
+.version-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.version-tete b, .version-tete .doux { overflow-wrap: anywhere; }
+.version-texte > .doux { font-size: 11.5px; }
+.marque-version { display: inline-flex; align-items: center; gap: 2px; }
+.marque-version .icone { width: 12px; height: 12px; }
+.marque-version.envoyee { color: var(--ok); }
+.version-actions { display: flex; gap: 4px; flex: none; }
+.version-actions button { padding: 2px 8px; font-size: 12px; }
+.badge.nom-version { display: inline-flex; align-items: center; gap: 2px; background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+.badge.nom-version button { padding: 0; }
+.badge.nom-version .icone { width: 11px; height: 11px; }
+.partage-versions { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border: 1px solid var(--grille); border-radius: 6px; background: var(--fond-barre); }
+.partage-versions > .note { margin: 0; }
+.partage-versions > button { align-self: flex-start; }
+.partage-versions .ligne { flex-wrap: wrap; gap: 6px; }
+.partage-versions .ligne .icone { width: 14px; height: 14px; vertical-align: -2px; color: var(--accent); }
+.adresse-versions { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: var(--texte-doux); overflow-wrap: anywhere; user-select: text; }
+.badge.etat-partage.a_jour { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.badge.etat-partage.a_recevoir, .badge.etat-partage.attente { background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+.badge.etat-partage.conflit, .badge.etat-partage.erreur { background: color-mix(in srgb, var(--erreur) 14%, transparent); color: var(--erreur); }
+.banniere-versions { display: flex; align-items: center; gap: 10px; padding: 5px 10px; margin: 2px 0; border: 1px solid var(--attention); border-radius: 6px; background: var(--fond-panneau); }
+.banniere-versions > span { flex: 1; }
+.banniere-versions.erreur-versions { border-color: var(--erreur); color: var(--erreur); }
+.banniere-versions.erreur-versions button { color: var(--texte); }
+.compte-partage { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compte-partage:empty { display: none; }
+.compte-partage .carte-compte { padding: 4px 10px 4px 4px; gap: 8px; background: var(--fond-panneau); }
+.compte-partage .avatar-compte { width: 30px; height: 30px; }
+.compte-partage .avatar-compte.vide .icone { width: 22px; height: 22px; }
+.compte-partage > .note { flex-basis: 100%; margin: 0; }
+#statut .statut-versions { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+#statut .indicateur-versions { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--texte-doux); }
+#statut .indicateur-versions .icone { width: 14px; height: 14px; color: var(--accent); }
+#statut .indicateur-versions.a_recevoir, #statut .indicateur-versions.attente { color: var(--attention); }
+#statut .indicateur-versions.conflit, #statut .indicateur-versions.erreur, #statut .indicateur-versions.conflit .icone, #statut .indicateur-versions.erreur .icone { color: var(--erreur); }
+#statut .reessayer-versions .icone { width: 13px; height: 13px; }
+#statut .avis-versions { display: inline-flex; align-items: center; gap: 6px; max-width: 46vw; padding: 1px 4px 1px 8px; border-radius: 4px; background: var(--accent-doux); }
+#statut .avis-versions > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#statut .avis-versions a { color: var(--accent); font-weight: 600; white-space: nowrap; }
+#statut .avis-versions .icone { width: 12px; height: 12px; }
+.dialogue-version { display: flex; flex-direction: column; gap: 4px; min-width: min(30em, 80vw); }
+.dialogue-version p { margin: 2px 0; }
+.dialogue-version h4 { margin: 10px 0 2px; }
+.dialogue-version .champ { color: var(--texte); }
+.noms-version { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.dialogue-connexion { display: flex; flex-direction: column; gap: 4px; }
+.dialogue-connexion > p, .dialogue-connexion h4 { margin: 2px 0; }
+.dialogue-connexion .grille-champs { grid-template-columns: max-content minmax(0, 1fr); }
+.dialogue-connexion .ligne input { flex: 1; min-width: 0; }
+.connexion-compte { flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.liens-connexion ol { margin: 4px 0; padding-left: 1.4em; }
+.liens-connexion li { margin: 3px 0; }
+.liens-connexion a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); margin-right: 8px; white-space: nowrap; }
+.liens-connexion a .icone { width: 12px; height: 12px; }
+.message-connexion { min-height: 1.4em; margin: 4px 0; overflow-wrap: anywhere; }
+.message-connexion.ok-connexion, p.ok-connexion { color: var(--ok); }
+.dialogue-connexion [hidden] { display: none; }
+.connexion-distant { flex-wrap: wrap; gap: 8px; }
+.connexion-distant > span { flex: 1 1 16em; }
+.dialogue-partage .etape-connexion > h4 { margin: 6px 0 0; }
+.depot-existant { border-top: 1px solid var(--grille); padding-top: 6px; margin-top: 4px; }
+.depot-existant > summary { cursor: pointer; color: var(--accent); }
+.depot-existant[open] { display: flex; flex-direction: column; gap: 6px; }
+.depot-existant[open] > summary { margin-bottom: 2px; }
+.projets-distants { display: flex; flex-direction: column; gap: 2px; max-height: 12em; overflow: auto; }
+.projets-distants:empty { display: none; }
+.projet-distant { color: var(--texte); }
+.projet-distant .icone { width: 14px; height: 14px; color: var(--accent); }
+.dialogue.dialogue-moyen { width: min(780px, 96vw); }
+.dialogue-conflit { display: flex; flex-direction: column; gap: 6px; }
+.dialogue-conflit > p { margin: 2px 0; }
+.cotes-conflit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cote-conflit, .apports-conflit { border: 1px solid var(--grille); border-radius: 6px; padding: 6px 10px; background: var(--fond-barre); }
+.cote-conflit h4, .apports-conflit h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); }
+.cote-conflit p { margin: 2px 0; }
+.apports-conflit ul { margin: 0; padding-left: 1.2em; }
+.apports-conflit li { margin: 2px 0; }
+.fusion-conflit { display: flex; flex-direction: column; gap: 6px; }
+.fusion-conflit > p { margin: 2px 0; font-weight: 600; }
+.liste-conflits { display: flex; flex-direction: column; gap: 6px; max-height: 22em; overflow: auto; }
+.conflit-fusion { border: 1px solid var(--attention); border-radius: 6px; padding: 6px 10px; }
+.conflit-fusion .champ { display: flex; color: var(--texte); margin: 2px 0 0 4px; }
+.fusion-conflit > p.note { font-weight: 400; }
+.details-conflit { margin: 4px 0 0 4px; }
+.details-conflit > summary { cursor: pointer; color: var(--texte-doux); font-size: 12px; }
+.passage-conflit { margin: 4px 0; }
+.cotes-passage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.passage-conflit h5 { margin: 2px 0; font-size: 11px; font-weight: 600; color: var(--texte-doux); }
+.passage-conflit pre { margin: 0; padding: 4px 6px; max-height: 9em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; border-radius: 4px; background: var(--fond-barre); border: 1px solid var(--grille); }
+.base-passage pre { color: var(--texte-doux); }
+.tableau-conflit { border-collapse: collapse; font-size: 12px; margin: 4px 0; }
+.tableau-conflit th, .tableau-conflit td { border: 1px solid var(--grille); padding: 2px 8px; text-align: left; }
+.tableau-conflit th { font-weight: 600; color: var(--texte-doux); background: var(--fond-barre); }
+.noeud.lecture-seule > .icone { color: var(--attention); }
+.badge.lecture-seule { margin-left: 6px; background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+
+/* What changed (changements.js): the models with notable changes first, their sentences, the table
+   of the results that changed and their marks */
+.changements { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.changements h2 { font-size: 15px; font-weight: 600; margin: 2px 0 4px; }
+.changements > .infos { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.aide-drapeaux { display: inline-flex; color: var(--texte-doux); cursor: help; }
+.aide-drapeaux .icone { width: 14px; height: 14px; }
+.modele-change { border: 1px solid var(--grille); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; background: var(--fond-panneau); }
+.modele-change.notable { border-left: 3px solid var(--attention); }
+.modele-change.inchange h3, .modele-change.inchange p { display: inline; margin-right: 8px; }
+.modele-change h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 4px; }
+.modele-change .compte-change { font-weight: 400; font-size: 11.5px; }
+.phrases-change { margin: 4px 0 6px; padding-left: 1.3em; line-height: 1.45; user-select: text; }
+.phrases-change li { margin: 2px 0; }
+.modele-change details summary { cursor: pointer; color: var(--texte-doux); font-size: 12px; margin: 2px 0; }
+.modele-change .tableau-court { max-height: 22em; }
+.tableau-changements td { white-space: normal; vertical-align: top; }
+.tableau-changements td:first-child { min-width: 14em; }
+.tableau-changements tr.notable td:first-child { box-shadow: inset 3px 0 var(--attention); }
+.categorie-change { font-weight: 600; }
+.badge.drapeau-change { margin: 1px 3px 1px 0; white-space: nowrap; }
+.badge.drapeau-change.signe { background: color-mix(in srgb, var(--erreur) 14%, transparent); color: var(--erreur); }
+.badge.drapeau-change.seuil, .badge.drapeau-change.ic { background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+.badge.drapeau-change.nouveau { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.badge.drapeau-change.disparu, .badge.drapeau-change.retourne { background: var(--grille); color: var(--texte-doux); }
+.seul-cote p { margin: 3px 0; }
+
+/* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
+   wait for the approval, the account's card, the other ways to sign in */
+.dialogue-compte { display: flex; flex-direction: column; gap: 6px; min-width: min(32em, 80vw); }
+.dialogue-compte p { margin: 2px 0; }
+.dialogue-compte a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
+.dialogue-compte a .icone { width: 13px; height: 13px; }
+.dialogue-compte .ligne { flex-wrap: wrap; gap: 8px; }
+.dialogue-compte .ligne > label, .etiquette-compte { color: var(--texte-doux); }
+.etape-connexion { display: flex; flex-direction: column; gap: 8px; }
+.services-connexion { display: flex; gap: 10px; margin: 4px 0; }
+.services-connexion button { flex: 1; justify-content: center; padding: 10px; font-size: 14px; font-weight: 600; }
+.code-appareil { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 6px 0 2px; }
+.code-appareil code { font: 600 30px/1.2 Consolas, 'Cascadia Mono', monospace; letter-spacing: .14em; padding: 6px 8px 6px 18px; border: 1px solid var(--bord);
+  border-radius: 6px; background: var(--fond-barre); user-select: all; }
+.ouvrir-connexion { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.adresse-connexion { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: var(--texte-doux); }
+.attente-connexion { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--texte-doux); }
+.attente-connexion .point { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; flex: none; }
+.ok-compte { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.carte-compte { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--grille); border-radius: 8px; background: var(--fond-barre); }
+.avatar-compte { width: 44px; height: 44px; border-radius: 50%; flex: none; object-fit: cover; background: var(--fond); }
+.avatar-compte.vide { display: inline-flex; align-items: center; justify-content: center; color: var(--texte-doux); }
+.avatar-compte.vide .icone { width: 30px; height: 30px; }
+.texte-compte { min-width: 0; overflow-wrap: anywhere; }
+.autres-connexions { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--grille); padding-top: 6px; }
+.autres-connexions:empty, .jeton-connexion:empty { display: none; }
+.autres-connexions h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin: 2px 0; }
+.jeton-connexion { display: flex; flex-direction: column; gap: 6px; }
+.message-compte { min-height: 1.4em; overflow-wrap: anywhere; }
+.message-compte.ok-compte { display: block; }
+.invites-compte { margin: 0; padding: 0; list-style: none; }
+.invites-compte li { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.actions-compte { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* File › Settings…, the R Nuée uses (reglages.js): the Rs to choose from, the one chosen checked,
+   the line installing its missing packages to copy, what R says while it installs them */
+.dialogue-r { display: flex; flex-direction: column; gap: 6px; }
+.dialogue-r h3 { margin: 2px 0; font-size: 13px; }
+.dialogue-r p { margin: 2px 0; }
+.liste-r { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; }
+.entree-r { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--grille); border-radius: 6px; cursor: pointer; }
+.entree-r:hover { background: var(--survol); }
+.entree-r:has(input:checked) { border-color: var(--accent); }
+.entree-r.desactivee { cursor: default; }
+.entree-r.desactivee .nom-r b { color: var(--texte-doux); }
+.nom-r { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.nom-r .doux { font-size: 11.5px; overflow-wrap: anywhere; }
+.etiquette-r { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--accent-doux); color: var(--accent); }
+.etiquette-r.alerte { background: none; color: var(--attention); border: 1px solid var(--attention); }
+.resultat-r { padding: 6px 8px; border-radius: 6px; background: var(--fond-barre); border: 1px solid var(--bord); }
+.resultat-r:empty { display: none; }
+.etat-r { display: flex; align-items: flex-start; gap: 6px; }
+.etat-r .icone { margin-top: 1px; }
+.etat-r.ok { color: var(--ok); }
+.etat-r.alerte { color: var(--attention); }
+.ligne-r { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.ligne-r > span { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+.ligne-r code { flex: 1 1 24em; min-width: 0; padding: 4px 6px; background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
+  font: 11.5px Consolas, 'Cascadia Mono', monospace; overflow-wrap: anywhere; user-select: all; }
+.sortie-r { margin: 4px 0 0; max-height: 12em; overflow: auto; padding: 6px 8px; background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
+  font: 11px Consolas, 'Cascadia Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sortie-r:empty { display: none; }
+/* ---------------------------------------------------------------- R-code models (vues_code.js) */
+/* the code editor in New model: the field column as wide as the dialog, line numbers, R colours */
+.grille-champs:has(.champ-code) { grid-template-columns: max-content minmax(0, 1fr); align-items: start; }
+.grille-champs:has(.champ-code) > label { padding-top: 3px; }
+.champ-code { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.editeur-code { min-width: 0; }
+.editeur-code textarea.formule { width: 100%; font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; font-size: 12.5px; resize: vertical; }
+.editeur-code .cm-editor { height: 280px; border: 1px solid var(--bord-champ); border-radius: 4px; background: var(--fond-panneau); color: var(--texte); font-size: 12.5px; }
+.editeur-code .cm-editor.cm-focused { outline: 2px solid var(--accent); outline-offset: -1px; }
+.editeur-code .cm-scroller { font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace; line-height: 1.5; }
+.editeur-code .cm-gutters { background: var(--fond-barre); color: var(--texte-doux); border-right: 1px solid var(--grille); }
+.editeur-code .cm-activeLine, .editeur-code .cm-activeLineGutter { background: color-mix(in srgb, var(--survol) 70%, transparent); }
+.editeur-code .cm-cursor { border-left-color: var(--texte); }
+.editeur-code .cm-selectionBackground, .editeur-code .cm-focused .cm-selectionBackground { background: var(--accent-doux) !important; }
+.editeur-code .cm-placeholder { color: var(--texte-doux); }
+.editeur-code .cm-matchingBracket { background: var(--accent-doux); outline: 1px solid var(--accent); }
+.aide-code { border: 1px solid var(--grille); border-radius: 6px; padding: 4px 10px; background: var(--fond-barre); }
+.aide-code summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 2px 0; }
+.aide-code p { margin: 6px 0; }
+.corps-dialogue p.erreur { white-space: pre-wrap; font-family: inherit; }
+/* the model's views: R's text, the code with its line numbers, plots side by side, the code's own plots */
+pre.code-sortie, pre.code-r { font: 12px/1.45 Consolas, 'Cascadia Mono', 'Courier New', monospace; background: var(--fond-barre); border: 1px solid var(--grille);
+  border-radius: 4px; padding: 6px 8px; margin: 2px 0; overflow: auto; white-space: pre; tab-size: 4; }
+pre.code-r { counter-reset: ligne-code; }
+pre.code-r .ligne-code { display: block; }
+pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter(ligne-code); display: inline-block; width: 3ch; margin-right: 10px; text-align: right;
+  color: var(--texte-doux); user-select: none; }
+.deux-graphes { display: flex; flex: 1; gap: 8px; min-height: 0; }
+.deux-graphes .graphe { min-width: 0; }
+.image-code { margin: 6px 0 12px; }
+.image-code img { max-width: 100%; height: auto; border: 1px solid var(--grille); border-radius: 4px; background: #fff; }
+.tableau-code { flex: none; max-height: 320px; }
+/* the bar over a project whose R code was written elsewhere: Show the code, Run it */
+#barres-code:empty { display: none; }
+.barre-code { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: color-mix(in srgb, var(--attention) 14%, var(--fond-panneau));
+  border-bottom: 1px solid var(--attention); color: var(--texte); }
+.barre-code > span:not(.icone) { flex: 1; min-width: 0; }
+.barre-code > .icone { color: var(--attention); }
+.montrer-code section { margin-bottom: 10px; }
+.montrer-code h4 { margin: 6px 0 2px; font-size: 13px; }
+
+/* ---------------------------------------------------------------- help (aide.js) */
+/* About: its links, and the sentence to cite Nuée, selectable */
+.apropos a { color: var(--accent); }
+.apropos h4 { margin: 14px 0 4px; font-size: 13px; }
+.citation-nuee { margin: 0 0 6px; padding: 6px 10px; background: var(--fond-barre); border: 1px solid var(--bord); border-radius: 4px; line-height: 1.45; user-select: text; }
+/* the guide's panel (F1): its search and contents, a section of the guide, the sections before and after */
+.panneau.aide-conteneur { padding: 0; }
+.aide-panneau { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.aide-outils { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--grille); }
+.aide-recherche { flex: 1 1 11em; min-width: 8em; }
+.aide-sommaire { flex: 1 1 11em; min-width: 0; max-width: 100%; }
+.aide-corps { flex: 1; min-height: 0; overflow-y: auto; position: relative; padding: 4px 14px 14px; line-height: 1.5; user-select: text; }
+.aide-corps h3 { margin: 8px 0; font-size: 15px; }
+.aide-corps p { margin: 0 0 8px; }
+.aide-corps ul, .aide-corps ol { margin: 0 0 8px; padding-left: 1.4em; }
+.aide-corps li { margin-bottom: 3px; }
+.aide-corps li > p:last-child { margin-bottom: 2px; }
+.aide-corps .retrait { margin-left: 1.2em; }
+.aide-corps pre { margin: 0 0 8px; padding: 6px 8px; background: var(--fond-barre); border-radius: 4px; font: 11.5px/1.45 Consolas, 'Cascadia Mono', monospace; overflow-x: auto; }
+.aide-corps dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 8px; }
+.aide-corps dt { font-weight: 600; }
+.aide-corps dd { margin: 0; }
+.aide-corps a { color: var(--accent); }
+.aide-corps mark { background: color-mix(in srgb, var(--attention) 30%, transparent); color: inherit; border-radius: 2px; }
+/* the paragraph that tells about the view in front */
+.aide-corps .aide-cible { background: var(--accent-doux); box-shadow: -6px 0 0 var(--accent-doux), -9px 0 0 var(--accent); border-radius: 0 3px 3px 0; }
+.aide-resultats { padding-left: 1.4em; }
+.aide-resultats li { margin-bottom: 8px; }
+.aide-resultats li > a { font-weight: 600; }
+.aide-resultats p { margin: 2px 0 0; font-size: 12px; }
+.aide-pied { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--grille); }
+/* File › Settings… › At start-up (reglages.js): the last session's projects reopened or not */
+.dialogue-r h3.reglages-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grille); }
+.dialogue-r .champ.seance-champ { color: var(--texte); }
+/* an example project in front: its tutorial, in the status bar (aide.js) */
+#statut .lien-tutoriel { display: inline-flex; align-items: center; gap: 2px; }
+#statut .lien-tutoriel a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; text-decoration: none; }
+#statut .lien-tutoriel a:hover { text-decoration: underline; }
+/* ---------------------------------------------------------------- plugins (vues_greffons.js) */
+/* a plugin's card (File › Plugins…, the install dialog, Show, a model's summary) */
+.dialogue-greffons { display: flex; flex-direction: column; gap: 8px; }
+.dialogue-greffons > p { margin: 2px 0; }
+.liste-greffons { display: flex; flex-direction: column; gap: 8px; }
+.carte-greffon { border: 1px solid var(--grille); border-radius: 6px; padding: 8px 12px; background: var(--fond-panneau); }
+.carte-greffon.alerte { border-color: var(--attention); }
+.carte-greffon .fiche-titre > .icone { color: var(--accent); }
+.carte-greffon p { margin: 4px 0; }
+.carte-greffon .ligne { margin-top: 6px; }
+.carte-greffon.modele { margin: 8px 0; }
+.paquets-greffon { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.citations-greffon summary { cursor: pointer; color: var(--accent); }
+.citation-greffon { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0; }
+.citation-greffon p { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.reglages-greffon { display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr); gap: 2px 12px; margin: 6px 0 0; }
+.reglages-greffon dt { color: var(--texte-doux); }
+.reglages-greffon dd { margin: 0; overflow-wrap: anywhere; }
+.confiance-greffon { display: flex; align-items: flex-start; gap: 8px; }
+.confiance-greffon > .icone { color: var(--attention); flex: none; }
+/* its dialog in New model: a field per input and option, the variables to tick in a box that scrolls */
+.grille-champs:has(.champ-greffon) { grid-template-columns: max-content minmax(0, 480px); align-items: start; }
+.grille-champs:has(.champ-greffon) > label { padding-top: 3px; }
+.champ-greffon { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.champ-greffon .note { margin: 0; }
+.champ-greffon .infos.attention { color: var(--attention); }
+.liste-variables { display: flex; flex-wrap: wrap; gap: 2px 14px; max-height: 9.5em; overflow: auto; padding: 4px 8px; border: 1px solid var(--bord-champ);
+  border-radius: 4px; background: var(--fond-panneau); }
+.liste-variables .champ { white-space: nowrap; }
+/* the bar over a project whose plugin isn't approved here (as R code's) */
+#barres-greffons:empty { display: none; }
+
+/* Stop (app.js: majArret): over the status bar, after the engine's state, and above a dialog's shade
+   too (New model fits with its dialog open); its own element beside #appli, which a dialog doesn't
+   make inert */
+#arret-calcul { position: fixed; bottom: 2px; left: 10px; z-index: 950; }
+#arret-calcul[hidden] { display: none; }
+#arret-calcul button { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 12px; min-height: 22px;
+  color: var(--erreur); border-color: var(--erreur); background: var(--fond-panneau); box-shadow: var(--ombre); }
+#arret-calcul button:disabled { opacity: .8; color: var(--texte-doux); border-color: var(--bord); }
+#arret-calcul .icone { width: 14px; height: 14px; }

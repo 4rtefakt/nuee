@@ -68,8 +68,9 @@ envoie sur le réseau : [docs/deploiement.md](docs/deploiement.md) (en anglais).
    *Réglages Système › Confidentialité et sécurité*, et confirmez. Nuée s'ouvre ensuite comme
    toute autre application.
 
-R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur
-le Mac n'est ni utilisé ni modifié. Les réglages sont dans `~/Library/Application Support/Nuee`.
+R est inclus, comme sous Windows : il n'y a rien d'autre à installer. Un R déjà présent sur le
+Mac n'est jamais modifié, et n'est utilisé que si vous le choisissez dans *Nuée › Réglages…*. Les
+réglages sont dans `~/Library/Application Support/Nuee`.
 Au démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre
 d'état ouvre sa page, dont le `.dmg` remplace l'application. Chaque changement est vérifié sur
 GitHub sur des Mac Apple silicon et Intel, depuis le `.dmg`, sur un Mac sans R.
@@ -104,10 +105,12 @@ d'état ouvre sa page.
 
 ## Premiers pas
 
-- **Essayer l'exemple :** *Aide › Projet d'exemple* ouvre 120 pommes inventées (quatre
-  variétés, bio ou conventionnelles, une douzaine de mesures et une note de dégustation) avec
-  quatre modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA du
-  mode de culture.
+- **Essayer les exemples :** *Aide › Projets d'exemple › Pommes* ouvre 120 pommes inventées
+  (quatre variétés, bio ou conventionnelles, une douzaine de mesures et une note de dégustation)
+  avec quatre modèles prêts : une ACP, une PLS de la note, une PLS-DA des variétés et une OPLS-DA
+  du mode de culture. *Suivi d'alouettes* (TRIM, un modèle mixte, l'échantillonnage par
+  distances) et *Un seuil arasé* (BACI) ouvrent les données simulées des tutoriels, leurs modèles
+  ajustés.
 - **Ouvrir vos données :** *Fichier › Ouvrir* (Ctrl+O) lit un tableau, une ligne par
   observation et les noms des observations dans la première colonne (voir [Fichiers](#fichiers)
   pour les formats), ou *Fichier › Coller un tableau* (Ctrl+V) prend des cellules copiées
@@ -126,10 +129,10 @@ d'état ouvre sa page.
   barre des VIP, un coefficient, un point des loadings ou du S-plot) pour la mettre en évidence
   dans tous les graphiques du modèle.
 
-Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation › Guide complet*),
-en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
+Le guide complet est fourni avec l'application (*Aide › Guide d'utilisation*, F1 : dans un panneau
+à côté du travail, à la section de ce qui est devant), en français ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)) et en anglais
 ([USER-GUIDE.txt](USER-GUIDE.txt)). Il est aussi sur le
-[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec trois tutoriels.
+[site de documentation](https://4rtefakt.github.io/nuee/fr/), avec six tutoriels.
 
 ## Ce qu'elle fait
 
@@ -276,6 +279,10 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   disposition de vos panneaux, les réglages des graphiques et les sélections ;
 - une copie de secours toutes les deux minutes, proposée après une panne, et l'annulation des
   modifications des données ;
+- les versions de chaque projet gardées d'elles-mêmes (*Fichier › Historique*), nommées,
+  comparées et restaurées, et partagées sur GitHub ou GitLab avec des collègues, les changements
+  de deux personnes réunis modèle par modèle et passage par passage (sur un dossier réseau
+  partagé aussi) ;
 - des notes sur chaque modèle ;
 - la modification des données et de nouvelles variables par des formules R ou des classes de
   valeurs ; des colonnes ajoutées d'un autre tableau par une clé, et des tableaux résumés par
@@ -284,6 +291,10 @@ signal pour celles hors du domaine du modèle, et exportez les résultats.
   les titres des axes, les textes des méthodes et des résultats et les exports ; les exports de
   formulaires de KoboToolbox et d'ODK Central ouverts proprement (métadonnées retirées, choix en
   catégories, points GPS en coordonnées du projet, groupes répétés avec les colonnes des parents) ;
+- des rapports vivants : le fichier de données de l'année suivante lu dans le projet (*Édition ›
+  Mettre à jour les données*), les changements faits aux données rejoués dessus, chaque modèle
+  ajusté à nouveau, et ce qui a changé dit en phrases, jusqu'aux valeurs que citent les
+  documents ;
 - les observations d'un modèle choisies par une condition (`site == "S1" & annee >= 2010`),
   refaite à chaque ajustement ;
 - plusieurs fenêtres, et des vues qui se détachent sur un second écran ;
@@ -383,7 +394,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> Boutin, C. (2026). Nuée (version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
+> Boutin, C. (2026). Nuée (version 1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)
@@ -401,7 +412,13 @@ et chaque pull request.
 Nuée est un logiciel libre sous la [Licence publique générale GNU v3.0](LICENSE) ou
 ultérieure.
 
+Ce que Nuée écrit pour vous est à vous : les scripts et rapports d'Exporter vers R (avec les
+parties du moteur qu'ils recopient), les documents reproductibles et les paquets de
+reproductibilité peuvent être utilisés et partagés sous toutes conditions, par une permission
+supplémentaire au titre de l'article 7 de la GPL ([LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md)).
+Chacun dit comment citer Nuée : merci de le faire.
+
 L'installateur Windows et l'application macOS incluent R (GPL-2 | GPL-3) avec ses paquets recommandés et les paquets R httpuv,
 jsonlite, openxlsx, haven, readxl et leurs dépendances, Electron (MIT), Plotly.js (MIT),
-dockview (MIT), les icônes Lucide (ISC), et CodeMirror et markdown-it (MIT) pour les documents,
-chacun sous sa propre licence.
+dockview (MIT), les icônes Lucide (ISC), CodeMirror et markdown-it (MIT) pour les documents, et
+isomorphic-git (MIT) pour les versions, chacun sous sa propre licence.

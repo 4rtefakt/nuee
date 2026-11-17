@@ -71,14 +71,39 @@ console.log('Complétion, genres, numérotation');
 const offre = offreModele(pls, { vues: ['scores', 'vip'], tableaux: ['composantes'] });
 const chemins = offre.map((o) => o.chemin);
 verifier('la complétion propose valeurs, VIP et coefficients par variable, tableaux, graphiques, méthodes',
-  ['Q2', 'R2Y', 'gain', 'cvanova.p', 'vip.sucre', 'coef.acidite', 'table.composantes', 'scores', 'methodes'].every((c) => chemins.includes(c)) && !chemins.includes('Q2_honnete'),
+  ['Q2', 'R2Y', 'gain', 'cvanova.p', 'vip.sucre', 'coef.acidite', 'table.composantes', 'scores', 'methodes', 'methodes.references'].every((c) => chemins.includes(c)) && !chemins.includes('Q2_honnete'),
   chemins.join(', '));
 egal('chaque valeur proposée avec ce qu’elle donne', offre.find((o) => o.chemin === 'Q2').detail, '0,65');
-egal('genres', [genreChemin(['table', 'composantes']), genreChemin(['methodes']), genreChemin(['scores'], ['scores']), genreChemin(['vip', 'sucre'], ['vip']), genreChemin(['vip'], ['vip'])],
-  ['tableau', 'texte', 'graphique', 'valeur', 'graphique']);
+egal('genres', [genreChemin(['table', 'composantes']), genreChemin(['methodes']), genreChemin(['scores'], ['scores']), genreChemin(['vip', 'sucre'], ['vip']), genreChemin(['vip'], ['vip']),
+  genreChemin(['methodes', 'references'])], ['tableau', 'texte', 'graphique', 'valeur', 'graphique', 'texte']);
 const n = numeroter([{ etiquette: 'a' }, {}, { etiquette: 't1' }, { etiquette: 'b' }], (x) => ({ a: 'figure', t1: 'tableau', b: 'figure' }[x.etiquette] || null));
 egal('figures et tableaux numérotés à part, étiquettes', [[...n.numeros.entries()], [...n.etiquettes.entries()]],
   [[[0, 1], [2, 1], [3, 2]], [['a', { genre: 'figure', numero: 1 }], ['t1', { genre: 'tableau', numero: 1 }], ['b', { genre: 'figure', numero: 2 }]]]);
+
+console.log('Les résultats clés d’une autre analyse (TRIM, échantillonnage par distances)');
+// (as the engine sends them: moteur/R/resultats_cles.R, resume_resultats, m.cles)
+const trim = { analyse: true, type: 'TRIM', A: 0, N: 680, K: 0, cles: [
+  { cle: 'N', valeur: 680, forme: 'entier' }, { cle: 'K', valeur: 0, forme: 'entier' }, { cle: 'A', valeur: 0, forme: 'entier' },
+  { cle: 'pente', valeur: 0.970214, ic: [0.96248, 0.97801], p: 0.00002, limite: 1, classe: 'declin_modere' },
+  { cle: 'sigma2', valeur: 1.83417 }, { cle: 'indice.2015', valeur: 0.8312, ic: [0.7801, 0.8823], limite: 1 },
+  { cle: 'modele', classe: 'demi-normale' }] };
+const ecrit = (m, c, langue = 'fr', format = '') => valeurReference(m, c.split('.'), { format }, langue).texte ?? valeurReference(m, c.split('.'), { format }, langue).erreur;
+egal('la pente de TRIM à 4 décimales, son intervalle, sa valeur p, sa variation en % et son intervalle',
+  ['pente', 'pente.ic', 'pente.bas', 'pente.p', 'pente.pourcent', 'pente.pourcent.ic'].map((c) => ecrit(trim, c)),
+  ['0,9702', '[0,9625 ; 0,9780]', '0,9625', 'p < 0,001', '−3,0 %', '[−3,8 % ; −2,2 %]']);
+egal('sa classe dans la langue du document ; en anglais, les mêmes nombres', [ecrit(trim, 'pente.classe'), ecrit(trim, 'pente.classe', 'en'), ecrit(trim, 'pente.pourcent', 'en'), ecrit(trim, 'pente.ic', 'en')],
+  ['déclin modéré', 'moderate decline', '−3.0%', '[0.9625, 0.9780]']);
+egal('σ² à 3 chiffres, à 2 décimales demandées ; un indice en % ; N', [ecrit(trim, 'sigma2'), ecrit(trim, 'sigma2', 'fr', '2'), ecrit(trim, 'indice.2015.pourcent'), ecrit(trim, 'N')],
+  ['1,83', '1,83', '−16,9 %', '680']);
+egal('pas de classe, de p ni de CV qu’elle n’a ; une valeur inconnue', [ecrit(trim, 'sigma2.p'), ecrit(trim, 'sigma2.pourcent'), ecrit(trim, 'inconnue')],
+  ['valeur_absente', 'valeur_inconnue', 'valeur_inconnue']);
+const offreTrim = offreModele(trim).filter((o) => o.type === 'valeur').map((o) => o.chemin);
+egal('proposés : la pente et ses parties, σ², l’indice et sa variation ; ni A, ni un K de 0, ni une catégorie sans valeur', offreTrim,
+  ['N', 'pente', 'pente.ic', 'pente.p', 'pente.pourcent', 'pente.classe', 'sigma2', 'indice.2015', 'indice.2015.ic', 'indice.2015.pourcent']);
+const distance = { analyse: true, type: 'DISTANCE', densite: { strate: ['Nord', 'Sud', null], cv: [0.21, 0.18, 0.142] },
+  cles: [{ cle: 'D', valeur: 12.3456, ic: [9.21, 16.55] }, { cle: 'D.Nord', valeur: 14.1, ic: [9, 22] }, { cle: 'p', valeur: 0.4321 }, { cle: 'ESW', valeur: 64.21 }] };
+egal('la densité, son intervalle, son CV (le total, une strate), p et ESW', ['D', 'D.ic', 'D.cv', 'D.Nord.cv', 'p', 'ESW'].map((c) => ecrit(distance, c, 'en')),
+  ['12.3', '[9.2, 16.6]', '14.2%', '21.0%', '0.432', '64.2']);
 
 console.log(echecs ? `${echecs} vérification(s) en échec` : 'Toutes les vérifications sont passées.');
 process.exit(echecs ? 1 : 0);

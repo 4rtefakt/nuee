@@ -14,20 +14,21 @@ permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   d <- definition
   d$test <- NULL  # (le jeu de test ne change ni R2 ni Q2)
   mesure <- function(r) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = unname(r$q2v_cum[y]))
-  lignes_y <- match(as.character(m$observations), rownames(projet$donnees))
+  lignes_y <- match(nom_numero(m$observations), rownames(projet$donnees))
   # (une PLS-DA d'un fichier .usp a une variable 0/1 par classe, celle de l'application une variable de classe)
-  variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) as.character(t$variables[1]), ""))
+  variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) nom_numero(t$variables[1]), ""))
   valeurs <- projet$donnees[lignes_y, variables, drop = FALSE]
   present <- m$MY[, y] == 1
   # X ne change pas d'une permutation à l'autre : le côté X du modèle (ses blocs, ceux de chaque
   # sous-modèle de la validation croisée) est calculé une fois pour toutes (modele.R : cote_x_modele),
   # sauf quand une variable permutée est aussi en X, ou fait les groupes de la validation croisée
-  en_x <- unique(as.character(unlist(lapply(d$x, function(t) t$variables))))
-  groupes_par <- if (identical(as.character(d$groupes_vc$by %||% "")[1], "variable")) as.character(d$groupes_vc$variable)
+  en_x <- unique(nom_numero(unlist(lapply(d$x, function(t) t$variables))))
+  groupes_par <- if (identical(as.character(d$groupes_vc$by %||% "")[1], "variable")) nom_numero(d$groupes_vc$variable)
   cote_x <- if (!any(variables %in% c(en_x, groupes_par))) cote_x_modele(projet, d, m$G)
   set.seed(graine)
   lignes <- list(c(correlation = 1, mesure(m)))
   for (i in seq_len(n)) {
+    verifier_arret()
     ordre <- sample(length(lignes_y))
     pp <- projet
     pp$donnees[lignes_y, variables] <- valeurs[ordre, , drop = FALSE]

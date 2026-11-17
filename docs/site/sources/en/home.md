@@ -41,7 +41,13 @@ Nuée helps you choose:
 <li><h3>Monitoring</h3><p>Trends in series, before-after with controls (BACI), count indices (TRIM), densities by distance sampling.</p><p><a href="page:guide.suivis">The guide</a></p></li>
 <li><h3>Maps</h3><p>Coordinates and their systems (Lambert-93, UTM…), GeoPackage for QGIS, raster values, spatial autocorrelation.</p><p><a href="page:guide.cartes">The guide</a></p></li>
 <li><h3>Publishing</h3><p>Figures composed at a journal's size, PDF and Word reports, documents with citations, Export to R, R Markdown and Quarto.</p><p><a href="page:guide.resultats">The guide</a></p></li>
+<li><h3>Living reports</h3><p>Next year's data file read into the project, its changes replayed, every model fitted again, and the values your documents cite updated.</p><p><a href="page:guide.donnees#data-steps-and-updating-the-data">The guide</a></p></li>
+<li><h3>Versions</h3><p>Each project's versions kept by themselves, named, opened, restored, and compared: what changed in each model's results, in sentences.</p><p><a href="page:guide.versions">The guide</a></p></li>
+<li><h3>Working together</h3><p>A project shared on GitHub or GitLab, or on a network folder, both sides' changes merged model by model, passage by passage.</p><p><a href="page:guide.versions#working-together">The guide</a></p></li>
 </ul>
+
+New in version 1.1: living reports, versions and working together, and the whole interface from
+the keyboard or with a screen reader. Everything else that changed: [What’s new](page:nouveautes).
 
 ## All in R, on your computer
 
@@ -51,8 +57,9 @@ The results are those of the reference packages (vegan, nlme, mgcv, emmeans, rtr
 checked at every change.
 
 Your data stay on your computer: Nuée sends nothing, except a question to GitHub at start-up about
-a newer version (it can be turned off in the Help menu), and the area shown to OpenStreetMap's or
-IGN's servers when you choose a background map.
+a newer version (it can be turned off in the Help menu), the area shown to OpenStreetMap's or
+IGN's servers when you choose a background map, and a project's versions to the GitHub or GitLab
+repository you share it on.
 
 ## Download
 
@@ -68,9 +75,11 @@ How to install: see [Install](page:installation). Every version and its notes: t
 
 ## Getting started
 
-- [The tutorials](page:tutoriels) follow three studies from start to finish: a before-after with
-  controls (BACI), a PLS on spectra, and the monitoring of a bird population.
-- In the application, Help › Example project opens 120 made-up apples with four ready models.
+- [The tutorials](page:tutoriels) follow six studies from start to finish: a before-after with
+  controls (BACI), a PLS on spectra, the monitoring of a bird population, the ground beetles of
+  three habitats (community ecology), maps and spatial models, and the report of a study.
+- In the application, Help › Example projects opens 120 made-up apples with four ready models,
+  and the skylarks and the trout of the tutorials with theirs.
 - [The user guide](page:guide) describes every window and every calculation.
 
 Nuée is free software ([GPL-3.0](https://github.com/4rtefakt/nuee/blob/main/LICENSE)). The

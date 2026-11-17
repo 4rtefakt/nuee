@@ -96,6 +96,7 @@ choix_k <- function(m) {
   ks <- 2:min(10, m$distincts - 1)
   distances <- if (m$N <= SILHOUETTE_MAX) stats::dist(m$donnees)
   do.call(rbind, lapply(ks, function(k) {
+    verifier_arret()
     a <- suppressWarnings(kmeans_nuee(m$donnees, k))
     s <- if (!is.null(distances)) silhouette_kmeans(m$donnees, a$groupe, distances)
     data.frame(k = k, intra = sum(a$intra), r2 = a$inter / a$totale, silhouette = if (is.null(s)) NA_real_ else mean(s$largeur))
@@ -110,21 +111,48 @@ demande_analyse_kmeans_choix <- function(q) {
 }
 
 # Les groupes en variable qualitative du projet (catégories 1 à k), pour les observations du
-# modèle ; annulable comme les autres modifications des données.
+# modèle ; annulable comme les autres modifications des données. L'étape garde la définition du
+# modèle et ses groupes : rejouée, elle refait les k-moyennes sur les données du moment, leurs groupes
+# numérotés comme ceux d'avant (etapes.R).
 demande_analyse_kmeans_variable <- function(q) {
   e <- modele(q$modele)
   if (!identical(e$modele$type, "KMEANS")) stop(traduire("Seulement pour des k-moyennes.", "Only for k-means."), call. = FALSE)
   m <- e$modele
   nom <- trimws(as.character(q$nom %||% ""))
   if (!length(nom) || !nzchar(nom[1])) nom <- sprintf("%s %s", e$definition$name %||% "k", traduire("groupes", "clusters"))
-  changer_projet(list(projet = e$projet), function(p) ajouter_colonne(p, nom[1], m$observations, m$groupe, categories = as.character(seq_len(m$k))),
-                 sprintf("variable %s", nom[1]))
+  changer_projet(list(projet = e$projet, nom = nom[1]), function(p) ajouter_colonne(p, nom[1], m$observations, m$groupe, categories = as.character(seq_len(m$k))),
+                 sprintf("variable %s", nom[1]), "kmeans_variable", list(definition = e$definition, modele = m))
+}
+
+# Les groupes `nouveau` de k-moyennes refaites (1 à k) numérotés comme ceux d'avant des mêmes
+# observations (`ancien`, NA pour une observation qui n'en avait pas) : les groupes d'un ajustement
+# sont rangés du plus grand au plus petit, et des données qui changent peuvent en changer l'ordre.
+# Chaque groupe prend le numéro de celui d'avant qu'il recouvre le plus, la paire qui a le plus
+# d'observations en commun d'abord ; ceux qui ne recouvrent plus rien prennent les numéros qui restent,
+# dans leur ordre.
+renumeroter_groupes <- function(nouveau, ancien, k) {
+  ok <- !is.na(nouveau) & !is.na(ancien) & ancien %in% seq_len(k)
+  if (!any(ok)) return(nouveau)
+  communs <- table(factor(nouveau[ok], levels = seq_len(k)), factor(ancien[ok], levels = seq_len(k)))
+  carte <- rep(NA_integer_, k)
+  libres_n <- seq_len(k)
+  libres_a <- seq_len(k)
+  while (length(libres_n) && length(libres_a)) {
+    t <- communs[libres_n, libres_a, drop = FALSE]
+    if (max(t) <= 0) break
+    ij <- which(t == max(t), arr.ind = TRUE)[1, ]
+    carte[libres_n[ij[1]]] <- libres_a[ij[2]]
+    libres_n <- libres_n[-ij[1]]
+    libres_a <- libres_a[-ij[2]]
+  }
+  carte[is.na(carte)] <- libres_a[seq_len(sum(is.na(carte)))]
+  carte[nouveau]
 }
 
 # Les observations des k-moyennes : leur groupe (en texte, pour les couleurs), sa distance au
 # centre, la silhouette et le groupe voisin, les deux premières composantes principales.
 observations_kmeans <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), classe = as.character(m$groupe),
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), classe = as.character(m$groupe),
                     groupe = m$groupe, distance = m$distance, stringsAsFactors = FALSE)
   if (!is.null(m$silhouette)) {
     obs$silhouette <- m$silhouette$largeur
@@ -152,6 +180,7 @@ resultat_kmeans <- function(id) {
   m <- e$modele
   d <- e$definition
   sil <- if (!is.null(m$silhouette)) mean(m$silhouette$largeur) else NA_real_
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "KMEANS", analyse = TRUE, prediction = TRUE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(character(0)), k = m$k, observations = observations_kmeans(p, m),
        tailles = tailles_kmeans(m), centres = centres_tableau(m$centres), centres_unites = centres_tableau(m$centres_unites),
@@ -162,7 +191,7 @@ resultat_kmeans <- function(id) {
        reglages = reglages_modele(p, d), numero = d$number %||% NULL, app = isTRUE(d$app), note = d$note %||% "", test = m$test,
        demande = d$demande %||% list(type = d$type, numero = d$number),
        vues_defaut = I(c("km_plan", if (!is.null(m$silhouette)) "km_silhouette" else "km_centres")),
-       chiffres = sprintf("k = %d · R2 %.2f%s", m$k, m$r2, if (is.na(sil)) "" else sprintf(" · %s %.2f", traduire("silhouette", "silhouette"), sil)))
+       chiffres = sprintf("k = %d · R2 %s%s", m$k, nombre_texte(m$r2, 2, fr), if (is.na(sil)) "" else sprintf(" · %s %s", traduire("silhouette", "silhouette"), nombre_texte(sil, 2, fr))))
 }
 
 predire_kmeans <- function(projet, m, d, observations) {

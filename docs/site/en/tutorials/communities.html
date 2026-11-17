@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Community ecology: the species of three habitats · Nuée</title>
+<meta name="description" content="Nuée tutorial: comparing the ground beetles of three habitats, from the table of species to rarefaction, an NMDS, a PERMANOVA with its dispersion test, indicator species and the texts for a paper.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="en" href="communities.html">
+<link rel="alternate" hreflang="fr" href="../../fr/tutoriels/communautes.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Skip to content</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Site pages">
+      <a href="../index.html">Home</a>
+      <a href="../installation.html">Install</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutorials</a>
+      <a href="../whats-new.html">What’s new</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../fr/tutoriels/communautes.html" hreflang="fr" lang="fr">Français</a>
+      <button class="bouton-theme" type="button" title="Light or dark theme" aria-label="Light or dark theme" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Nuée tutorial: comparing the ground beetles of three habitats, from the table of species to rarefaction, an NMDS, a PERMANOVA with its dispersion test, indicator species and the texts for a paper. -->
+<h1>Community ecology: the species of three habitats</h1>
+<p class="chapeau">Do woodland, hedgerows and fields hold the same ground beetles? From the table of species to rarefaction, an NMDS on Bray–Curtis, a PERMANOVA and its dispersion test, the indicator species, and what to write in a paper.</p>
+<nav class="sommaire" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#the-question-and-the-data">The question and the data</a></li>
+<li><a href="#1-which-analysis">1. Which analysis?</a></li>
+<li><a href="#2-how-many-species-rarefaction">2. How many species? Rarefaction</a></li>
+<li><a href="#3-the-nmds-who-resembles-whom">3. The NMDS: who resembles whom</a></li>
+<li><a href="#4-the-permanova-and-its-dispersion-test">4. The PERMANOVA and its dispersion test</a></li>
+<li><a href="#5-indicator-species">5. Indicator species</a></li>
+<li><a href="#6-the-methods-and-results-texts">6. The Methods and Results texts</a></li>
+<li><a href="#going-further">Going further</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>The data are simulated.</strong> No beetle was caught: the table was made by the script
+<a href="../../donnees/communautes.R">communautes.R</a>, with a fixed seed, for this tutorial. The species and
+their habitats are real; their numbers are made up from a mean catch of each species in each
+habitat, the hedgerows taking a share of the woodland's species and of the field's.</p>
+</div>
+<h2 id="the-question-and-the-data">The question and the data</h2>
+<p>Ground beetles (carabids) are caught in pitfall traps, plastic cups sunk level with the ground and
+left open for three weeks in May. In a farmed landscape, 12 traps were set in woodland, 12 along
+hedgerows and 12 in arable fields. Do the three habitats hold the same species, as many of them,
+and which species characterize each one?</p>
+<p>Download <a href="../../donnees/ground_beetles.csv">ground_beetles.csv</a> (36 rows, one per trap):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>trap</td>
+<td>the row's name: P01 to P12 in woodland, P13 to P24 along hedgerows, P25 to P36 in fields</td>
+</tr>
+<tr>
+<td>habitat</td>
+<td>woodland, hedgerow or field</td>
+</tr>
+<tr>
+<td>Abax parallelepipedus … Trechus quadristriatus</td>
+<td>the number of individuals of each species caught in the trap (26 columns, in alphabetical order)</td>
+</tr>
+</tbody>
+</table>
+<p>Open it with <em>File › Open</em> (Ctrl+O): the project has 36 observations and 27 variables (the first
+column names the observations).</p>
+<h2 id="1-which-analysis">1. Which analysis?</h2>
+<p><em>Model › Which analysis?</em>: tick <strong>Many species at once</strong>. Nuée proposes the 26 species as the
+response (columns of whole numbers, zero or more, with zeros) and <code>habitat</code> as the explanatory
+variable. To see how the composition changes between groups, it recommends a PERMANOVA, with an
+NMDS and the indicator species among the alternatives.</p>
+<figure><a class="clair-seul" href="../../images/en/com-choix.png"><img src="../../images/en/com-choix.png" alt="Which analysis? with many species at once: the 26 species proposed, habitat as X, the PERMANOVA recommended" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-choix.png"><img src="../../images/en/sombre/com-choix.png" alt="Which analysis? with many species at once: the 26 species proposed, habitat as X, the PERMANOVA recommended" width="900" height="680" loading="lazy"></a><figcaption>Which analysis?: the species and the groups proposed from the columns; the PERMANOVA recommended, the NMDS and the indicator species beside it.</figcaption></figure>
+<p>Close it for now: richness comes first.</p>
+<h2 id="2-how-many-species-rarefaction">2. How many species? Rarefaction</h2>
+<p>A trap that catches more beetles finds more species: the numbers of species of two traps compare
+only for the same number of individuals. <em>Plots › Rarefaction and species accumulation</em> (also under
+the project in the explorer): <em>Species from</em> <code>Abax parallelepipedus</code> <em>to</em> <code>Trechus quadristriatus</code>,
+<strong>Take the range</strong>, then <em>By group</em>: <code>habitat</code>.</p>
+<figure><a class="clair-seul" href="../../images/en/com-rarefaction.png"><img src="../../images/en/com-rarefaction.png" alt="Rarefaction curves of the 36 traps, coloured by habitat, the common size of 15 individuals dashed, and the table of each trap's richness" width="1000" height="725" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-rarefaction.png"><img src="../../images/en/sombre/com-rarefaction.png" alt="Rarefaction curves of the 36 traps, coloured by habitat, the common size of 15 individuals dashed, and the table of each trap's richness" width="1000" height="725" loading="lazy"></a><figcaption>Rarefaction: each curve is the richness a trap would show in fewer individuals; the dashed line, the smallest catch.</figcaption></figure>
+<p>Each curve is the number of species expected in m individuals drawn from the trap's catch
+(Hurlbert, 1971). Read them at the same individuals: the dashed line, 15, is the smallest catch
+(trap P14). At 15 individuals, the hedgerow traps hold 8.02 to 10.57 species, the woodland ones
+3.21 to 8.92 and the field ones 5.60 to 9.13, although the fields catch the most beetles (29 to 110
+a trap). The table gives each trap's richness at 15 (<em>S at 15</em>), and two estimates of what it would
+hold with a far larger catch, Chao1 and ACE. They are only as good as the catch: P06's 34 beetles
+are 29 <em>Abax parallelepipedus</em> and five species seen once each, so Chao1 gives 16 ± 10.07 and ACE
+can't be computed.</p>
+<p>Choose <strong>Accumulation (over the observations)</strong> in the same view:</p>
+<figure><a class="clair-seul" href="../../images/en/com-accumulation.png"><img src="../../images/en/com-accumulation.png" alt="Species accumulation curves of the three habitats, with their ±2 standard deviation bands, and the table of the richness estimators" width="1000" height="685" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-accumulation.png"><img src="../../images/en/sombre/com-accumulation.png" alt="Species accumulation curves of the three habitats, with their ±2 standard deviation bands, and the table of the richness estimators" width="1000" height="685" loading="lazy"></a><figcaption>Accumulation: the species found as traps are added, in each habitat; under it, the estimators of the total richness.</figcaption></figure>
+<p>Each curve is the number of species expected in k traps of the habitat (exact method, Ugland et
+al., 2003). The curves flatten: twelve traps found nearly every species of their habitat. Chao2,
+the jackknifes and the bootstrap estimate the total richness from the species seen in only one or
+two traps: 18 species observed in the fields, 18.46 by Chao2 and 18.99 by the second-order
+jackknife; 15 in the woodland, up to 16.75; and all 26 along the hedgerows, which share the
+woodland's species and the field's.</p>
+<h2 id="3-the-nmds-who-resembles-whom">3. The NMDS: who resembles whom</h2>
+<p>An ordination places the traps on a plane, near each other when their species resemble each other.
+Back in <em>Model › Which analysis?</em>, open the <strong>NMDS</strong> among the alternatives: New model opens with
+the species as Y and <code>habitat</code> as X, to be fitted onto the plane afterwards.</p>
+<p>On the <strong>General</strong> tab, keep the <strong>Bray–Curtis</strong> distance and choose the <em>Transformation</em>:
+<strong>square root then Wisconsin (as metaMDS)</strong>.</p>
+<ul>
+<li>The Bray–Curtis dissimilarity between two traps is 0 when they hold the same species in the same
+numbers, and 1 when they share none.</li>
+<li>The square root weakens the most abundant species (<em>Pterostichus melanarius</em>, 275 beetles in all),
+which would otherwise make the dissimilarity on their own; Wisconsin's double standardization
+then gives each species the same maximum, and each trap the same total: a trap that caught twice
+as many beetles, because it was dug in deeper, doesn't count twice as much. It is what the
+metaMDS function of vegan does by default for counts.</li>
+</ul>
+<figure><a class="clair-seul" href="../../images/en/com-nmds-modele.png"><img src="../../images/en/com-nmds-modele.png" alt="New model: NMDS, Bray–Curtis, square root then Wisconsin, 2 dimensions, 20 random starts" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-nmds-modele.png"><img src="../../images/en/sombre/com-nmds-modele.png" alt="New model: NMDS, Bray–Curtis, square root then Wisconsin, 2 dimensions, 20 random starts" width="900" height="680" loading="lazy"></a><figcaption>The NMDS's settings: the distance, the transformation, the dimensions and the starts.</figcaption></figure>
+<p>Click <strong>Fit</strong>. The NMDS (Kruskal, 1964) looks for the positions whose distances keep the order of
+the dissimilarities, from the PCoA's configuration and 20 random starts; the Summary gives its
+<strong>stress, 0.1347</strong>: below 0.1 the order is well kept, beyond 0.2 the plane is to be read with care.
+<em>Found again 1</em>: another start reached the same configuration, a sign that it isn't a local
+minimum (with 0, raise the random starts).</p>
+<p>The model's views open with it (otherwise, double-click them under the model in the explorer). In
+<strong>Ordination</strong>, <em>Colour</em>: <code>habitat</code>; untick <em>Species (Y)</em> to see the traps:</p>
+<figure><a class="clair-seul" href="../../images/en/com-nmds.png"><img src="../../images/en/com-nmds.png" alt="The NMDS plane: the woodland traps on the right, the field traps on the left, the hedgerows between, and the centroid of each habitat" width="820" height="605" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-nmds.png"><img src="../../images/en/sombre/com-nmds.png" alt="The NMDS plane: the woodland traps on the right, the field traps on the left, the hedgerows between, and the centroid of each habitat" width="820" height="605" loading="lazy"></a><figcaption>The NMDS: each point a trap, coloured by its habitat; the triangles, the centre of each habitat.</figcaption></figure>
+<p>The woodland traps are on the right, the field traps on the left, the hedgerows between them and
+more spread out: a hedgerow along a wood holds woodland beetles, one between two fields field
+beetles. Only the positions relative to each other are read: the axes have no unit, and an NMDS
+has no share of variance per axis. The triangles are the centre of each habitat, fitted afterwards
+(the <strong>Fitted variables</strong> view): the share of the traps' positions on the plane that <code>habitat</code>
+explains is R² = 0.8062, p = 0.0010 by 999 permutations. Tick <em>Species (Y)</em>: each species sits at
+the average of the traps that caught it, <em>Abax parallelepipedus</em> among the woodland traps.</p>
+<figure><a class="clair-seul" href="../../images/en/com-shepard.png"><img src="../../images/en/com-shepard.png" alt="The Shepard diagram: the distances in the NMDS against the dissimilarities, and the monotone regression" width="820" height="565" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-shepard.png"><img src="../../images/en/sombre/com-shepard.png" alt="The Shepard diagram: the distances in the NMDS against the dissimilarities, and the monotone regression" width="820" height="565" loading="lazy"></a><figcaption>The Shepard diagram: the closer the points to the stepped line, the lower the stress.</figcaption></figure>
+<p>The <strong>Shepard diagram</strong> checks the ordination: each pair of traps, its dissimilarity on the
+horizontal axis, its distance on the plane on the vertical one. They rise together; the stress
+measures their departures from the stepped line (non-metric R² = 1 − stress² = 0.982).</p>
+<h2 id="4-the-permanova-and-its-dispersion-test">4. The PERMANOVA and its dispersion test</h2>
+<p>The NMDS shows; the PERMANOVA tests. In <em>Model › Which analysis?</em>, open the recommended analysis,
+the <strong>PERMANOVA</strong>. On the <strong>General</strong> tab, choose the same transformation as for the NMDS, <strong>square
+root then Wisconsin</strong>, so that the test is on the distances the plane shows. Click <strong>Fit</strong>.</p>
+<figure><a class="clair-seul" href="../../images/en/com-permanova.png"><img src="../../images/en/com-permanova.png" alt="The PERMANOVA table: habitat with its degrees of freedom, sum of squares, R², pseudo-F and p" width="760" height="445" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-permanova.png"><img src="../../images/en/sombre/com-permanova.png" alt="The PERMANOVA table: habitat with its degrees of freedom, sum of squares, R², pseudo-F and p" width="760" height="445" loading="lazy"></a><figcaption>The PERMANOVA table: the share of the variation the habitat explains, and its test.</figcaption></figure>
+<p>The PERMANOVA (Anderson, 2001) splits the variation of the dissimilarities as an analysis of
+variance splits that of a variable: within the habitats, and between their centres. <strong>R² = 0.512</strong>:
+the habitat explains half of the variation in composition between traps. The pseudo-F (17.344)
+compares the two parts, and its p comes from 999 permutations of the traps between the habitats:
+none gave as large an F, hence <strong>p = 0.0010</strong>, the smallest p that 999 permutations can give.</p>
+<p>A PERMANOVA tests the centres, but it also reacts to the spread of the groups: a habitat whose
+traps are more scattered can make a difference of centres appear. The <strong>Multivariate dispersion</strong>
+view tests that spread (Anderson, 2006):</p>
+<figure><a class="clair-seul" href="../../images/en/com-dispersion.png"><img src="../../images/en/com-dispersion.png" alt="The multivariate dispersion: each trap's distance to the centre of its habitat, as box plots, with the ANOVA and Tukey's pairs" width="820" height="865" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-dispersion.png"><img src="../../images/en/sombre/com-dispersion.png" alt="The multivariate dispersion: each trap's distance to the centre of its habitat, as box plots, with the ANOVA and Tukey's pairs" width="820" height="865" loading="lazy"></a><figcaption>The dispersion: how far each trap lies from the centre of its habitat.</figcaption></figure>
+<p>The traps lie 0.2939 from the centre of their habitat on average in the fields, 0.3473 along the
+hedgerows and 0.3410 in woodland. These spreads don't differ: F = 1.862, <strong>p = 0.1980</strong> by
+permutations, and no pair of Tukey's test. The PERMANOVA's difference is one of composition, not
+of spread. Had it been significant, the PERMANOVA table and this view would say so in red: the
+result would then be read with care, with the plane of the NMDS.</p>
+<h2 id="5-indicator-species">5. Indicator species</h2>
+<p>In <em>Model › Which analysis?</em>, open the <strong>Indicator species (IndVal)</strong>: the species as Y, <code>habitat</code>
+as the class. Click <strong>Fit</strong>, then the <strong>Indicator species</strong> view:</p>
+<figure><a class="clair-seul" href="../../images/en/com-indval.png"><img src="../../images/en/com-indval.png" alt="The table of indicator species: each species' group or combination of groups, A, B, IndVal.g and its p" width="1160" height="785" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-indval.png"><img src="../../images/en/sombre/com-indval.png" alt="The table of indicator species: each species' group or combination of groups, A, B, IndVal.g and its p" width="1160" height="785" loading="lazy"></a><figcaption>The indicator species: for each species, the group it characterizes, and why.</figcaption></figure>
+<p>For each species and each habitat, <strong>A</strong> (specificity) is the share of its abundance in that
+habitat, compared on equal footing between habitats, and <strong>B</strong> (fidelity) the share of the
+habitat's traps where it is found. The indicator value IndVal.g is the square root of A × B (De
+Cáceres and Legendre, 2009); each species goes to the habitat, or the combination of habitats, of
+its largest value, tested by 999 permutations, the p corrected over the species.</p>
+<ul>
+<li><em>Abax parallelus</em> indicates woodland: A = 0.833, B = 0.917; <em>Harpalus affinis</em> the fields;
+<em>Leistus spinibarbis</em> the hedgerows (A = 1.000: it was caught nowhere else, B = 0.583: in 7 of
+their 12 traps).</li>
+<li>Most species go to a combination of two habitats: <em>Abax parallelepipedus</em> to hedgerow+woodland
+(the wooded habitats), <em>Pterostichus melanarius</em> to field+hedgerow (A = 0.971, B = 0.917, the open
+ground and its margins). The hedgerows share their species with both neighbours.</li>
+<li><em>Loricera pilicornis</em> is in all three habitats: a species of every group isn't tested.</li>
+</ul>
+<p>25 species have a corrected p ≤ 0.05. To give each species a single habitat, choose <em>Combinations
+of groups</em>: <strong>single groups</strong> in New model.</p>
+<h2 id="6-the-methods-and-results-texts">6. The Methods and Results texts</h2>
+<p>Choose the PERMANOVA in the explorer, then <em>Model › Text for the Methods section</em>:</p>
+<figure><a class="clair-seul" href="../../images/en/com-methodes.png"><img src="../../images/en/com-methodes.png" alt="The Methods text of the PERMANOVA, in English, with its references" width="560" height="692" loading="lazy"></a><a class="sombre-seul" href="../../images/en/sombre/com-methodes.png"><img src="../../images/en/sombre/com-methodes.png" alt="The Methods text of the PERMANOVA, in English, with its references" width="560" height="692" loading="lazy"></a><figcaption>The Methods text: the data, the transformation, the distance, the test and the dispersion, with their references.</figcaption></figure>
+<p>It says, among other things:</p>
+<blockquote>
+<p>The values were first square-root transformed then given Wisconsin double standardization (each
+variable divided by its maximum, then each observation by its total). The distance between
+observations is the Bray–Curtis dissimilarity (Bray &amp; Curtis, 1957).</p>
+</blockquote>
+<p>and gives the results with the test:</p>
+<blockquote>
+<p>habitat: R² = 0.512, pseudo-F = 17.34, p = 0.001. […] habitat: F = 1.86, p = 0.198 by permutation.</p>
+</blockquote>
+<p>The NMDS and the indicator species have theirs; each gives the version of R and of Nuée, and the
+references. Complete them with what the models don't know: the traps, their dates, the
+identification. For these analyses, the Results text under the Methods is a line of figures
+(<em>Results of M2 (PERMANOVA): R2 0.51 · p 0.001</em>); the paragraph for the paper is written from the
+views, for instance:</p>
+<blockquote>
+<p>Assemblages differed between habitats (PERMANOVA on Bray–Curtis dissimilarities: R² = 0.51,
+pseudo-F = 17.3, p = 0.001), without any difference in multivariate dispersion (F = 1.86,
+p = 0.20). In the NMDS (stress = 0.135), the hedgerow traps lay between those of woodland and
+fields. At 15 individuals, hedgerow traps held 8.0 to 10.6 species, against 3.2 to 8.9 in
+woodland and 5.6 to 9.1 in fields. Twenty-five of the 26 species were indicators of a habitat or
+of a pair of habitats (IndVal.g, corrected p ≤ 0.05).</p>
+</blockquote>
+<h2 id="going-further">Going further</h2>
+<ul>
+<li><em>Permute within</em> (New model, General tab) keeps the permutations within groups: traps set in
+blocks, a site sampled several years.</li>
+<li>With coordinates, the <strong>Mantel test</strong> compares the dissimilarities with the geographic distance:
+do nearby traps resemble each other more?</li>
+<li><em>Model › One model per response</em> fits a GLM to each species, <code>habitat</code> as X.</li>
+<li><em>File › Export to R</em> writes a script that redoes these analyses with R alone, the same
+permutations giving the same p.</li>
+<li>The guide: <a href="../guide/communities.html">indicator species, rarefaction, NMDS and PERMANOVA</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+</body>
+</html>

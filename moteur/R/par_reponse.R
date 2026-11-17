@@ -33,17 +33,18 @@ definition_pour_reponse <- function(projet, d, uid, nom) {
 # resume, effets). `correction` : celle des valeurs p sur les réponses (CORRECTIONS_REPONSES).
 modeles_par_reponse <- function(projet, d, reponses, correction = "BH") {
   if (!est_regression(d)) stop(traduire("Un modèle par réponse se fait d'après une régression (LM, LMM, GLM ou GAM).", "One model per response is made from a regression (LM, LMM, GLM or GAM)."), call. = FALSE)
-  correction <- match.arg(as.character(correction)[1], CORRECTIONS_REPONSES)
+  correction <- valeur_parmi(correction, CORRECTIONS_REPONSES, traduire("correction des valeurs p", "p-value correction"))
   reponses <- unique(as.numeric(reponses))
   if (!length(reponses)) stop(traduire("Choisissez au moins une réponse.", "Choose at least one response."), call. = FALSE)
   x <- unlist(lapply(d$x, function(t) as.numeric(t$variables)))
   if (any(reponses %in% x)) {
     stop(sprintf(traduire("Une variable X ne peut pas être aussi une réponse : %s.", "An X variable can't also be a response: %s."),
-                 paste(unname(projet$noms_var[as.character(intersect(reponses, x))]), collapse = ", ")), call. = FALSE)
+                 paste(unname(projet$noms_var[nom_numero(intersect(reponses, x))]), collapse = ", ")), call. = FALSE)
   }
   base <- d$name %||% "M"
   modeles <- lapply(reponses, function(u) {
-    nom <- unname(projet$noms_var[as.character(u)])
+    verifier_arret()
+    nom <- unname(projet$noms_var[nom_numero(u)])
     tryCatch({
       dk <- definition_pour_reponse(projet, d, u, sprintf("%s · %s", base, nom))
       list(reponse = nom, uid = u, definition = dk, modele = ajuster(projet, dk))

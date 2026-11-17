@@ -30,7 +30,7 @@
 # bloc (colonne Bloc de l'onglet Variables) et si c'est l'indicatrice d'une catégorie.
 colonnes_ordination <- function(projet, termes, observations) {
   if (!length(termes)) {
-    return(list(X = matrix(numeric(0), length(observations), 0, dimnames = list(as.character(observations), NULL)),
+    return(list(X = matrix(numeric(0), length(observations), 0, dimnames = list(nom_numero(observations), NULL)),
                 groupes = character(0), blocs = character(0), indicatrices = logical(0)))
   }
   bruts <- lapply(termes, function(t) { t$scaling <- list(type = "none"); t })
@@ -48,7 +48,7 @@ colonnes_ordination <- function(projet, termes, observations) {
 # Les termes des covariables Z (leurs numéros de variables), avec leurs transformations.
 termes_variables <- function(projet, uids, transformations = NULL) {
   unlist(lapply(as.numeric(unlist(uids)), function(u) {
-    n <- transformations[[as.character(u)]]
+    n <- transformations[[nom_numero(u)]]
     tr <- if (length(n) && nzchar(as.character(n[1]))) lire_transformation(as.character(n[1]))
     termes_variable(projet, u, "none", tr)
   }), recursive = FALSE)
@@ -64,7 +64,7 @@ reponses_ordination <- function(projet, termes, observations, quoi) {
     }
   }
   Y <- valeurs_bloc(projet, termes, observations)
-  dimnames(Y) <- list(as.character(observations), vapply(termes, function(t) as.character(t$name), ""))
+  dimnames(Y) <- list(nom_numero(observations), vapply(termes, function(t) as.character(t$name), ""))
   Y
 }
 
@@ -275,6 +275,7 @@ stats_permutees <- function(k, P, premier = FALSE) {
   ponderee <- !is.null(k$poids)
   Q1 <- if (!partielle && !ponderee) base_orthonormee(k$Q)
   for (b in seq_len(B)) {
+    verifier_arret()
     ip <- P[b, ]
     Ep <- k$E[ip, , drop = FALSE]
     Xb <- if (ponderee) centrer_pondere(k$Xbrut, k$poids[ip]) else k$Xc
@@ -821,6 +822,8 @@ table_valeurs_propres <- function(eig, totale, rang_contraint = 0) {
 }
 
 # Les flèches d'une RDA à montrer : celles des X quantitatifs (une catégorie a son centroïde).
+# Des X tous qualitatifs n'en laissent aucune : la matrice n'a plus de noms de lignes (R les
+# retire à zéro ligne), d'où `rownames(f) %||% character(0)` là où on les lit.
 fleches_rda <- function(m, s) s$biplot[!rownames(s$biplot) %in% m$X$noms[m$X$indicatrices], , drop = FALSE]
 
 # Ce que l'interface reçoit d'une RDA (serveur.R : resultat_modele ; analyses.R), ou d'une CCA
@@ -833,23 +836,26 @@ resultat_rda <- function(id) {
   k <- m$noyau
   cca <- identical(m$type, "CCA")
   echelles <- lapply(if (cca) 1:3 else 1:2, function(i) scores_contraints(m, i))
+  # (sans X quantitatif, aucune flèche : rownames() d'une matrice sans ligne vaut NULL)
   ordination <- function(s) {
     f <- fleches_rda(m, s)
     list(sites = colonnes_axes(s$sites), lc = colonnes_axes(s$lc), reponses = colonnes_axes(s$reponses), noms_reponses = I(rownames(s$reponses)),
-         biplot = colonnes_axes(f), noms_biplot = I(rownames(f)),
+         biplot = colonnes_axes(f), noms_biplot = I(rownames(f) %||% character(0)),
          centroides = if (!is.null(s$centroides)) colonnes_axes(s$centroides), noms_centroides = I(rownames(s$centroides) %||% character(0)))
   }
   s2 <- echelles[[2]]
   f2 <- fleches_rda(m, s2)
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
   vp <- table_valeurs_propres(s2$valeurs_propres, k$totale, k$contraint$rang)
-  chiffre_r2 <- if (is.na(m$r2_ajuste)) sprintf("R2 %s", formatC(m$r2, format = "f", digits = 2)) else sprintf("R2aj %s", formatC(m$r2_ajuste, format = "f", digits = 2))
+  # (la ligne de l'explorateur dans la langue de l'interface : sa virgule décimale, R2aj ou R2adj)
+  fr <- !identical(getOption("nuee.langue"), "en")
+  chiffre_r2 <- if (is.na(m$r2_ajuste)) sprintf("R2 %s", nombre_texte(m$r2, 2, fr)) else sprintf("%s %s", traduire("R2aj", "R2adj"), nombre_texte(m$r2_ajuste, 2, fr))
   list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = m$type, analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = ncol(m$donnees$X), noms_y = I(m$Y$noms),
-       chiffres = sprintf("%s · p %s", chiffre_r2, if (is.na(m$test$p)) "—" else format(signif(m$test$p, 2))),
+       chiffres = sprintf("%s · p %s", chiffre_r2, p_explorateur(m$test$p, fr)),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
-       variables = cbind(data.frame(terme = rownames(f2), stringsAsFactors = FALSE), colonnes_axes(f2)),
+       variables = cbind(data.frame(terme = rownames(f2) %||% character(0), stringsAsFactors = FALSE), colonnes_axes(f2)),
        variables_y = cbind(data.frame(terme = rownames(s2$reponses), stringsAsFactors = FALSE), colonnes_axes(s2$reponses)),
        axes = I(utils::head(names(s2$valeurs_propres), AXES_INTERFACE)), rang_contraint = k$contraint$rang,
        inertie = list(totale = k$totale, conditionnelle = k$conditionnelle, contrainte = k$contraint$inertie, residuelle = k$residuel$inertie),
@@ -876,7 +882,8 @@ resultat_ca <- function(id) {
   echelles <- lapply(1:3, function(i) scores_ca(m, i))
   s2 <- echelles[[2]]
   ctr <- m$contributions
-  noms_obs <- unname(p$noms_obs[as.character(m$observations)])
+  noms_obs <- unname(p$noms_obs[nom_numero(m$observations)])
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   parts <- function(cote, noms, masses) {
     c_ <- colonnes_axes(100 * cote$contribution)
     q_ <- colonnes_axes(cote$cos2)
@@ -886,8 +893,7 @@ resultat_ca <- function(id) {
   }
   list(id = id, projet = p$id, nom = d$name, titre = d$title %||% "", type = "CA", analyse = TRUE, prediction = FALSE, regression = FALSE,
        opls = FALSE, Ap = 0, A = 0, N = m$N, K = length(m$colonnes), noms_y = I(character(0)),
-       chiffres = sprintf("%s %s · CA1 %s", traduire("inertie", "inertia"), formatC(k$totale, format = "f", digits = 3),
-                          paste0(formatC(100 * k$eig[1] / k$totale, format = "f", digits = 1), " %")),
+       chiffres = sprintf("%s %s · CA1 %s", traduire("inertie", "inertia"), nombre_texte(k$totale, 3, fr), pourcent_texte(k$eig[1] / k$totale, fr)),
        vues_defaut = I(c("ordination", "valeurs_propres")),
        observations = cbind(data.frame(uid = m$observations, nom = noms_obs, stringsAsFactors = FALSE), colonnes_axes(s2$sites)),
        variables = cbind(data.frame(terme = m$colonnes, stringsAsFactors = FALSE), colonnes_axes(s2$reponses)), variables_y = NULL,
@@ -966,7 +972,7 @@ avec_noms <- function(M, noms, colonne = "Observation") {
 # 2 ; les tests par axe et par terme, la sélection et la partition s'ils ont été calculés.
 tables_rda <- function(projet, m) {
   k <- m$noyau
-  noms <- unname(projet$noms_obs[as.character(m$observations)])
+  noms <- unname(projet$noms_obs[nom_numero(m$observations)])
   s1 <- scores_contraints(m, 1)
   s2 <- scores_contraints(m, 2)
   avec_lc <- function(s) cbind(avec_noms(s$sites, noms), stats::setNames(as.data.frame(s$lc, row.names = NULL), paste0("lc_", colnames(s$lc))))
@@ -1010,7 +1016,7 @@ tables_cca <- function(projet, m) tables_rda(projet, m)
 
 tables_ca <- function(projet, m) {
   k <- m$noyau
-  noms <- unname(projet$noms_obs[as.character(m$observations)])
+  noms <- unname(projet$noms_obs[nom_numero(m$observations)])
   ctr <- m$contributions
   s <- lapply(1:3, function(i) scores_ca(m, i))
   list(lignes_echelle_2 = avec_noms(s[[2]]$sites, noms), valeurs_propres = table_valeurs_propres(k$eig, k$totale),

@@ -26,7 +26,12 @@ export function lireEntete(texte) {
   const m = /^---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(texte);
   if (!m) return { entete: {}, corps: texte, brut: '' };
   const entete = {};
-  const sansGuillemets = (v) => v.trim().replace(/^(["'])(.*)\1$/, '$2');
+  // (a value between double quotes with its escapes, \" and \\, as YAML reads it)
+  const sansGuillemets = (v) => {
+    const x = v.trim();
+    if (/^".*"$/.test(x)) try { return JSON.parse(x); } catch { /* another YAML escape: as it is */ }
+    return x.replace(/^(["'])(.*)\1$/, '$2');
+  };
   let liste = null;
   for (const ligne of m[1].split(/\r?\n/)) {
     const item = /^\s+-\s+(.*)$/.exec(ligne);
@@ -229,12 +234,19 @@ function htmlCitation(tok, citations) {
   return `<span class="cite${inconnue ? ' erreur' : ''}" title="${echapper(citations.titres[tok.meta.ic])}">${echapper(citations.textes[tok.meta.ic])}</span>`;
 }
 
-const htmlSegment = (x) => (x.lien ? `<a href="${echapper(x.lien)}">${echapper(x.texte)}</a>` : x.italique ? `<i>${echapper(x.texte)}</i>` : echapper(x.texte));
+// (a link only to the web, mail or a place in the document: whatever markdown-it lets through, nothing
+// else, such as javascript:, reaches a window that can write files)
+const lienSur = (u) => /^(https?:|mailto:|#)/i.test(String(u || '').trim());
+const htmlSegment = (x) => (x.lien && lienSur(x.lien) ? `<a href="${echapper(x.lien)}">${echapper(x.texte)}</a>` : x.italique ? `<i>${echapper(x.texte)}</i>` : echapper(x.texte));
 function htmlBibliographie(c) {
   if (!c || !c.liste.length) return '';
   return `<div class="bibliographie">${c.liste.map((r) => `<p class="reference" id="ref-${echapper(r.cle)}">${
     c.style === 'numerique' ? `<span class="numero">[${r.numero}]</span> ` : ''}${r.segments.map(htmlSegment).join('')}</p>`).join('')}</div>`;
 }
+
+// A figure's source: an engine-made PNG (data:image), or the preview's own copy of one (documents.js:
+// urlApercu, a blob: URL of this page); nothing else reaches an img's src (defence in depth)
+const imageSure = (x) => /^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(String(x)) || /^blob:https?:\/\/[\w.:[\]-]+\/[0-9a-f-]+$/i.test(String(x));
 
 function htmlReference(tok, r, libelles) {
   const brut = echapper(tok.meta.brut);
@@ -246,13 +258,15 @@ function htmlReference(tok, r, libelles) {
   const legende = (lib) => `<b>${echapper(lib)} ${r.numero}.</b>${r.legende ? ` ${echapper(r.legende)}` : ''}`;
   switch (r.genre) {
     case 'figure':
-      return `<figure class="ref-figure"${id} title="${brut}"><img src="${r.image}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
+      return `<figure class="ref-figure"${id} title="${brut}"><img src="${imageSure(r.image) ? echapper(r.image) : ''}" alt="${echapper(r.legende || '')}"><figcaption>${legende(libelles.figure)}</figcaption></figure>`;
     case 'tableau':
       return `<div class="ref-tableau"${id} title="${brut}"><p class="legende">${legende(libelles.tableau)}</p>${r.blocs.map(htmlBloc).join('')}</div>`;
     case 'texte':
       return `<div class="ref-texte" title="${brut}">${r.paragraphes.map((p) => `<p>${echapper(p)}</p>`).join('')}</div>`;
     default:
-      return `<span class="ref" title="${brut}">${echapper(r.texte)}</span>`;
+      // (in the preview, a value an update of the data changed: the one before on hover, documents.js)
+      return r.changement ? `<span class="ref ref-changee" title="${echapper(r.changement)}" data-ref="${brut}">${echapper(r.texte)}</span>`
+        : `<span class="ref" title="${brut}">${echapper(r.texte)}</span>`;
   }
 }
 
@@ -553,6 +567,24 @@ export function zonesCode(texte) {
   return zones;
 }
 
+// The folder of a .qmd's figures, from the .qmd's name: Pandoc reads a figure's address as a URL,
+// where # starts a fragment and % an escape (a "rapport #2_figures" folder's images were missing
+// from the HTML); these, and ?, become -.
+export const nomFichierQuarto = (nom) => String(nom).replace(/[#%?]/g, '-') || 'document';
+
+// A file name in the header (bibliography:, csl:), which Pandoc reads as Markdown: "d'Alembert.bib"
+// was looked for as "d’Alembert.bib", -- became a dash, _x_ emphasis, @x a citation. Its ASCII signs
+// escaped, unless it has only letters, digits, spaces, single dots and hyphens, and brackets.
+export const sansMarkdown = (nom) => {
+  const s = String(nom);
+  return /^[\p{L}\p{N}][\p{L}\p{N} .()-]*$/u.test(s) && !/--|\.\.|^\d+\.\s/.test(s) ? s : s.replace(/[!-/:-@[-`{-~]/g, '\\$&');
+};
+
+// A title from the title field, for the header Nuée writes: Pandoc reads it as Markdown (@x a
+// citation, *x* emphasis, a backslash an escape or LaTeX), so those signs are escaped; its quotes
+// and dashes left to Pandoc's typography. As YAML.
+export const titreYaml = (titre) => JSON.stringify(String(titre).replace(/[\\`*_[\]<>@$^~#|]/g, '\\$&'));
+
 // Quarto labels: a figure's starts with fig-, a table's with tbl- (Quarto numbers them and
 // writes "Figure 2" for @fig-...).
 export const etiquetteQuarto = (genre, etiquette, numero) => {
@@ -600,6 +632,7 @@ const blocR = (options, lignes) => ['```{r}', ...Object.entries(options).map(([k
 export function referencesReproductibles(resolus) {
   const refs = resolus.map((x) => {
     if (!x || x.erreur || !x.modele || !['valeur', 'figure', 'tableau', 'texte'].includes(x.genre)) return null;
+    if (x.genre === 'texte' && !(x.paragraphes || []).length) return null;  // ({{M1.methodes.references}}: nothing where it stands)
     const r = { modele: x.modele, chemin: x.chemin, genre: x.genre };
     if (x.genre === 'valeur') {
       const { forme, decimales, significatifs, quoi } = x.forme || {};
@@ -622,7 +655,9 @@ export function referencesReproductibles(resolus) {
 // an inline R expression), `lignes` (a plot, with its `largeur` and `hauteur` in inches, or a
 // table: the code of its chunk) or `raison` (why it stays written in, as Nuée shows it). A block
 // becomes a chunk only at the start of its line (not in a list or a quote).
-export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {}, reproductible = null }) {
+// `nonCitees`: the keys of the references listed though the text doesn't cite them (those of the
+// Methods texts it cites: documents.js, formaterCitations), for citeproc's nocite.
+export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue = 'fr', titre = '', bibliographie = null, csl = null, libelles = {}, reproductible = null, nonCitees = [] }) {
   const { corps, brut } = lireEntete(texteDocument);
   const refs = referencesDansTexte(corps, analyse);
   const etiquettes = new Map();  // a document's label -> the Quarto label of its figure or table
@@ -639,8 +674,10 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
     const rr = (reproductible && reproductible.references && reproductible.references[ref.i]) || {};
     const enTete = ref.debut === 0 || corps[ref.debut - 1] === '\n';
     const legende = JSON.stringify(r.legende || r.nom || '');
-    // (a block left as Nuée shows it: why, in a comment the output doesn't show)
-    if (rr.raison && BLOCS.includes(r.genre) && enTete) sortie += `<!-- Nuée${langue === 'en' ? ':' : ' :'} ${rr.raison.replace(/--/g, '—')} -->\n\n`;
+    // (a block left as Nuée shows it: why, in a comment the output doesn't show; not for one that
+    // shows nothing, {{M1.methodes.references}}, whose references go to the list)
+    const vide = r.genre === 'texte' && !r.paragraphes.length;
+    if (rr.raison && BLOCS.includes(r.genre) && enTete && !vide) sortie += `<!-- Nuée${langue === 'en' ? ':' : ' :'} ${rr.raison.replace(/--/g, '—')} -->\n\n`;
     if (r.genre === 'valeur') sortie += rr.code && !/[`|\n]/.test(rr.code) ? `\`r ${rr.code}\`` : r.texte;
     else if (r.genre === 'renvoi') sortie += etiquettes.has(r.cible) ? `@${etiquettes.get(r.cible)}` : r.texte;
     else if (r.genre === 'figure' && rr.lignes && enTete) {
@@ -664,13 +701,22 @@ export function versQmd(texteDocument, analyse, resolus, { fichierFigure, langue
   // (`bibliographie`) and the style (`csl`); the list goes where {{bibliographie}} stands, else at
   // the end, under a heading of its own unless the document ends with one
   sortie = sortie.replace(/^[ \t]*\{\{\s*(bibliographie|bibliography|r[ée]f[ée]rences)\s*\}\}[ \t]*$/gim, '::: {#refs}\n:::');
-  if (analyse.citations.length && !analyse.biblio && !analyse.titreReferences) {
+  // (the references of the Methods texts are listed too: nocite, below)
+  const sansCitation = bibliographie ? [].concat(nonCitees || []) : [];
+  if ((analyse.citations.length || sansCitation.length) && !analyse.biblio && !analyse.titreReferences) {
     sortie = `${sortie.replace(/\s+$/, '')}\n\n${'#'.repeat(analyse.niveauTitres)} ${libelles.references || 'Références'} {.unnumbered}\n`;
   }
-  let tete = brut || `---\ntitle: ${JSON.stringify(String(titre))}\n---\n\n`;
+  let tete = brut || `---\ntitle: ${titreYaml(titre)}\n---\n\n`;
   tete = fixerEntete(tete, 'lang', langue, true);
-  if (bibliographie) tete = fixerEntete(tete, 'bibliography', bibliographie);
-  if (csl) tete = fixerEntete(tete, 'csl', csl);
+  // (file names Pandoc reads as Markdown: sansMarkdown)
+  if (bibliographie) tete = fixerEntete(tete, 'bibliography', sansMarkdown(bibliographie));
+  if (sansCitation.length) {
+    // (added to the header's own nocite when it is written on its line)
+    const avant = lireEntete(`${tete.replace(/\n*$/, '')}\n`).entete.nocite;
+    const garde = typeof avant === 'string' && avant && !/^[|>]/.test(avant) ? `${avant}, ` : '';
+    if (avant === undefined || garde) tete = fixerEntete(tete, 'nocite', `${garde}${sansCitation.map((k) => `@${k}`).join(', ')}`);
+  }
+  if (csl) tete = fixerEntete(tete, 'csl', sansMarkdown(csl));
   // (citeproc for every format: Quarto's PDF through Typst would use Typst's own, in another
   // style, with a heading of its own and the LaTeX of the titles left as it is)
   if (bibliographie) tete = fixerEntete(tete, 'citeproc', 'true', true);

@@ -81,6 +81,28 @@ function copier(src, dest, filtre = () => true, base = src) {
   }
 }
 
+// A library of the main process, bundled by esbuild with what it requires into the one file its
+// package names, in `dossier` (the packaged application's node_modules/<name>, where require()
+// finds it), the licence of each package it holds at its end (as copier-vendor.js does)
+function paquetPrincipal(nom, dossier) {
+  const info = JSON.parse(fs.readFileSync(path.join(__dirname, 'node_modules', nom, 'package.json'), 'utf8'));
+  fs.mkdirSync(dossier, { recursive: true });
+  const r = require('esbuild').buildSync({
+    entryPoints: [require.resolve(nom)], absWorkingDir: __dirname, outfile: path.join(dossier, 'index.js'),
+    bundle: true, platform: 'node', format: 'cjs', target: 'node22', legalComments: 'eof', metafile: true, logLevel: 'warning',
+  });
+  const paquets = new Set(Object.keys(r.metafile.inputs).map((f) => (/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean));
+  // (a package bundled from two folders, once)
+  const licences = [...new Set([...paquets].map((p) => {
+    const d = path.join(__dirname, p);
+    const i = JSON.parse(fs.readFileSync(path.join(d, 'package.json'), 'utf8'));
+    const f = fs.readdirSync(d).find((x) => /^licen[cs]e/i.test(x));
+    return `${i.name} ${i.version} (${i.license})${f ? `\n\n${fs.readFileSync(path.join(d, f), 'utf8').trim()}` : ''}`;
+  }))].sort();
+  fs.appendFileSync(path.join(dossier, 'index.js'), `\n/*! Packages in this file, and their licences:\n\n${licences.join('\n\n----\n\n').replace(/\*\//g, '* /')}\n*/\n`);
+  fs.writeFileSync(path.join(dossier, 'package.json'), `${JSON.stringify({ name: nom, version: info.version, license: info.license, main: 'index.js' }, null, 1)}\n`);
+}
+
 async function construire() {
   execFileSync(process.execPath, [path.join(__dirname, 'copier-vendor.js')], { stdio: 'inherit' });
   await require('./changelog').ecrireChangelog();  // CHANGELOG.md follows interface/nouveautes.js
@@ -103,6 +125,9 @@ async function construire() {
   });
   const appli = mac ? path.join(dossier, 'Nuée.app') : null;
   const ressources = mac ? path.join(appli, 'Contents', 'Resources') : path.join(dossier, 'resources');
+  // The main process's libraries: node_modules stays out of the copy (the interface's libraries are
+  // in interface/vendor), so each goes in as one file (versions.js: isomorphic-git)
+  for (const nom of ['isomorphic-git']) paquetPrincipal(nom, path.join(ressources, 'app', 'node_modules', nom));
   // Chromium's interface languages: the application is in French and English (on macOS, a
   // folder per language in Electron's framework, and the application's own)
   if (mac) {
@@ -126,8 +151,10 @@ async function construire() {
 
   console.log('moteur…');
   copier(path.join(depot, 'moteur'), path.join(ressources, 'moteur'));
-  // the example project (made-up data) and its table
-  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'), (rel) => /^(orchards|vergers)\.(json|csv)$/.test(rel));
+  // the example projects (Help › Example projects): the made-up apples and their table; the
+  // ecology projects of the tutorials' simulated data (exemple/creer_exemples_ecologie.js)
+  copier(path.join(depot, 'exemple'), path.join(ressources, 'exemple'),
+    (rel) => /^(orchards|vergers)\.(json|csv)$/.test(rel) || /^(skylark_counts|skylark_transects|baci_trout|comptages_alouette|transects_alouette|baci_truite)\.json$/.test(rel));
   // the full user guide, opened from Aide › Guide d'utilisation
   for (const f of ['LISEZ-MOI-APPLICATION.txt', 'USER-GUIDE.txt']) fs.copyFileSync(path.join(depot, f), path.join(ressources, f));
 

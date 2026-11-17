@@ -32,7 +32,7 @@ famille_reproductible <- function(d) {
 # l'image de Nuée.
 GRAPHIQUES_REPRODUCTIBLES <- list(
   composantes = c(scores = "scores", loadings = "loadings", vip = "vip", obspred = "observe-ajuste", t2 = "t2-dmodx", dmodx = "t2-dmodx"),
-  regression = c(obspred = "observe-ajuste", residus = "residus", puissance = "puissance", moyennes = "moyennes-ajustees"),
+  regression = c(obspred = "observe-ajuste", residus = "residus", puissance = "puissance", moyennes = "moyennes-ajustees", effets = "effet"),
   PCOA = c(ordination_dist = "ordination", valeurs_propres_pcoa = "valeurs-propres"),
   NMDS = c(ordination_dist = "ordination", shepard = "shepard"),
   PERMANOVA = c(permanova = "permanova", dispersion = "dispersion"),
@@ -163,6 +163,13 @@ code_aide_reproductible <- function(langue) {
     "  d <- if (!is.null(decimales)) decimales else max(0, min(6, 2 - (if (!is.finite(est) || est == 0) 0 else floor(log10(abs(est))))))",
     "  if (!is.finite(est - demi) || !is.finite(est + demi)) return(nuee_nombre(est, d))",
     "  paste0(nuee_nombre(est, d), \" [\", nuee_nombre(est - demi, d), if (nuee_langue == \"fr\") \" ; \" else \", \", nuee_nombre(est + demi, d), \"]\")",
+    "}",
+    "",
+    commentaire(tx("Un intervalle seul, [a ; b], ses bornes à d décimales (en pourcentages : pourcentage = TRUE) : celui de la pente de TRIM, de la densité de l'échantillonnage par distances.",
+                   "An interval alone, [a, b], its bounds with d decimals (as percentages: pourcentage = TRUE): that of TRIM's slope, of distance sampling's density.")),
+    "nuee_ic <- function(bas, haut, decimales, pourcentage = FALSE) {",
+    "  n <- function(x) if (pourcentage) nuee_pourcentage(x, decimales) else nuee_nombre(x, decimales)",
+    "  paste0(\"[\", n(bas), if (nuee_langue == \"fr\") \" ; \" else \", \", n(haut), \"]\")",
     "}")
 }
 
@@ -218,7 +225,7 @@ expression_valeur <- function(famille, chemin, d, m, objet, n) {
       coef = , est = , p = , ic = if (length(reste)) list(tableau = o("coefficients"), terme = paste(reste, collapse = ".")),
       NULL))
   }
-  if (famille == "communaute") return(switch(cle, N = sprintf("nrow(%s)", o("Y")), K = sprintf("ncol(%s)", o("Y")), NULL))
+  if (famille %in% c("communaute", "autre")) return(expression_cle(famille, chemin, d, m, o, n))
   if (famille != "composantes") return(NULL)
   A <- m$A
   pls <- identical(m$type, "PLS")
@@ -248,6 +255,76 @@ expression_valeur <- function(famille, chemin, d, m, objet, n) {
     NULL)
 }
 
+# L'expression R d'un résultat clé d'une autre analyse qu'un document cite (references.js :
+# referenceCle ; resultats_cles.R : entrees_<type>), d'après les objets de son script : la pente globale
+# de TRIM (pente, .bas, .haut, .ic, .p, .pourcent et son intervalle, .classe), σ² et ρ ; la densité et
+# l'effectif de l'échantillonnage par distances (D, abondance, leurs bornes, leur CV, une strate), p et
+# ESW ou EDR ; le R², le R² ajusté et le test d'une RDA ou d'une CCA ; le stress d'une NMDS ; le R² et
+# la valeur p d'une PERMANOVA ; N et K d'une analyse de communautés. Un intervalle : list(bas, haut).
+# NULL quand le script ne l'a pas. `o`, `n` : ceux de expression_valeur.
+expression_cle <- function(famille, chemin, d, m, o, n) {
+  type <- as.character(d$type)
+  k <- paste(chemin, collapse = ".")
+  # (la partie citée d'une entrée : "valeur" pour l'entrée elle-même, sinon ce qui suit sa clé ; NA : une autre)
+  partie <- function(base) if (identical(k, base)) "valeur" else if (startsWith(k, paste0(base, "."))) substring(k, nchar(base) + 2) else NA_character_
+  element <- function(x, nom) sprintf("%s[[%s]]", x, code_texte(n(nom)))
+  if (famille == "communaute") {
+    if (identical(k, "N")) return(sprintf("nrow(%s)", o("Y")))
+    if (identical(k, "K")) return(sprintf("ncol(%s)", o("Y")))
+    if (identical(type, "NMDS") && identical(k, "stress")) return(o("nmds", "stress"))
+    if (identical(type, "PERMANOVA")) {
+      p <- partie("permanova.modele")
+      if (identical(p, "valeur")) return(o("permanova", "modele", "R2"))
+      if (identical(p, "p")) return(o("permanova", "modele", "p"))
+    }
+    return(NULL)
+  }
+  if (identical(type, "TRIM")) {
+    pentes <- function(col) sprintf("%s[1]", element(o("pentes"), col))
+    p <- partie("pente")
+    if (!is.na(p)) return(switch(p, valeur = pentes("multiplicative"), bas = pentes("bas"), haut = pentes("haut"), ic = list(bas = pentes("bas"), haut = pentes("haut")),
+                                 p = pentes("p"), classe = pentes("sens"), pourcent = sprintf("%s - 1", pentes("multiplicative")),
+                                 pourcent.bas = sprintf("%s - 1", pentes("bas")), pourcent.haut = sprintf("%s - 1", pentes("haut")),
+                                 pourcent.ic = list(bas = sprintf("%s - 1", pentes("bas")), haut = sprintf("%s - 1", pentes("haut"))), NULL))
+    if (k %in% c("sigma2", "rho")) return(element(o("dispersion"), k))
+    return(NULL)
+  }
+  if (identical(type, "DISTANCE")) {
+    dens <- o("densite")
+    # (la ligne du total, la dernière ; celle d'une strate par son nom)
+    ligne <- function(col, strate = NULL) if (is.null(strate)) sprintf("utils::tail(%s, 1)", element(dens, col))
+                                          else sprintf("%s[match(%s, %s)]", element(dens, col), code_texte(strate), element(dens, "strate"))
+    # (une strate d'abord, par son nom, comme references.js prend la clé la plus longue : D.Nord, et
+    # D.Nord.ic, avant une partie de la densité totale, D.ic)
+    if (startsWith(k, "D.")) {
+      strates <- as.character(m$densite$strate[!is.na(m$densite$strate)])
+      strates <- strates[order(-nchar(strates))]  # (la plus longue d'abord : Nord.Est avant Nord)
+      s <- Find(function(x) identical(k, paste0("D.", x)) || startsWith(k, paste0("D.", x, ".")), strates)
+      if (!is.null(s)) {
+        p <- if (identical(k, paste0("D.", s))) "valeur" else substring(k, nchar(s) + 4)
+        return(switch(p, valeur = ligne("D", s), bas = ligne("bas_D", s), haut = ligne("haut_D", s), ic = list(bas = ligne("bas_D", s), haut = ligne("haut_D", s)), cv = ligne("cv", s), NULL))
+      }
+    }
+    for (base in c("D", "abondance")) {
+      p <- partie(base)
+      if (is.na(p)) next
+      v <- if (base == "D") c(valeur = "D", bas = "bas_D", haut = "haut_D") else c(valeur = "N", bas = "bas_N", haut = "haut_N")
+      return(switch(p, valeur = ligne(v[["valeur"]]), bas = ligne(v[["bas"]]), haut = ligne(v[["haut"]]), ic = list(bas = ligne(v[["bas"]]), haut = ligne(v[["haut"]])),
+                    cv = ligne("cv"), NULL))
+    }
+    if (k %in% c("p", "ESW", "EDR")) {
+      det <- o("detection")
+      return(sprintf("%s[match(%s, %s)]", element(det, "estimation"), code_texte(k), element(det, "statistique")))
+    }
+    return(NULL)
+  }
+  if (type %in% c("RDA", "CCA")) {
+    return(switch(k, R2 = o("r2", "R2"), R2_ajuste = o("r2", "ajuste"), test.modele = sprintf("%s[[\"F\"]]", o("test")),
+                  test.modele.p = sprintf("%s[[\"p\"]]", o("test")), NULL))
+  }
+  NULL
+}
+
 # La valeur écrite comme le document la cite (`forme`, de references.js : formeReference) : l'appel
 # de nuee.R autour de l'expression du nombre.
 appel_valeur <- function(forme, x) {
@@ -259,6 +336,8 @@ appel_valeur <- function(forme, x) {
                    if (!identical(forme$quoi %||% "coef", "coef")) sprintf(", %s", code_texte(forme$quoi)) else "",
                    if (!is.na(d)) sprintf(", decimales = %d", d) else ""),
     coef_cs = sprintf("nuee_intervalle(%s, %s%s)", x$est, x$demi, if (!is.na(d)) sprintf(", decimales = %d", d) else ""),
+    ic = if (is.list(x) && !is.null(x$bas)) sprintf("nuee_ic(%s, %s, %d%s)", x$bas, x$haut, if (is.na(d)) 2L else d, if (isTRUE(forme$pourcentage)) ", pourcentage = TRUE" else ""),
+    texte = if (is.character(x)) x,
     nombre = if (!is.null(forme$significatifs)) sprintf("nuee_nombre(%s, significatifs = %d)", x, as.integer(forme$significatifs))
              else if (isTRUE(d == 2)) sprintf("nuee_nombre(%s)", x) else sprintf("nuee_nombre(%s, %d)", x, if (is.na(d)) 2L else d),
     NULL)
@@ -272,10 +351,21 @@ graphique_reproductible <- function(famille, d, m, vue, variante, graphiques, ob
   nom <- if (length(table) && vue %in% names(table)) table[[vue]]
   if (is.null(nom)) return(NULL)
   if (identical(vue, "residus") && identical(variante$residus, "quantiles")) nom <- "residus-quantiles"
+  # (les valeurs prédites de la vue Effets, sur l'échelle de la réponse : un graphique par terme aussi)
+  if (identical(vue, "effets") && identical(as.character(variante$echelle)[1], "reponse")) nom <- "prediction"
   if (identical(vue, "dispersion") && length(m$dispersions) != 1) return(NULL)
-  # (une vue à variantes dont le script dessine tout d'un coup : seulement sans variante choisie)
-  if (length(chemin) > 1 && !identical(vue, "residus")) return(NULL)
-  g <- Find(function(x) identical(x$nom, nom), graphiques %||% list())
+  # (une vue à variantes dont le script dessine tout d'un coup : seulement sans variante choisie ; les
+  # effets d'une régression, un graphique par terme : celui de la variante ; les seuils d'une courbe,
+  # que le script dessine toutes ensemble : quand le modèle n'en a qu'une)
+  if (length(chemin) > 1 && !vue %in% c("residus", "effets")) return(NULL)
+  seuils <- identical(vue, "effets") && isTRUE(variante$seuils)
+  if (seuils) {
+    v <- tryCatch(variantes_seuils(m), error = function(e) NULL)
+    if (!isTRUE(nrow(v) == 1) || !identical(v$terme, as.character(variante$terme))) return(NULL)
+  }
+  g <- if (seuils) Find(function(x) identical(x$nom, "seuils"), graphiques %||% list())
+       else if (identical(vue, "effets")) Find(function(x) startsWith(x$nom, paste0(nom, "-")) && identical(x$terme, as.character(variante$terme)), graphiques %||% list())
+       else Find(function(x) identical(x$nom, nom), graphiques %||% list())
   if (is.null(g)) return(NULL)
   list(lignes = c(sprintf("nuee_dans(%s, {", objet), paste0("  ", g$code), "})"), largeur = g$largeur, hauteur = g$hauteur)
 }
@@ -300,7 +390,9 @@ tableau_reproductible <- function(famille, d, m, cle, objet, langue) {
 # Le document reproductible : les scripts des modèles cités et nuee.R écrits dans `dossier`/<nom>_R,
 # puis ce que le .qmd en écrit.
 #   modeles     une liste nommée par l'identifiant de chaque modèle cité : list(definition, modele,
-#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas) ;
+#               et erreur, pourquoi il ne peut pas être refait, s'il ne le peut pas ; et projet, celui
+#               sur lequel écrire son script quand ce n'est pas `projet` : le projet tel qu'il l'a vu,
+#               ses catégories dans l'ordre d'alors, atelier.R : projet_tel_ajuste) ;
 #   references  les références du document, dans l'ordre (NULL : celles que le document ne résout
 #               pas) : list(modele, chemin, genre = "valeur" | "figure" | "tableau" | "texte", et pour
 #               une valeur forme (references.js : formeReference) et texte (ce que Nuée en écrit),
@@ -316,7 +408,7 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
   ici <- file.path(dossier, sous)
   dir.create(ici, showWarnings = FALSE, recursive = TRUE)
   aide <- file.path(ici, "nuee.R")
-  writeBin(charToRaw(enc2utf8(paste0(code_aide_reproductible(langue), "\n", collapse = ""))), aide)
+  writeBin(charToRaw(enc2utf8(paste0(avec_avis_licence(code_aide_reproductible(langue), langue, version), "\n", collapse = ""))), aide)
   fichiers <- aide
   # l'environnement où les expressions sont vérifiées : nuee.R et les modèles refaits
   ev <- new.env(parent = parent.env(globalenv()))
@@ -334,10 +426,11 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
     while (tolower(base) %in% tolower(pris)) base <- paste0(base, "_")
     pris <- c(pris, base)
     chemin <- file.path(ici, paste0(base, ".R"))
-    info <- list(id = id, nom = noms[[id]], objet = objets[[id]], script = paste(sous, paste0(base, ".R"), sep = "/"), famille = famille_reproductible(d))
+    info <- list(id = id, nom = noms[[id]], objet = objets[[id]], script = paste(sous, paste0(base, ".R"), sep = "/"), famille = famille_reproductible(d),
+                 type = as.character(d$type %||% ""))
     raison <- modeles[[id]]$erreur %||% raison_sans_export(d, tx)
     if (is.null(raison)) {
-      r <- tryCatch(ecrire_script(projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
+      r <- tryCatch(ecrire_script(modeles[[id]]$projet %||% projet, d, chemin, "moteur", m = m, donnees = "csv", version = version, langue = langue), error = function(e) e)
       if (inherits(r, "error")) raison <- conditionMessage(r)
       else {
         fichiers <- c(fichiers, r$chemins)
@@ -355,7 +448,11 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
   }
   n_de <- function(info) {
     langue_noms <- langue
-    if (info$famille == "communaute") function(x) nom_communautes(x, langue_noms) else function(x) unname(nom_script(x, langue_noms))
+    if (info$famille == "communaute") return(function(x) nom_communautes(x, langue_noms))
+    if (isTRUE(info$type %in% c("RDA", "CCA"))) return(function(x) unname(nom_ordination(x, langue_noms)))
+    if (identical(info$type, "TRIM")) return(function(x) nom_traduit(x, langue_noms, NOMS_TRIM_EN))
+    if (identical(info$type, "DISTANCE")) return(function(x) nom_traduit(x, langue_noms, NOMS_DISTANCE_EN))
+    function(x) unname(nom_script(x, langue_noms))
   }
   evaluer <- function(code) tryCatch(eval(parse(text = code, keep.source = FALSE, encoding = "UTF-8")[[1]], envir = ev), error = function(e) e)
   # chaque référence : son code R, ou pourquoi elle reste écrite en dur
@@ -398,6 +495,7 @@ ecrire_document_reproductible <- function(projet, modeles, references, dossier, 
     x <- expression_valeur(info$famille, chemin, d, m, info$objet, n_de(info))
     # (une valeur et ce qu'en attend sa forme : un coefficient de PLS demande son intervalle)
     if (!is.null(x) && !identical(is.list(x) && !is.null(x$demi), identical(ref$forme$forme, "coef_cs"))) x <- NULL
+    if (!is.null(x) && !identical(is.list(x) && !is.null(x$bas), identical(ref$forme$forme, "ic"))) x <- NULL
     code <- if (!is.null(x)) appel_valeur(ref$forme %||% list(), x)
     if (is.null(code)) {
       return(texte_en_dur(if (identical(ref$forme$forme, "coef_cs")) tx("l'intervalle (jack-knife) de ce coefficient de PLS n'est pas dans son script (une OPLS, ou une validation avec les centres et les poids du modèle complet)",

@@ -65,8 +65,8 @@ check off for everyone, what Nuée writes where and sends over the network:
    couldn't check it: click *Done*, then *Open Anyway* in *System Settings › Privacy &
    Security*, and confirm. Nuée then opens as any other application.
 
-R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
-neither used nor changed. Settings are kept in `~/Library/Application Support/Nuee`. At
+R is included, as on Windows: there is nothing else to install. An R already on the Mac is never
+changed, and used only if you choose it in *Nuée › Settings…*. Settings are kept in `~/Library/Application Support/Nuee`. At
 start-up it asks GitHub whether a newer version exists; a click in the status bar opens its
 page, whose `.dmg` replaces the application. Every change is checked on GitHub on Apple silicon
 and Intel Macs, from the `.dmg`, on a Mac without R.
@@ -101,10 +101,11 @@ page.
 
 ## First steps
 
-- **Try the example:** *Help › Example project* opens 120 made-up
+- **Try the examples:** *Help › Example projects › Apples* opens 120 made-up
   apples (four varieties, organic or conventional, a dozen measurements and a tasting score)
   with four models ready: a PCA, a PLS predicting the score, a PLS-DA of the varieties and an
-  OPLS-DA of the growing method.
+  OPLS-DA of the growing method. *Skylark monitoring* (TRIM, a mixed model, distance sampling)
+  and *A weir removed* (BACI) open the tutorials' simulated data with their models fitted.
 - **Open your data:** *File › Open* (Ctrl+O) reads a table with one row per observation
   and the observation names in the first column (see [Files](#files) for the formats), or
   *File › Paste a table* (Ctrl+V) takes cells copied from any spreadsheet, or drop files on
@@ -122,10 +123,10 @@ page.
   follows you in every plot of the model. Click a variable (a VIP bar, a coefficient, a point
   of the loadings or of the S-plot) to highlight it in all the model's plots.
 
-The full user guide comes with the application (*Help › User guide › Full guide*), in
-English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
+The full user guide comes with the application (*Help › User guide*, F1: in a panel beside your
+work, at the section of what is in front), in English ([USER-GUIDE.txt](USER-GUIDE.txt)) and French
 ([LISEZ-MOI-APPLICATION.txt](LISEZ-MOI-APPLICATION.txt)). It is also on the
-[documentation website](https://4rtefakt.github.io/nuee/en/), with three tutorials.
+[documentation website](https://4rtefakt.github.io/nuee/en/), with six tutorials.
 
 ## What it does
 
@@ -260,6 +261,9 @@ the model's domain, and export the results.
 - saving a project (`.nuee`, which opens Nuée when double-clicked) keeps its models, the layout
   of your panels, plot settings and selections;
 - a recovery copy every two minutes, offered back after a crash, and undo for data changes;
+- versions of each project kept by themselves (*File › History*), named, compared and restored,
+  and shared on GitHub or GitLab with colleagues, two people's changes merged model by model
+  and passage by passage (on a shared network folder too);
 - notes on each model;
 - data editing and new variables from R formulas or value ranges; columns added from another
   table by a key, and tables summarized by group; find and replace (Ctrl+H), a qualitative
@@ -267,6 +271,9 @@ the model's domain, and export the results.
   variable, carried into axis titles, the Methods and Results texts and the exports; exports of
   KoboToolbox and ODK Central forms opened cleanly (metadata dropped, choices as categories, GPS
   points as the project's coordinates, repeat groups with their parents' columns);
+- living reports: next year's data file read into the project (*Edit › Update the data*), the
+  changes made to the data replayed on it, every model fitted again, and what changed said in
+  sentences, down to the values the documents cite;
 - a model's observations chosen by a condition (`site == "S1" & year >= 2010`), applied again at
   each fit;
 - several windows, and views that pop out onto a second screen;
@@ -360,7 +367,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> Boutin, C. (2026). Nuée (version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
+> Boutin, C. (2026). Nuée (version 1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).
@@ -375,7 +382,12 @@ checks run on GitHub for every push and pull request.
 
 Nuée is free software under the [GNU General Public License v3.0](LICENSE) or later.
 
+What Nuée writes for you is yours: the scripts and reports of Export to R (with the parts of the
+engine they copy), the reproducible documents and the reproducibility packages may be used and
+shared under any terms, by an additional permission under the GPL's section 7
+([LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md)). Each of them says how to cite Nuée: please do.
+
 The Windows installer and the macOS application bundle R (GPL-2 | GPL-3) with its recommended packages and the R packages
 httpuv, jsonlite, openxlsx, haven, readxl and their dependencies, Electron (MIT), Plotly.js (MIT),
-dockview (MIT), Lucide icons (ISC), and CodeMirror and markdown-it (MIT) for the documents, each under
-its own license.
+dockview (MIT), Lucide icons (ISC), CodeMirror and markdown-it (MIT) for the documents, and
+isomorphic-git (MIT) for the versions, each under its own license.

@@ -157,8 +157,10 @@ groupes_texte <- function(vc_par, G, fr) {
   else sprintf(if (fr) "en %d groupes" else "in %d groups", G)
 }
 
-# Un pourcentage pour la ligne d'un modèle dans l'explorateur.
-fmt_pourcent <- function(x) if (is.na(x)) "—" else sprintf("%.0f %%", 100 * x)
+# Un pourcentage pour la ligne d'un modèle dans l'explorateur : « 85 % » en français, « 85% » en anglais.
+fmt_pourcent <- function(x, fr = !identical(getOption("nuee.langue"), "en")) if (is.na(x)) "—" else sprintf(if (fr) "%.0f %%" else "%.0f%%", 100 * x)
+# Une valeur p pour cette ligne, à deux chiffres significatifs (virgule décimale en français).
+p_explorateur <- function(p, fr = TRUE) if (is.na(p)) "—" else sub(".", if (fr) "," else ".", format(signif(p, 2)), fixed = TRUE)
 
 # ---------------------------------------------------------------- les arbres
 
@@ -234,6 +236,7 @@ validation_arbre <- function(dat, groupes, methode, ctl, regle) {
   classes <- if (methode == "class") levels(dat$.y)
   pred <- if (is.null(classes)) rep(NA_real_, nrow(dat)) else matrix(NA_real_, nrow(dat), length(classes), dimnames = list(NULL, classes))
   for (g in unique(groupes)) {
+    verifier_arret()
     k <- groupes == g
     restantes <- if (!is.null(classes)) unique(as.character(dat$.y[!k]))
     if (length(restantes) == 1) {  # (sans ce groupe, une seule classe : tout arbre la prédit ; rpart ne s'ajuste pas sur une classe)
@@ -376,6 +379,8 @@ ajuster_tree <- function(projet, d) {
   # (les lignes que rpart garde : une réponse et au moins une valeur X, comme na.rpart)
   connu <- !is.na(y) & rowSums(!is.na(X)) > 0
   if (sum(connu) < 4) stop(traduire("Trop peu d'observations avec une réponse et au moins une valeur X.", "Too few observations with a response and at least one X value."), call. = FALSE)
+  if (!classement) refuser_reponse_constante(y[connu], nom_y)  # (regression.R)
+  if (!classement) refuser_valeurs_extremes(list(y = y[connu]), c(y = nom_y))
   garde <- obs[connu]
   groupes <- groupes_observations(projet, d, garde)
   if (length(unique(groupes)) < 3) {
@@ -410,7 +415,7 @@ ajuster_tree <- function(projet, d) {
 tester_tree <- function(projet, m, d) {
   test <- as.numeric(d$test)
   X <- x_bruts(projet, m$variables, test)
-  noms <- unname(projet$noms_obs[as.character(test)])
+  noms <- unname(projet$noms_obs[nom_numero(test)])
   vides <- rowSums(!is.na(X)) == 0
   if (m$classement) {
     y <- as.character(classe_observations(projet, d$classe, test))
@@ -443,6 +448,7 @@ stabilite_arbre <- function(m) avec_graine(2026, {
   us <- unique(m$groupes)
   aucune <- ""  # (aucune coupure : dit dans la langue de ce qui l'affiche, stabilite_affichee)
   tirages <- lapply(seq_len(m$reglages_arbre$tirages), function(i) {
+    verifier_arret()
     ss <- us[sample.int(length(us), length(us), replace = TRUE)]
     k <- unlist(lapply(ss, function(s) which(m$groupes == s)))
     plis <- rep(seq_along(ss), vapply(ss, function(s) sum(m$groupes == s), 0L))
@@ -485,7 +491,7 @@ feuilles_nouvelles <- function(a, X) {
 # Les observations d'un arbre : réponse observée, ajustée et prédite en validation croisée (et
 # probabilités), résidu standardisé (par le RMSEE) et son quantile normal, feuille, groupe.
 observations_arbre <- function(projet, m) {
-  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[as.character(m$observations)]), stringsAsFactors = FALSE)
+  obs <- data.frame(uid = m$observations, nom = unname(projet$noms_obs[nom_numero(m$observations)]), stringsAsFactors = FALSE)
   if (m$classement) {
     obs$classe <- as.character(m$donnees$.y)
     obs[["classe ajustée"]] <- m$classification$ajuste$predite
@@ -520,9 +526,10 @@ resultat_tree <- function(id) {
   qualite <- if (m$classement) list(bien_classes = m$classification$ajuste$global, bien_classes_vc = m$classification$vc$global)
              else list(r2 = m$r2, Q2 = m$vc$Q2, RMSEcv = m$vc$RMSEcv, RMSEE = rmsee)
   feuilles <- nrow(regles)
+  fr <- !identical(getOption("nuee.langue"), "en")  # (la ligne de l'explorateur : sa virgule décimale)
   chiffres <- if (m$classement) sprintf("%s %s · %d %s", fmt_pourcent(m$classification$vc$global), traduire("bien classées (VC)", "correct (CV)"),
                                         feuilles, traduire("feuilles", "leaves"))
-              else sprintf("R2 %.2f · Q2 %.2f · %d %s", m$r2, m$vc$Q2, feuilles, traduire("feuilles", "leaves"))
+              else sprintf("R2 %s · Q2 %s · %d %s", nombre_texte(m$r2, 2, fr), nombre_texte(m$vc$Q2, 2, fr), feuilles, traduire("feuilles", "leaves"))
   list(id = id, projet = p$id, nom = d$name %||% "", titre = d$title %||% "", type = "TREE", analyse = TRUE, prediction = TRUE,
        classement = m$classement, regression = FALSE, opls = FALSE, Ap = 0, A = 0, N = m$N, K = m$K, noms_y = I(y),
        transformation_y = nom_transformation(m$y$transform) %||% "", observations = observations_arbre(p, m),

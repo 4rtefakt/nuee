@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartes et modèles spatiaux · Nuée</title>
+<meta name="description" content="Tutoriel Nuée : des prairies et leurs coordonnées sur une carte, l'altitude lue dans un raster, l'I de Moran des résidus d'un modèle, un GAM avec un lissage spatial, et un GeoPackage pour QGIS.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="cartes.html">
+<link rel="alternate" hreflang="en" href="../../en/tutorials/maps.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="../guide/index.html">Guide</a>
+      <a href="index.html" aria-current="page">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/tutorials/maps.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps">
+<main id="contenu">
+<!-- description: Tutoriel Nuée : des prairies et leurs coordonnées sur une carte, l'altitude lue dans un raster, l'I de Moran des résidus d'un modèle, un GAM avec un lissage spatial, et un GeoPackage pour QGIS. -->
+<h1>Cartes et modèles spatiaux</h1>
+<p class="chapeau">La biomasse du foin baisse-t-elle avec l'altitude sur un plateau de montagne ? Les coordonnées des prairies et la carte, l'altitude lue dans un raster, l'I de Moran des résidus d'un modèle, un modèle additif avec un lissage spatial, et un GeoPackage pour QGIS.</p>
+<nav class="sommaire" aria-label="Sur cette page">
+<p>Sur cette page</p>
+<ul>
+<li><a href="#la-question-et-les-donnees">La question et les données</a></li>
+<li><a href="#1-les-coordonnees-et-la-carte">1. Les coordonnées et la carte</a></li>
+<li><a href="#2-l-altitude-lue-dans-un-raster">2. L'altitude lue dans un raster</a></li>
+<li><a href="#3-un-modele-lineaire-et-ses-conditions">3. Un modèle linéaire, et ses conditions</a></li>
+<li><a href="#4-l-i-de-moran-des-residus">4. L'I de Moran des résidus</a></li>
+<li><a href="#5-un-modele-additif-avec-un-lissage-spatial">5. Un modèle additif avec un lissage spatial</a></li>
+<li><a href="#6-un-geopackage-pour-qgis">6. Un GeoPackage pour QGIS</a></li>
+<li><a href="#le-texte-des-methodes">Le texte des méthodes</a></li>
+<li><a href="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+</ul>
+</nav>
+<div class="encadre">
+<p><strong>Les données sont simulées.</strong> Aucune prairie n'a été fauchée et le relief est inventé : le tableau
+et le modèle numérique de terrain ont été fabriqués par le script <a href="../../donnees/cartes.R">cartes.R</a>,
+avec une graine fixe, pour ce tutoriel. La biomasse baisse de 0,8 g/m² par mètre d'altitude, et un
+motif régulier sur le plateau (les sols, la fumure des exploitations) s'y ajoute.</p>
+</div>
+<h2 id="la-question-et-les-donnees">La question et les données</h2>
+<p>Le foin de 90 prairies de montagne est pesé à la première coupe, sur un plateau de 12 km sur 9 km.
+La biomasse baisse-t-elle avec l'altitude ? Et que dit la carte de ce que l'altitude n'explique
+pas ?</p>
+<p>Téléchargez <a href="../../donnees/prairies.csv">prairies.csv</a> (90 lignes, une par prairie) et le modèle
+numérique de terrain <a href="../../donnees/altitude.tif">altitude.tif</a> (un GeoTIFF de 13 Ko), dans le même
+dossier :</p>
+<table>
+<thead>
+<tr>
+<th>Colonne</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>prairie</td>
+<td>le nom de la ligne : S01 à S90</td>
+</tr>
+<tr>
+<td>X_L93, Y_L93</td>
+<td>la position de la prairie en Lambert-93, en mètres</td>
+</tr>
+<tr>
+<td>biomasse</td>
+<td>la biomasse sèche du foin à la première coupe, en g/m²</td>
+</tr>
+</tbody>
+</table>
+<p>Le tableau n'a pas d'altitude : elle vient du modèle numérique de terrain, un raster de cellules
+de 50 m, comme l'IGN ou Copernicus les diffusent. Ouvrez le tableau avec <em>Fichier › Ouvrir</em>
+(Ctrl+O) : 90 observations et 3 variables.</p>
+<h2 id="1-les-coordonnees-et-la-carte">1. Les coordonnées et la carte</h2>
+<p><em>Graphiques › Carte</em> (aussi sous le projet dans l'explorateur). La première fois, la vue demande
+quelles deux variables donnent la position de chaque observation, et dans quel système de
+coordonnées. Nuée les propose d'après leurs noms : <code>X_L93</code> et <code>Y_L93</code>, en <strong>Lambert-93</strong>
+(EPSG:2154).</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-coordonnees.png"><img src="../../images/fr/cartes-coordonnees.png" alt="Les coordonnées de la carte : X_L93 et Y_L93 proposées, en RGF93 v1 / Lambert-93" width="980" height="168" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-coordonnees.png"><img src="../../images/fr/sombre/cartes-coordonnees.png" alt="Les coordonnées de la carte : X_L93 et Y_L93 proposées, en RGF93 v1 / Lambert-93" width="980" height="168" loading="lazy"></a><figcaption>Les coordonnées : deux variables du projet et leur système, proposés d'après leurs noms.</figcaption></figure>
+<p>Cliquez sur <strong>Utiliser ces coordonnées</strong>. Elles sont enregistrées avec le projet, et Ctrl+Z les
+retire. Des longitudes et latitudes en degrés seraient du <em>WGS 84 (EPSG:4326)</em> ; une zone UTM, un
+autre code EPSG. <em>Couleur</em> : <code>biomasse</code> :</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-carte.png"><img src="../../images/fr/cartes-carte.png" alt="Les 90 prairies du plateau, colorées par leur biomasse" width="900" height="625" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-carte.png"><img src="../../images/fr/sombre/cartes-carte.png" alt="Les 90 prairies du plateau, colorées par leur biomasse" width="900" height="625" loading="lazy"></a><figcaption>La carte : chaque prairie à sa place, colorée par sa biomasse ; la même échelle sur les deux axes.</figcaption></figure>
+<p>Les points sont tracés à la même échelle sur les deux axes, sans fond : rien ne sort de
+l'ordinateur. <em>Fond</em> propose OpenStreetMap ou le plan et les photographies aériennes de l'IGN,
+téléchargés quand on les choisit. La biomasse va de 431,2 à 653,4 g/m², par taches : faible au
+nord-ouest, plus forte au centre et au sud.</p>
+<h2 id="2-l-altitude-lue-dans-un-raster">2. L'altitude lue dans un raster</h2>
+<p><em>Édition › Ajouter des valeurs de rasters</em> (ou le bouton de la carte) lit la valeur d'un raster à
+la position de chaque observation. <strong>Choisir des fichiers…</strong> : <code>altitude.tif</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-raster.png"><img src="../../images/fr/cartes-raster.png" alt="Ajouter des valeurs de rasters : altitude.tif décrit, ses cellules, son système et les 90 prairies dedans, l'interpolation bilinéaire choisie" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-raster.png"><img src="../../images/fr/sombre/cartes-raster.png" alt="Ajouter des valeurs de rasters : altitude.tif décrit, ses cellules, son système et les 90 prairies dedans, l'interpolation bilinéaire choisie" width="900" height="680" loading="lazy"></a><figcaption>Ajouter des valeurs de rasters : ce qu'est le fichier, combien d'observations y tombent, et comment la valeur est lue.</figcaption></figure>
+<p>Avant d'ajouter, Nuée dit ce qu'est le fichier : 240 × 180 cellules de 50 m, une bande d'entiers de
+16 bits, en Lambert-93, et les 90 prairies sont dedans. Pour une valeur continue comme une altitude,
+il propose l'<strong>interpolation bilinéaire</strong> des quatre cellules les plus proches ; une occupation du
+sol prendrait la cellule de l'observation, ou la classe majoritaire dans un rayon. La bande devient
+une variable du nom du fichier, <code>altitude</code>. Cliquez sur <strong>Ajouter</strong> : « altitude » a une valeur
+pour 90 observations sur 90 (<em>Graphiques › Statistiques des variables</em> donne son étendue : de
+1138,4800 à 1334,2024 m). Ctrl+Z retire la variable ; le texte des méthodes d'un modèle qui
+l'utilise dira d'où elle vient.</p>
+<h2 id="3-un-modele-lineaire-et-ses-conditions">3. Un modèle linéaire, et ses conditions</h2>
+<p><em>Modèle › Quelle analyse ?</em> : cochez <strong>L'effet de variables sur une réponse</strong>, choisissez
+<code>biomasse</code>. Nuée voit une mesure, propose <code>altitude</code> en X et les coordonnées du projet : il
+conseille la régression linéaire, dit de regarder l'autocorrélation spatiale de ses résidus après
+l'ajustement, et propose à côté un modèle additif avec un lissage spatial.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-choix.png"><img src="../../images/fr/cartes-choix.png" alt="Quelle analyse ? : biomasse, une mesure, altitude en X, les coordonnées ; la régression linéaire conseillée, le modèle additif avec un lissage spatial proposé" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-choix.png"><img src="../../images/fr/sombre/cartes-choix.png" alt="Quelle analyse ? : biomasse, une mesure, altitude en X, les coordonnées ; la régression linéaire conseillée, le modèle additif avec un lissage spatial proposé" width="900" height="680" loading="lazy"></a><figcaption>Quelle analyse ? : la régression linéaire, et, avec des coordonnées, le conseil de vérifier ses résidus dans l'espace.</figcaption></figure>
+<p>Cliquez sur <strong>Ouvrir Nouveau modèle, déjà rempli</strong>, puis sur <strong>Ajuster</strong>. Le modèle, M1, est
+<code>biomasse ~ altitude</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-lm-resume.png"><img src="../../images/fr/cartes-lm-resume.png" alt="Le résumé de M1 : R², Q², AIC, et les conditions du modèle, la dernière en rouge : des résidus autocorrélés dans l'espace" width="560" height="548" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-lm-resume.png"><img src="../../images/fr/sombre/cartes-lm-resume.png" alt="Le résumé de M1 : R², Q², AIC, et les conditions du modèle, la dernière en rouge : des résidus autocorrélés dans l'espace" width="560" height="548" loading="lazy"></a><figcaption>Le résumé de M1 : sa qualité et ses conditions ; les résidus sont autocorrélés dans l'espace.</figcaption></figure>
+<p>La biomasse baisse avec l'altitude : −0,8056 g/m² par mètre (IC à 95 % de −1,0520 à −0,5591,
+p = 4,8e-9, dans la vue <em>Coefficients</em>), et l'altitude explique un tiers de sa variation
+(R² = 0,324 ; Q² = 0,311 en validation croisée). Les <strong>conditions du modèle</strong> vérifient les
+résidus : leur loi (Shapiro–Wilk p = 0,15) et leur dispersion vont bien, quatre prairies pèsent
+plus que les autres sur l'ajustement (distance de Cook), et la dernière condition est en rouge :
+<strong>les résidus sont autocorrélés dans l'espace</strong> (I de Moran = 0,312, p &lt; 0,001). Des prairies
+voisines s'écartent du modèle de la même façon.</p>
+<h2 id="4-l-i-de-moran-des-residus">4. L'I de Moran des résidus</h2>
+<p>Pourquoi c'est important : les tests d'un modèle tiennent ses résidus pour indépendants.
+Quatre-vingt-dix prairies dont les écarts ressemblent à ceux de leurs voisines apportent moins
+d'information que quatre-vingt-dix prairies indépendantes, et les p et les intervalles sont trop
+optimistes (Legendre, 1993).</p>
+<p><em>Graphiques › Autocorrélation spatiale</em>, M1 choisi : <em>Valeurs</em> : <strong>M1 · Résidus</strong>.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-moran.png"><img src="../../images/fr/cartes-moran.png" alt="L'autocorrélation spatiale des résidus de M1 : l'I de Moran et ses tests, le corrélogramme par distance et le semi-variogramme" width="1100" height="785" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-moran.png"><img src="../../images/fr/sombre/cartes-moran.png" alt="L'autocorrélation spatiale des résidus de M1 : l'I de Moran et ses tests, le corrélogramme par distance et le semi-variogramme" width="1100" height="785" loading="lazy"></a><figcaption>L'I de Moran des résidus, son corrélogramme et son semi-variogramme : semblables jusqu'à 2 km environ.</figcaption></figure>
+<p>L'I de Moran compare chaque résidu à ceux de ses voisins, ici les 4 prairies les plus proches
+(rendues réciproques : 4,8 voisins en moyenne). Sans autocorrélation, il serait proche de −0,0112 ;
+il vaut <strong>0,3120</strong>, z = 4,83, p = 7,0e-7, et aucune de 999 permutations des résidus entre les
+prairies n'en a donné autant (p = 0,0010). Pour un modèle linéaire, la troisième ligne est le test
+qui tient compte de l'ajustement (Cliff et Ord, 1981) : I = 0,3112, p = 3,8e-7.</p>
+<p>Le <strong>corrélogramme</strong> donne l'I de Moran par classes de distance : 0,41 sous 0,69 km, 0,34 de 0,69 à
+1,38 km, 0,18 de 1,38 à 2,07 km, puis moins de 0,1 ; les points rouges sont significatifs après la
+correction de Holm sur les classes. Le <strong>semi-variogramme</strong> dit la même chose à l'envers : la
+moitié du carré de l'écart entre deux résidus croît avec leur distance, et atteint la variance (en
+pointillés) vers 2 km. Les résidus se ressemblent jusqu'à 2 km environ.</p>
+<p>Sur la carte, <em>Couleur</em> : <strong>M1 · résidu</strong> (les résidus standardisés) :</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-residus.png"><img src="../../images/fr/cartes-residus.png" alt="La carte colorée par les résidus de M1 : négatifs au nord-ouest, positifs au centre et à l'est" width="900" height="625" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-residus.png"><img src="../../images/fr/sombre/cartes-residus.png" alt="La carte colorée par les résidus de M1 : négatifs au nord-ouest, positifs au centre et à l'est" width="900" height="625" loading="lazy"></a><figcaption>Les résidus de M1 sur la carte : le modèle surestime le nord-ouest et sous-estime le centre et l'est.</figcaption></figure>
+<p>Le modèle surestime la biomasse du nord-ouest (résidus négatifs) et sous-estime celle du centre et
+de l'est : autre chose que l'altitude, un sol ou les pratiques des exploitations, s'organise dans
+l'espace.</p>
+<h2 id="5-un-modele-additif-avec-un-lissage-spatial">5. Un modèle additif avec un lissage spatial</h2>
+<p>Dans <em>Modèle › Quelle analyse ?</em>, ouvrez <strong>Modèle additif avec un lissage spatial</strong> parmi les autres
+possibilités : Nouveau modèle règle un GAM, de loi normale, et coche <em>Lissage spatial</em>
+<code>s(X_L93, Y_L93)</code>.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-gam-modele.png"><img src="../../images/fr/cartes-gam-modele.png" alt="Nouveau modèle : modèle additif (GAM), loi normale, lissage spatial s(X_L93, Y_L93), et la formule R biomasse ~ altitude + s(X_L93, Y_L93)" width="900" height="680" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-gam-modele.png"><img src="../../images/fr/sombre/cartes-gam-modele.png" alt="Nouveau modèle : modèle additif (GAM), loi normale, lissage spatial s(X_L93, Y_L93), et la formule R biomasse ~ altitude + s(X_L93, Y_L93)" width="900" height="680" loading="lazy"></a><figcaption>Le lissage spatial : une surface des coordonnées, s(X_L93, Y_L93) dans la formule R.</figcaption></figure>
+<p>Le modèle garde l'altitude en droite, et ajoute une surface lisse des coordonnées, une spline en
+plaques minces (Wood, 2003) : elle prend la structure spatiale que l'altitude n'explique pas, aussi
+lisse que les données le demandent. Sa dimension de base est de 30 au plus (la case à côté) ; le
+REML choisit à quel point elle est lisse. Cliquez sur <strong>Ajuster</strong> : le modèle est M2.</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-gam-resume.png"><img src="../../images/fr/cartes-gam-resume.png" alt="Le résumé de M2 : déviance expliquée, Q², AIC, l'edf et le test du lissage spatial, et des conditions toutes bonnes" width="560" height="553" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-gam-resume.png"><img src="../../images/fr/sombre/cartes-gam-resume.png" alt="Le résumé de M2 : déviance expliquée, Q², AIC, l'edf et le test du lissage spatial, et des conditions toutes bonnes" width="560" height="553" loading="lazy"></a><figcaption>Le résumé de M2 : l'edf et le test du lissage ; plus d'autocorrélation spatiale dans les résidus.</figcaption></figure>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>M1, linéaire</th>
+<th>M2, avec le lissage spatial</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>altitude (g/m² par m)</td>
+<td>−0,8056 [−1,0520 ; −0,5591]</td>
+<td>−0,8476 [−1,1101 ; −0,5850]</td>
+</tr>
+<tr>
+<td>R² ajusté</td>
+<td>0,316</td>
+<td>0,526</td>
+</tr>
+<tr>
+<td>Q² (validation croisée)</td>
+<td>0,311</td>
+<td>0,459</td>
+</tr>
+<tr>
+<td>AIC</td>
+<td>920,5</td>
+<td>902,2</td>
+</tr>
+<tr>
+<td>I de Moran des résidus</td>
+<td>0,312, p &lt; 0,001</td>
+<td>−0,036, p = 0,64</td>
+</tr>
+</tbody>
+</table>
+<p>Le lissage utilise 8,88 degrés de liberté effectifs (edf ; 1 serait un plan) et il est significatif
+(p = 0,0011) ; sa concurvité, 0,04, dit que l'altitude ne l'explique pas : les deux ne se font pas
+concurrence. L'AIC baisse de 18 points, le Q² en validation croisée passe de 0,311 à 0,459, et il ne
+reste pas d'autocorrélation dans les résidus. L'altitude garde son effet, −0,85 g/m² par mètre,
+avec un intervalle un peu plus large : le modèle n'est plus trop sûr de lui. Les données ont été
+simulées avec −0,8.</p>
+<p>La valeur du lissage à chaque prairie est une colonne des résultats de M2 ; sur la carte,
+<em>Couleur</em> : <strong>M2 · s(X_L93, Y_L93)</strong> :</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-lissage.png"><img src="../../images/fr/cartes-lissage.png" alt="La carte colorée par le lissage spatial de M2 : d'environ −50 g/m² au nord-ouest à +25 g/m² à l'est" width="900" height="625" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-lissage.png"><img src="../../images/fr/sombre/cartes-lissage.png" alt="La carte colorée par le lissage spatial de M2 : d'environ −50 g/m² au nord-ouest à +25 g/m² à l'est" width="900" height="625" loading="lazy"></a><figcaption>Le lissage spatial : ce que le lieu ajoute à la biomasse, l'altitude mise à part.</figcaption></figure>
+<p>Il va de −50,5 g/m² au nord-ouest à +25,4 g/m² à l'est : ce que le lieu ajoute à la biomasse une
+fois l'altitude prise en compte. Il décrit ; il n'explique pas : les cartes des sols ou les
+registres des exploitations diraient pourquoi.</p>
+<h2 id="6-un-geopackage-pour-qgis">6. Un GeoPackage pour QGIS</h2>
+<p><em>Fichier › Exporter les données</em> : dès que le projet a des coordonnées, l'export propose
+<strong>GeoPackage (QGIS)</strong> :</p>
+<figure><a class="clair-seul" href="../../images/fr/cartes-export.png"><img src="../../images/fr/cartes-export.png" alt="Exporter les données : les formats, GeoPackage (QGIS) choisi" width="560" height="242" loading="lazy"></a><a class="sombre-seul" href="../../images/fr/sombre/cartes-export.png"><img src="../../images/fr/sombre/cartes-export.png" alt="Exporter les données : les formats, GeoPackage (QGIS) choisi" width="560" height="242" loading="lazy"></a><figcaption>L'export : le GeoPackage est proposé pour un projet qui a des coordonnées.</figcaption></figure>
+<p>Le fichier contient un point par prairie en Lambert-93, avec toutes ses colonnes (<code>biomasse</code>,
+<code>altitude</code>) : QGIS l'ouvre avec son système de coordonnées, sur n'importe quel fond. Les résultats
+de M2 suivent le même chemin : choisissez M2, <em>Fichier › Exporter les résultats du modèle</em>,
+<strong>GeoPackage</strong> : une couche de points avec la valeur ajustée, le résidu et le lissage de chaque
+prairie, et à côté les tables des coefficients, de la qualité et des courbes. <em>Fichier › Ouvrir</em>
+relit un GeoPackage (des points, ou les centroïdes de polygones).</p>
+<h2 id="le-texte-des-methodes">Le texte des méthodes</h2>
+<p>Pour M2, <em>Modèle › Texte pour la section Méthodes</em> écrit, entre autres :</p>
+<blockquote>
+<p>Lues dans des rasters à la position de chaque observation : « altitude » de altitude.tif
+(GeoTIFF, cellules de 50 m, RGF93 v1 / Lambert-93 ; par interpolation bilinéaire des quatre
+cellules les plus proches).</p>
+</blockquote>
+<blockquote>
+<p>Nous avons ajusté un modèle additif généralisé (loi normale, lien identity ; Wood, 2017) avec 1
+terme (altitude), un lissage spatial des coordonnées (« X_L93 » et « Y_L93 »), une spline de
+régression en plaques minces isotrope (Wood, 2003) de dimension de base 30.</p>
+</blockquote>
+<p>Complétez-le avec la vérification des résidus : l'I de Moran des résidus de M1 et de ceux de M2,
+avec le voisinage (4 plus proches voisins). <a href="rapport.html">Le tutoriel du rapport</a>
+rédige cette étude dans un document.</p>
+<h2 id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<ul>
+<li><em>Édition › Unités et descriptions</em> donne son unité à la biomasse, g/m² : les axes et les textes
+la portent alors.</li>
+<li>Un effet aléatoire du site, plutôt qu'un lissage, convient à des observations groupées par site ;
+un test de Mantel avec la distance géographique, à un tableau d'espèces.</li>
+<li>Pour des longitudes et des latitudes, le lissage spatial est une spline sur la sphère,
+<code>s(lat, lon, bs = &quot;sos&quot;)</code>.</li>
+<li><em>Fichier › Exporter vers R</em> écrit un script qui réajuste M2 avec mgcv et trace le lissage sur une
+carte.</li>
+<li>Le guide : <a href="../guide/cartes.html">cartes, rasters, GeoPackage et autocorrélation spatiale</a>,
+<a href="../guide/regressions.html">le lissage spatial d'un GAM</a>.</li>
+</ul>
+
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

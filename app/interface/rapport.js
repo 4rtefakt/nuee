@@ -1,12 +1,13 @@
 // Model report (Fichier › Rapport du modèle): the parts chosen in the dialog, with the plots as
 // they look in their panels (colours, labels, titles), as a PDF (printed by the desktop app,
 // or by the browser) or a Word document (.docx, written here).
-import { t, langueActuelle } from './i18n.js';
+import { t, langueActuelle, deuxPoints, pourcent } from './i18n.js';
 import { el, fmt, decimal, dialogue } from './ui.js';
 import { VUES, resumeSeuils, notePhi, notesTermesRetires, noteSansCategorie, notesPentes, lignesSelectionAIC, groupesSelectionAIC, nombreParametres, notesPuissance, resultatSimulation, libelleUnites,
   notesMoyennes, titreMoyenne, titrePaire, libellePaire, parametresLoi } from './panneaux.js';
 import { demander } from './api.js';
 import { zip } from './zip.js';
+import { etiquettesRepoussees, replacerEtiquettes } from './etiquettes.js';
 
 export const LARGEUR = 900;   // plot images, in pixels (drawn twice as fine)
 export const HAUTEUR = 580;
@@ -44,7 +45,10 @@ const PARTIES_REGRESSION = [
   { cle: 'resume', defaut: true, tableau: tableauRegression },
   { cle: 'coefficients', vue: 'coefficients', defaut: true, tableau: tableauCoefficientsRegression },
   { cle: 'effets', vue: 'effets', defaut: true, tableau: tableauPentes,
-    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false })) },
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false, echelle: 'lien' })) },
+  // (the same terms' predicted values on the response scale, what stays fixed said under each: {{M1.valeurs_predites.annee}})
+  { cle: 'valeurs_predites', vue: 'effets',
+    variantes: async (m) => [].concat((await demander('effets', { modele: m.id })).effets || []).map((e) => ({ terme: e.terme, seuils: false, echelle: 'reponse' })) },
   { cle: 'seuils', vue: 'effets', defaut: true, si: avecCourbes, tableau: resumesSeuils,
     variantes: async (m) => (await variantesSeuils(m)).map((v) => ({ terme: v.terme, seuils: true, ...(v.categorie ? { categorie: v.categorie } : {}) })) },
   { cle: 'moyennes', vue: 'moyennes', si: (m) => [].concat(m.qualitatives || []).length > 0, tableau: tableauMoyennes },
@@ -71,6 +75,7 @@ export function dialogueRapport(app, id) {
   const parties = partiesModele(m);
   const choix = new Set(parties.filter((x) => x.defaut).map((x) => x.cle));
   const st = { titre: `${m.nom}${m.titre ? ' — ' + m.titre : ''}`, commentaire: '', format: 'pdf' };
+  st.defaut = st.titre;
   const contenu = el('div', { class: 'dialogue-rapport' },
     el('div', { class: 'grille-champs' },
       el('label', {}, t('titre_graphe')), el('input', { value: st.titre, style: 'width:28em', oninput: (e) => { st.titre = e.target.value; } }),
@@ -92,7 +97,8 @@ export function dialogueRapport(app, id) {
 }
 
 async function creerRapport(app, m, parties, st) {
-  const nomFichier = (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
+  // (its title as the dialog gave it: "<project> - M1 PLS", as the model's other files; a title typed: that)
+  const nomFichier = st.titre === st.defaut && app.nomFichierModele ? app.nomFichierModele(m) : (st.titre || m.nom).replace(/[^\p{L}\p{N} _.()-]+/gu, '_');
   let chemin = null;
   if (app.bureau) {
     chemin = await app.bureau.enregistrerSous(`${nomFichier}.${st.format}`,
@@ -125,7 +131,7 @@ async function contenuRapport(app, m, parties, st) {
   const p = app.projet(m.projet) || {};
   const date = new Date().toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' });
   const blocs = [{ titre: st.titre || m.nom, niveau: 0 },
-    { texte: `${t('projet_rapport')} : ${p.nom || ''} · ${t('genere_le')} ${date}` }];
+    { texte: `${t('projet_rapport')}${deuxPoints()}${p.nom || ''} · ${t('genere_le')} ${date}` }];
   // the condition that chose the model's observations (moteur/R/condition.R)
   if (m.reglages && m.reglages.condition) blocs.push({ texte: t('condition_modele', { condition: m.reglages.condition }) });
   if (st.commentaire.trim()) st.commentaire.trim().split(/\n+/).forEach((x) => blocs.push({ texte: x }));
@@ -156,7 +162,10 @@ export async function imageVue(app, vue, m, variante = {}) {
   try {
     await VUES[vue].rendre(hote, app.contexteHorsEcran(loc, (div) => { graphe = div; }), { modele: m.id, projet: m.projet }, loc);
     if (!graphe) return null;
-    return await window.Plotly.toImage(graphe, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
+    // (its labels spread, Plots › Format plot: once placed, placed again at the picture's size, etiquettes.js)
+    if (graphe._etiquettes) await graphe._etiquettes;
+    const source = etiquettesRepoussees(graphe.layout) ? await replacerEtiquettes({ data: graphe.data, layout: { ...graphe.layout, width: LARGEUR, height: HAUTEUR } }) : graphe;
+    return await window.Plotly.toImage(source, { format: 'png', width: LARGEUR, height: HAUTEUR, scale: 2 });
   } catch (e) {
     console.warn(`rapport : ${vue}`, e);  // the part is left out of the report
     return null;
@@ -175,15 +184,15 @@ function tableauComposantes(m) {
   const cols = [['R2X', 'R2X'], ['R2Xcum', 'R2X(cum)']].concat(pls ? [['R2Y', 'R2Y'], ['R2Ycum', 'R2Y(cum)']] : [])
     .concat([['Q2', 'Q2'], ['Q2cum', 'Q2(cum)'], ['valeur_propre', t('valeur_propre')]]);
   const infos = [`${m.type} · A = ${m.A} · N = ${m.N} · K = ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`
-    + (m.validation ? ` · ${t('validation_vc')} : ${t('validation_' + m.validation)}` : '')];
-  if (Number.isFinite(m.gain) && Number.isFinite(m.q2_vide)) infos.push(`${t('gain_vide')} : ${fmt(m.gain, 3)} (${t('q2_vide')} ${fmt(m.q2_vide, 3)})`);
+    + (m.validation ? ` · ${t('validation_vc')}${deuxPoints()}${t('validation_' + m.validation)}` : '')];
+  if (Number.isFinite(m.gain) && Number.isFinite(m.q2_vide)) infos.push(`${t('gain_vide')}${deuxPoints()}${fmt(m.gain, 3)} (${t('q2_vide')} ${fmt(m.q2_vide, 3)})`);
   if (m.hierarchique && m.hierarchique.q2cum) {
     const h = m.hierarchique;
-    infos.push(`${t('q2_honnete')} : ${fmt([].concat(h.q2cum).pop(), 3)}` + (Number.isFinite(h.gain) ? ` (${t('gain_honnete')} ${fmt(h.gain, 3)})` : ''));
+    infos.push(`${t('q2_honnete')}${deuxPoints()}${fmt([].concat(h.q2cum).pop(), 3)}` + (Number.isFinite(h.gain) ? ` (${t('gain_honnete')} ${fmt(h.gain, 3)})` : ''));
   }
-  if (pls && m.noms_y.length) infos.push(`Y : ${[].concat(m.noms_y).join(', ')}`);
-  if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y} : RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
-  if (m.classification) infos.push(`${t('bien_classes_vc')} : ${fmt(100 * m.classification.vc.global, 1)} %`);
+  if (pls && m.noms_y.length) infos.push(`Y${deuxPoints()}${[].concat(m.noms_y).join(', ')}`);
+  if (pls && m.RMSEE) infos.push(Object.keys(m.RMSEE).map((y) => `${y}${deuxPoints()}RMSEE ${fmt(m.RMSEE[y], 4)}, RMSEcv ${fmt(m.RMSEcv[y], 4)}`).join(' · '));
+  if (m.classification) infos.push(`${t('bien_classes_vc')}${deuxPoints()}${fmt(100 * m.classification.vc.global, 1)}${pourcent()}`);
   return [...infos.map((texte) => ({ texte })),
     { entetes: [t('comp'), ...cols.map(([, n]) => n)], lignes: c.composante.map((a, i) => [String(a), ...cols.map(([k]) => nombre(c[k][i], 3))]) }];
 }
@@ -195,12 +204,12 @@ function tableauRegression(m) {
   const y = m.noms_y[0];
   const infos = [`${t('type_' + m.type.toLowerCase())} · N = ${m.N} · ${t('nb_termes')} ${m.K} · ${t('groupes_vc')} ${m.G}${m.vc_par ? ` (${m.vc_par})` : ''}`];
   if (['GLM', 'GAM'].includes(m.type) && m.famille) {
-    infos.push([`${t('loi')} : ${t('famille_' + m.famille)}`, `${t('lien')} : ${m.lien}`,
+    infos.push([`${t('loi')}${deuxPoints()}${t('famille_' + m.famille)}`, `${t('lien')}${deuxPoints()}${m.lien}`,
       ...parametresLoi(m).map(([s, v]) => `${s} = ${fmt(v, 3)}`),
-      m.decalage ? `${t('decalage')} : log(${m.decalage})` : ''].filter(Boolean).join(' · '));
+      m.decalage ? `${t('decalage')}${deuxPoints()}log(${m.decalage})` : ''].filter(Boolean).join(' · '));
   }
   const stats = (q.marginal !== undefined ? [[t('r2_marginal'), q.marginal], [t('r2_conditionnel'), q.conditionnel]]
-    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)} %`]]
+    : q.deviance_expliquee !== undefined ? [[t('r2_ajuste'), q.r2_ajuste], [t('deviance_expliquee'), q.deviance_expliquee === null ? null : `${fmt(100 * q.deviance_expliquee, 1)}${pourcent()}`]]
       : [['R2', q.r2], [t('r2_ajuste'), q.r2_ajuste]])
     .concat([['Q2', q.Q2], ['RMSEE', m.RMSEE && m.RMSEE[y]], ['RMSEcv', q.RMSEcv], ['AIC', q.AIC], ['AICc', q.AICc], ['BIC', q.BIC], ['logLik', q.logLik], [t('parametres'), q.parametres]]);
   const blocs = [...infos.map((texte) => ({ texte })), { entetes: stats.map(([n]) => n), lignes: [stats.map(([, v]) => nombre(v, 3))] }];
@@ -338,9 +347,9 @@ function tableauClassification(m) {
   const r = m.classification.vc;
   const classes = [].concat(r.classes);
   const somme = (v) => v.reduce((a, b) => a + b, 0);
-  return [{ texte: `${t('validation_croisee')} · ${t('bien_classes')} : ${fmt(100 * r.global, 1)} %` },
+  return [{ texte: `${t('validation_croisee')} · ${t('bien_classes')}${deuxPoints()}${fmt(100 * r.global, 1)}${pourcent()}` },
     { entetes: [`${t('observee')} \\ ${t('predite')}`, ...classes, t('total'), t('bien_classes')],
-      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)} %`]) }];
+      lignes: classes.map((k, i) => [k, ...r.table[i].map(String), String(somme(r.table[i])), `${fmt(100 * [].concat(r.correct)[i], 1)}${pourcent()}`]) }];
 }
 
 function tableauVariables(m) {

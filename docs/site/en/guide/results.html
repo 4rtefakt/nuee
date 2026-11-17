@@ -46,7 +46,11 @@
 <li><a href="monitoring.html">Monitoring: series, TRIM, distance sampling</a></li>
 <li><a href="maps.html">Maps and spatial data</a></li>
 <li><a href="trees.html">Trees, forests, discriminant analysis, k-means</a></li>
+<li><a href="r-code.html">Your own model in R code</a></li>
+<li><a href="plugins.html">Plugins</a></li>
+<li><a href="writing-a-plugin.html">Writing a plugin</a></li>
 <li><a href="results.html" aria-current="page">Results, documents and R</a></li>
+<li><a href="versions.html">Versions and working together</a></li>
 <li><a href="usp-projects.html">.usp projects</a></li>
 </ul>
 </details>
@@ -84,6 +88,20 @@
 {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
 {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
 {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+{{M5.valeurs_predites.year}} (its predicted values on the response scale, Effects › Scale)
+{{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+(TRIM: the overall slope of the imputed totals, 4 decimals, its 95 % interval, its change in %
+per time step, its class in the document's language, σ² and ρ)  {{D1.D}} {{D1.D.ic}}
+{{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.North}} (distance sampling: the
+density, its interval and CV, the abundance, p, ESW or EDR, a stratum's density)
+{{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+{{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA: the model's R² and p, a
+term's)  {{N1.stress}} (NMDS)
+The other analyses' key results are cited the same way, under the keys What changed compares
+(an index {{T1.indice.2015}}, a Mantel r {{M1.mantel}}...): a value, then .ic, .bas, .haut and .p
+for those that have an interval or a p, .pourcent for a multiplicative value; A, and a K of 0,
+aren't offered where they don't apply. The reproducible Quarto file writes those above from the
+models' scripts.
 {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
 {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
 or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
@@ -108,7 +126,7 @@ PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important v
 </section>
 <section id="exporting-to-other-software">
 <h2>Exporting to other software</h2>
-<p><strong>File › Export data:</strong> the project's table (observation names, identifiers, variables). File › Export model results (Ctrl+E): the model's tables (observations: scores, T², DModX, fitted values; variables: loadings, VIP, intervals; components; coefficients; Y variables). Formats: Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) and Weka (.arff); for the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS, Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the original name becomes the variable label. The variables' units and descriptions (Edit › Units and descriptions) go into a "Variables" sheet of an Excel workbook, read back when Nuée opens it, a "Variables" table of a GeoPackage, the descriptions of a jamovi file and the attributes of an R table (see <a href="data.html#cleaning-the-data-find-and-replace-categories-units">Cleaning the data</a>).</p>
+<p><strong>File › Export data:</strong> the project's table (observation names, identifiers, variables). File › Export model results (Ctrl+E): the model's tables (observations: scores, T², DModX, fitted values; variables: loadings, VIP, intervals; components; coefficients; Y variables). Formats: Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables; .RData), SPSS (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) and Weka (.arff); for the last ones, one file per table ("orchards - M1 PCA.sav", "orchards - M1 PCA - variables.sav"...). A model's files are named after its project, its name and its type by default (its results, Export to R, its report, its predictions), so that the M1 of two projects don't take the same name in a folder. Qualitative variables stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS, Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the original name becomes the variable label. The variables' units and descriptions (Edit › Units and descriptions) go into a "Variables" sheet of an Excel workbook, read back when Nuée opens it, a "Variables" table of a GeoPackage, the descriptions of a jamovi file and the attributes of an R table (see <a href="data.html#cleaning-the-data-find-and-replace-categories-units">Cleaning the data</a>).</p>
 <p><strong>SAS:</strong> transport format version 5, which SAS reads with libname xport (names of 8 characters, labels of 40, text of 200 at most). dBase: text in Windows-1252; in LibreOffice, choose the "Western Europe (Windows-1252)" character set when opening. The files written were opened in jamovi, PSPP (for SPSS), Weka, LibreOffice and pandas.</p>
 </section>
 <section id="export-to-r">
@@ -123,6 +141,7 @@ PCA, PLS or OPLS, the variance explained, Q², CV-ANOVA and the most important v
 <p><strong>Format:</strong> R script (.R); or an R Markdown (.Rmd) or Quarto (.qmd) report, which adds the Methods text, tables and plots (scores, loadings, VIP, observed / predicted, T2, DModX) and the references; it compiles in RStudio (Knit button) or with quarto render, and needs the knitr package. Extra files, as you choose: renv.lock (versions of R and packages, for renv::restore()), the data and fitted model as .RData (load() gives them back without refitting), an RStudio project (.Rproj, best in a folder of its own).</p>
 <p><strong>Models:</strong> this one, or all the models of the session (the latest fit of each) in one .R script: the functions and the data once, then a block per model under its name (M1, M2...).</p>
 <p>Before writing, the application refits the script's models and checks they give the same results; otherwise it says so.</p>
+<p><strong>The script is yours:</strong> you may use, change and share it under any terms, the parts of Nuée's engine it copies included (an exception to Nuée's GPL licence, LICENSE-EXCEPTION.md). Its opening comments say so, and how to cite Nuée if you publish results obtained with it.</p>
 </section>
 <section id="r-console">
 <h2>R console</h2>
@@ -171,9 +190,9 @@ modele.R, prediction.R, classification.R (HCA), nouveau.R (tables, automatic fit
 </section>
 </div>
 <p class="note">This page is part of the guide installed with Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/USER-GUIDE.txt">USER-GUIDE.txt</a>, also in Help › User guide).</p>
-<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="trees.html">← Trees, forests, discriminant analysis, k-means</a><a rel="next" href="usp-projects.html">.usp projects →</a></nav>
+<nav class="suite" aria-label="Neighbouring pages"><a rel="prev" href="writing-a-plugin.html">← Writing a plugin</a><a rel="next" href="versions.html">Versions and working together →</a></nav>
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
 </body>
 </html>

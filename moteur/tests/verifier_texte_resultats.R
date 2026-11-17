@@ -5,7 +5,7 @@
 # elle donne ses chiffres ; l'échantillonnage par distances a le sien (sa fonction de détection, avec
 # des covariables leurs coefficients, p, la densité). Puis les conditions d'une régression dites en mots
 # (moteur/R/verifications_modele.R) : chacune vue où les données la mettent en défaut, et pas
-# ailleurs.
+# ailleurs (la séparation d'une présence-absence comprise).
 #   Rscript moteur/tests/verifier_texte_resultats.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -95,6 +95,8 @@ dv$x3 <- stats::rnorm(n)
 dv$bon <- 1 + dv$x1 + dv$x3 + stats::rnorm(n)
 dv$y <- exp(1 + dv$x1 + stats::rnorm(n, 0, 0.6))
 dv$n <- ifelse(stats::runif(n) < 0.4, 0, stats::rpois(n, exp(1 + 0.4 * dv$x1)))
+dv$separee <- as.integer(dv$x1 > 0)
+dv$presence <- as.integer(dv$x3 + stats::rnorm(n) > 0)
 pv <- projet_depuis_tableau(dv, "conditions")
 uv <- function(...) numeros(pv, c(...))
 statuts <- function(d) { v <- verifications_regression(pv, ajuster(pv, d)); stats::setNames(vapply(v, `[[`, "", "statut"), vapply(v, `[[`, "", "cle")) }
@@ -106,5 +108,70 @@ verifier("une réponse log-normale et deux termes colinéaires : loi, variance e
          all(s_mauvais[c("loi", "variance", "colinearite")] == "attention"))
 s_zero <- statuts(dm("GLM", "x1", "n", famille = "poisson"))
 verifier("des comptages avec trop de zéros : surdispersion et excès de zéros signalés", all(s_zero[c("dispersion", "zeros")] == "attention"))
+s_separee <- statuts(dm("GLM", "x1", "separee", famille = "binomiale"))
+s_presence <- statuts(dm("GLM", "x1", "presence", famille = "binomiale"))
+verifier("une présence que x1 sépare tout à fait : la séparation signalée, pas pour une présence ordinaire",
+         identical(unname(s_separee["separation"]), "attention") && !"separation" %in% names(s_presence))
+# la séparation : un coefficient démesuré dont l'erreur-type l'est plus encore, pas des probabilités
+# ajustées de 0 ou 1 seules (une pente raide mais finie en donne, à moins de 1e-8 du bord, et même
+# numériquement 0 ou 1 comme glm.fit le dit) ; une catégorie sans présence, que ce seuil ne voit pas
+texte_separation <- function(p, d) Find(function(v) identical(v$cle, "separation"), verifications_regression(p, ajuster(p, d)))$texte
+v_separee <- texte_separation(pv, dm("GLM", "x1", "separee", famille = "binomiale"))
+set.seed(4)
+da <- data.frame(nom = sprintf("a%03d", 1:200), altitude = round(stats::runif(200, 0, 2000)), stringsAsFactors = FALSE)
+da$presence <- stats::rbinom(200, 1, stats::plogis(-25 + 0.025 * da$altitude))
+da$raide <- stats::rbinom(200, 1, stats::plogis(-50 + 0.05 * da$altitude))
+pa <- projet_depuis_tableau(da, "altitude")
+d_alt <- function(y) definir_modele(pa, "GLM", x = numeros(pa, "altitude"), y = numeros(pa, y), observations = numeros_observations(pa), echelle = c(defaut = "none"), famille = "binomiale")
+g_raide <- stats::glm(raide ~ altitude, family = stats::binomial, data = da)
+set.seed(9)
+dh <- data.frame(nom = sprintf("h%03d", 1:150), hab = sample(c("a", "b", "c"), 150, TRUE), x = stats::rnorm(150), stringsAsFactors = FALSE)
+dh$y <- stats::rbinom(150, 1, stats::plogis(0.3 + 0.8 * dh$x))
+dh$y[dh$hab == "c"] <- 0
+ph <- projet_depuis_tableau(dh, "habitats")
+v_categorie <- texte_separation(ph, definir_modele(ph, "GLM", x = numeros(ph, c("hab", "x")), y = numeros(ph, "y"), observations = numeros_observations(ph),
+                                                   echelle = c(defaut = "none"), famille = "binomiale"))
+verifier(sprintf("une pente raide mais finie de l'altitude (le logit de -25 à 25) : pas de séparation, ni pour une plus raide dont %d probabilités ajustées sont numériquement 0 ou 1",
+                 sum(stats::fitted(g_raide) < 10 * .Machine$double.eps | stats::fitted(g_raide) > 1 - 10 * .Machine$double.eps)),
+         is.null(texte_separation(pa, d_alt("presence"))) && is.null(texte_separation(pa, d_alt("raide"))) &&
+           any(stats::fitted(g_raide) < 10 * .Machine$double.eps))
+verifier(sprintf("une catégorie sans présence : la séparation signalée, les coefficients de ses catégories nommés, pas celui de x (« %s »)", substr(v_categorie %||% "", 1, 90)),
+         grepl("^Les? coefficients? de « hab\\([abc]\\) » \\(β = -?1[89]", v_categorie %||% "") && !grepl("« x »", v_categorie %||% "", fixed = TRUE) &&
+           !grepl("numériquement", v_categorie %||% "") &&
+           grepl("^Le coefficient de « x1 » \\(β = ", v_separee %||% "") && grepl("observations ont une probabilité ajustée numériquement de 0 ou 1", v_separee %||% "", fixed = TRUE))
+# (une année non centrée, 2001 à 2012, croisée avec l'habitat, sans interaction : un coefficient
+# démesuré et incertain par colinéarité, ses probabilités ajustées loin de 0 et de 1, n'est pas une
+# séparation ; une courbe qui sépare, si : ses probabilités numériquement 0 ou 1 le disent)
+set.seed(2)
+dn <- data.frame(nom = sprintf("n%03d", 1:240), an = rep(2001:2012, 20), hab = rep(c("a", "b"), each = 120))
+dn$presence <- stats::rbinom(240, 1, stats::plogis(-0.2 + 0.05 * (dn$an - 2006)))
+pn <- projet_depuis_tableau(dn, "annees")
+d_an <- definir_modele(pn, "GLM", x = numeros(pn, c("an", "hab")), y = numeros(pn, "presence"), observations = numeros_observations(pn),
+                       echelle = c(defaut = "none"), famille = "binomiale", croises = list(numeros(pn, c("an", "hab"))))
+m_an <- ajuster(pn, d_an)
+set.seed(3)
+dg <- data.frame(nom = sprintf("g%03d", 1:120), x = stats::runif(120, 0, 10))
+dg$sep <- as.integer(dg$x > 5)
+pg <- projet_depuis_tableau(dg, "courbe")
+v_courbe <- texte_separation(pg, definir_modele(pg, "GAM", x = numeros(pg, "x"), y = numeros(pg, "sep"), observations = numeros_observations(pg),
+                                                echelle = c(defaut = "none"), famille = "binomiale", lisses = numeros(pg, "x")))
+verifier(sprintf("une année non centrée croisée avec l'habitat (des coefficients de p = %s, ses probabilités entre %.2f et %.2f) : pas de séparation ; une courbe qui sépare : signalée",
+                 paste(round(m_an$resultat$coefficients$p, 2), collapse = ", "), min(m_an$resultat$ajuste), max(m_an$resultat$ajuste)),
+         is.null(Find(function(v) identical(v$cle, "separation"), verifications_regression(pn, m_an, d_an))) &&
+           grepl("une courbe du modèle sépare sans doute les présences des absences", v_courbe %||% "", fixed = TRUE))
+# (une catégorie rare, toutes ses lignes des absences, dans 400 observations : ses probabilités ajustées
+# s'arrêtent vers 1e-6, signalée, les coefficients des autres catégories, rapportés à elle, nommés ; la
+# même pente raide mais finie, en courbe d'un GAM : pas signalée)
+set.seed(1)
+dr <- data.frame(nom = sprintf("r%03d", 1:400), hab = c("z", sample(c("a", "b"), 399, TRUE)), x = stats::rnorm(400), stringsAsFactors = FALSE)
+dr$y <- stats::rbinom(400, 1, stats::plogis(0.3 + 0.8 * dr$x))
+dr$y[dr$hab == "z"] <- 0
+pr <- projet_depuis_tableau(dr, "rare")
+v_rare <- texte_separation(pr, definir_modele(pr, "GLM", x = numeros(pr, c("hab", "x")), y = numeros(pr, "y"), observations = numeros_observations(pr),
+                                              echelle = c(defaut = "none"), famille = "binomiale"))
+v_gam_raide <- texte_separation(pa, definir_modele(pa, "GAM", x = numeros(pa, "altitude"), y = numeros(pa, "raide"), observations = numeros_observations(pa),
+                                                   echelle = c(defaut = "none"), famille = "binomiale", lisses = numeros(pa, "altitude")))
+verifier("une catégorie rare sans présence dans 400 observations : signalée ; la pente raide en courbe d'un GAM : pas signalée",
+         grepl("« hab(a) »", v_rare %||% "", fixed = TRUE) && !grepl("« x »", v_rare %||% "", fixed = TRUE) && is.null(v_gam_raide))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)

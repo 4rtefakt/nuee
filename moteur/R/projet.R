@@ -13,32 +13,54 @@
 # de Nuée écrit des projets que les précédentes ne liraient pas en entier : elles le voient au
 # format du fichier. 1 : jusqu'à 0.9.9 ; 2 : la 1.0 (les coordonnées du projet, le lissage
 # spatial d'un GAM, de nouveaux types d'analyses, qu'une version plus ancienne ne refait pas ;
-# les figures composées, p$figures, qu'elle garde sans les montrer). Toute version 1.x ouvre
-# les projets de la 1.0.
-FORMAT_PROJET <- 2L
+# les figures composées, p$figures, qu'elle garde sans les montrer) ; 3 : la 1.1, les rapports
+# vivants (etapes.R) : d'où viennent les données (p$source_donnees : le fichier, sa table, ce que
+# l'import a décidé de ses colonnes, sa taille, sa date et son empreinte), chaque changement fait
+# à elles, en étapes qui se rejouent (p$etapes, leurs paramètres en texte JSON), et l'empreinte
+# des données après la dernière (p$empreinte_donnees) ; et le modèle écrit en code R (type CODE,
+# code.R : son code dans d$options$code, les colonnes qu'il nomme dans d$options$colonnes), et celui
+# d'un greffon (type PLUGIN, greffons.R : le greffon gardé en entier dans d$options$greffon, son
+# manifeste et ses fichiers R, ses entrées et ses options dans d$options$entrees et d$options$options).
+# La 1.0 lit les données et les modèles d'un projet de la 1.1, et garde ces champs sans s'en servir ;
+# ce qu'elle change aux données n'est pas une étape, et l'empreinte le montre ; un modèle de code R ou
+# de greffon, elle ne sait pas l'ajuster (elle en dit l'erreur). Toute version 1.x ouvre les projets
+# de la 1.0.
+FORMAT_PROJET <- 3L
 
 lire_projet <- function(chemin) {
   j <- jsonlite::fromJSON(chemin, simplifyVector = TRUE, simplifyDataFrame = FALSE,
                           simplifyMatrix = TRUE)
   # L'état de la séance (où Enregistrer écrit, changements...) ne vient jamais du fichier : un
-  # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert.
-  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte")] <- NULL
+  # projet reçu ne peut pas faire écrire Enregistrer ailleurs que là où on l'a ouvert, ni se dire
+  # l'ancienne version d'un autre projet, que Restaurer écraserait (lecture_seule : serveur.R, ouvrir).
+  j[c("id", "chemin", "chemin_enregistrement", "modifie", "table", "brut", "fichier_lu", "note", "import_collecte", "lecture_seule", "cache")] <- NULL
   obs <- unique(unlist(lapply(j$datasets, function(d) d$observations)))
   vars <- unique(unlist(lapply(j$datasets, function(d) d$variables)))
   donnees <- matrix(NA_real_, length(obs), length(vars),
-                    dimnames = list(as.character(obs), as.character(vars)))
+                    dimnames = list(nom_numero(obs), nom_numero(vars)))
   for (d in j$datasets) {
     if (!length(d$observations) || !length(d$variables)) next
     v <- en_matrice(d$values, length(d$observations), length(d$variables))
-    donnees[as.character(d$observations), as.character(d$variables)] <- v
+    donnees[nom_numero(d$observations), nom_numero(d$variables)] <- v
   }
   j$donnees <- donnees
+  # (un nom vide qu'une version d'avant la 1.1 gardait manquant, écrit null : relu "", comme l'import le
+  # donne maintenant ; les identifiants manquants d'une observation aussi)
+  manque <- function(ids) !length(ids) || (if (is.list(ids)) any(vapply(ids, function(x) !length(x) || is.na(x[1]), NA)) else anyNA(ids))
+  vides <- which(vapply(j$observations, function(o) manque(o$ids), NA))
+  for (i in vides) {
+    ids <- j$observations[[i]]$ids
+    j$observations[[i]]$ids <- if (!length(ids)) "" else vapply(seq_along(ids), function(k) {
+      x <- ids[[k]]
+      if (!length(x) || is.na(x[1])) "" else as.character(x[1])
+    }, "")
+  }
   j$noms_obs <- stats::setNames(
-    vapply(j$observations, function(o) as.character(o$ids[1]), ""),
-    vapply(j$observations, function(o) as.character(o$uid), ""))
+    vapply(j$observations, function(o) premier_texte(o$ids), ""),
+    vapply(j$observations, function(o) nom_numero(o$uid), ""))
   j$noms_var <- stats::setNames(
     vapply(j$variables, function(v) as.character(v$ids[1]), ""),
-    vapply(j$variables, function(v) as.character(v$uid), ""))
+    vapply(j$variables, function(v) nom_numero(v$uid), ""))
   # Projets écrits avant la version 0.5 : la version d'origine s'appelait « <nom>_version »
   # et la solution enregistrée « <nom> » (le même nom) ; ils prennent les noms d'aujourd'hui.
   if (length(j$models)) j$models <- lapply(j$models, function(d) {
@@ -69,11 +91,34 @@ en_matrice <- function(v, n, k) {
   matrix(unlist(lignes), n, k, byrow = TRUE)
 }
 
+# Le nom d'un numéro interne, d'une observation ou d'une variable, tel que le portent les lignes et
+# les colonnes de projet$donnees, projet$noms_obs et projet$noms_var : as.character(), sauf qu'un
+# nombre entier s'y écrit sans notation scientifique. as.character() écrit le nombre réel 100000
+# « 1e+05 » (l'entier, « 100000 ») : passé 99 999 lignes, des observations ne se retrouvaient plus
+# dans les données (leurs valeurs lues manquantes, une nouvelle variable refusée).
+nom_numero <- function(x) {
+  n <- as.character(x)
+  if (!is.numeric(x)) return(n)
+  entier <- is.finite(x) & x == round(x)
+  n[entier] <- sprintf("%.0f", x[entier])
+  n
+}
+
+# Une valeur d'une demande parmi `choix` (le premier sans elle), ou l'erreur qui le dit dans la langue
+# de l'interface, `quoi` nommant le réglage : match.arg() dit en anglais « 'arg' should be one of ».
+valeur_parmi <- function(x, choix, quoi) {
+  x <- as.character(unlist(x) %||% choix[1])[1]
+  if (!isTRUE(x %in% choix)) {
+    stop(sprintf(traduire("« %s » n'est pas un choix de %s : %s.", "\"%s\" isn't a choice of %s: %s."), x, quoi, paste(choix, collapse = ", ")), call. = FALSE)
+  }
+  x
+}
+
 # Valeurs brutes d'une variable pour des observations (NA si absentes).
 colonne <- function(projet, variable, observations) {
-  k <- match(as.character(variable), colnames(projet$donnees))
+  k <- match(nom_numero(variable), colnames(projet$donnees))
   if (is.na(k)) return(rep(NA_real_, length(observations)))
-  projet$donnees[match(as.character(observations), rownames(projet$donnees)), k]
+  projet$donnees[match(nom_numero(observations), rownames(projet$donnees)), k]
 }
 
 # Un modèle du projet, par son numéro (3 pour M3) ou son nom ("M3").
@@ -129,7 +174,10 @@ garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
   for (i in seq_along(p$models)) {
     if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]][[cle]], valeur)) {
       p$models[[i]][[cle]] <- valeur
-      if (modifie) p$modifie <- TRUE
+      if (modifie) {
+        p$modifie <- TRUE
+        etat$retablissements[[p$id]] <- NULL  # (Rétablir remettrait la définition d'avant : serveur.R, definitions_changees)
+      }
     }
   }
   etat$projets[[p$id]] <- p

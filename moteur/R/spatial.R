@@ -287,7 +287,7 @@ deviner_systeme <- function(x, y) {
 # Deux variables quantitatives qui ressemblent à des coordonnées, d'après leur nom (longitude
 # et latitude, X et Y, est et nord), et leur système d'après leurs valeurs ; NULL sinon.
 proposer_coordonnees <- function(projet) {
-  vars <- Filter(function(v) !length(v$categories) && as.character(v$uid) %in% colnames(projet$donnees), projet$variables)
+  vars <- Filter(function(v) !length(v$categories) && nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   if (length(vars) < 2) return(NULL)
   noms <- tolower(vapply(vars, function(v) as.character(v$ids[1]), ""))
   cherche <- function(motif) { i <- grep(motif, noms, perl = TRUE); if (length(i)) i[1] else NA }
@@ -299,7 +299,7 @@ proposer_coordonnees <- function(projet) {
     if (is.na(i) || is.na(j) || i == j) next
     ux <- as.numeric(vars[[i]]$uid)
     uy <- as.numeric(vars[[j]]$uid)
-    return(list(x = ux, y = uy, systeme = deviner_systeme(projet$donnees[, as.character(ux)], projet$donnees[, as.character(uy)])))
+    return(list(x = ux, y = uy, systeme = deviner_systeme(projet$donnees[, nom_numero(ux)], projet$donnees[, nom_numero(uy)])))
   }
   NULL
 }
@@ -335,8 +335,8 @@ regler_coordonnees <- function(projet, x, y, systeme) {
   co <- coordonnees_projet(projet)
   if (is.null(co)) stop(traduire("Les coordonnées doivent être deux variables quantitatives différentes du projet.", "Coordinates must be two different quantitative variables of the project."), call. = FALSE)
   if (s$type == "lonlat") {
-    vx <- projet$donnees[, as.character(co$x)]
-    vy <- projet$donnees[, as.character(co$y)]
+    vx <- projet$donnees[, nom_numero(co$x)]
+    vy <- projet$donnees[, nom_numero(co$y)]
     if (any(abs(vx) > 180, na.rm = TRUE) || any(abs(vy) > 90, na.rm = TRUE)) {
       stop(sprintf(traduire("Des longitudes et latitudes vont de −180 à 180 et de −90 à 90 : « %s » ou « %s » sort de ces bornes. Choisissez le système des coordonnées planes.",
                             "Longitudes and latitudes run from −180 to 180 and from −90 to 90: “%s” or “%s” goes beyond. Choose the system of the plane coordinates."), co$nom_x, co$nom_y), call. = FALSE)
@@ -393,7 +393,7 @@ poids_spatiaux <- function(D, methode = "voisins", k = 4, portee = NULL, standar
   n <- nrow(D)
   W <- matrix(0, n, n)
   diag(D) <- Inf
-  methode <- match.arg(methode, c("voisins", "bande", "inverse"))
+  methode <- valeur_parmi(methode, c("voisins", "bande", "inverse"), traduire("voisinage", "neighbourhood"))
   if (methode == "voisins") {
     k <- max(1L, min(as.integer(k), n - 1L))
     for (i in seq_len(n)) W[i, order(D[i, ])[seq_len(k)]] <- 1
@@ -438,7 +438,7 @@ moran <- function(x, W, permutations = 999, graine = 1) {
   zv <- (I - E) / sqrt(V)
   r <- list(I = I, esperance = E, variance = V, z = zv, p = stats::pnorm(zv, lower.tail = FALSE), n = n, S0 = S0)
   if (permutations > 0) {
-    Ip <- avec_graine(graine, vapply(seq_len(permutations), function(i) { zp <- sample(z); (n / S0) * sum(zp * (W %*% zp)) / ss }, 0))
+    Ip <- avec_graine(graine, vapply(seq_len(permutations), function(i) { verifier_arret(); zp <- sample(z); (n / S0) * sum(zp * (W %*% zp)) / ss }, 0))
     r$permutations <- permutations
     r$p_permutations <- (sum(Ip >= I) + 1) / (permutations + 1)
   }

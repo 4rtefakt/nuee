@@ -102,11 +102,11 @@ noms_utilises <- function(lignes) {
 }
 
 # Les définitions du moteur qu'il faut pour `racines` : elles, et ce qu'elles utilisent du moteur,
-# de proche en proche (sans `exclus` : traduire, dont les appels sont remplacés ; ni un nom qui
-# n'a de définition que dans une chaîne).
+# de proche en proche (sans `exclus` : traduire, dont les appels sont remplacés, et verifier_arret,
+# dont les appels sont retirés : arret.R ; ni un nom qui n'a de définition que dans une chaîne).
 dependances_moteur <- function(racines, exclus = character(0)) {
   index <- index_sources_moteur()
-  exclus <- c("traduire", exclus)
+  exclus <- c("traduire", "verifier_arret", exclus)
   vus <- character(0)
   a_voir <- racines
   while (length(a_voir)) {
@@ -164,7 +164,7 @@ commentaires_anglais <- function(lignes, traductions = character(0)) {
 # Le texte d'une définition du moteur pour le script (definition_moteur), dans sa langue : son
 # commentaire et ses lignes (voir en tête) ; `entetes` : le commentaire anglais de chaque définition.
 texte_moteur <- function(def, langue, entetes = character(0), commentaires = character(0)) {
-  lignes <- remplacer_traductions(def$lignes, langue)
+  lignes <- remplacer_traductions(sans_arret(def$lignes), langue)
   if (!identical(langue, "en")) return(c(def$commentaire, lignes))
   c(if (def$nom %in% names(entetes)) commentaire(entetes[[def$nom]]), commentaires_anglais(lignes, commentaires))
 }
@@ -240,7 +240,7 @@ nom_traduit <- function(x, langue, noms) {
 # laisse ensuite de côté celles qu'il ne peut pas prendre, comme le moteur).
 code_lignes_definition <- function(projet, d, tab, tx) {
   obs <- as.numeric(d$observations)
-  rangs <- unname(tab$rangs[as.character(obs)])
+  rangs <- unname(tab$rangs[nom_numero(obs)])
   pc <- plan_condition(projet, d, tab)
   if (!is.null(pc)) {
     return(c(code_condition(pc, tx, tx(sprintf("Les %d observations du modèle.", length(obs)), sprintf("The %d observations of the model.", length(obs)))),
@@ -296,7 +296,8 @@ ecrire_script_moteur <- function(projet, d, chemin_script, m, piece, donnees = "
   } else {
     lignes_rapport_moteur(format, d, langue, texte_methodes(projet, d, m, langue, version), piece, code_donnees)
   }
-  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), piece$objets), c(piece$paquets, if (format != "R") c("knitr", "rmarkdown")))
+  ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), piece$objets), c(piece$paquets, if (format != "R") c("knitr", "rmarkdown")),
+                         langue = langue, version = version)
   # (ses graphiques, pour un document reproductible : document_reproductible.R)
   structure(list(script = chemin_script, chemins = unname(fichiers), ecart = ecart), graphiques = piece$graphiques)
 }

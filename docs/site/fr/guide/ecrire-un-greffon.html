@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Écrire un greffon · Nuée</title>
+<meta name="description" content="Le manifeste, la fonction, ce qu’elle reçoit et ce qu’elle rend, l’essayer dans Nuée, l’empaqueter.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/site.css">
+<link rel="alternate" hreflang="fr" href="ecrire-un-greffon.html">
+<link rel="alternate" hreflang="en" href="../../en/guide/writing-a-plugin.html">
+<script src="../../assets/site.js"></script>
+</head>
+<body>
+<a class="sauter" href="#contenu">Aller au contenu</a>
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="../index.html"><img src="../../assets/nuee.svg" alt="" width="28" height="28"><span>Nuée</span></a>
+    <nav class="principale" aria-label="Pages du site">
+      <a href="../index.html">Accueil</a>
+      <a href="../installation.html">Installation</a>
+      <a href="index.html" aria-current="page">Guide</a>
+      <a href="../tutoriels/index.html">Tutoriels</a>
+      <a href="../nouveautes.html">Quoi de neuf</a>
+    </nav>
+    <div class="outils">
+      <a class="langue" href="../../en/guide/writing-a-plugin.html" hreflang="en" lang="en">English</a>
+      <button class="bouton-theme" type="button" title="Thème clair ou sombre" aria-label="Thème clair ou sombre" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.3A6 6 0 0 1 12.3 3.1 9 9 0 0 0 12 3Z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="corps avec-cote">
+<aside class="cote" aria-label="Pages du guide">
+<details open><summary>Pages du guide</summary>
+<ul>
+<li><a href="index.html">Le guide</a></li>
+<li><a href="demarrer.html">Démarrer</a></li>
+<li><a href="donnees.html">Les données</a></li>
+<li><a href="modeles.html">Choisir et construire un modèle</a></li>
+<li><a href="graphiques.html">Graphiques et figures</a></li>
+<li><a href="acp-pls.html">ACP, PLS, OPLS et spectres</a></li>
+<li><a href="regressions.html">Modèles linéaires, généralisés et mixtes</a></li>
+<li><a href="tests.html">Tests statistiques</a></li>
+<li><a href="communautes.html">Écologie des communautés</a></li>
+<li><a href="suivis.html">Suivis : séries, TRIM, distances</a></li>
+<li><a href="cartes.html">Cartes et données spatiales</a></li>
+<li><a href="arbres.html">Arbres, forêts, discriminante, k-moyennes</a></li>
+<li><a href="code-r.html">Votre propre modèle en code R</a></li>
+<li><a href="greffons.html">Greffons</a></li>
+<li><a href="ecrire-un-greffon.html" aria-current="page">Écrire un greffon</a></li>
+<li><a href="resultats.html">Résultats, documents et R</a></li>
+<li><a href="versions.html">Versions et travail à plusieurs</a></li>
+<li><a href="projets-usp.html">Projets .usp</a></li>
+</ul>
+</details>
+</aside>
+<main id="contenu">
+<p class="fil"><a href="index.html">Guide</a></p>
+<h1>Écrire un greffon</h1>
+<div class="texte-guide">
+<section id="ecrire-un-greffon">
+<p>Un greffon est un dossier qui contient son manifeste, plugin.json, et ses fichiers R : occupancy/plugin.json et occupancy/occupancy.R pour le premier exemple (<a href="https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy">https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy</a>). Partez d’un exemple : copiez son dossier, puis changez son manifeste et son code. Le manifeste, en UTF-8, est un objet JSON de ces champs (leurs noms sont en anglais) :</p>
+<dl>
+<dt>id</dt><dd>le nom du greffon pour Nuée et celui de son dossier : des minuscules, des chiffres, et « - », « _ » ou « . » entre eux (occupancy, mann-kendall) ; le même pour toutes ses versions.</dd>
+<dt>version</dt><dd>X.Y.Z (1.0.0) ; chaque version que vous partagez en a une plus grande.</dd>
+<dt>nuee</dt><dd>la plus ancienne Nuée avec laquelle il marche (1.1.0).</dd>
+<dt>name</dt><dd>{"en": "…", "fr": "…"} : l’anglais requis, le français facultatif (l’anglais s’affiche en français sans lui) ; description de même, une phrase ou deux.</dd>
+<dt>authors</dt><dd>[{"name": "…", "orcid": "0000-0002-1825-0097"}], au moins un ; l’ORCID facultatif (vérifié : son dernier chiffre).</dd>
+<dt>license</dt><dd>sa licence (GPL-3.0-or-later, MIT…).</dd>
+<dt>citation</dt><dd>ce que ses utilisateurs citent : {"text": "…", "bibtex": "@article{…}"}, ou une liste de ceux-ci ; facultatif.</dd>
+<dt>packages</dt><dd>les paquets R qu’il demande au-delà de ceux de R (["unmarked"]) ; facultatif.</dd>
+<dt>files</dt><dd>ses fichiers R, lus dans cet ordre (["occupancy.R"], ou ["R/modele.R", "R/methodes.R"]).</dd>
+<dt>function</dt><dd>le nom de sa fonction (occupancy_fit), définie au premier niveau de l’un d’eux.</dd>
+<dt>inputs</dt><dd>les variables du projet que son dialogue demande, une liste de {"id": "detections", "type": "variables", "accepts": "quantitative", "min": 2, "max": 20, "label": {"en": "…", "fr": "…"}, "help": {…}} : type "variable" (une ; "optional": true permet de la laisser vide) ou "variables" (plusieurs : min, 1 par défaut, et max, aucun par défaut) ; accepts "quantitative", "qualitative" ou "any".</dd>
+<dt>options</dt><dd>ses réglages, une liste de {"id": "maxit", "type": "number", "default": 1000, "min": 10, "max": 100000, "integer": true, "label": {…}, "help": {…}} : type "number" (default requis ; min, max et integer facultatifs), "choice" ("values": [{"value": "BFGS", "label": {…}}], default requis, l’une des valeurs), "checkbox" (default false ou true) ou "text" (default "").</dd>
+</dl>
+<p>Nuée vérifie strictement le manifeste en le lisant : un champ qu’elle ne connaît pas, un champ de la mauvaise sorte, un fichier qui n’est pas là, une fonction que les fichiers ne définissent pas au premier niveau sont refusés, en disant où et quoi (« inputs[2].accepts : « quantitative », « qualitative » ou « any » ») ; un greffon qui a une erreur ne s’installe pas. Elle lit le code sans l’exécuter.</p>
+<p><strong>La fonction :</strong> Nuée l’appelle f(donnees, entrees, options).</p>
+<ul>
+<li><strong>donnees :</strong> un data.frame des observations du modèle (celles de l’onglet Observations), une colonne par variable du projet sous son nom (les variables qualitatives en facteurs, leurs catégories dans l’ordre du projet), puis les identifiants des observations, en texte : ce que voit le code d’un modèle de code R.</li>
+<li><strong>entrees :</strong> le nom des variables choisies, par id d’entrée : un texte (NULL quand une entrée facultative est laissée vide) pour une entrée "variable", un vecteur de textes (character(0) quand il n’y en a aucune) pour une entrée "variables" ; donnees[entrees$detections] sont leurs colonnes.</li>
+<li><strong>options :</strong> la valeur de chaque option, par son id : un nombre (un entier quand "integer" est vrai), un texte pour un choix ou un texte, TRUE ou FALSE pour une case.</li>
+<li>Elle rend ce que rend le code d’un modèle de code R : le modèle ajusté, ou list(modele = fit, valeurs = c(psi = 0.54, p = 0.37), tableaux = list(sites = d)). Nuée tire du modèle print(summary()), coef(summary()) (ou coef() et vcov()), logLik(), nobs(), AIC(), fitted(), residuals() et predict() quand ils marchent. Pour une classe à vous, définissez ses méthodes dans vos fichiers (summary.maclasse, print.summary.maclasse, vcov.maclasse, logLik.maclasse, nobs.maclasse…) : Nuée enregistre celles des génériques qu’elle appelle, pour les trouver ; donnez à la classe un nom qui appartient à votre greffon (nuee_occupancy).</li>
+<li><strong>Écrivez-la pour R seul :</strong> appelez un autre paquet par paquet::fonction (ou library() dans la fonction) et nommez-le dans "packages" ; n’utilisez pas les fonctions de Nuée elle-même : Exporter vers R exécute votre code hors de Nuée. stop() avec une phrase dit ce qui ne va pas (Nuée le montre avec le fichier et la ligne du greffon). getOption("nuee.langue") vaut "fr" ou "en", la langue de l’interface, pour des messages dans les deux langues ; hors de Nuée, NULL.</li>
+</ul>
+<p><strong>L’essayer dans Nuée :</strong> Fichier › Greffons…, Installer depuis un fichier…, puis le plugin.json de votre dossier (inutile de l’empaqueter) : Nuée le vérifie, le montre et l’installe. Après un changement, installez-le de nouveau (chaque changement fait une autre empreinte, approuvée de nouveau), puis ajustez de nouveau (Modèle › Modifier le modèle). Une erreur donne le fichier et la ligne du greffon ; Exporter vers R donne un script qui appelle votre fonction sur les mêmes données, pour y travailler dans R ou RStudio. La vérification des exemples, moteur/tests/verifier_greffons.R, compare leurs nombres à des références obtenues autrement (la vraisemblance en énumérant les états des sites, une solution exacte, cor.test, un calcul à la main) : un modèle pour vérifier les vôtres.</p>
+<p><strong>L’empaqueter :</strong> mettez le dossier dans une archive zip (plugin.json à sa racine, ou dans son seul dossier : Envoyer vers › Dossier compressé de Windows le fait), puis renommez le .zip en .nueeplugin. Seuls plugin.json et les fichiers R qu’il nomme entrent dans une installation et dans les projets qui l’utilisent. Donnez à chaque nouvelle version un "version" plus grand : les projets faits avec une ancienne la gardent, et disent qu’une plus récente est installée.</p>
+</section>
+</div>
+<p class="note">Cette page reprend le guide installé avec Nuée (<a href="https://github.com/4rtefakt/nuee/blob/main/LISEZ-MOI-APPLICATION.txt">LISEZ-MOI-APPLICATION.txt</a>, aussi dans Aide › Guide d’utilisation).</p>
+<nav class="suite" aria-label="Pages voisines"><a rel="prev" href="greffons.html">← Greffons</a><a rel="next" href="resultats.html">Résultats, documents et R →</a></nav>
+</main>
+</div>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+</body>
+</html>

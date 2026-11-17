@@ -34,20 +34,20 @@
 <main id="contenu">
 <!-- description: Installing Nuée on Windows, macOS, Debian, Ubuntu and other Linux distributions. -->
 <h1>Install</h1>
-<p>Nuée 1.0.0 runs on Windows 10 and 11 (64-bit), on macOS 14 or later (Apple silicon) and 13
+<p>Nuée 1.1.0 runs on Windows 10 and 11 (64-bit), on macOS 14 or later (Apple silicon) and 13
 or later (Intel), and on Linux. The files are on GitHub's
-<a href="https://github.com/4rtefakt/nuee/releases/tag/v1.0.0">page of version 1.0.0</a>; earlier versions on the
+<a href="https://github.com/4rtefakt/nuee/releases/tag/v1.1.0">page of version 1.1.0</a>; earlier versions on the
 <a href="https://github.com/4rtefakt/nuee/releases">Releases</a> page.</p>
 <h2 id="windows">Windows</h2>
 <ol>
-<li>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>.</li>
+<li>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-Setup-1.1.0.exe">Nuee-Setup-1.1.0.exe</a>.</li>
 <li>Run it and choose to install it for yourself (no administrator rights needed) or for every
 user of the computer.</li>
 <li>Windows may say it protected your PC, because the installer isn't signed: click <em>More info</em>,
 then <em>Run anyway</em>.</li>
 </ol>
-<p>R is included: there is nothing else to install, and an R already on the computer is neither used
-nor changed. Nuée appears in the Start menu; double-clicking a <code>.nuee</code> project opens it in Nuée.
+<p>R is included: there is nothing else to install. An R already on the computer is never changed,
+and used only if you choose it in <em>File › Settings…</em>. Nuée appears in the Start menu; double-clicking a <code>.nuee</code> project opens it in Nuée.
 It is uninstalled from <em>Settings › Apps</em>; your projects stay where you saved them, and your
 settings are kept.</p>
 <h3>Updates</h3>
@@ -63,16 +63,16 @@ that turns the update check off for everyone, what Nuée writes where and what i
 network: see <a href="https://github.com/4rtefakt/nuee/blob/main/docs/deploiement.md">the deployment guide</a>.</p>
 <h2 id="macos">macOS</h2>
 <ol>
-<li>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-arm64.dmg">Nuee-1.0.0-arm64.dmg</a> for a Mac with Apple silicon
-(macOS 14 or later), or <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.dmg">Nuee-1.0.0-x64.dmg</a> for an Intel Mac
+<li>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-arm64.dmg">Nuee-1.1.0-arm64.dmg</a> for a Mac with Apple silicon
+(macOS 14 or later), or <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.dmg">Nuee-1.1.0-x64.dmg</a> for an Intel Mac
 (macOS 13 or later).</li>
 <li>Open it and drag Nuée into <em>Applications</em>.</li>
 <li>The application isn't signed with an Apple Developer ID, so the first time macOS says it
 couldn't check it: click <em>Done</em>, then <em>Open Anyway</em> in <em>System Settings › Privacy &amp; Security</em>,
 and confirm. Nuée then opens as any other application.</li>
 </ol>
-<p>R is included, as on Windows: there is nothing else to install, and an R already on the Mac is
-neither used nor changed. Settings are kept in <code>~/Library/Application Support/Nuee</code>. At start-up,
+<p>R is included, as on Windows: there is nothing else to install. An R already on the Mac is never
+changed, and used only if you choose it in <em>Nuée › Settings…</em>. Settings are kept in <code>~/Library/Application Support/Nuee</code>. At start-up,
 Nuée asks GitHub whether a newer version exists; a click in the status bar opens its page, whose
 <code>.dmg</code> replaces the application. Every change to Nuée is checked on Apple silicon and Intel Macs,
 from the <code>.dmg</code>, on a Mac without R.</p>
@@ -80,8 +80,8 @@ from the <code>.dmg</code>, on a Mac without R.</p>
 <p>On Linux, Nuée uses the R installed on the computer (an R build is tied to its distribution's
 libraries, so it can't be carried along as on Windows).</p>
 <h3>Debian, Ubuntu and their derivatives</h3>
-<p>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a>, then, in a terminal, in the file's folder:</p>
-<pre><code>sudo apt install ./Nuee-1.0.0-amd64.deb
+<p>Download <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-amd64.deb">Nuee-1.1.0-amd64.deb</a>, then, in a terminal, in the file's folder:</p>
+<pre><code>sudo apt install ./Nuee-1.1.0-amd64.deb
 </code></pre>
 <p>apt also installs R and the R packages Nuée needs. Nuée appears in the applications menu. Every
 change to Nuée is checked with this package installed on Ubuntu 22.04 and 24.04 and Debian 12,
@@ -94,11 +94,11 @@ with their own R.</p>
 </code></pre>
 <p>Then either:</p>
 <ul>
-<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a>: make it executable
-(<code>chmod +x Nuee-1.0.0-x86_64.AppImage</code>), then run it. It needs FUSE 2 (the <code>libfuse2</code> package on most
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x86_64.AppImage">Nuee-1.1.0-x86_64.AppImage</a>: make it executable
+(<code>chmod +x Nuee-1.1.0-x86_64.AppImage</code>), then run it. It needs FUSE 2 (the <code>libfuse2</code> package on most
 distributions). On Ubuntu 24.04 and later, prefer the <code>.deb</code>: it installs the AppArmor profile
 Chromium's sandbox needs there, and an AppImage has to be started with <code>--no-sandbox</code>.</li>
-<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a>: unpack it, then run <code>./nuee</code>.</li>
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.tar.gz">Nuee-1.1.0-x64.tar.gz</a>: unpack it, then run <code>./nuee</code>.</li>
 </ul>
 <h3>Good to know</h3>
 <ul>
@@ -112,11 +112,11 @@ or Excel instead.</li>
 exists; a click in the status bar opens its page.</li>
 </ul>
 <h2 id="then">Then</h2>
-<p>Open a table (<em>File › Open</em>, Ctrl+O), or try <em>Help › Example project</em>, then follow
+<p>Open a table (<em>File › Open</em>, Ctrl+O), or try <em>Help › Example projects</em>, then follow
 <a href="tutorials/index.html">a tutorial</a> or <a href="guide/getting-started.html">the guide</a>.</p>
 
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · free software (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">source code</a> · <a href="https://github.com/4rtefakt/nuee/issues">report a problem</a></p></footer>
 </body>
 </html>

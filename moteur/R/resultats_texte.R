@@ -22,15 +22,20 @@ texte_resultats <- function(projet, d, m, langue = c("fr", "en"), chiffres = "")
   list(paragraphes = resultats_composantes(projet, d, m, fr))
 }
 
-# (des nombres et des valeurs p écrits comme dans le texte des méthodes)
+# (des nombres et des valeurs p écrits comme dans le texte des méthodes ; un infini « ∞ », un nombre de
+# 1e15 ou plus en notation scientifique, que « fg » écrirait chiffre à chiffre : une centaine pour
+# exp(240), le rapport de cotes d'une séparation complète)
 nombre_resultat <- function(x, fr, chiffres = 3) {
   if (is.null(x) || !length(x) || is.na(x)) return(if (fr) "non calculé" else "not computed")
+  if (is.infinite(x)) return(if (x > 0) "∞" else "−∞")
+  if (abs(x) >= 1e15) return(formatC(x, format = "g", digits = chiffres, decimal.mark = if (fr) "," else "."))
   trimws(sub("[.,]$", "", formatC(signif(x, chiffres), format = "fg", digits = chiffres, decimal.mark = if (fr) "," else ".", flag = "#")))
 }
+# (une valeur p manquante : non calculée, plutôt que « p = NA » ; trimws, formatC écrivant 1 «   1 »)
 p_resultat <- function(p, fr) {
-  if (is.null(p) || is.na(p)) return("p = NA")
+  if (is.null(p) || is.na(p)) return(if (fr) "p non calculée" else "p not computed")
   if (p < 0.001) return(if (fr) "p < 0,001" else "p < 0.001")
-  paste("p =", formatC(p, digits = 2, format = "g", decimal.mark = if (fr) "," else "."))
+  paste("p =", trimws(formatC(p, digits = 2, format = "g", decimal.mark = if (fr) "," else ".")))
 }
 guillemets_resultat <- function(x, fr) if (fr) sprintf("« %s »", x) else sprintf("“%s”", x)
 
@@ -56,7 +61,7 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   } else sprintf(if (fr) "R² = %s (ajusté : %s)" else "R² = %s (adjusted: %s)", nb(r2$r2, 2), nb(r2$r2_ajuste, 2))
   p1 <- sprintf(if (fr) "Le modèle de %s porte sur %d observations : %s ; en validation croisée, Q² = %s (RMSEcv = %s). AIC = %s."
                 else "The model of %s uses %d observations: %s; in cross-validation, Q² = %s (RMSEcv = %s). AIC = %s.",
-                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, nb(m$vc$Q2, 2), nb(m$vc$RMSEcv), nb(r$AIC, 4))
+                paste0(guillemets_resultat(m$y$noms, fr), if (!is.null(projet)) unite_texte(projet, m$y$uid[1]) else ""), m$N, qualite, if (is.finite(m$vc$Q2 %||% NA)) nb(m$vc$Q2, 2) else nb(NA), nb(m$vc$RMSEcv), nb(r$AIC, 4))
   co <- r$coefficients
   co <- co[co$terme != "(Intercept)", , drop = FALSE]
   lien <- m$lien %||% "identity"
@@ -64,7 +69,7 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
     x <- co[i, ]
     u <- par_unite(x$terme)
     base <- sprintf(if (fr) "%s : β = %s%s (IC 95 %% [%s ; %s], %s)" else "%s: β = %s%s (95%% CI [%s, %s], %s)",
-                    guillemets_resultat(x$terme, fr), nb(x$estimation), u, nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
+                    paste0(guillemets_resultat(x$terme, fr), lieu_coefficient(m, x$terme, fr, d)), nb(x$estimation), u, nb(x$bas), nb(x$haut), p_resultat(x$p, fr))
     echelle <- if (lien == "log") sprintf(if (fr) ", soit un facteur %s [%s ; %s]%s" else ", i.e. a factor of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
                else if (lien == "logit") sprintf(if (fr) ", soit un rapport de cotes de %s [%s ; %s]%s" else ", i.e. an odds ratio of %s [%s, %s]%s", nb(exp(x$estimation)), nb(exp(x$bas)), nb(exp(x$haut)), u)
                else ""
@@ -100,6 +105,34 @@ resultats_regression <- function(m, fr, projet = NULL, d = NULL) {
   c(p1, p2, p3, p4)
 }
 
+# Où se lit le coefficient d'une catégorie d'une variable qualitative croisée, dans les termes de
+# l'ajustement, avec des variables quantitatives (« habitat » avec « annee » dans annee × habitat) :
+# son écart à la catégorie de référence là où chacune vaut 0, ou à sa moyenne quand elle est centrée
+# (Quelle analyse ? centre le temps d'une tendance) ; le texte des méthodes le dit aussi
+# (regression.R : phrases_qualitatives). " (à la moyenne de « annee », 2016)", ou "" pour un autre
+# terme. `d` : la définition du modèle (la transformation d'une variable), s'il y en a une.
+lieu_coefficient <- function(m, terme, fr, d = NULL) {
+  comp <- m$composition
+  t <- m$termes[match(terme, m$noms_termes)]
+  ct <- if (length(t) && !is.na(t)) comp[[t]]
+  if (is.null(ct) || length(ct$variables) != 1 || ct$categories == 0) return("")
+  u <- ct$variables
+  croises <- Filter(function(p) length(comp[[p]]$variables) > 1 && u %in% comp[[p]]$variables, m$utiles)
+  autres <- unique(unlist(lapply(comp[croises], function(c) c$variables[c$categories == 0])))
+  valeur <- function(x) trimws(formatC(x, digits = 6, format = "fg", decimal.mark = if (fr) "," else "."))
+  lieux <- unlist(lapply(autres, function(w) {
+    k <- which(vapply(comp, function(c) length(c$variables) == 1 && c$variables == w && c$categories == 0, TRUE))[1]
+    if (is.na(k)) return(NULL)
+    tr <- if (!is.null(d)) termes_regression(d$x)[[k]]$transform
+    nom <- guillemets_resultat(m$noms_termes[k], fr)
+    if (!is.null(tr)) nom <- formule_transformation(tr, nom, fr)
+    centre <- m$bloc$centre[k]
+    if (isTRUE(centre != 0)) sprintf(if (fr) "à la moyenne de %s, %s" else "at the mean of %s, %s", nom, valeur(centre))
+    else sprintf(if (fr) "là où %s vaut 0" else "where %s is 0", nom)
+  }))
+  if (length(lieux)) sprintf(" (%s)", paste(lieux, collapse = if (fr) " ; " else "; ")) else ""
+}
+
 resultats_composantes <- function(projet, d, m, fr) {
   s <- m$statistiques
   cp <- s$composantes
@@ -122,6 +155,8 @@ resultats_composantes <- function(projet, d, m, fr) {
   if (length(ca)) {
     p2 <- paste(vapply(names(ca), function(y) {
       t <- ca[[y]]
+      # (sans valeur p, ses degrés de liberté résiduels ne sont pas positifs : son F ne veut rien dire)
+      if (is.na(t$p[2])) return(sprintf(if (fr) "CV-ANOVA de %s non calculée : trop peu d'observations pour ses degrés de liberté" else "CV-ANOVA of %s not computed: too few observations for its degrees of freedom", guillemets_resultat(y, fr)))
       sprintf(if (fr) "CV-ANOVA de %s : F = %s, %s" else "CV-ANOVA of %s: F = %s, %s", guillemets_resultat(y, fr), nb(t$F[2]), p_resultat(t$p[2], fr))
     }, ""), collapse = if (fr) " ; " else "; ")
     p2 <- paste0(p2, ".")

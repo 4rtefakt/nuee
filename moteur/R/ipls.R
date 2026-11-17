@@ -22,8 +22,8 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   # observations des autres groupes, qui ajustent le sous-modèle (les autres étapes ne regardent
   # que chaque spectre : elles donnent les mêmes valeurs à chaque groupe).
   s <- spectres_modele(projet, d)
-  lignes <- match(as.character(d$observations), rownames(projet$donnees))
-  colonnes <- vapply(d$x[spectre], function(t) as.character(t$variables[1]), "")
+  lignes <- match(nom_numero(d$observations), rownames(projet$donnees))
+  colonnes <- vapply(d$x[spectre], function(t) nom_numero(t$variables[1]), "")
   avec_spectre <- function(valeurs) {
     q <- projet
     q$donnees[lignes, colonnes] <- valeurs
@@ -63,6 +63,7 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   coupes <- split(spectre, cut(seq_along(spectre), n, labels = FALSE))
   noms <- vapply(d$x, function(t) as.character(t$name), "")
   intervalles <- lapply(coupes, function(k) {
+    verifier_arret()
     r <- zone(c(k, autres))
     list(termes = I(noms[k]), variables = I(vapply(d$x[k], function(t) as.numeric(t$variables[1]), 0)), rmsecv = I(r), A = meilleur(r))
   })

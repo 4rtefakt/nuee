@@ -61,7 +61,7 @@ export function faitsVariables(p, s) {
   return new Map(liste(p.variables).map((v) => {
     const i = index.get(v.uid);
     return [v.uid, {
-      uid: v.uid, nom: v.nom, qualitative: !!v.qualitative, ncat: liste(v.categories).length, dates: !!v.temps,
+      uid: v.uid, nom: v.nom, qualitative: !!v.qualitative, ncat: liste(v.categories).length, dates: !!v.temps, unite: String(v.unite || '').trim(),
       N: col('N', i), manquantes: col('manquantes', i), min: col('min', i), max: col('max', i), moyenne: col('moyenne', i),
       ecart: col('ecart_type', i), asymetrie: col('test_asymetrie', i), suggestion: col('suggestion', i),
       entiers: col('entiers', i), zeros: col('zeros', i),
@@ -69,15 +69,28 @@ export function faitsVariables(p, s) {
   }));
 }
 
+// Whole numbers that are a measurement rounded to its unit, not counts: the unit of a measurement
+// (Edit › Units and descriptions: g, kg, m, cm, mm, ha, %, °C..., or anything per something, a
+// density), or a name that says a measurement (a mean, a ratio, a rate, a biomass, a length...).
+// A count's unit (ind., nests) or name (abundance, n_birds) says counts; neither: counts, in doubt.
+const UNITE_COMPTAGE = /^(ind\.?|individus?|individuals?|nids?|nests?|oiseaux|birds?|couples?|pairs?|n|nb|nombre|number|counts?|comptages?|effectifs?)$/i;
+const MOTIF_MESURE = /(^|[_ .-])(moy|mean|average|avg|ratio|rapport|taux|rate|indice|index|densit|biomass|masse|mass|poids|weight|longueur|length|hauteur|height|diam[eè]tre|diameter|dbh|surface|area|recouvrement|couverture|cover|pourcent|percent|pct|temp[ée]rature|altitude|elevation|profondeur|depth)/i;
+const MOTIF_COMPTAGE = /(^|[_ .-])(n|nb|nombre|number|counts?|comptages?|effectifs?|abondances?|abundances?|individus|individuals|nids|nests|oiseaux|birds|captures|catch)([_ .-]|$)/i;
+const uniteComptage = (f) => !!f.unite && UNITE_COMPTAGE.test(f.unite);
+export const mesureArrondie = (f) => !!f && !uniteComptage(f) && (!!f.unite || MOTIF_MESURE.test(f.nom || ''));
+// whole numbers 0 or more read as counts with nothing to say so: a measurement rounded is possible
+export const comptageIncertain = (f) => !!f && f.entiers === true && !mesureArrondie(f) && !uniteComptage(f) && !MOTIF_COMPTAGE.test(f.nom || '');
+
 // The kind of a response, from its facts: a class (qualitative), a presence-absence (whole numbers
-// from 0 to 1), a proportion (between 0 and 1), a count (whole numbers, 0 or more), else a measurement.
+// from 0 to 1), a proportion (between 0 and 1), a count (whole numbers, 0 or more, unless their unit
+// or name says a measurement), else a measurement.
 export function genre(f) {
   if (!f) return null;
   if (f.qualitative) return 'classe';
   if (f.min === null || f.max === null) return 'mesure';
   if (f.entiers === true && f.min >= 0 && f.max <= 1) return 'presence';
   if (f.min >= 0 && f.max <= 1) return 'proportion';
-  if (f.entiers === true && f.min >= 0) return 'comptage';
+  if (f.entiers === true && f.min >= 0) return mesureArrondie(f) ? 'mesure' : 'comptage';
   return 'mesure';
 }
 // The share of zeros a Poisson distribution of the same mean gives, in %.
@@ -235,8 +248,9 @@ export function proposer(p, F, coordonnees = null) {
 }
 
 // The response chosen: its kind (the only one its question offers, or the one its values say) and
-// many zeros, from its facts.
-export function choisirReponse(R, F, uid) {
+// many zeros, from its facts. p (the project): the groups, when the response is the qualitative
+// variable they were, become another one (or none, to choose), never the response itself.
+export function choisirReponse(R, F, uid, p = null) {
   const f = uid === null || uid === undefined ? null : F.get(uid);
   R.y = f ? uid : null;
   if (f) {
@@ -246,6 +260,33 @@ export function choisirReponse(R, F, uid) {
   }
   R.x = liste(R.x).filter((u) => u !== R.y);
   R.variables = liste(R.variables).filter((u) => u !== R.y);
+  if (p && R.y !== null && R.groupe === R.y) R.groupe = trouverGroupe(p, new Set([R.y, uidDe(R.site), uidDe(R.unite)]));
+  return R;
+}
+
+// The variables the response list offers (their numbers, in the dialog's order): the quantitative
+// ones for a question with numbers as its response, then the qualitative ones for a class; not
+// the time, the site or the unit of a design box ticked (or required): they are the design.
+export function reponsesPossibles(R, F, p) {
+  const f = formulaire(R.question, R.but);
+  if (!f) return [];
+  const coche = (k) => f.champs.includes(`${k}!`) || (f.champs.includes(k) && !!R[k]);
+  const plan = new Set([coche('annees') && uidDe(R.temps), coche('repetes') && uidDe(R.site), coche('baci') && uidDe(R.unite)].filter((u) => typeof u === 'number'));
+  const numeriques = f.reponses.some((k) => ['mesure', 'comptage', 'presence', 'proportion', 'distances'].includes(k));
+  const vars = liste(p.variables).filter((v) => !plan.has(v.uid));
+  return [...(numeriques ? vars.filter((v) => !v.qualitative) : []), ...(f.reponses.includes('classe') ? vars.filter((v) => v.qualitative) : [])].map((v) => v.uid);
+}
+
+// The response once the question or the design is chosen: none when the list no longer offers it
+// (the time, once it is the trend's time), and the only variable left when one alone fits (the
+// counts of a trend, the year being its time). Not for a response that may stay unchosen, several
+// variables or the species.
+export function proposerReponse(R, F, p) {
+  const f = formulaire(R.question, R.but);
+  if (!f || f.facultative || f.plusieurs || R.reponse === 'especes' || f.reponses.every((k) => k === 'especes')) return R;
+  const possibles = reponsesPossibles(R, F, p);
+  if (R.y !== null && R.y !== undefined && !possibles.includes(R.y)) R.y = null;
+  if ((R.y === null || R.y === undefined) && possibles.length === 1) choisirReponse(R, F, possibles[0], p);
   return R;
 }
 
@@ -267,6 +308,8 @@ export function contexte(R, F, p) {
   return {
     question: R.question, but: R.question === 'especes' ? R.but || 'composition' : null, reponse: R.reponse,
     zeros: R.reponse === 'comptage' && !!R.zeros,
+    // (whole numbers taken for counts with nothing to say so: a measurement rounded to its unit too)
+    comptageIncertain: R.reponse === 'comptage' && comptageIncertain(f),
     surdispersion: R.reponse === 'comptage' && surdispersion(f),
     asymetrique: R.reponse === 'mesure' && asymetrique(f),
     avecZeros: R.reponse === 'mesure' && avecZeros(f),
@@ -322,8 +365,11 @@ export const REGLES = [
   { question: 'effet', reponse: 'especes', choix: 'rda', autres: ['cca', 'par_reponse', 'permanova'] },
   { question: 'effet', reponse: 'classe', choix: 'arbre', autres: ['lda', 'foret', 'plsda'] },
   { question: 'effet', reponse: 'mesure', si: { avecZeros: true }, choix: 'glm_tweedie', autres: ['lm_log', 'normal', 'gam'] },
-  { question: 'effet', reponse: 'mesure', si: { asymetrique: true }, choix: 'glm_gamma', autres: ['lm_log', 'normal', 'gam'] },
+  // (a skewed response, judged before any X: the X may make it so, as a biomass falling with the
+  // elevation; the linear model first, its residuals checked after the fit, the gamma GLM and the
+  // log offered, never recommended on the raw skew alone)
   { question: 'effet', reponse: 'mesure', si: { coordonnees: true }, choix: 'normal', autres: ['gam_spatial', 'gam', 'foret'] },
+  { question: 'effet', reponse: 'mesure', si: { asymetrique: true }, choix: 'normal', autres: ['glm_gamma', 'lm_log', 'gam'] },
   { question: 'effet', reponse: 'mesure', choix: 'normal', autres: ['gam', 'foret', 'arbre'] },
   { question: 'effet', reponse: 'comptage', si: { zeros: true }, choix: 'glm_nb', autres: ['glm_zip', 'glm_poisson', 'gam'] },
   { question: 'effet', reponse: 'comptage', si: { surdispersion: true }, choix: 'glm_nb', autres: ['glm_poisson', 'gam', 'boost'] },
@@ -385,11 +431,13 @@ export function regle(c) {
     && Object.entries(r.si || {}).every(([k, v]) => vaut(v, valeurContexte(c, k)))) || null;
 }
 // The analysis recommended and its alternatives (those the context allows: CATALOGUE[id].si).
+// Counts in doubt (comptageIncertain) are offered the linear model too, the other family.
 export function recommander(c) {
   const r = regle(c);
   if (!r) return null;
   const possible = (id) => Object.entries(CATALOGUE[id].si || {}).every(([k, v]) => vaut(v, valeurContexte(c, k)));
-  return { choix: r.choix, autres: r.autres.filter((id) => id !== r.choix && possible(id)), regle: r };
+  const autres = r.autres.concat(c.comptageIncertain && !r.autres.includes('normal') ? ['normal'] : []);
+  return { choix: r.choix, autres: autres.filter((id) => id !== r.choix && possible(id)), regle: r };
 }
 
 // ------------------------------------------------------------ the analyses
@@ -455,6 +503,8 @@ const COMPOSANTES = ['acp', 'pls', 'opls', 'plsda', 'oplsda', 'classes'];
 
 // Sentences added to an analysis (pour: its ids) when the context says so (si, as in REGLES).
 export const NOTES = [
+  { si: { comptageIncertain: true }, pour: ['glm_poisson', 'glm_nb', 'glm_zip', 'trim', 'boost', 'gam'], cle: 'qa_note_comptage_incertain' },
+  { si: { asymetrique: true, question: 'effet' }, pour: ['normal', 'gam', 'gam_spatial'], cle: 'qa_note_asymetrie_residus' },
   { si: { repetes: true }, pour: REGRESSIONS, cle: 'qa_note_site' },
   { si: { repetes: true }, pour: ['pls', 'opls', 'plsda', 'oplsda', 'arbre', 'lda', 'foret', 'boost'], cle: 'qa_note_vc_site' },
   { si: { repetes: true }, pour: ['rda', 'cca', 'permanova', 'indval'], cle: 'qa_note_strates' },
@@ -463,6 +513,7 @@ export const NOTES = [
   { si: { annees: true }, pour: ['normal', 'lm_log'], cle: 'qa_note_annees' },
   { si: { question: 'tendance' }, pour: ['normal'], cle: 'qa_note_puissance' },
   { si: { tempsNonQuantitatif: true, question: 'tendance' }, pour: REGRESSIONS, cle: 'qa_note_temps_x' },
+  { si: { annees: true, tempsNonQuantitatif: false, question: 'tendance' }, pour: REGRESSIONS, cle: 'qa_note_temps_centre' },
   { si: { bornes01: true }, pour: ['glm_beta', 'gam', 'gam_spatial'], cle: 'qa_note_bornes01' },
   { si: { coordonnees: true, question: 'effet' }, pour: REGRESSIONS, cle: 'qa_note_espace_residus' },
   { si: { especesEntieres: false }, pour: ['rarefaction'], cle: 'qa_note_especes_non_entieres' },
@@ -474,7 +525,7 @@ export const notesPour = (id, c) => NOTES.filter((n) => n.pour.includes(id) && O
 
 // The distribution of a regression whose family follows the response (a GAM) or the species (one
 // model per species): counts → negative binomial (Poisson without overdispersion nor many zeros),
-// 0/1 → binomial, proportions → beta, a measurement with zeros → Tweedie, positive and skewed → gamma.
+// 0/1 → binomial, proportions → beta, a measurement with zeros → Tweedie, otherwise normal.
 export function familleDe(c, especes = []) {
   if (c.question === 'especes' || c.reponse === 'especes') {
     if (especes.length && especes.every((f) => genre(f) === 'presence')) return 'binomiale';
@@ -485,7 +536,7 @@ export function familleDe(c, especes = []) {
   if (c.reponse === 'presence') return 'binomiale';
   if (c.reponse === 'proportion') return 'beta';
   if (c.avecZeros) return 'tweedie';
-  if (c.asymetrique) return 'gamma';
+  // (a skewed response stays normal: its residuals, not its raw values, say whether gamma is needed)
   return 'gaussienne';
 }
 // the log of the response: the one Variable statistics proposes (log10(x + C2)), else log10, or
@@ -540,6 +591,13 @@ export function construire(id, R, F, p, c = contexte(R, F, p), options = {}) {
       if (r.type !== 'LM' && r.type !== 'LMM') r.famille = e.famille === 'reponse' ? familleDe(c) : e.famille === 'especes' ? familleDe(c, especes.map((u) => F.get(u))) : e.famille;
       ajouter('qa_rempli_y', noms(r.y));
       ajouter('qa_rempli_x', noms(r.x));
+      // (the time of a trend centred on its mean, its own scaling, the others in their units: crossed
+      // with a factor, each category's coefficient is then its difference at the mean year, not in
+      // year 0, far from the data)
+      if (c.question === 'tendance' && tempsUid !== null && r.x.includes(tempsUid)) {
+        Object.assign(r, { echelle: 'none', echelles: { [tempsUid]: 'Ctr' } });
+        ajouter('qa_rempli_centree', noms([tempsUid]));
+      }
       if (site) { r.aleatoires = [site]; ajouter('qa_rempli_aleatoire', [nomColonne(R.site, p)]); }
       vc();
       if (r.famille) rempli.push({ cle: 'qa_rempli_loi', texte: `famille_${r.famille}` });
@@ -820,6 +878,7 @@ export const TEXTES_CHOIX = {
     qa_reponse_variable: 'Réponse', qa_variables_explorer: 'Variables du tableau', qa_choisir: '— choisir —',
     qa_reponse_facultative: '— aucune —',
     qa_faits_bornes: 'de {min} à {max}', qa_faits_entiers: 'des entiers', qa_faits_decimales: 'pas tous entiers',
+    qa_faits_mesure_arrondie: 'une mesure arrondie à son unité, d’après son unité ou son nom',
     qa_faits_zeros: '{p} % de zéros', qa_faits_poisson: 'une loi de Poisson de même moyenne en donnerait {q} %',
     qa_faits_manquantes: '{p} % de valeurs manquantes', qa_faits_categories: '{n} catégories', qa_faits_categorie_une: '1 catégorie', qa_faits_asymetrie: 'asymétrique (quelques très grandes valeurs)',
     qa_faits_inconnus: 'les statistiques des variables n’ont pas pu être lues', qa_faits_propose: 'Proposé d’après les données : {faits}.',
@@ -846,6 +905,7 @@ export const TEXTES_CHOIX = {
     qa_rempli_y: 'Y', qa_rempli_classe: 'Classe', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X ajustées sur le plan', qa_rempli_especes: 'Espèces',
     qa_rempli_aleatoire: 'Effet aléatoire', qa_rempli_vc: 'Groupes de validation croisée', qa_rempli_loi: 'Loi', qa_rempli_courbes: 'Courbes',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Lissage spatial', qa_rempli_site: 'Site', qa_rempli_temps: 'Temps',
+    qa_rempli_centree: 'Centrée sur sa moyenne',
     qa_rempli_groupes: 'Groupes', qa_rempli_apparier: 'Apparié par', qa_rempli_unite: 'Unité', qa_rempli_lignes: 'Lignes', qa_rempli_tendances: 'Tendances',
     qa_rempli_couleur: 'Couleur', qa_rempli_formule: 'Formule', qa_rempli_distance_x: 'Distance des X', qa_rempli_composantes: 'Composantes',
     qa_rempli_plan: 'Plan', qa_rempli_transect: 'Transect ou point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Strate', qa_rempli_aire: 'Aire',
@@ -959,12 +1019,15 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_distance: 'On ne voit pas tous les animaux, et moins ceux qui sont loin : la fonction de détection, ajustée aux distances, donne la probabilité de détection, puis la densité et l’effectif de chaque strate (Buckland et al. 2001), comme le paquet Distance.',
     qa_conditions_distance: 'Une ligne par détection, sa distance en Y, et chaque transect sans détection gardé, sa distance vide ; tous les animaux sur la ligne ou le point vus ; une soixantaine de détections au moins. Ce qui change la détection (l’observateur, le vent, la taille des groupes) peut en être une covariable (Nouveau modèle › Covariables).',
 
+    qa_note_asymetrie_residus: 'La réponse est asymétrique, mais ses X peuvent la rendre ainsi : c’est sur les résidus qu’on en juge, après l’ajustement (Résumé › Conditions du modèle). S’ils restent asymétriques, choisissez la loi gamma ou le log de la réponse, parmi les autres possibilités.',
+    qa_note_comptage_incertain: 'Des entiers sans unité, lus comme des comptages : si ce sont des mesures arrondies à leur unité (des grammes, des centimètres), choisissez plutôt Une mesure, ou le modèle linéaire parmi les autres possibilités ; Édition › Unités et descriptions donne son unité à la variable.',
     qa_note_site: 'Les observations d’un même site se ressemblent : l’effet aléatoire par site en tient compte, et la validation croisée prédit chaque site sans lui.',
     qa_note_vc_site: 'La validation croisée par site juge le modèle sur des sites qu’il n’a jamais vus.',
     qa_note_strates: 'Les observations d’un même site ne sont pas indépendantes : des permutations dans les sites (onglet Général) si les X varient dans chaque site, sinon résumez d’abord par site (Édition › Résumer par groupe).',
     qa_note_moyennes: 'Puis Graphiques › Moyennes ajustées compare les groupes deux à deux (Tukey).',
     qa_note_annees: 'Des années qui se suivent se ressemblent : après l’ajustement, Graphiques › Autocorrélation des résidus, puis au besoin Ajuster avec CAR1.',
     qa_note_puissance: 'Graphiques › Puissance pour une tendance dit ensuite combien d’années il faut pour la détecter.',
+    qa_note_temps_centre: 'Le temps est centré sur sa moyenne (son échelle Ctr) : la pente ne change pas, et si vous croisez le temps avec une variable qualitative (la tendance diffère-t-elle d’un habitat à l’autre ?), le coefficient de chaque catégorie est son écart à l’année moyenne, non en l’an 0, loin des données.',
     qa_note_temps_x: 'Le temps choisi n’est pas une variable quantitative : pour l’avoir en X, faites-en une (Édition › Nouvelle variable).',
     qa_note_bornes01: 'La réponse touche 0 ou 1, que la loi bêta refuse : ramenez-la d’abord dans l’intervalle, en le disant (Édition › Nouvelle variable : (y * (n - 1) + 0.5) / n pour n observations ; Smithson et Verkuilen 2006).',
     qa_note_espace_residus: 'Avec des coordonnées : après l’ajustement, Graphiques › Autocorrélation spatiale de ses résidus.',
@@ -999,8 +1062,9 @@ export const TEXTES_CHOIX = {
     qa_reponse_variable: 'Response', qa_variables_explorer: 'Variables of the table', qa_choisir: '— choose —',
     qa_reponse_facultative: '— none —',
     qa_faits_bornes: 'from {min} to {max}', qa_faits_entiers: 'whole numbers', qa_faits_decimales: 'not all whole numbers',
-    qa_faits_zeros: '{p} % zeros', qa_faits_poisson: 'a Poisson distribution of the same mean would give {q} %',
-    qa_faits_manquantes: '{p} % missing values', qa_faits_categories: '{n} categories', qa_faits_categorie_une: '1 category', qa_faits_asymetrie: 'skewed (a few very large values)',
+    qa_faits_mesure_arrondie: 'a measurement rounded to its unit, by its unit or its name',
+    qa_faits_zeros: '{p}% zeros', qa_faits_poisson: 'a Poisson distribution of the same mean would give {q}%',
+    qa_faits_manquantes: '{p}% missing values', qa_faits_categories: '{n} categories', qa_faits_categorie_une: '1 category', qa_faits_asymetrie: 'skewed (a few very large values)',
     qa_faits_inconnus: 'the variable statistics could not be read', qa_faits_propose: 'Proposed from the data: {faits}.',
     qa_especes_proposees: 'Proposed: the columns of numbers zero or more that have zeros.', qa_n_cochees: '{n} of {total}',
     qa_d_repetes: 'The same sites or plots measured several times', qa_d_repetes_aide: 'A random effect by site, cross-validation by site',
@@ -1025,6 +1089,7 @@ export const TEXTES_CHOIX = {
     qa_rempli_y: 'Y', qa_rempli_classe: 'Class', qa_rempli_x: 'X', qa_rempli_x_ajustees: 'X fitted onto the plane', qa_rempli_especes: 'Species',
     qa_rempli_aleatoire: 'Random effect', qa_rempli_vc: 'Cross-validation groups', qa_rempli_loi: 'Distribution', qa_rempli_courbes: 'Curves',
     qa_rempli_transformation: 'Transformation', qa_rempli_spatial: 'Spatial smooth', qa_rempli_site: 'Site', qa_rempli_temps: 'Time',
+    qa_rempli_centree: 'Centred on its mean',
     qa_rempli_groupes: 'Groups', qa_rempli_apparier: 'Paired by', qa_rempli_unite: 'Unit', qa_rempli_lignes: 'Lines', qa_rempli_tendances: 'Trends',
     qa_rempli_couleur: 'Colour', qa_rempli_formule: 'Formula', qa_rempli_distance_x: 'Distance of the X', qa_rempli_composantes: 'Components',
     qa_rempli_plan: 'Design', qa_rempli_transect: 'Transect or point', qa_rempli_effort: 'Effort', qa_rempli_strate: 'Stratum', qa_rempli_aire: 'Area',
@@ -1138,12 +1203,15 @@ export const TEXTES_CHOIX = {
     qa_pourquoi_distance: 'Not every animal is seen, and fewer far away: the detection function, fitted to the distances, gives the probability of detection, then the density and abundance of each stratum (Buckland et al. 2001), as the Distance package.',
     qa_conditions_distance: 'One row per detection, its distance as Y, and each transect without detection kept, its distance empty; every animal on the line or point seen; about sixty detections at least. What changes detection (the observer, the wind, the group size) can be a covariate of it (New model › Covariates).',
 
+    qa_note_asymetrie_residus: 'The response is skewed, but its X may make it so: its residuals tell, after the fit (Summary › Model conditions). If they stay skewed, choose the gamma distribution or the log of the response, among the alternatives.',
+    qa_note_comptage_incertain: 'Whole numbers without a unit, read as counts: if they are measurements rounded to their unit (grams, centimetres), choose A measurement instead, or the linear model among the alternatives; Edit › Units and descriptions gives the variable its unit.',
     qa_note_site: 'Observations of the same site resemble each other: the random effect by site accounts for it, and cross-validation predicts each site without it.',
     qa_note_vc_site: 'Cross-validation by site judges the model on sites it has never seen.',
     qa_note_strates: 'Observations of the same site aren’t independent: permutations within sites (General tab) if the X vary within each site; otherwise summarise by site first (Edit › Summarize by group).',
     qa_note_moyennes: 'Then Plots › Adjusted means compares the groups two by two (Tukey).',
     qa_note_annees: 'Successive years resemble each other: after the fit, Plots › Residual autocorrelation, then Fit with CAR1 if needed.',
     qa_note_puissance: 'Plots › Trend power then says how many years it takes to detect it.',
+    qa_note_temps_centre: 'The time is centred on its mean (its scaling Ctr): the slope doesn’t change, and if you cross the time with a qualitative variable (does the trend differ from one habitat to another?), each category’s coefficient is its difference at the mean year, not in year 0, far from the data.',
     qa_note_temps_x: 'The time chosen isn’t a quantitative variable: to have it as an X, make one (Edit › New variable).',
     qa_note_bornes01: 'The response reaches 0 or 1, which the beta distribution refuses: bring it inside the interval first, saying so (Edit › New variable: (y * (n - 1) + 0.5) / n for n observations; Smithson and Verkuilen 2006).',
     qa_note_espace_residus: 'With coordinates: after the fit, Plots › Spatial autocorrelation of its residuals.',

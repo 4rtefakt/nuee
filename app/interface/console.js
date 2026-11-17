@@ -2,7 +2,7 @@
 // of the interface, and a prompt that runs R in the application's own R session
 // (moteur/console.R). m and p are the model and the project shown; P1, M7... the open
 // projects and models, by the names the log gives them.
-import { t, lire, ecrire } from './i18n.js';
+import { t, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone } from './ui.js';
 
 // the last click anywhere: what the prompt's focus guard compares with the last key typed
@@ -17,7 +17,7 @@ export function rendreConsole(conteneur, ctx) {
   }
   const etat = { n: 0, historique: [], position: -1, appels: lire('console_appels') !== '0' };
   try { etat.historique = JSON.parse(lire('historique_r') || '[]'); } catch { etat.historique = []; }
-  const journal = el('div', { class: 'journal-r' + (etat.appels ? '' : ' sans-appels') });
+  const journal = el('div', { class: 'journal-r' + (etat.appels ? '' : ' sans-appels'), tabindex: 0, role: 'log', 'aria-label': t('console_r') });
   const saisie = el('textarea', { class: 'saisie-r', rows: 1, spellcheck: false, placeholder: t('console_invite') });
   const actif = el('span', { class: 'infos' });
   const appels = el('input', { type: 'checkbox', checked: etat.appels, onchange: (e) => {
@@ -35,11 +35,11 @@ export function rendreConsole(conteneur, ctx) {
     for (const e of entrees) {
       etat.n = Math.max(etat.n, e.n);
       if (e.type === 'image') {
-        journal.append(el('div', { class: 'r-image' }, el('img', { src: e.texte })));
+        journal.append(el('div', { class: 'r-image' }, el('img', { src: e.texte, alt: t('image_r') })));
         continue;
       }
       const texte = e.type === 'commande' ? e.texte.split('\n').map((l, i) => (i ? '+ ' : '> ') + l).join('\n')
-        : e.type === 'erreur' ? `${t('erreur')} : ${e.texte}` : e.type === 'avertissement' ? `${t('avertissement')} : ${e.texte}` : e.texte;
+        : e.type === 'erreur' ? `${t('erreur')}${deuxPoints()}${e.texte}` : e.type === 'avertissement' ? `${t('avertissement')}${deuxPoints()}${e.texte}` : e.texte;
       // (resultat: what R prints of a model the interface fitted; hidden with the calls)
       const bloc = el('pre', { class: 'r-' + e.type, title: e.heure }, texte);
       if (e.type === 'appel' || e.type === 'commande') bloc.dataset.code = e.texte;

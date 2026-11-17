@@ -1,7 +1,7 @@
 # Nuée's documentation website
 
 A static site, in French and in English: the home page, the installation, the user guide in
-pages, three tutorials and What's new. Plain HTML and CSS, system fonts, a light and a dark theme,
+pages, six tutorials and What's new. Plain HTML and CSS, system fonts, a light and a dark theme,
 nothing loaded from another site. Published on GitHub Pages, https://4rtefakt.github.io/nuee/, by
 `.github/workflows/site.yml` at each push that changes it (from `main`; from `nuee-1.0` too until 1.0
 is merged).
@@ -13,6 +13,7 @@ is merged).
 | `assets/` | `site.css`, `site.js` (the theme the reader chose, the guide's menu folded on a phone), the logo |
 | `images/fr/`, `images/en/` | the tutorials' screenshots, made by `captures.mjs`; their dark versions in `sombre/` |
 | `donnees/` | the tutorials' data (simulated) and the R scripts that made them |
+| `greffons/` | the example plugins of `exemple/plugins` as `.nueeplugin` files, for download, built by `construire.js` (don't edit them by hand) |
 | `sources/fr/`, `sources/en/` | the home page, the installation and the tutorials, in Markdown |
 | `construire.js` | builds the pages |
 | `captures.mjs` | takes the screenshots, the tutorials' and the README's (`docs/captures/`) |
@@ -56,7 +57,7 @@ docs/site`, then open http://127.0.0.1:8792/. The pages also open from the disk 
 ## Screenshots and data
 
 ```
-node docs/site/captures.mjs [baci] [pls] [suivi] [readme] [--langue fr|en] [--theme clair|sombre]
+node docs/site/captures.mjs [baci] [pls] [suivi] [communautes] [cartes] [rapport] [readme] [--langue fr|en] [--theme clair|sombre]
 ```
 
 Starts the R engine (`moteur/serveur.R`, port 8793) and a headless Chrome or Edge (port 9333),
@@ -72,7 +73,11 @@ which one. `suivi` also takes `suivi-fenetre.png`, the whole window with the sky
 no page of this site shows it, nuee.io does (`vitrine/`).
 
 The data are simulated, with fixed seeds: `Rscript docs/site/donnees/baci.R` (and `spectres.R`,
-`suivi.R`) writes the same files again.
+`suivi.R`, `communautes.R`, `cartes.R`) writes the same files again; `cartes.R` also writes the
+elevation model, a GeoTIFF it encodes itself. `references.bib`, for the report tutorial, lists
+four published methods papers and books. The browser has no file chooser that gives a path: for
+the rasters and the `.bib` the tutorials link, the script answers the prompt the interface opens
+instead.
 
 `readme` takes the README's screenshots, `docs/captures/*.png` (`README.md` and `README.fr.md`
 show them), only when it is named:

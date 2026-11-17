@@ -34,20 +34,20 @@
 <main id="contenu">
 <!-- description: Installer Nuée sous Windows, macOS, Debian, Ubuntu et les autres distributions Linux. -->
 <h1>Installation</h1>
-<p>Nuée 1.0.0 fonctionne sous Windows 10 et 11 (64 bits), sous macOS 14 ou plus récent (Apple
+<p>Nuée 1.1.0 fonctionne sous Windows 10 et 11 (64 bits), sous macOS 14 ou plus récent (Apple
 silicon) et 13 ou plus récent (Intel), et sous Linux. Les fichiers sont sur la
-<a href="https://github.com/4rtefakt/nuee/releases/tag/v1.0.0">page de la version 1.0.0</a> de GitHub ; les versions
+<a href="https://github.com/4rtefakt/nuee/releases/tag/v1.1.0">page de la version 1.1.0</a> de GitHub ; les versions
 précédentes sur la page des <a href="https://github.com/4rtefakt/nuee/releases">publications</a>.</p>
 <h2 id="windows">Windows</h2>
 <ol>
-<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-Setup-1.0.0.exe">Nuee-Setup-1.0.0.exe</a>.</li>
+<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-Setup-1.1.0.exe">Nuee-Setup-1.1.0.exe</a>.</li>
 <li>Lancez-le et choisissez de l'installer pour vous seul (sans droits d'administrateur) ou pour
 tous les utilisateurs de l'ordinateur.</li>
 <li>Windows peut dire qu'il a protégé votre ordinateur, car l'installateur n'est pas signé :
 cliquez sur <em>Informations complémentaires</em>, puis <em>Exécuter quand même</em>.</li>
 </ol>
-<p>R est inclus : il n'y a rien d'autre à installer, et un R déjà présent sur l'ordinateur n'est ni
-utilisé ni modifié. Nuée apparaît dans le menu Démarrer ; un double-clic sur un projet <code>.nuee</code>
+<p>R est inclus : il n'y a rien d'autre à installer. Un R déjà présent sur l'ordinateur n'est jamais
+modifié, et n'est utilisé que si vous le choisissez dans <em>Fichier › Réglages…</em>. Nuée apparaît dans le menu Démarrer ; un double-clic sur un projet <code>.nuee</code>
 l'ouvre dans Nuée. On le désinstalle depuis <em>Paramètres › Applications</em> ; vos projets restent là
 où vous les avez enregistrés, et vos réglages sont gardés.</p>
 <h3>Mises à jour</h3>
@@ -65,8 +65,8 @@ tous, ce que Nuée écrit où et ce qu'il envoie sur le réseau : voir
 anglais).</p>
 <h2 id="macos">macOS</h2>
 <ol>
-<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-arm64.dmg">Nuee-1.0.0-arm64.dmg</a> pour un Mac Apple silicon
-(macOS 14 ou plus récent), ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.dmg">Nuee-1.0.0-x64.dmg</a> pour un Mac
+<li>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-arm64.dmg">Nuee-1.1.0-arm64.dmg</a> pour un Mac Apple silicon
+(macOS 14 ou plus récent), ou <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.dmg">Nuee-1.1.0-x64.dmg</a> pour un Mac
 Intel (macOS 13 ou plus récent).</li>
 <li>Ouvrez-le et faites glisser Nuée dans <em>Applications</em>.</li>
 <li>L'application n'est pas signée avec un identifiant de développeur Apple : la première fois,
@@ -74,8 +74,8 @@ macOS dit qu'il n'a pas pu la vérifier. Cliquez sur <em>OK</em>, puis sur <em>O
 <em>Réglages Système › Confidentialité et sécurité</em>, et confirmez. Nuée s'ouvre ensuite comme
 toute autre application.</li>
 </ol>
-<p>R est inclus, comme sous Windows : il n'y a rien d'autre à installer, et un R déjà présent sur le
-Mac n'est ni utilisé ni modifié. Les réglages sont dans <code>~/Library/Application Support/Nuee</code>. Au
+<p>R est inclus, comme sous Windows : il n'y a rien d'autre à installer. Un R déjà présent sur le Mac
+n'est jamais modifié, et n'est utilisé que si vous le choisissez dans <em>Nuée › Réglages…</em>. Les réglages sont dans <code>~/Library/Application Support/Nuee</code>. Au
 démarrage, Nuée demande à GitHub s'il existe une nouvelle version ; un clic dans la barre d'état
 ouvre sa page, dont le <code>.dmg</code> remplace l'application. Chaque changement de Nuée est vérifié sur
 des Mac Apple silicon et Intel, depuis le <code>.dmg</code>, sur un Mac sans R.</p>
@@ -83,9 +83,9 @@ des Mac Apple silicon et Intel, depuis le <code>.dmg</code>, sur un Mac sans R.<
 <p>Sous Linux, Nuée utilise le R installé sur l'ordinateur (une version de R dépend des
 bibliothèques de sa distribution : elle ne peut pas être emportée comme sous Windows).</p>
 <h3>Debian, Ubuntu et dérivées</h3>
-<p>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-amd64.deb">Nuee-1.0.0-amd64.deb</a>, puis, dans un terminal, dans le dossier
+<p>Téléchargez <a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-amd64.deb">Nuee-1.1.0-amd64.deb</a>, puis, dans un terminal, dans le dossier
 du fichier :</p>
-<pre><code>sudo apt install ./Nuee-1.0.0-amd64.deb
+<pre><code>sudo apt install ./Nuee-1.1.0-amd64.deb
 </code></pre>
 <p>apt installe aussi R et les paquets R dont Nuée a besoin. Nuée apparaît dans le menu des
 applications. Chaque changement de Nuée est vérifié avec ce paquet installé sous Ubuntu 22.04 et
@@ -98,12 +98,12 @@ applications. Chaque changement de Nuée est vérifié avec ce paquet installé 
 </code></pre>
 <p>Puis l'un des deux :</p>
 <ul>
-<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x86_64.AppImage">Nuee-1.0.0-x86_64.AppImage</a> : rendez-le exécutable
-(<code>chmod +x Nuee-1.0.0-x86_64.AppImage</code>), puis lancez-le. Il demande FUSE 2 (le paquet <code>libfuse2</code> dans
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x86_64.AppImage">Nuee-1.1.0-x86_64.AppImage</a> : rendez-le exécutable
+(<code>chmod +x Nuee-1.1.0-x86_64.AppImage</code>), puis lancez-le. Il demande FUSE 2 (le paquet <code>libfuse2</code> dans
 la plupart des distributions). Sous Ubuntu 24.04 et après, préférez le <code>.deb</code> : il installe le
 profil AppArmor dont le bac à sable de Chromium a besoin, et une AppImage doit y être lancée avec
 <code>--no-sandbox</code>.</li>
-<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.0.0/Nuee-1.0.0-x64.tar.gz">Nuee-1.0.0-x64.tar.gz</a> : décompressez-le, puis lancez <code>./nuee</code>.</li>
+<li><a href="https://github.com/4rtefakt/nuee/releases/download/v1.1.0/Nuee-1.1.0-x64.tar.gz">Nuee-1.1.0-x64.tar.gz</a> : décompressez-le, puis lancez <code>./nuee</code>.</li>
 </ul>
 <h3>Bon à savoir</h3>
 <ul>
@@ -117,11 +117,11 @@ profil AppArmor dont le bac à sable de Chromium a besoin, et une AppImage doit 
 nouvelle version ; un clic dans la barre d'état ouvre sa page.</li>
 </ul>
 <h2 id="ensuite">Ensuite</h2>
-<p>Ouvrez un tableau (<em>Fichier › Ouvrir</em>, Ctrl+O), ou essayez <em>Aide › Projet d'exemple</em>, puis suivez
+<p>Ouvrez un tableau (<em>Fichier › Ouvrir</em>, Ctrl+O), ou essayez <em>Aide › Projets d'exemple</em>, puis suivez
 <a href="tutoriels/index.html">un tutoriel</a> ou <a href="guide/demarrer.html">le guide</a>.</p>
 
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.0.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
 </body>
 </html>

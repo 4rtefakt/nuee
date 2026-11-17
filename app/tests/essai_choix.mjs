@@ -3,7 +3,7 @@
 // set of answers gives, and the settings New model or a view opens with.
 //   node tests/essai_choix.mjs
 import { QUESTIONS, BUTS, REPONSES, FORMULAIRE, formulaire, CATALOGUE, REGLES, NOTES, TEXTES_CHOIX, faitsVariables, genre, beaucoupDeZeros,
-  proposer, choisirReponse, contexte, recommander, construire, notesPour } from '../interface/choix_analyse.js';
+  proposer, choisirReponse, reponsesPossibles, proposerReponse, contexte, recommander, construire, notesPour } from '../interface/choix_analyse.js';
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -29,7 +29,7 @@ function repondre(p, F, changements, infos = null) {
   const R = proposer(p, F, infos);
   const { y, ...reste } = changements;
   Object.assign(R, reste);
-  if (y !== undefined) choisirReponse(R, F, uid(p, y));
+  if (y !== undefined) choisirReponse(R, F, uid(p, y), p);
   return R;
 }
 const conseil = (p, F, R) => recommander(contexte(R, F, p));
@@ -73,6 +73,29 @@ console.log('Ce qu’on lit des variables');
   egal('une seule variable : ses statistiques en scalaires', [F.get(4).min, F.get(4).max, F.get(4).entiers], [0, 3, true]);
   const G = faitsVariables({ variables: [{ uid: 1, nom: 'y', qualitative: false, categories: [] }] }, null);
   egal('sans statistiques : une mesure', genre(G.get(1)), 'mesure');
+  // whole numbers that are a measurement rounded to its unit, not counts: by the unit or the name
+  egal('des entiers en g ou en °C, une moyenne, une biomasse : des mesures ; en ind., une abondance : des comptages', [
+    genre({ min: 0, max: 640, entiers: true, unite: 'g' }), genre({ min: 0, max: 30, entiers: true, unite: '°C' }),
+    genre({ min: 0, max: 12, entiers: true, nom: 'nids_moyenne' }), genre({ min: 0, max: 900, entiers: true, nom: 'biomass' }),
+    genre({ min: 0, max: 87, entiers: true, unite: 'ind.' }), genre({ min: 0, max: 87, entiers: true, nom: 'abondance' })],
+  ['mesure', 'mesure', 'mesure', 'mesure', 'comptage', 'comptage']);
+}
+
+console.log('Des entiers : des comptages, ou une mesure arrondie à son unité');
+{
+  const { p, stats } = projet(40, [['traitement', ['A', 'B']], ['pente', null, { min: 1.5, max: 30, moyenne: 12, ecart: 6, entiers: false, zeros: 0 }],
+    ['y', null, { min: 0, max: 640, moyenne: 210, ecart: 120, entiers: true, zeros: 3 }],
+    ['masse', null, { min: 3, max: 640, moyenne: 210, ecart: 120, entiers: true, zeros: 0 }],
+    ['z', null, { min: 3, max: 640, moyenne: 210, ecart: 120, entiers: true, zeros: 0 }]]);
+  p.variables.find((v) => v.nom === 'z').unite = 'g/m²';
+  const F = faitsVariables(p, stats);
+  egal('en g/m² (Unités et descriptions) ou nommée « masse » : une mesure', [genre(F.get(uid(p, 'z'))), genre(F.get(uid(p, 'masse')))], ['mesure', 'mesure']);
+  const Z = repondre(p, F, { question: 'effet', y: 'z' });
+  egal('une mesure en g/m² → le modèle linéaire, pas un GLM de comptages', [Z.reponse, conseil(p, F, Z).choix], ['mesure', 'normal']);
+  const Y = repondre(p, F, { question: 'effet', y: 'y' });
+  const r = conseil(p, F, Y);
+  egal('des entiers sans unité ni nom qui le dise : des comptages, le modèle linéaire proposé aussi, et la note qui le dit',
+    [Y.reponse, r.choix, r.autres.includes('normal'), notesPour(r.choix, contexte(Y, F, p)).includes('qa_note_comptage_incertain')], ['comptage', 'glm_nb', true, true]);
 }
 
 // Counts with many zeros, sites followed over the years
@@ -94,6 +117,7 @@ console.log('Des comptages avec beaucoup de zéros, des sites suivis plusieurs a
   egal('pas d’espèces dans un tableau de mesures', R0.especes, []);
   const R = repondre(p, F, { question: 'effet', y: 'abondance' });
   egal('la réponse : un comptage, beaucoup de zéros', [R.reponse, R.zeros, R.x.includes(uid(p, 'abondance'))], ['comptage', true, false]);
+  verifier('une abondance : des comptages sans doute, sans le modèle linéaire en plus', !conseil(p, F, R).autres.includes('normal'));
   const r = conseil(p, F, R);
   egal('effet sur un comptage à zéros → GLM binomial négatif, la Poisson à excès de zéros d’abord parmi les autres', [r.choix, r.autres[0]], ['glm_nb', 'glm_zip']);
   const m = construire(r.choix, R, F, p);
@@ -198,7 +222,15 @@ console.log('Des mesures sur des sites');
   const ml = construire(rl.choix, L, F, p);
   egal('une mesure, des sites répétés → modèle linéaire mixte, effet aléatoire et validation par site', [rl.choix, ml.reglages.type, ml.reglages.aleatoires, ml.reglages.vc, ml.reglages.famille],
     ['normal', 'LMM', [site], site, undefined]);
-  egal('mesure positive asymétrique → GLM gamma', conseil(p, F, repondre(p, F, { question: 'effet', y: 'biomasse' })).choix, 'glm_gamma');
+  // (the skew of the raw response may come from its X: the linear model first, gamma and the log offered)
+  const Bi = repondre(p, F, { question: 'effet', y: 'biomasse' });
+  const rbi = conseil(p, F, Bi);
+  egal('mesure positive asymétrique → le modèle linéaire d’abord, le GLM gamma et le log proposés, la note des résidus',
+    [rbi.choix, rbi.autres.includes('glm_gamma'), rbi.autres.includes('lm_log'), notesPour('normal', contexte(Bi, F, p)).includes('qa_note_asymetrie_residus')],
+    ['normal', true, true, true]);
+  egal('le GAM d’une mesure asymétrique garde la loi normale', construire('gam', Bi, F, p).reglages.famille, 'gaussienne');
+  const avecCoordonnees = conseil({ ...p, coordonnees: { x: 1, y: 2, systeme: 4326 } }, F, { ...Bi, coordonnees: true });
+  egal('avec des coordonnées aussi : le modèle linéaire, le GAM spatial parmi les autres', [avecCoordonnees.choix, avecCoordonnees.autres.includes('gam_spatial')], ['normal', true]);
   egal('le log de la réponse, celui que proposent les statistiques', construire('lm_log', repondre(p, F, { question: 'effet', y: 'biomasse' }), F, p).reglages.transformations,
     { [uid(p, 'biomasse')]: 'log10' });
   egal('mesure avec des zéros → GLM de Tweedie', conseil(p, F, repondre(p, F, { question: 'effet', y: 'densite' })).choix, 'glm_tweedie');
@@ -210,6 +242,10 @@ console.log('Des mesures sur des sites');
   const Et = repondre(p, F, { question: 'predire', y: 'etat' });
   const rf = construire(conseil(p, F, Et).choix, Et, F, p);
   egal('prédire une classe → forêt aléatoire, la classe en classe, validation par site', [rf.reglages.type, rf.reglages.classe, rf.reglages.y, rf.reglages.vc], ['FOREST', uid(p, 'etat'), undefined, site]);
+  const Gq = repondre(p, F, { question: 'groupes', y: 'traitement' });
+  const tq = construire(conseil(p, F, Gq).choix, Gq, F, p).loc;
+  egal('comparer des groupes sur une réponse qualitative qui était les groupes proposés : d’autres groupes, jamais la réponse elle-même',
+    [Gq.reponse, Gq.groupe, tq.deux.x !== tq.deux.y], ['classe', uid(p, 'etat'), true]);
   const Gr = repondre(p, F, { question: 'groupes', y: 'longueur', groupe: uid(p, 'traitement') });
   const rgr = conseil(p, F, Gr);
   egal('comparer deux traitements sur des sites suivis plusieurs années (des lignes par site et traitement) → modèle mixte, sans test apparié',
@@ -236,6 +272,52 @@ console.log('Des mesures sur des sites');
   const Bord = faitsVariables(p, { ...stats, min: stats.min.map((v, i) => (stats.nom[i] === 'couverture' ? 0 : v)) });
   verifier('une proportion qui touche 0 : la note des bornes', notesPour('glm_beta', contexte(repondre(p, Bord, { question: 'effet', y: 'couverture' }), Bord, p)).includes('qa_note_bornes01'));
   egal('un BACI coché sous « tendance » → BACI', conseil(p, F, repondre(p, F, { question: 'tendance', y: 'longueur', baci: true })).choix, 'baci');
+}
+
+// The skylark counts of the monitoring tutorial (docs/site/donnees/skylark_counts.csv): 40 sites,
+// their habitat, 17 years, the skylarks counted
+const alouettes = projet(680, [
+  ['site', Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, '0')}`)], ['habitat', ['cropland', 'grassland']],
+  ['year', null, { min: 2008, max: 2024, moyenne: 2016, ecart: 4.9, entiers: true, zeros: 0 }],
+  ['skylarks', null, { min: 0, max: 31, moyenne: 7.2, ecart: 5.6, entiers: true, zeros: 6 }]]);
+console.log('La réponse proposée quand une seule convient');
+{
+  const { p, stats } = alouettes;
+  const F = faitsVariables(p, stats);
+  const R = proposer(p, F);
+  egal('à l’ouverture, ni question ni réponse', [R.question, R.y], [null, null]);
+  R.question = 'tendance';
+  egal('une tendance : ni l’année (son temps) ni le site dans la liste des réponses', reponsesPossibles(R, F, p), [uid(p, 'skylarks')]);
+  proposerReponse(R, F, p);
+  egal('la seule qui reste, proposée : les alouettes, des comptages', [R.y, R.reponse], [uid(p, 'skylarks'), 'comptage']);
+  egal('puis TRIM (une ligne par site et par année), ou le GLM binomial négatif', [conseil(p, F, R).choix, conseil(p, F, R).autres.includes('glm_nb')], ['trim', true]);
+  const choisie = { ...proposer(p, F), question: 'tendance', y: uid(p, 'year') };
+  egal('l’année, réponse d’avant, ne l’est plus une fois qu’elle est le temps : les alouettes à sa place', proposerReponse(choisie, F, p).y, uid(p, 'skylarks'));
+  const G = { ...proposer(p, F), question: 'groupes' };
+  egal('comparer des groupes : l’année, les alouettes et l’habitat (le site, répété, est le plan), aucune proposée', [reponsesPossibles(G, F, p), proposerReponse(G, F, p).y],
+    [[uid(p, 'year'), uid(p, 'skylarks'), uid(p, 'habitat')], null]);
+  egal('le site redevient une réponse possible quand il n’est plus le plan', reponsesPossibles({ ...G, repetes: false }, F, p).includes(uid(p, 'site')), true);
+  const E = { ...proposer(p, F), question: 'effet', annees: false };
+  egal('un effet sans la case des années : l’année reste une réponse possible, aucune proposée', [reponsesPossibles(E, F, p).includes(uid(p, 'year')), proposerReponse(E, F, p).y],
+    [true, null]);
+  const ou = { ...proposer(p, F), question: 'espace' };
+  egal('une réponse facultative (où ?) n’est pas proposée', proposerReponse(ou, F, p).y, null);
+  const deja = { ...proposer(p, F), question: 'tendance' };
+  choisirReponse(deja, F, uid(p, 'skylarks'), p);
+  deja.reponse = 'mesure';
+  egal('une réponse déjà choisie et son genre restent', [proposerReponse(deja, F, p).y, deja.reponse], [uid(p, 'skylarks'), 'mesure']);
+  // the time of a trend centred on its mean (its own scaling), the other variables in their units
+  const glm = construire('glm_nb', R, F, p);
+  egal('le GLM d’une tendance : l’année en X, centrée sur sa moyenne, les autres dans leurs unités', [glm.reglages.x, glm.reglages.echelle, glm.reglages.echelles],
+    [[uid(p, 'year')], 'none', { [uid(p, 'year')]: 'Ctr' }]);
+  egal('rempli : centrée sur sa moyenne, l’année ; et la note qui dit pourquoi', [glm.rempli.find((x) => x.cle === 'qa_rempli_centree').noms,
+    notesPour('glm_nb', contexte(R, F, p)).includes('qa_note_temps_centre')], [['year'], true]);
+  egal('le modèle mixte d’une mesure suivie, une seule série (Séries) ou TRIM : seul le premier centre l’année', [construire('normal', R, F, p).reglages.echelles,
+    construire('series', R, F, p).reglages, construire('trim', R, F, p).reglages.echelles], [{ [uid(p, 'year')]: 'Ctr' }, undefined, undefined]);
+  const effet = { ...proposer(p, F), question: 'effet', x: [uid(p, 'year'), uid(p, 'habitat')] };
+  choisirReponse(effet, F, uid(p, 'skylarks'), p);
+  egal('l’effet de l’année sur une autre question : rien n’est centré (le choix reste celui de Nouveau modèle)', [construire('glm_nb', effet, F, p).reglages.echelles,
+    notesPour('glm_nb', contexte(effet, F, p)).includes('qa_note_temps_centre')], [undefined, false]);
 }
 
 console.log('Des spectres et des coordonnées');

@@ -27,8 +27,8 @@ On Linux, Nuée uses the computer's R.
   Nuee-<version>-x64.tar.gz (unpack it, then run ./nuee). Install R first, then in R:
   install.packages(c("httpuv", "jsonlite", "openxlsx", "haven", "readxl", "foreign", "nlme",
   "mgcv", "MASS", "rpart", "cluster", "RSQLite", "ranger")).
-.usp projects need python3. For another R than the PATH's: start Nuée with
-RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
+.usp projects need python3. For another R than the PATH's: File › Settings... (see R used by
+Nuée), or start Nuée with RSCRIPT=/path/to/Rscript. Settings are in ~/.config/Nuee.
 
 Opening
 -------
@@ -74,10 +74,20 @@ SPC spectra together make one project, as Import spectra; other files each open 
 Open. Double-clicking a .nuee project in Windows Explorer opens it in Nuée (in the window
 already open, if there is one).
 The last files opened are in File › Open recent.
-To try it: Help › Example project opens 120 made-up apples (four varieties, organic or
-conventional growing, a dozen measurements and a tasting score) with four ready models: a
-PCA, a PLS of the score, a PLS-DA of the varieties and an OPLS-DA of the growing method. The
-original table, orchards.csv, is next to it (resources\exemple), to try opening a table.
+To try it, Help › Example projects:
+- Apples: 120 made-up apples (four varieties, organic or conventional growing, a dozen
+  measurements and a tasting score) with four ready models: a PCA, a PLS of the score, a PLS-DA
+  of the varieties and an OPLS-DA of the growing method. The original table, orchards.csv, is
+  next to it (resources\exemple), to try opening a table.
+- Skylark monitoring: the two projects of the monitoring tutorial, a skylark counted on 40 sites
+  over 17 years (TRIM and a negative binomial mixed model, fitted) and its line transects
+  (distance sampling: density and abundance).
+- A weir removed: the young trout of the BACI tutorial, before and after a weir was removed,
+  with the before/after view of Statistical tests and its mixed model.
+Their data are made up or simulated (the tutorials' tables can be downloaded from the
+documentation website). Each opens as a new project, its models fitted and its views open; Save
+asks where to put it. While a project of the skylarks or the trout is in front, the status bar
+links to its tutorial.
 
 Field data from KoboToolbox or ODK
 ----------------------------------
@@ -127,22 +137,32 @@ File › Save project (Ctrl+S) writes the project (.nuee) with its data, its mod
 session: fitted models, open panels and their layout, plot settings (axes, colours, labels,
 titles), selections, VIP choices, dendrogram groups. When the project is opened again, the
 models are refitted and everything comes back in place.
-The project is written to a file next to the old one, which then takes its place: a network
-cut or a full disk during the save leaves the old file intact. If another program keeps the
-file open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as
-it was and says so: save again, or Save as.... If the file was changed elsewhere since you
-opened or saved it (a colleague, on a shared folder; another window), Nuée says so and offers
-Save as..., Overwrite or Cancel, also for a project recovered after a crash. The file also
-records which versions of Nuée and R wrote it; a project saved by a newer Nuée is pointed out
-when it opens.
+The project is written to a file next to the old one, which then takes its place: a network cut
+or a full disk during the save leaves the old file intact. If another program keeps the file
+open (a sync client, an antivirus), Nuée tries again for five seconds, then leaves it as it was
+and says so: save again, or Save as.... If the file was changed elsewhere since you opened or
+saved it (a colleague, on a shared folder; another window), Nuée says so and offers to merge
+their changes with yours (see Working together), Overwrite, Save as... or Cancel; for a project
+recovered after a crash, Save as..., Overwrite or Cancel. The file also records which versions
+of Nuée and R wrote it, and the name of who saved it; a project saved by a newer Nuée is pointed
+out when it opens. Nuée also keeps versions of each saved project by itself, to go back to: see
+History and versions.
 Opening a file that is already open (a recent file, a double-click in Explorer) shows the open
 project instead of opening a second copy.
 Closing the application with unsaved changes offers "Save and close". Every two minutes it
 also keeps a recovery copy of unsaved projects: if it stops without being closed (crash,
 power cut), it offers to recover them at the next start. Closing that question without an
 answer keeps the copies for next time; only "Ignore" deletes them.
+File › Settings... › At start-up, "Reopen the projects that were open when Nuée was closed":
+at the next start, the saved projects (.nuee) open when Nuée closed come back, with their
+models and views; a file moved or deleted since is named in the status bar. Without it, the
+start page offers Reopen last session. After an unexpected stop, the recovery copies are
+offered instead.
 Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
-variable, class, scores as variables, deleted definition...), up to 20 steps back.
+variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo
+(Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with
+its source and steps, the models fitted again on its data. Both menu items name the change they
+act on; any new change empties Redo.
 Notes: each model's summary has a notes area, saved with the project and included in the
 report; a pencil marks it in the explorer.
 Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
@@ -150,8 +170,21 @@ project; for a model made in the application, a checkbox removes it as well (und
 
 If the R engine stops
 ---------------------
-The application says so and offers to restart it; you can also do it yourself (Help ›
-Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
+A computation that takes more than a second and a half gets Stop in the status bar (above a
+dialog too, such as New model fitting). Stop ends it between two of its rounds, and nothing
+changes: the model isn't added, the data aren't changed, the view says "Computation stopped".
+The long loops stop this way: permutations (of a PLS, a PERMANOVA, a dispersion test, Mantel's
+test and its correlogram, indicator species, an RDA's tests, the variables fitted to an
+ordination's axes, Moran's I), the AIC selection's models, an NMDS's random starts, the power
+simulations, the cross-validation rounds (PCA, PLS, OPLS, linear models, GAMs, trees, random
+forests, boosted trees), boosted trees one tree at a time, a tree's stability draws, TRIM's
+stepwise selection of change points, iPLS's intervals, One model per response, k-means' choice
+of k, and the steps replayed by Update the data. What can't be stopped before it ends: a single
+fit in compiled code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's
+estimation), the R console's code and an R-code model's code; Stop then says so, and Help ›
+Restart the R engine remains. During Update the data, its own Stop stops the model being fitted
+too. The application says when the engine stops and offers to restart it; you can also do it
+yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
 views, from their recovery copy if they had changes, otherwise from the file they save to;
 changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
 the engine no longer answers keeps the recovery copies, offered at the next start. After a
@@ -166,6 +199,28 @@ installation for all users, Windows asks for permission. Help › Check for upda
 same at any time, even with the start-up check off; Help › Look for a new version at
 start-up turns the check off.
 
+R used by Nuée
+--------------
+File › Settings...: Nuée computes with its own R (on Windows and macOS, R 4.6.2 with every
+package it needs), the recommended choice, or with an R already installed on the computer, R 4.3
+or newer. The list shows those that R's installers put in the usual places: on Windows, those
+the registry knows and those in Program Files or in your own Programs folder; on macOS, CRAN's
+and Homebrew's; on Linux, where Nuée's default is the computer's R found on the PATH, those in
+/opt/R. Browse... adds any other, by its folder.
+Nuée runs the R chosen once to check it: its version, and the packages the engine needs (httpuv,
+jsonlite, openxlsx, haven, readxl, RSQLite and ranger, and R's recommended mgcv, nlme, MASS,
+rpart, cluster and foreign). "Install them" installs those missing from CRAN into that R's user
+library, made if needed, and shows what R says meanwhile; or copy the line shown and run it in
+that R (R or RStudio). With an R older than 4.4, .rds and .RData files don't open; older than
+4.5, data files are fingerprinted with MD5 rather than SHA-256 (see Data steps and updating the
+data).
+"Use this R" restarts the engine with it, and open projects reopen with their models, views and
+changes ("At the next start" waits). That R's packages and .Renviron apply, not your .Rprofile,
+so that it can't change the results. If the R chosen doesn't start (removed, broken), Nuée
+computes with its own R and says so once. An organisation can set everyone's R; Settings then
+shows it, and doesn't change it. Help › Diagnostic information and Help › About say which R is
+in use.
+
 The explorer (on the left)
 --------------------------
 Projects, data, models imported from a .usp file, fitted models and their views.
@@ -174,24 +229,55 @@ export, delete...). Double-clicking an imported model refits it in R; the Summar
 value: "=" the same as the value stored in the file, "≈" close (less than 0.01), "≠"
 different. Q2 usually differs: an imported model is validated like the others (see
 "Cross-validation"); "Full model's centres and weights (like SIMCA)" gives back the file's.
+The explorer follows the work: a project opened, or a model fitted, comes into view at its top,
+and opening a project folds the other projects' fitted models to a line each (their arrow
+unfolds them).
 
 Menus and toolbar
 -----------------
 File, Edit, Model, Plots, Predict, Window, View, Help. Shortcuts:
   Ctrl+O open              Ctrl+S save                Ctrl+E export the results
-  Ctrl+V paste a table
+  Ctrl+V paste a table     Ctrl+Z undo                Ctrl+H find and replace
+  Ctrl+Y (or Ctrl+Shift+Z) redo
+  Ctrl+K find a command    Ctrl+J R console           Ctrl+C copy the table
   Ctrl+N new model         Ctrl+M edit the model      Ctrl+= / Ctrl+- components
   Esc    clear the selection       Ctrl+Del exclude the selection and refit
   Ctrl+Shift+N new window          Ctrl+Shift+D detach the panel    Ctrl+W close the panel
   Ctrl+B explorer          F1 guide
+  Ctrl+Tab / Ctrl+Shift+Tab next / previous tab      F6 / Shift+F6 next / previous area
 View: dark theme, French / English, text size.
+The toolbar's views follow the model in front: a PCA, PLS or OPLS has SIMCA's (Summary, Scores,
+Loadings, DModX, T², Contrib., VIP, Coeff., Obs/pred, HCA, as always); a regression or another
+analysis has its own (a regression's Coefficients, Effects, Residuals, AIC selection...; TRIM's
+Indices and Totals; distance sampling's Detection and Density). The Plots menu starts with the
+active model's views; those it doesn't have are under Plots › Other plots.
+Help › User guide (F1): this guide, in a panel at the window's right, beside the work, at the
+section of what is in front: the model's type, the view (F1 on a TRIM model opens TRIM's section,
+on Plots › AIC selection its paragraph). Its contents, the sections before and after, and a
+search through every section (accents and capitals don't matter, the words found are marked);
+the sections it refers to ("see Cross-validation") and web addresses are links. It stays open
+while you work, like another panel (Ctrl+W closes it, F1 again goes to what is in front); its
+buttons open the guide online and as a text file.
+Keyboard and screen readers: Alt (or F10) goes to the menu bar, the arrows through its menus,
+Enter runs a command, Esc goes back; Alt with a menu's underlined letter opens it (Alt+F
+File...). F6 goes from area to area (toolbar, explorer, each group of panels, status bar),
+Ctrl+Tab from tab to tab; on a tab, the arrows and Delete. The explorer is a tree (arrows;
+Enter opens, Space chooses), a table a grid (arrows; Enter or F2 edits a cell, Space chooses a
+row, Enter on a header sorts). Shift+F10 or the menu key gives the menu of what has the
+keyboard (a node, a row, a column, a tab, a plot). A plot is named by what it shows for screen
+readers, and Ctrl+C copies its numbers as a table. Dialogs keep the keyboard until they close.
+Both themes meet WCAG AA contrast and follow the system's "reduce motion" setting; Format plot
+› Colours "colour-blind safe" (Okabe-Ito) is made for colour-vision deficiencies, and the
+default colours stay apart for them too.
 
 New model (Model › New model)
 -----------------------------
 General tab: type (PCA, PLS, PLS-DA, OPLS, OPLS-DA, class models, linear regression, linear
 mixed model, generalized linear model, additive model: see Linear, generalized and mixed
 models; RDA and CA: see Redundancy analysis and correspondence analysis; decision tree, LDA
-and k-means: see Decision trees, linear discriminant analysis and k-means), name, number of
+and k-means: see Decision trees, linear discriminant analysis and k-means; the list is grouped
+by family: multivariate analyses, regressions, species communities, classification and
+prediction, population monitoring, other), name, number of
 components
 (automatic by default, by cross-validation), cross-validation groups (in turn, G groups; or
 one group per value of an observation ID or of a variable, see Cross-validation), default
@@ -223,8 +309,9 @@ them and fit" or "Fit anyway".
 
 Which analysis? (Model › Which analysis?)
 -----------------------------------------
-Model › Which analysis? (also a button of the start page, next to New model, and Ctrl+K): a few
-questions in plain words, then the analysis that answers them, already set up.
+Model › Which analysis? (also a button of the start page, next to New model, and found by typing
+"which" in View › Find a command, Ctrl+K): a few questions in plain words, then the analysis that
+answers them, already set up.
   - Your question: compare groups or periods; the effect of variables on one response; many
     species at once (how the composition changes, one model per species, the species that
     characterize each group); a trend over time or a monitoring index; a density or an
@@ -239,7 +326,10 @@ questions in plain words, then the analysis that answers them, already set up.
     time), a BACI design (the unit), spatial coordinates, lines or points (distance sampling).
   - The variables: the explanatory variables (X), or the groups.
 Nuée proposes the answers from the project's variables (as Variable statistics reads them): a
-response of whole numbers from 0 is a count, of 0 and 1 a presence-absence, between 0 and 1 a
+response of whole numbers from 0 is a count, unless its unit (Edit › Units and descriptions: g,
+cm, ha, %, °C...) or its name (a mean, a ratio, a biomass...) says a measurement rounded to its
+unit; counts that nothing confirms (no count unit, no name such as abundance) get the linear
+model among the alternatives too; of 0 and 1 a presence-absence, between 0 and 1 a
 proportion; "many zeros" when at least a quarter of the values are 0, and 15 points more than a
 Poisson distribution of the same mean would give (the sentence under the response gives both);
 the site is a qualitative variable named like one (site, station, plot, transect...) whose
@@ -249,7 +339,10 @@ the coordinates the project's, or those its variables' names propose; the distan
 named like them, and the other columns of distance sampling by the names New model proposes
 them from (Distance's Sample.Label, Effort, Region.Label, Area, size, or transect, longueur,
 région, aire, taille); points rather than lines when the transect's column is named like a point
-or a station. Every answer can be changed.
+or a station. Every answer can be changed. The response list leaves out the time, the site and
+the unit once their design box is ticked (they are the design, not the response); when a single
+variable is left, it is proposed: on the skylark counts, a trend proposes the skylarks, the year
+being its time.
 On the right: the recommended analysis, why, its main conditions and notes for the answers given
 (the random effect by site, the residual autocorrelation of successive years, the adjusted means
 after comparing groups, a proportion that reaches 0 or 1...), what will be filled in, what is
@@ -266,9 +359,10 @@ The main choices:
   - a count: the negative binomial when it varies more than a Poisson distribution allows (a
     variance beyond 1.5 times the mean) or has many zeros (many zeros don't always mean zero
     inflation, Warton 2005: compare with the zero-inflated Poisson by AIC), otherwise Poisson; a
-    presence-absence: logistic regression; a proportion: beta regression; a positive, skewed
-    measurement: gamma (or its log); a measurement with zeros: Tweedie; otherwise the linear
-    model; with the same sites measured several times, a random effect by site and
+    presence-absence: logistic regression; a proportion: beta regression; a measurement with
+    zeros: Tweedie; otherwise the linear model, a positive, skewed measurement too (the skew
+    may come from its X: its residuals tell after the fit, and gamma or the log are offered);
+    with the same sites measured several times, a random effect by site and
     cross-validation by site;
   - groups compared: the test between two variables (the one their types call for), paired by
     site when each site comes once in each group (no more observations than sites × groups),
@@ -279,7 +373,11 @@ The main choices:
   - a trend: TRIM for counts by site and year (one row per site and year: no more observations
     than sites × years; otherwise a GLM, and TRIM after Edit › Summarize by group); a
     measurement on several sites: the mixed model with the year as X; a single series: Series
-    and its trends;
+    and its trends; a trend's regression has its time centred on its mean (its scaling Ctr, the
+    other variables keeping their units): the slope doesn't change, and once the time is
+    crossed with a qualitative variable (does the trend differ between habitats?), each
+    category's coefficient is its difference at the mean year rather than in year 0, which the
+    Methods and Results texts say;
   - predict: PLS or PLS-DA with many X (20 or more, or half as many as the observations), the
     random forest otherwise, boosted trees for counts and presences;
   - a density or an abundance: distance sampling, the distances as Y, lines or points, its
@@ -318,9 +416,14 @@ Formatting plots (for a paper, a report)
 ----------------------------------------
 Right-click on a plot › Format plot, or Edit › Format plot: this plot's title and axis
 titles; for every plot: font, text size, point size, colours (including a palette readable by
-colour-blind people, and greys), grid, legend; and "Export image" at the size wanted (in
-pixels, resolution ×1 to ×6) as PNG, SVG or JPEG. These settings are kept from one session to
-the next.
+colour-blind people, and greys), grid, legend, "Spread the labels"; and "Export image" at the
+size wanted (in pixels, resolution ×1 to ×6) as PNG, SVG or JPEG. These settings are kept from
+one session to the next.
+Spread the labels: the names written by the points of scores, loadings, biplots and
+ordinations no longer overlap. A label that would cover another one, or a point, moves beside
+its point, or further away with a thin line to it (as ggrepel does in R); one without overlap
+stays where it was. Figures, reports and documents place them again at their own size. (Up to
+500 labels in a plot; beyond, they stay as they are.)
 
 Contributions
 -------------
@@ -355,7 +458,10 @@ Export model results (Ctrl+E): the model's tables (observations: scores, T², DM
 values; variables: loadings, VIP, intervals; components; coefficients; Y variables). Formats:
 Excel (one sheet per table), CSV, tab-separated text, R (.rds: a list of tables; .RData), SPSS
 (.sav), Stata (.dta), SAS transport (.xpt), jamovi (.omv), dBase (.dbf) and Weka (.arff); for
-the last ones, one file per table ("M1.sav", "M1 - variables.sav"...). Qualitative variables
+the last ones, one file per table ("orchards - M1 PCA.sav", "orchards - M1 PCA -
+variables.sav"...). A model's files are named after its project, its name and its type by
+default (its results, Export to R, its report, its predictions), so that the M1 of two projects
+don't take the same name in a folder. Qualitative variables
 stay qualitative (R factors, SPSS and Stata value labels, jamovi nominal variables). For SPSS,
 Stata, SAS and dBase, variable names are made valid (unaccented letters, digits, "_"); the
 original name becomes the variable label. The variables' units and descriptions (Edit › Units
@@ -455,6 +561,9 @@ script: the functions and the data once, then a block per model under its name (
 M2...).
 Before writing, the application refits the script's models and checks they give the same
 results; otherwise it says so.
+The script is yours: you may use, change and share it under any terms, the parts of Nuée's
+engine it copies included (an exception to Nuée's GPL licence, LICENSE-EXCEPTION.md). Its
+opening comments say so, and how to cite Nuée if you publish results obtained with it.
 
 Methods text
 ------------
@@ -477,6 +586,20 @@ their values:
   {{M1.gain}}  {{M1.vip.sugar}}  {{M1.coef.sugar}} (scaled coefficient and its 95 % interval)
   {{M5.coef.year}} (a regression: estimate, interval and p)  {{M5.p.year}}  {{M1.cvanova.p}}
   {{M1.scores | caption}} (a plot, as in its window)  {{M5.effets.year}} (one term's plot)
+  {{M5.valeurs_predites.year}} (its predicted values on the response scale, Effects › Scale)
+  {{T1.pente}} {{T1.pente.ic}} {{T1.pente.pourcent}} {{T1.pente.classe}} {{T1.sigma2}} {{T1.rho}}
+  (TRIM: the overall slope of the imputed totals, 4 decimals, its 95 % interval, its change in %
+  per time step, its class in the document's language, σ² and ρ)  {{D1.D}} {{D1.D.ic}}
+  {{D1.D.cv}} {{D1.abondance}} {{D1.p}} {{D1.ESW}} {{D1.D.North}} (distance sampling: the
+  density, its interval and CV, the abundance, p, ESW or EDR, a stratum's density)
+  {{R1.R2_ajuste}} {{R1.test.modele.p}} (RDA, CCA)  {{P1.permanova.modele}}
+  {{P1.permanova.modele.p}} {{P1.permanova.habitat.p}} (PERMANOVA: the model's R² and p, a
+  term's)  {{N1.stress}} (NMDS)
+  The other analyses' key results are cited the same way, under the keys What changed compares
+  (an index {{T1.indice.2015}}, a Mantel r {{M1.mantel}}...): a value, then .ic, .bas, .haut and .p
+  for those that have an interval or a p, .pourcent for a multiplicative value; A, and a K of 0,
+  aren't offered where they don't apply. The reproducible Quarto file writes those above from the
+  models' scripts.
   {{M1.table.resume | caption}} (a table of the model report)  {{M1.methodes}} (Methods text)
   {{M1.resultats}} (Results text: the fit, each coefficient with its interval and p, as a factor
   or an odds ratio for a log or logit link, the significant terms, curves, random effects; for a
@@ -592,9 +715,12 @@ Figures for publication
 -----------------------
 Plots › Compose a figure… (or right-click a plot › Add to a figure, or right-click the project
 in the explorer): plots side by side in one figure, at the size a journal prints it, for a paper.
-  - Panels: the plots open in the window, of any model or of the project (scores, loadings,
-    effects, the map, series...): "Add an open plot..." lists them, the plot in front is the
-    first. Each gets its letter in the order of the list (the arrows change it): A, B, C, or
+  - Panels: every plot of the project's fitted models, open or not (scores, loadings, effects,
+    indices...: those a report draws, and spectra's profiles, the dendrogram, the Coomans plot),
+    and the project's plots open in the window (the map, series...): "Add a plot..." lists them
+    by model ("M1 · PCA"), the plot in front is the first. A plot not open is drawn with its
+    view's usual settings, an open one, marked so, with its own. Each gets its letter in the
+    order of the list (the arrows change it): A, B, C, or
     a, b, c, (A), (a), bold or not, in the corner chosen. A panel takes one cell of the grid,
     or two columns, or two rows; the grid (rows × columns: 1 × 2, 2 × 2, 1 × 3...) grows when a
     panel added doesn't fit, and a panel that has no room is shown in red.
@@ -618,11 +744,12 @@ in the explorer): plots side by side in one figure, at the size a journal prints
     leaves the background less sharp than asked. The attribution (© OpenStreetMap contributors,
     © IGN) stays in a corner of the map.
 Each plot is drawn as in its view when it was added (axes, colours, labels, the titles of
-Format plot, zoom), in the light theme, without the selection, on white; the refresh button of a
-panel takes its open view's settings again. The figure is kept in the project and saved with it
-(in the explorer, under Figures: open, export, rename, duplicate, delete); it always uses the
-latest fit of each model (a model not computed is computed when the figure is drawn): after
-refitting, export it again. Edit › Undo leaves figures alone.
+Format plot, zoom), or with its usual settings if it wasn't open, in the light theme, without
+the selection, on white; labels spread (Format plot) are placed again in its cell; the refresh
+button of a panel takes its open view's settings again. The figure is kept in the project and
+saved with it (in the explorer, under Figures: open, export, rename, duplicate, delete); it
+always uses the latest fit of each model (a model not computed is computed when the figure is
+drawn): after refitting, export it again. Edit › Undo leaves figures alone.
 
 Variable statistics
 -------------------
@@ -1066,9 +1193,15 @@ Model conditions (a regression's Summary): pointers in words, each ✓ or ⚠ wi
 residuals' distribution (Shapiro–Wilk, on the quantile residuals for counts, presence-absence and
 positive values), a spread of the residuals that changes with the fitted values, influential
 observations (Cook's distance beyond 4/n, linear model), overdispersion and an excess of zeros
-(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, and the
-residuals' spatial autocorrelation when the project has coordinates. With many observations a
-test sees harmless departures, with few it sees none: the residual plots remain the reference.
+(counts), collinear quantitative terms (VIF > 5), curves confounded with the other terms, the
+residuals' spatial autocorrelation when the project has coordinates, and ℹ a quantitative X far
+from 0 (a year: 0 outside its values and its mean beyond 5 standard deviations) crossed with a
+qualitative variable without being centred: each category's coefficient is then its difference
+where that X is 0, far from the data, hence its size and its wide interval. Its button, "Fit
+again with “year” centred", fits a new model (M1 (1)) with its scaling Ctr: the same model, the
+difference read at the mean year, as its Methods and Results texts then say. With many
+observations a test sees harmless departures, with few it sees none: the residual plots remain
+the reference.
 R formula (General tab): the model written as in R, for instance
   y ~ a * b + log10(c) + I(a^2) + s(d) + offset(log(effort)) + (1 | site/sector).
 Edit it, then Apply (Ctrl+Enter): it sets the variables and their transformations (log,
@@ -1092,7 +1225,9 @@ Q2 and RMSEcv; AIC; the variance of each random effect and its share (with rando
 above); φ of the
 autocorrelation), Coefficients (each term's effect with its 95 % interval, red when p ≤ 0.05;
 with a log link, exp(estimate) is the multiplicative effect of one unit more, with the logit
-the odds ratio),
+the odds ratio, which the box "exp(estimate)" plots instead, on a log axis through 1; a GAM
+whose terms are all curves, y ~ s(year) + (1 | site), has only its intercept there: it opens on
+Effects and Residuals, and its Coefficients point to Effects),
 Effects (each quantitative term's effect as its variable varies, the others fixed, with its
 95 % band and the observed values below it: a GAM's curves, straight lines otherwise, one per
 category for a term crossed with a qualitative variable or a curve per category, with the
@@ -1102,7 +1237,22 @@ slope with 95 % simultaneous bands from 2000 draws of the coefficients, the rang
 slope's band excludes 0, clearly rising or falling, shaded and listed, and the edf, below 1.5
 nearly a straight line, as Simpson (2018) reads thresholds; a curve with one per category (a
 curve per category, or a curve crossed with a qualitative variable) has the thresholds of the
-category chosen in the list beside the box, over the variable's percentiles in that category),
+category chosen in the list beside the box, over the variable's percentiles in that category;
+Scale › Predicted y: the values of the response the model predicts as the term's variable
+varies, with their 95 % band, that of the linear predictor (±1.96 standard errors) brought back
+by the inverse of the link (exp, inverse logit; a count's expected value for the zero-inflated
+Poisson), the predicted skylarks by year in each habitat rather than the log-scale effect. What
+is held fixed, which the note under the plot says: the other quantitative variables at their mean
+over the model's observations (before their transformation, as for the adjusted means), their
+curves at that point; the qualitative variables in their reference category, except those
+crossed with the term, each category of which has its curve over its own values (and a curve per
+category its level); the random effects at 0 (the population, no group's own departure); an
+effort of 1 (densities; expected counts for the zero-inflated Poisson); the spatial smooth at the
+mean point of the coordinates. With the identity link they are the predicted values of the
+modelled response (transformed, if it is, and then named by its formula, log10(y + 1), in the
+view, its note and its axis).
+Export to R computes and draws the same (predicted_values, a plot per term), and a document cites
+them as {{M5.valeurs_predites.year}}),
 Observed / predicted, Residuals
 (standardized, against the fitted values, normal Q-Q plot, by group of a random effect; Cook's
 distance for a linear regression; the quantile residuals too for counts, presence-absence and
@@ -1256,7 +1406,8 @@ mixed model, a group never seen), on the model's scale of Y (its transformation 
 to Y observed when it is known. A file's columns are matched to the model's variables by name,
 the effort included (without it, the predictions are for an effort of 1, and the note says
 so). ⚠ marks a value outside the range of the model's observations: an extrapolation.
-Prediction › Compare models: Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
+Prediction › Compare models (with models of several projects fitted, its Projects list shows
+one project's alone): Q2 and RMSEcv for every model; AIC, ΔAIC and Akaike weights (the
 probability that each model is the best of its set) between the regressions of the same
 response on the same observations only (an "AIC set", lettered A, B...), and only those whose
 likelihoods compare: Poisson, negative binomial and zero-inflated Poisson models of the same
@@ -1790,6 +1941,194 @@ with the same seed, one thread and the same settings, so its forest is Nuée's, 
 with the same version of ranger. The test set and the partial dependence, when it was computed,
 are in it too.
 
+Your own model in R code
+------------------------
+New model › type "R code (your own model)": a model you write in R, for what Nuée doesn't fit
+itself: anything R can fit (lm, glm, nls, mgcv, nlme, glmmTMB, unmarked, brms…), with the
+packages installed for the R Nuée uses (library() and package:: work as in R). Nuée gives the
+code its data, takes from the model what it can, and treats it like its other models.
+  - General tab: the code editor (R in colour, line numbers; Ctrl+Enter fits) and its help,
+    with an example made of the project's variables; Observations tab: the model's observations,
+    as for the others (ticked, a condition).
+  - The data: `donnees`, a data.frame of the model's observations, one column per variable of the
+    project under its name (qualitative variables as factors, their categories in the project's
+    order), then the observations' IDs, as text.
+  - The model: the code's last value (lm(...), fit…), any R object. Or a list whose elements Nuée
+    recognises: list(modele = fit, valeurs = c(density = 3.2, slope = -0.4), tableaux =
+    list(counts = d)); `valeurs`, named numbers, key results that documents cite
+    ({{M1.valeurs.density}}) and What changed follows; `tableaux`, named data.frames, shown and
+    exported.
+  - The code runs in an environment of its own, each expression in turn, as in the R console: a
+    visible value is printed (a ggplot or lattice plot drawn), except the last, the model. What it
+    prints, its messages, its warnings and its plots are kept. An error gives R's message and its
+    line (the editor goes there); a package that isn't installed is named, with how to install
+    it; the model stays in the dialog, not fitted.
+From the model, each part when the object allows it: print(summary()); the coefficients
+(coef(summary()) when it is a table of numbers with a column of standard errors, found by its
+name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; else coef() with the
+standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom
+when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(),
+BIC(); fitted() and residuals(), each value matched to its observation by its name, the number
+of its row in donnees (lm, glm, gls… keep them, even when the code reorders donnees), or to none
+when the names aren't those numbers (lme, nls) or the code fitted the model on other data;
+predict(fit, newdata) when it works, on the response scale (type = "response", when the model
+knows it: a GLM's counts, not their log).
+
+Views: Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the
+warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table),
+Residuals (against the fitted values, and the normal QQ plot), Plots of the code, Values and
+tables, The code; Predictions. Model › Edit model (or Edit the code) opens the editor with the
+code: fitted again, the model keeps its name and its place. What changed, documents
+({{M1.coef.x}}, {{M1.AIC}}, {{M1.N}}), Export, the report and Update the data as for the other
+models. Compare models compares its AIC with the regressions and R-code models of the same
+response, as it is, on the same observations, when Nuée can check that their likelihoods compare
+(lm, glm, glm.nb, nls, and nlme's lme and gls fitted by maximum likelihood); otherwise its AIC is
+shown with why it isn't compared (a model fitted by REML, a transformed response…). The Methods
+text says the model was fitted with its authors' own R code, with R's version and the packages
+the code loaded, their versions and their citations (citation()), which join a document's
+references. Export to R: the data as the other scripts have them, the code as it is written,
+then what Nuée shows of the model (summary, coefficients, likelihood, plots of the residuals);
+Nuée runs the script before writing it and says if it doesn't give the same numbers.
+
+Trust: opening a file never runs code from it. Code written, or approved, on this computer by
+you runs; the code of a project from elsewhere (a colleague's, a shared folder, a version from
+GitHub or GitLab) that you haven't approved doesn't: its models stay not fitted, under a bar
+"This project has R code written by someone else (M7) — Show the code / Run it". Run it
+approves that code (Nuée keeps its fingerprint, a SHA-256, in your settings) and fits the
+models; changed elsewhere again, it asks again. The R engine itself refuses code nobody approved,
+whatever the path (opening, Update the data, merging, versions). An organisation can turn this
+type of model off (the DisableCustomCode policy).
+
+Plugins
+-------
+A plugin adds a model type written in R by someone else to Nuée: an R function and its manifest
+(plugin.json), which become a menu item with its dialog, its results, its Methods text and
+citation, and its Export to R. It is shared as one file, a .nueeplugin. Two example plugins come
+with Nuée’s documentation: “Site occupancy (single season)”, the occupancy model of MacKenzie et
+al. (2002) fitted by maximum likelihood, and “Mann–Kendall trend test and Sen’s slope”. Download
+them from the documentation website,
+https://4rtefakt.github.io/nuee/greffons/occupancy.nueeplugin and
+https://4rtefakt.github.io/nuee/greffons/mann-kendall.nueeplugin, or find them in the
+repository: https://github.com/4rtefakt/nuee/tree/main/exemple/plugins (and the data of the
+first, docs/site/donnees/woodpecker_occupancy.csv).
+  - Installing one: File › Plugins…, Install from file…, then the .nueeplugin. Nuée reads it
+    without running anything and shows its card (its name, version, authors and their ORCID,
+    licence, citation, the R packages it needs, the oldest Nuée it works with) and its code. A
+    plugin is R code: it runs with your rights, like code typed in the R console, and can read
+    or change your files; install only the plugins you trust. Installing one approves it on this
+    computer (its fingerprint, the SHA-256 of its files, joins the code you approved): models
+    made with it are then fitted without asking. Another version of the same plugin replaces it.
+  - File › Plugins… lists the plugins installed, yours and those your organisation gives
+    everyone, each with its card: Copy the BibTeX of its citation; its packages, present or
+    missing (Install the missing packages installs them from CRAN into the user library of the R
+    Nuée uses, as File › Settings… does for the engine’s own); Show (its code); New model…;
+    Remove (yours only). A plugin whose files changed since it was installed doesn’t run until
+    it is installed again.
+  - Using one: Model › Plugins › its name… (it is also in New model’s Type list). Its dialog is
+    made from its manifest: on the General tab its inputs, the project’s variables it takes
+    (one, from a list, or several, to tick, with a search when the project has many; only the
+    quantitative, qualitative or both that it accepts are offered) and its options (numbers,
+    choices, boxes to tick, texts), each with its help; on the Observations tab the model’s
+    observations, as for the other models (ticked, a condition). Fit: the plugin’s function
+    receives the model’s data and what was chosen.
+  - Its results are those of an R-code model (see “Your own model in R code”): Summary (what the
+    plugin prints, and its card: the plugin, its version, its authors, the variables and options
+    chosen; Edit the model), Coefficients, Residuals, Plots of the code, Values and tables, as
+    the plugin gives them, and The plugin (its card, its fingerprint, its code). Model › Edit
+    model opens its dialog again. What changed, documents ({{M1.valeurs.psi}},
+    {{M1.coef.psi.forest}}), Export, the report and Update the data as for the other models. The
+    Methods text names the plugin, its version and its authors, cites what the plugin asks to be
+    cited (MacKenzie et al., 2002) and the packages it uses, with their versions; Export to R
+    writes the plugin’s code and the call of its function, a script that runs in R alone.
+  - Sharing: a project that uses a plugin keeps it whole (its manifest and its code) in its
+    file. Opened on another computer, its models wait, not fitted, under a bar that names the
+    plugin, its version and its authors: Show (its card and its code), then Install and run
+    (installed from the project, approved, its models fitted). When another version of the
+    plugin is installed there, the bar says so, and the project’s own version is what redoes its
+    models (Run version 1.0.0), unless you choose the installed one (Use version 1.1.0: its
+    models are made again with it, their inputs and options kept, and fitted; Ctrl+Z undoes it).
+    Removing a plugin doesn’t break your projects: they keep their copy, still approved on this
+    computer.
+  - Organisations: IT can give plugins to everyone (a folder set by the PluginsFolder policy:
+    they are offered and run without asking), and, with the DisableCustomCode policy, allow only
+    those: R-code models and the plugins users would install are then turned off.
+    docs/deploiement.md, in Nuée’s repository, says how.
+
+Writing a plugin
+----------------
+A plugin is a folder holding its manifest, plugin.json, and its R files: occupancy/plugin.json
+and occupancy/occupancy.R for the first example
+(https://github.com/4rtefakt/nuee/tree/main/exemple/plugins/occupancy). Start from an example:
+copy its folder, then change its manifest and its code. The manifest, in UTF-8, is a JSON object
+of these fields:
+  id         the plugin’s name for Nuée and its folder’s: lowercase letters, digits, and “-”,
+             “_” or “.” between them (occupancy, mann-kendall); the same for all its versions.
+  version    X.Y.Z (1.0.0); each version you share gets a greater one.
+  nuee       the oldest Nuée it works with (1.1.0).
+  name       {"en": "…", "fr": "…"}: English required, French optional (the English shows in
+             French without it); description likewise, a sentence or two.
+  authors    [{"name": "…", "orcid": "0000-0002-1825-0097"}], one at least; the ORCID optional
+             (checked: its last digit).
+  license    its licence (GPL-3.0-or-later, MIT…).
+  citation   what its users cite: {"text": "…", "bibtex": "@article{…}"}, or a list of them;
+             optional.
+  packages   the R packages it needs beyond R’s own (["unmarked"]); optional.
+  files      its R files, read in this order (["occupancy.R"], or ["R/model.R", "R/methods.R"]).
+  function   the name of its function (occupancy_fit), defined at the top level of one of them.
+  inputs     the project’s variables its dialog asks for, a list of {"id": "detections", "type":
+             "variables", "accepts": "quantitative", "min": 2, "max": 20, "label": {"en": "…",
+             "fr": "…"}, "help": {…}}: type "variable" (one; "optional": true lets it be left
+             empty) or "variables" (several: min, 1 by default, and max, none by default);
+             accepts "quantitative", "qualitative" or "any".
+  options    its settings, a list of {"id": "maxit", "type": "number", "default": 1000, "min":
+             10, "max": 100000, "integer": true, "label": {…}, "help": {…}}: type "number"
+             (default required; min, max and integer optional), "choice" ("values": [{"value":
+             "BFGS", "label": {…}}], default required, one of the values), "checkbox" (default
+             false or true) or "text" (default "").
+
+Nuée checks the manifest strictly as it reads it: a field it doesn’t know, a field of the wrong
+kind, a file that isn’t there, a function the files don’t define at their top level are refused,
+saying where and what (“inputs[2].accepts: "quantitative", "qualitative" or "any"”); a plugin
+with an error doesn’t install. It reads the code without running it.
+
+The function: Nuée calls it f(donnees, entrees, options).
+  - donnees: a data.frame of the model’s observations (those of the Observations tab), one
+    column per variable of the project under its name (qualitative variables as factors, their
+    categories in the project’s order), then the observations’ IDs, as text: what an R-code
+    model’s code sees.
+  - entrees: the names of the variables chosen, by input id: a text (NULL when an optional input
+    is left empty) for a "variable" input, a vector of texts (character(0) when none) for a
+    "variables" one; donnees[entrees$detections] are their columns.
+  - options: the value of each option, by its id: a number (an integer when "integer" is true),
+    a text for a choice or a text, TRUE or FALSE for a box.
+  - It returns what an R-code model’s code returns: the fitted model, or list(modele = fit,
+    valeurs = c(psi = 0.54, p = 0.37), tableaux = list(sites = d)). Nuée takes from the model
+    print(summary()), coef(summary()) (or coef() and vcov()), logLik(), nobs(), AIC(), fitted(),
+    residuals() and predict() when they work. For a class of your own, define its methods in
+    your files (summary.myclass, print.summary.myclass, vcov.myclass, logLik.myclass,
+    nobs.myclass…): Nuée registers those of the generics it calls, so that it finds them; give
+    the class a name your plugin owns (nuee_occupancy).
+  - Write it for R alone: call another package as package::function (or library() inside the
+    function) and list it in "packages"; don’t use Nuée’s own functions: Export to R runs your
+    code outside Nuée. stop() with a sentence says what is wrong (Nuée shows it with the
+    plugin’s file and line). getOption("nuee.langue") is "fr" or "en", the interface’s language,
+    for messages in both languages; outside Nuée it is NULL.
+
+Testing it in Nuée: File › Plugins…, Install from file…, then the plugin.json of your folder (no
+need to package it): Nuée checks it, shows it and installs it. After a change, install it again
+(each change makes another fingerprint, approved again), then fit again (Model › Edit model). An
+error gives the plugin’s file and line; Export to R gives a script that calls your function on
+the same data, to work on it in R or RStudio. The examples’ check,
+moteur/tests/verifier_greffons.R, tests their numbers against references worked out
+independently (the likelihood by enumerating the sites’ states, a closed form, cor.test, a hand
+calculation): a model for testing yours.
+
+Packaging: put the folder in a zip archive (plugin.json at its root, or in its one folder:
+Windows’ Send to › Compressed (zipped) folder does it), then rename the .zip to .nueeplugin.
+Only plugin.json and the R files it lists go into an installation and into the projects that use
+it. Give each new version a greater "version": the projects made with an older one keep it, and
+say a newer one is installed.
+
 Cleaning the data: find and replace, categories, units
 ------------------------------------------------------
 What one used to do in Excel before opening the table, in Nuée, each change undone by a single
@@ -1837,6 +2176,25 @@ spreadsheet from that cell on, in the rows and columns as the view shows them (s
 filtered): each cell as when you edit it by hand (empty: missing; a new category is added; a
 text in a quantitative variable is refused, naming the observation, and nothing changes); cells
 beyond the table are left out. One Ctrl+Z undoes the whole block.
+Right-click on a column's header (or on a variable of Variable statistics) › Rename…, Treat as
+categories (or Treat as numbers), Delete…: each is one change that Ctrl+Z undoes and Ctrl+Y
+redoes, and a data step that Update the data replays in its place. Rename: as you type, the
+dialog says what follows the new name, the definitions of the project's models (their terms,
+their conditions), the formulas of computed variables, the documents' references to its terms
+({{M1.coef.site}}, their format and caption kept), and what doesn't: an R-code model's code,
+which is never rewritten. A name that another variable or an identifier of the observations
+has is refused. The models fitted with the old name keep it until fitted again: a box, ticked,
+fits them again at once. Undo gives the documents' references back too, even in a document
+written since. Treat as categories: each distinct value becomes a category, in the numbers'
+order (a site coded 1, 2, 3, which a random effect wants qualitative); Treat as numbers reads
+each category as a number ("3,5" included), refused while one isn't (Find and replace first).
+The models that have the variable as an X follow (a term per category, or a single one in
+numbers), their fits keeping their results until fitted again; a model that has it as its
+response, its class, a curve, a random effect or in its condition has to be modified first.
+Delete asks first, and is refused while a model uses the variable (modify or delete the model
+first); it names an R-code model whose code reads it, a computed variable's formula that reads
+it, and coordinates it was one of. In Model › Which analysis?, a column of sites coded in
+numbers gets a button that treats it as categories, to make it the site.
 
 Adding columns from another table
 ---------------------------------
@@ -1895,11 +2253,53 @@ A qualitative variable or an ID whose known values are the same within every gro
 of a sector, the site of a sector) is kept, with that value; the others are left out, and the
 status bar names them. The new project has no file yet: save it (Ctrl+S).
 
+Data steps and updating the data
+--------------------------------
+A project made from a data file keeps that file, its source: where it is (and its path from the
+project's folder, so that a folder moved with its data still finds them), its table or sheet,
+the choices the import made on its columns, and its size, date and fingerprint when it was read.
+Every change made to its data in Nuée is kept as a step, written with the variables' names and
+the observations' identifiers: a value edited, Find and replace, the categories, a New variable,
+columns from a table (with that table's file), raster values, pasted cells, units and
+descriptions, coordinates, a class from a selection, scores or k-means clusters as variables.
+Edit › Data steps (or right-click on the project's data): the source (found, changed since it
+was read, or not found) and the steps, each with its date and the files it read. Remove shows
+first what removing a step would do (the source read again, the other steps replayed on it),
+then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
+and shows What changed; when the source changed since it was read, update the data first. When
+the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
+dialog says so: updating them would bring back what the source and the steps give.
+Edit › Update the data: the source read again, or another file, next year's, whose columns may
+come in another order or with new ones. The steps are replayed on it, then its rows are matched
+to the project's observations by their identifiers and its columns to the variables by their
+names, so that each model keeps its definition. A new category goes just before the last one, so
+that each regression keeps its reference category (the last), and each model takes its term with
+the settings of the others (a PLS-DA keeps its classes, and takes no observation of a new one).
+Before anything changes, the dialog shows what will: the new observations, variables and
+categories, those no longer in the file (they leave the project and its models), the cells
+changed, the variables computed again from their formula, each step replayed, skipped (an
+observation or a variable it names is gone) or failed, with the reason, the models that can no
+longer be fitted and what they miss, those that take a new category, a model whose reference
+category has no observations left, and how the file was read (without a column that names the
+observations, they are matched by their row number). A model that leaves out some observations
+asks whether it takes the new ones (ticked). Update replaces the data as one change (Ctrl+Z
+undoes it, the source and the steps included, and fits every model again on the data as they
+were); with versions on, a version is saved first. Then every model of the project is fitted
+again, with a progress bar and Stop, and What changed compares their key results before and
+after (see What changed). It also shows what the update did to the data, and the values cited in
+the documents that changed, old → new, each with its sentence (a click opens the document
+there); in each document's preview, those values are marked, the one before on hover, until Hide
+changes.
+When a project's source file changes (a new year added to it), the status bar says so, when the
+project opens and when Nuée comes back to the front; its link opens Update the data.
+
 Editing the data, making variables
 ----------------------------------
-In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel; empty =
-missing value; for a qualitative variable, the category's name). Models already fitted don't
-change: refit them.
+The Data view shows each column with the decimals its values have, up to six (an altitude 3.2,
+a GPS longitude 4.615327), whole numbers without; a cell's field and the copy keep the full
+precision. In the Data view, double-click a cell to edit it (Enter to keep, Esc to cancel;
+empty = missing value; for a qualitative variable, the category's name). Models already fitted
+don't change: refit them.
 Edit › New variable: from an R formula on the other variables and the observation IDs, for
 example log10(polyphenols), sugar / acidity, ifelse(weight >= 170, "large", "small") (a text
 result gives a qualitative variable); by group, group_mean(x, sector), the mean of x in each
@@ -1914,6 +2314,12 @@ from 0 to 5, as missMDA::estim_ncpPCA does on them (0: each variable's mean), un
 it; observed values unchanged, an observation missing more than half of them left missing,
 imputed values kept within each variable's observed range unless unticked; as new variables
 "x (imputed)" or in the variables themselves (Ctrl+Z undoes it). Remember to save the project.
+A New variable formula is a calculation, not any R: the project's variables and IDs, numbers,
+text, and R's calculation, text, date and distribution functions (log10, round, ifelse, paste,
+substr, as.Date, cut, pnorm...) with Nuée's own (group_mean, previous, shannon...). Kept in the
+project, it is replayed when the data are updated, in a colleague's copy too: anything that
+could read or write a file or start a program is refused, and TRUE and FALSE are written in
+full. For the rest of R, View › R console.
 In a New variable formula, from one year to the next: previous(x, year, sector), the value of x
 the year before in the same sector, and following(x, year, sector), that of the year after
 (pas = 2: two years before or after). The year sought must exist: a missing year gives a
@@ -1943,6 +2349,151 @@ For a project from a .usp file, the explorer shows "File history": the log store
 file (creation, working-set changes, number of components, deleted models...), with the
 date, the software version and the user. Right-click on an imported model › Model history:
 only what concerns it.
+The versions Nuée keeps of every project, in File › History, are another thing: see History and
+versions.
+
+History and versions (File › History)
+-------------------------------------
+Nuée keeps versions of each project saved in its format (.nuee) by itself, with nothing to
+install: when the project is saved and its last version is an hour old or more, when it is
+closed (or Nuée quits) and it changed since, and before its data are updated (Update the data's
+"Save a version first", ticked). Each one says what changed since the one before: rows and
+variables, models by name, documents and figures by title, data steps, the data's source.
+Nothing leaves the computer unless the project is shared (see Sharing on GitHub or GitLab).
+File › History (or the clock in the status bar): the versions day by day (a right-click on the
+project gives them too), each with its time, what changed, its names, its author, "automatic"
+for one Nuée kept by itself, and "sent" once it is in a shared repository. On each one: Open
+(beside the project, read-only: a lock in the explorer and on its tabs; Save as... keeps a copy
+of it elsewhere), Compare (with the project as it is now: see What changed), Name... ("submitted
+to the journal", "thesis chapter 2"), Restore... (the project becomes that version again, its
+data, models, documents and figures; its current state stays in the history, kept in a version
+first). Save a version... keeps one at once, with a few words; a project with unsaved changes is
+saved first, and one that hasn't changed since its last version says so.
+Automatic versions that were never sent are thinned out with time, once a day at most: one a day
+after 30 days, one a month after a year. Named versions, the versions saved by hand and those
+sent are all kept. Keep versions of this project (at the top of History) turns them off for one
+project, those already kept staying readable; Settings... turns them off for every project (Keep
+versions of my projects: no new history starts, existing ones stay), and gives the name, and the
+email address, written with each version.
+The versions are kept beside the project, in a hidden folder named .nuee-versions: one history
+per project of that folder (a git repository of yours around the folder ignores it). The top of
+History gives its size; each version holds the whole project file, compressed. A project renamed
+outside Nuée is found again by its content, and Save as... takes its history along. Deleting the
+.nuee-versions folder deletes the history of the projects in that folder, and only that: the
+projects don't change, and a new history starts at their next save unless versions are turned
+off (a project whose versions were off follows Settings again). A project shared on GitHub or
+GitLab also loses its link to the repository: its versions stay there, and File › Open from
+GitHub or GitLab, into another folder, gets the project back with them. The browser version has
+no History: the desktop application keeps the versions.
+
+What changed
+------------
+What changed compares two states of a project, model by model, the models matched by their
+names, on their key results: the fit (N, R², Q², AIC, deviance explained), each estimate with
+its 95% interval and p value (coefficients, slopes, indices), the tests, the random effects, the
+components, each variable's VIP, coefficients or loadings, each species' indicator value, the
+adjusted means and trend power kept with the model, a test set. It opens after an update of the
+data or a step removed (see Data steps and updating the data), from History (Compare: a version
+against the project now) and when a colleague's version comes in (What changed, in the status
+bar's message). The models of both states are fitted first, with a progress bar.
+Each model starts with its notable changes, in sentences written like the Results text: The
+coefficient of "year" goes from -0.0210 to -0.0260 (95% CI [-0.0310, -0.0210]), still
+significant (p < 0.001). Then the table of its results that changed: before, after (with their
+interval and p), the change (in points for a percentage) and what it crossed: new or gone; sign
+(to the other side of 0, or of 1 for a ratio or an index); 5% threshold (significant on one side
+only); outside the former CI (the new value lies outside the former 95% interval); category (a
+trend's class, an indicator's group); reflected component (a component's sign, which is
+arbitrary, flipped: turned back before comparing). More than eight variables or species that
+changed are summed up in one sentence per mark. The models of only one side come last.
+
+Sharing on GitHub or GitLab
+---------------------------
+File › Share on GitHub or GitLab (also in History): the project's versions are sent to a
+repository on GitHub, GitLab or your institution's GitLab, and your colleagues' come back from
+it; each works on their own copy, and Nuée keeps them in step. Choose the server and sign in
+there (see Signing in to GitHub or GitLab): Nuée makes the project a repository of your account,
+named after it (another name is offered when that one is taken), private unless you untick it:
+only you and the colleagues you invite see it. The first time, it asks for your name and email
+address, written with each version (GitHub and GitLab show who did what by the address).
+Invite a colleague...: their user name on the server, as in the address of their profile (the
+button is in Share once it is done, then in History, beside your account). GitHub sends them an
+invitation, which they accept from its email or their notifications; GitLab makes them a member
+of the project, as a Developer. They then open it with File › Open from GitHub or GitLab: the
+repository's address (signed in to its server, for a private one; or a token), the project when
+the repository holds several, and the folder to put it in. It opens with its versions, shared
+with that repository.
+Use an existing repository, or another server: its address, as its Code button gives it
+(https://...). Signed in to GitHub or GitLab, nothing else is needed; otherwise, a token that
+can write to it (on GitHub, a fine-grained token with Contents read and write on that
+repository; on GitLab, a token with write_repository). The repository may be empty or hold other
+files: the project goes at its root under its name, or under another one when a file there
+already has it, and the other files are left as they are.
+Once the project is shared, its versions go by themselves: each one is sent, and the repository
+is asked for newer ones when the project opens, after each version and when Nuée comes back to
+the front (every five minutes at most). A newer version updates the open project when it has no
+unsaved changes, and the status bar says so, with What changed; with unsaved changes, it waits
+until they are saved. History's sharing part gives the state (up to date, sending, to send,
+newer version, waiting, to choose, or the error, with Try again), the account signed in, with
+Invite a colleague... and Sign out (or Sign in...), and Send now, Get now, Check, Change the
+address or token... and Stop sharing (the versions stay here and in the repository). The clock
+in the status bar shows the same state. When you and a colleague both changed the project: see
+Working together.
+
+Signing in to GitHub or GitLab
+------------------------------
+Nuée signs in to GitHub, GitLab and your institution's GitLab without a password typed in Nuée.
+Share, Sign in... in History, or a private repository in Open from GitHub or GitLab show a short
+code: Open the page (it opens in your browser, the code copied), paste or type the code there
+(GitLab's page has it already) and approve Nuée. The dialog waits for that (it says until when
+the code works; refused or expired, Get a new code), then shows the account, with its picture,
+name and user name. The sign-in is kept in the computer's keychain (on Linux without a keyring,
+until Nuée closes) and renewed by itself.
+Your institution's GitLab: type its server's name (gitlab.example.org). Nuée signs in there once
+its administrator has registered it as an application of that GitLab (17.3 or later): they give
+you its Application ID, which you type once. Before GitLab 17.3, or until Nuée is registered,
+use a token.
+Other ways to sign in: Use this computer's git sign-in, when git is installed (a Git Credential
+Manager window may open); Use a token instead, a token made on the server's site (Make one on
+GitHub, scope "repo"; on GitLab, scopes api, read_user and write_repository), checked, then kept
+in the keychain and never shown again. A sign-in that may only send and get versions can't
+create a repository nor invite: the dialog says so, and signing in with the server's page does
+it.
+Sign out (in History, beside the account): Nuée forgets its sign-in to that server on this
+computer, and the projects shared there stop sending and getting their versions until you sign
+in again. The account and its repositories stay as they are.
+
+Working together
+----------------
+Two people can work on one project, each on their own computer: shared through GitHub or GitLab,
+or opened from a shared network folder. When both changed it, Nuée merges the two by what
+changed, not as text. Each model by its name, setting by setting (variables, terms,
+observations, options); two new models of the same name are both kept, theirs renamed. Documents
+line by line, their references following a renamed model, and figures. The data by their steps,
+when both sides only added steps to the same source: the source of the side that updated it,
+then both sides' steps replayed on it (see Data steps and updating the data); otherwise cell by
+cell, a variable or an observation added on one side kept, one removed on one side and unchanged
+on the other removed.
+What clashes is what both sides changed differently: the same cell, a passage of a document, a
+setting of a model, a variable removed on one side and changed on the other. With nothing
+clashing, the dialog lists what each side brought, and Merge both merges them. Otherwise each
+clash shows both sides, its passages or its cells (the first twenty) side by side, with Keep
+mine or Take theirs (mine to start with), and Merge with these choices merges them.
+Shared on GitHub or GitLab: when your version and a colleague's both changed the project, the
+status bar says so (Choose...), and so does History. Merge both, or, for the whole project, Keep
+mine or Take theirs (the project becomes theirs, yours staying in the history), after Compare if
+you like (What changed from yours to theirs). The merged project is the next version, sent to
+the repository; both histories are kept. Without a version in common (a project shared into a
+repository that already had it), Nuée may only offer Keep mine and Take theirs.
+On a shared network folder: when a project is open from a share or a NAS, every 30 seconds Nuée
+looks whether its file was saved by someone else since it was read; it then says who (the name
+given in History › Settings...) and offers to merge their changes into yours, with Merge both,
+or the choices of each clash, or Not now. The merge is one change of the project, which Ctrl+Z
+undoes: save the project to keep it. Save meets the changed file too: Merge both (then the
+merged project is saved), Overwrite (their changes are lost), Save as... or Cancel. A project
+opened before Nuée or its R engine restarted, or recovered after a crash, can't be merged: Save
+then asks whether to overwrite their changes. The project's history, in the folder's
+.nuee-versions, is common to both, each version with the name of who saved it. A project shared
+through GitHub or GitLab is kept in step by its repository instead.
 
 OPLS and OPLS-DA
 ----------------
@@ -2095,25 +2646,36 @@ first, then use that variable in the condition.
 Windows
 -------
 In the centre, one tab per model ("M1 · PLS"), and a tab for each view of the project (Data,
-Variable statistics, History). A model's tab is its page: its summary on the left, its scores
-and loadings on the right; its other views (VIP, DModX...) join it as tabs. Choosing a model
-in the explorer shows its page; closing a page's last view closes the page.
+Variable statistics, History). With several projects open, a model's tab, and the status bar,
+start with its project's name ("skylark_counts · M1 · TRIM"). A model's tab is its page: its
+summary on the left, its scores and loadings on the right; its other views (VIP, DModX...) join
+it as tabs. Choosing a model in the explorer shows its page; closing a page's last view closes
+the page.
 In a page as in the centre, views move by their tab (drag and drop), split and stack;
 dragging a model's tab next to another one compares two models. Right-click on a tab, or the
 icon at the top right of a group: detach into its own window (on a second screen, for
-example), maximise, close.
+example), maximise, close, close the others, close all the tabs of its project, close all
+views. Window › Close all views closes every tab of the centre, models' pages and project
+views (the explorer and the R console stay).
 Window › New window opens a second full window. A selection of observations (box or lasso in
 a plot, click on a point or a list row) shows in every view and every window of the same
-model.
+model. A window's title, which its taskbar button and the Window menu show, names the project
+in front: the one the menus act on.
 Plots: mouse wheel to zoom; right-click to copy or save the image (PNG, SVG), see the
 selection's contributions or make it a class.
 Ctrl+C in a view that shows a table (summary, lists, statistics...) copies the table as
 tab-separated text, to paste into Excel (a list: all its rows, at full precision); with text
 selected, Ctrl+C copies the text as usual.
 View › Find a command (Ctrl+K): type part of the name of a command or of its menu ("vip",
-"export r"), then Enter.
+"export r"), or of an analysis, in English or French, or its code ("trim", "glm", "nmds",
+"random forest"), then Enter: the command runs, or New model opens with that type.
 Help › Diagnostic information: the versions of Nuée, the system, R and its packages, to paste
 into a report of a problem (github.com/4rtefakt/nuee/issues; no paths, no data).
+Help › Tutorials and Help › User guide online open the documentation website in the browser,
+in the interface's language: six tutorials, from the question to the paper, and this guide in
+pages. Help › About gives the versions, the website (nuee.io), the source code and Report a
+problem, and how to cite Nuée: the sentence to copy, with Zenodo's DOI, which stands for every
+version (Model › Text for the Methods section writes it too).
 
 What matches the stored values (checked on 944 models from 133 .usp projects)
 -----------------------------------------------------------------------------

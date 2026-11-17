@@ -10,11 +10,16 @@ import { el, icone, dialogue, decimal } from './ui.js';
 import { demander } from './api.js';
 import { dialogueModele, dialogueVariable, ANALYSES } from './dialogues.js';
 import { QUESTIONS, BUTS, formulaire, TEXTES_CHOIX, faitsVariables, genre, beaucoupDeZeros, zerosPoisson, proposer, choisirReponse,
-  contexte, recommander, construire, notesPour, uidDe, nomColonne, distanceProposee } from './choix_analyse.js';
+  contexte, recommander, construire, notesPour, uidDe, nomColonne, distanceProposee, reponsesPossibles, proposerReponse } from './choix_analyse.js';
 
 ajouterTextes(TEXTES_CHOIX.fr, TEXTES_CHOIX.en);
+ajouterTextes({ qa_site_en_nombres: '{nom} est fait de nombres : en catégories, il peut être le site.' },
+  { qa_site_en_nombres: '{nom} is made of numbers: as categories, it can be the site.' });
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));
+const entreGuillemets = (n) => (langueActuelle() === 'fr' ? `« ${n} »` : `“${n}”`);
+// (the name of a column of sites, plots, stations… that a code in numbers may name, accents removed)
+const SITE_EN_NOMBRES = /^(sites?|plots?|placettes?|parcelles?|stations?|transects?|quadrats?|routes?|blocs?|blocks?|lieux?|unites?|units?|pieges?|traps?|mares?|ponds?|etangs?|nichoirs?|colonies?)([ _.-]*(id|code|no|num|numero|number|nr))?$/i;
 const deuxPoints = () => (langueActuelle() === 'fr' ? ' : ' : ': ');  // (a space before the colon in French only)
 // the answers last given in each project, offered again when the dialog opens again (a model
 // dialog cancelled, to try an alternative)
@@ -45,6 +50,8 @@ function faitsTexte(f) {
   else if (f.min === null) return t('qa_faits_inconnus');
   else {
     morceaux.push(t('qa_faits_bornes', { min: nombre(f.min), max: nombre(f.max) }), t(f.entiers ? 'qa_faits_entiers' : 'qa_faits_decimales'));
+    // (whole numbers that their unit or name says are a measurement, not counts: choix_analyse.js, genre)
+    if (f.entiers && f.min >= 0 && f.max > 1 && genre(f) === 'mesure') morceaux.push(t('qa_faits_mesure_arrondie'));
     if (f.zeros > 0) {
       const poisson = genre(f) === 'comptage' ? zerosPoisson(f) : null;
       morceaux.push(t('qa_faits_zeros', { p: pourcent(f.zeros) }) + (poisson !== null ? ` (${t('qa_faits_poisson', { q: pourcent(poisson) })})` : ''));
@@ -148,6 +155,7 @@ export async function dialogueQuelleAnalyse(app, projet) {
         if (v === 'densite' && R.y === null) choisirReponse(R, F, distanceProposee(p()));
         ajusterReponse();
         if (R.reponse === 'especes') sansEspeces();
+        proposerReponse(R, F, p());  // (the only variable left, the time and the site being the design)
         maj(true);
       }, exemple(q) ? '' : t(`qa_ex_${q}`))))];
     if (R.question === 'especes') {
@@ -161,12 +169,12 @@ export async function dialogueQuelleAnalyse(app, projet) {
       const uneSeule = f.reponses.length === 1;
       const seulesEspeces = uneSeule && f.reponses[0] === 'especes';
       if (!seulesEspeces && !(f.plusieurs || R.reponse === 'especes')) {
-        // (the variables of the kinds the question offers; the kind then follows the variable chosen)
-        const numeriques = f.reponses.some((k) => ['mesure', 'comptage', 'presence', 'proportion', 'distances'].includes(k));
-        const options = [...(numeriques ? quantitatives() : []), ...(f.reponses.includes('classe') ? qualitatives() : [])]
+        // (the variables of the kinds the question offers, without the design's time and site:
+        // choix_analyse.js, reponsesPossibles; the kind then follows the variable chosen)
+        const options = reponsesPossibles(R, F, p()).map((u) => vars().find((v) => v.uid === u))
           .map((v) => [v.uid, v.qualitative ? `${v.nom} (${liste(v.categories).length})` : v.nom]);
         reponse.push(el('div', { class: 'ligne' }, el('label', {}, uneSeule ? t(`qa_r_${f.reponses[0]}`) : t('qa_reponse_variable')),
-          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v)); ajusterReponse(); maj(true); },
+          select('qa-y', options, R.y, (v) => { choisirReponse(R, F, v === '' ? null : Number(v), p()); ajusterReponse(); maj(true); },
             f.facultative ? t('qa_reponse_facultative') : t('qa_choisir'))));
       }
       if (!uneSeule) {
@@ -203,16 +211,35 @@ export async function dialogueQuelleAnalyse(app, projet) {
         const coche = requis || !!R[cle];
         plan.push(el('div', { class: 'qa-plan' },
           requis ? el('span', {}, libelle) : el('label', { class: 'champ' }, el('input', { type: 'checkbox', checked: coche, 'data-cle': `qa-${cle}`,
-            onchange: (e) => { R[cle] = e.target.checked; maj(true); } }), libelle),
+            onchange: (e) => { R[cle] = e.target.checked; proposerReponse(R, F, p()); maj(true); } }), libelle),
           coche && contenu ? contenu() : null));
       };
       const colonnes = (temps) => (temps ? [...quantitatives(), ...qualitatives().filter((v) => v.temps)] : qualitatives()).map((v) => [`v:${v.uid}`, v.nom]).concat(ids());
-      champ('repetes', t('qa_d_repetes'), () => el('div', { class: 'ligne', title: t('qa_d_repetes_aide') }, el('span', { class: 'doux' }, t('qa_site')),
-        select('qa-site', colonnes(false), R.site, (v) => { R.site = v || null; R.x = R.x.filter((u) => u !== uidDe(R.site)); maj(false); })));
+      // (the design changed: the response proposed again, the list redrawn when it changes)
+      const autrePlan = (changer) => (v) => {
+        const avant = R.y;
+        changer(v || null);
+        proposerReponse(R, F, p());
+        maj(R.y !== avant);
+      };
+      // (a site coded 1, 2, 3 is made of numbers, and a site is qualitative: the first such column
+      // can be treated as categories from here, one change of the data, and the dialog comes back with it)
+      const siteEnNombres = !R.site ? quantitatives().find((v) => SITE_EN_NOMBRES.test(v.nom.normalize('NFD').replace(/[̀-ͯ]/g, '').trim())
+        && (F.get(v.uid) || {}).entiers) : null;
+      const enCategories = async (v) => {
+        try { await app.changerDonnees('type_variable', pid, { variable: v.uid, type: 'qualitative' }); } catch { return; }  // (occupe said why)
+        R.site = `v:${v.uid}`;
+        d.fermer();
+        app.quelleAnalyse(pid);
+      };
+      champ('repetes', t('qa_d_repetes'), () => el('div', {}, el('div', { class: 'ligne', title: t('qa_d_repetes_aide') }, el('span', { class: 'doux' }, t('qa_site')),
+        select('qa-site', colonnes(false), R.site, autrePlan((v) => { R.site = v; R.x = R.x.filter((u) => u !== uidDe(R.site)); }))),
+      siteEnNombres ? el('p', { class: 'note' }, t('qa_site_en_nombres', { nom: entreGuillemets(siteEnNombres.nom) }), ' ',
+        el('button', { 'data-cle': 'qa-site-categories', onclick: () => enCategories(siteEnNombres) }, t('atelier_en_categories', { nom: entreGuillemets(siteEnNombres.nom) }))) : null));
       champ('annees', t('qa_d_annees'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, t('qa_temps')),
-        select('qa-temps', colonnes(true), R.temps, (v) => { R.temps = v || null; R.x = R.x.filter((u) => u !== uidDe(R.temps)); maj(false); })));
+        select('qa-temps', colonnes(true), R.temps, autrePlan((v) => { R.temps = v; R.x = R.x.filter((u) => u !== uidDe(R.temps)); }))));
       champ('baci', t('qa_d_baci'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, t('qa_unite')),
-        select('qa-unite', colonnes(false), R.unite, (v) => { R.unite = v || null; maj(false); })));
+        select('qa-unite', colonnes(false), R.unite, autrePlan((v) => { R.unite = v; }))));
       champ('coordonnees', t('qa_d_coordonnees'), () => el('div', { class: 'ligne' }, el('span', { class: 'doux' }, coords.projet
         ? t('qa_coordonnees_projet', { x: coords.projet.nom_x, y: coords.projet.nom_y })
         : coords.proposees ? t('qa_coordonnees_proposees', { x: nom(Number(coords.proposees.x)), y: nom(Number(coords.proposees.y)) }) : t('qa_coordonnees_aucune'))));
@@ -269,13 +296,14 @@ export async function dialogueQuelleAnalyse(app, projet) {
     }
     const b = construire(r.choix, R, F, p(), c, { langue: langueActuelle() });
     const autres = r.autres.map((id) => construire(id, R, F, p(), c, { langue: langueActuelle() }));
-    droite.replaceChildren(el('h3', {}, t('qa_recommandee')),
+    // (without alternatives, their heading and list are left out: replaceChildren would write a null as "null")
+    droite.replaceChildren(...[el('h3', {}, t('qa_recommandee')),
       el('div', { class: 'qa-carte' }, el('h4', {}, nomAnalyse(b)), ...details(b, c), el('div', { class: 'qa-ouvrir' }, bouton(b, true))),
       autres.length ? el('h3', {}, t('qa_autres')) : null,
       autres.length ? el('div', { class: 'qa-autres' }, autres.map((a) => el('details', {},
         el('summary', {}, el('span', { class: 'qa-nom' }, nomAnalyse(a)), el('span', { class: 'espace' }), bouton(a, false)),
         el('div', { class: 'qa-detail' }, ...details(a, c))))) : null,
-      el('p', { class: 'note' }, t('qa_conseil')));
+      el('p', { class: 'note' }, t('qa_conseil'))].filter(Boolean));
   }
   function maj(structure) {
     if (structure) rendreGauche();

@@ -123,7 +123,7 @@ cles_groupes_vc <- function(projet, d) {
       if (length(v$categories)) v$categories[x] else x
     },
     groups = {
-      g <- as.numeric(vc$groups)[match(as.character(obs), as.character(vc$observations))]
+      g <- as.numeric(vc$groups)[match(nom_numero(obs), nom_numero(vc$observations))]
       if (anyNA(g)) stop(traduire("Validation croisée : les groupes de ce modèle viennent du fichier .usp, et certaines de ses observations n'en ont pas. Choisissez d'autres groupes dans Nouveau modèle.",
                                   "Cross-validation: this model's groups come from the .usp file, and some of its observations have none. Choose other groups in New model."), call. = FALSE)
       g
@@ -176,7 +176,9 @@ tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL
   par_ligne <- spectres_par_ligne(d$spectres)
   # (les colonnes de sx ne servent qu'aux termes croisés de Y : garder_simples)
   y_croises <- identical(d$type, "PLS") && any(vapply(d$y, function(t) length(t$variables) > 1, TRUE))
+  ponderation <- if (!plan$complet && length(d$x)) facteurs_ponderation(d$x)  # (la même pour chaque sous-modèle)
   lapply(sort(unique(plan$groupes)), function(g) {
+    verifier_arret()
     hors <- plan$groupes == g
     if (plan$complet) {
       sx <- bx
@@ -187,7 +189,8 @@ tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL
       v <- if (is.null(projets)) vx else valeurs_bloc(p, d$x, obs)
       if (!is.null(projets) && par_ligne) v <- pretraiter_bloc(p, d$x, v, d$spectres)$bruts
       sx <- construire_bloc(p, d$x, obs[!hors], poids, spectres = d$spectres, bruts = v[!hors, , drop = FALSE],
-                            complet = list(ecart = bx$ecart, seuil = plan$seuil), pretraites = par_ligne, garder_simples = y_croises)
+                            complet = list(ecart = bx$ecart, seuil = plan$seuil), pretraites = par_ligne, garder_simples = y_croises,
+                            ponderation = ponderation)
       hx <- construire_bloc(p, d$x, obs[hors], imposees = sx, spectres = d$spectres, bruts = v[hors, , drop = FALSE], pretraites = par_ligne,
                             garder_simples = FALSE)
       Xs <- preparer(sx$X)
@@ -305,6 +308,7 @@ composante_validation <- function(vc, a, E = NULL, F = NULL, comp = NULL) {
   press <- 0
   if (vc$pls) vc$predictions[[a]] <- matrix(NA_real_, nrow(vc$Z$E), ncol(vc$Z$E))
   for (i in seq_along(vc$tours)) {
+    verifier_arret()
     r <- vc$tours[[i]]
     comp <- if (!r$arrete) tryCatch(if (vc$pls) composante_pls(r$E, r$X$M, r$F, r$Y$M, r$depart, vc$version) else composante_acp(r$E, r$X$M, r$depart, vc$version),
                                     sans_variation = function(e) NULL)
@@ -370,6 +374,7 @@ validation_par_composante <- function(vc, a, E, F, comp) {
     press <- 0
     prediction <- matrix(NA_real_, nrow(F), ncol(F))
     for (i in seq_along(vc$tours)) {
+      verifier_arret()
       r <- vc$tours[[i]]
       h <- r$hors
       k <- tryCatch(composante_pls(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], F[!h, , drop = FALSE], MF[!h, , drop = FALSE], vc$depart,
@@ -407,6 +412,7 @@ validation_par_composante <- function(vc, a, E, F, comp) {
     P <- matrix(0, ncol(E), nrow(E))  # le loading de chaque observation, d'après son groupe
     Tc <- matrix(0, nrow(E), ncol(E))  # le score de chaque terme, d'après son groupe
     for (i in seq_along(vc$tours)) {
+      verifier_arret()
       h <- vc$tours[[i]]$hors
       k <- tryCatch(composante_acp(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], vc$depart[1], version), sans_variation = sans)
       if (is.null(k)) next

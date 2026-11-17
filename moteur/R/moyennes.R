@@ -48,7 +48,7 @@ qualitatives_modele <- function(m) {
     list(uid = u, nom = comp[[ts[1]]]$noms[1], colonnes = vus, categories = vapply(vus, function(t) comp[[t]]$categories, 0, USE.NAMES = FALSE),
          niveaux = vapply(vus, function(t) as.character(comp[[t]]$niveaux[1]), "", USE.NAMES = FALSE))
   })
-  stats::setNames(res, as.character(uids))
+  stats::setNames(res, nom_numero(uids))
 }
 
 # Les variables qualitatives croisées avec la variable `u` dans un terme du modèle (m$candidats), par
@@ -58,7 +58,7 @@ croisees_avec <- function(m, u) {
     q <- ct$variables[ct$categories != 0]
     if (length(ct$variables) > 1 && u %in% q) setdiff(q, u)
   }))
-  as.character(unique(vs))
+  nom_numero(unique(vs))
 }
 
 # Les variables quantitatives croisées avec la variable qualitative `u` (regression.R :
@@ -70,7 +70,7 @@ pentes_avec <- function(m, u) {
   pc <- pentes_croisees(m)
   garde <- Filter(function(t) u %in% unlist(lapply(comp[pc[[t]]], function(ct) ct$variables[ct$categories != 0])), names(pc))
   stats::setNames(lapply(garde, function(t) list(uid = comp[[t]]$variables, terme = t, nom = m$noms_termes[match(t, m$termes)])),
-                  vapply(garde, function(t) as.character(comp[[t]]$variables), ""))
+                  vapply(garde, function(t) nom_numero(comp[[t]]$variables), ""))
 }
 
 # Les réglages des moyennes ajustées (ceux de la demande, sinon ceux par défaut), vérifiés : la
@@ -79,9 +79,12 @@ pentes_avec <- function(m, u) {
 # rien), la variable quantitative dont donner la pente dans chaque catégorie (`pente`, croisée avec
 # elle, ou rien : les moyennes), l'ajustement des paires (`ajustement` : "tukey", "holm" ou "aucun")
 # et l'échelle d'un modèle au lien log ou logit (`echelle` : "reponse" ou "lien").
+# Les réglages d'une demande des moyennes ajustées (serveur.R : moyennes) : ses autres champs n'en
+# sont pas (un champ en trop ferait oublier les réglages gardés avec le modèle).
+REGLAGES_MOYENNES <- c("facteur", "dans", "pente", "ajustement", "echelle")
 reglages_moyennes <- function(m, quals, q) {
   un <- function(x) {
-    x <- as.character(unlist(x))
+    x <- nom_numero(unlist(x))
     if (length(x) && !is.na(x[1]) && nzchar(x[1])) x[1]
   }
   nom <- function(u) if (!is.null(quals[[u]])) quals[[u]]$nom else u
@@ -99,10 +102,10 @@ reglages_moyennes <- function(m, quals, q) {
   pentes <- pentes_avec(m, as.numeric(facteur))
   if (!is.null(pente) && !pente %in% names(pentes)) {
     # (son nom, si elle est une variable du modèle)
-    ct <- Find(function(ct) pente %in% as.character(ct$variables), m$composition)
+    ct <- Find(function(ct) pente %in% nom_numero(ct$variables), m$composition)
     stop(sprintf(traduire("« %s » n'est pas une variable quantitative croisée avec « %s » dans un terme du modèle : sa pente ne change pas d'une catégorie à l'autre.",
                           "\"%s\" isn't a quantitative variable crossed with \"%s\" in a term of the model: its slope doesn't change from one category to another."),
-                 if (!is.null(ct)) ct$noms[match(pente, as.character(ct$variables))] else pente, nom(facteur)), call. = FALSE)
+                 if (!is.null(ct)) ct$noms[match(pente, nom_numero(ct$variables))] else pente, nom(facteur)), call. = FALSE)
   }
   ajustement <- un(q$ajustement) %||% "tukey"
   if (!ajustement %in% c("tukey", "holm", "aucun")) stop(traduire("Ajustement inconnu : tukey, holm ou aucun.", "Unknown adjustment: tukey, holm or aucun (none)."), call. = FALSE)
@@ -148,8 +151,8 @@ bruts_grille <- function(m, quals, G, cov, decale = NULL) {
     if (ct$categories == 0) {
       B[, t] <- if (!is.null(decale[[t]])) decale[[t]] else cov[[t]]$valeur
     } else {
-      f <- quals[[as.character(ct$variables)]]
-      B[, t] <- if (is.null(f)) 0 else as.numeric(f$categories[G[[as.character(ct$variables)]]] == ct$categories)
+      f <- quals[[nom_numero(ct$variables)]]
+      B[, t] <- if (is.null(f)) 0 else as.numeric(f$categories[G[[nom_numero(ct$variables)]]] == ct$categories)
     }
   }
   B
@@ -244,7 +247,7 @@ colonnes_ddl <- function(m, quals) {
     ct <- comp[[t]]
     for (j in which(ct$categories != 0)) {
       reste <- paste(sort(ct$variables[-j]), collapse = " ")
-      if ((!nzchar(reste) || reste %in% cles) && isTRUE(ct$categories[j] == quals[[as.character(ct$variables[j])]]$categories[1])) return(FALSE)
+      if ((!nzchar(reste) || reste %in% cles) && isTRUE(ct$categories[j] == quals[[nom_numero(ct$variables[j])]]$categories[1])) return(FALSE)
     }
     TRUE
   }, TRUE)
@@ -498,7 +501,10 @@ ajuster_paires <- function(pa, ajustement, adaptatif = FALSE) {
       k <- (1 + sqrt(1 + 8 * nc)) / 2
       famille[ici] <- k
       p[ici] <- stats::ptukey(sqrt(2) * abs(pa$t[ici]), k, zapsmall(df[ici]), lower.tail = FALSE)
-      critique[ici] <- stats::qtukey(0.95, k, df[ici]) / sqrt(2)
+      # (la valeur critique ne dépend que des degrés de liberté : calculée une fois pour chacun, qtukey
+      # étant lent ; les 19 900 paires d'un facteur de 200 catégories en passaient la moitié de leur temps)
+      u <- unique(df[ici])
+      critique[ici] <- (stats::qtukey(0.95, k, u) / sqrt(2))[match(df[ici], u)]
     } else {
       famille[ici] <- nc
       p[ici] <- stats::p.adjust(brute[ici], "holm")
@@ -537,6 +543,7 @@ phrase_paire <- function(r, i) {
   # (au moins deux décimales, trois chiffres significatifs pour une petite valeur : 0,0614)
   nb <- function(x, ref = x) {
     if (is.na(x)) return("NA")
+    if (is.infinite(x)) return(if (x > 0) "∞" else "−∞")  # (une borne sur l'échelle de la réponse, exp() d'une catégorie sans comptage)
     a <- abs(ref)
     dec <- if (is.finite(a) && a > 0) max(2, 2 - floor(log10(a))) else 2
     formatC(if (round(x, dec) == 0) 0 else x, format = "f", digits = min(dec, 8), decimal.mark = marque)
@@ -674,4 +681,124 @@ phrase_methodes_moyennes <- function(m, d, fr, liste, guillemets) {
             if (fr) (if (plusieurs) "ont été laissées" else "a été laissée") else (if (plusieurs) "were" else "was"))
   }
   list(texte = paste(c(phrase1, ddl, echelle, ajustement, estimable), collapse = " "), cites = cites)
+}
+
+# ------------------------------------------------------------ les valeurs prédites (vue Effets)
+
+# Les effets d'une régression sur l'échelle de la réponse (Graphiques › Effets › Valeurs prédites) :
+# pour chaque terme de effets_regression (regression.R), dans le même ordre et la même forme, les valeurs
+# prédites de la réponse quand sa variable parcourt ses valeurs, avec leur bande à 95 %. Ce qui reste
+# fixe, sur la grille des moyennes ajustées (covariables_moyennes, bruts_grille, colonnes_grille,
+# lignes_modele) :
+#   - les autres variables quantitatives à leur moyenne sur les observations du modèle, celle de la
+#     variable avant sa transformation (comme les moyennes ajustées et emmeans), une courbe en ce point ;
+#   - les variables qualitatives dans leur catégorie de référence, celle que l'ajustement a laissée de
+#     côté (regression.R : references_qualitatives ; la dernière observée quand il n'y en a pas une
+#     seule), sauf celles croisées avec le terme : chacune de leurs catégories (ou combinaisons) a sa
+#     courbe, sur les valeurs de la variable dans la catégorie, comme sur l'échelle du lien ; une courbe
+#     par catégorie (s(x, by = f)), avec l'effet principal de sa variable qualitative ;
+#   - les effets aléatoires à 0 (la population : aucun écart propre à un groupe), l'effort à 1 (des
+#     densités, sauf les comptages attendus du Poisson à excès de zéros), le lissage spatial au point
+#     moyen des coordonnées.
+# La bande : celle du prédicteur linéaire, ± 1,96 erreur-type (√(L V Lᵀ), V la covariance des
+# coefficients ; comme la vue sur l'échelle du lien), ramenée sur l'échelle de la réponse par l'inverse
+# du lien : exp (log), le logit inverse (logit), la valeur attendue d'un comptage pour le Poisson à
+# excès de zéros (esperance_zip, θ₁ et θ₂ tenus pour connus) ; avec le lien identité, la réponse
+# modélisée elle-même (transformée s'il y a lieu, `forme_y` nommant son échelle : les valeurs prédites
+# de log10(compte + 1), pas du comptage). Chaque terme dit aussi ce qui reste fixe pour lui
+# (`fixes` : ses autres variables quantitatives et leur moyenne, ses autres variables qualitatives et
+# leur catégorie de référence), et le résultat ce qui l'est pour tous (`commun` : les effets
+# aléatoires, l'effort, le lissage spatial) ; chaque ligne, sa grille (`grille`, pour l'export vers R).
+effets_reponse <- function(projet, m, d) {
+  a <- m$ajustement
+  if (inherits(a, "gamm")) a <- a$gam
+  dn <- m$donnees
+  comp <- m$composition
+  termes <- termes_regression(d$x)
+  quals <- qualitatives_modele(m)
+  cov <- covariables_moyennes(projet, m, termes)
+  refs <- references_qualitatives(m)
+  # (le rang de la catégorie de référence de chaque variable qualitative, parmi celles observées)
+  rang_ref <- vapply(names(quals), function(u) {
+    k <- match(refs[[u]] %||% NA_character_, quals[[u]]$niveaux)
+    if (is.na(k)) length(quals[[u]]$colonnes) else k
+  }, 0L)
+  # (la variable qualitative et le rang de la catégorie d'une colonne 0/1)
+  rang_colonne <- function(s) {
+    u <- nom_numero(comp[[s]]$variables)
+    stats::setNames(match(s, quals[[u]]$colonnes), u)
+  }
+  cb <- coefficients_covariance(a)
+  b <- cb$b
+  V <- cb$V
+  if (anyNA(b)) {  # (un coefficient que lm() a laissé de côté : 0, comme emmeans)
+    ok <- !is.na(b)
+    b <- b[ok]
+    V <- V[ok, ok, drop = FALSE]
+  }
+  lien <- m$lien %||% "identity"
+  inverse <- if (identical(m$famille, "poisson_zi")) function(x) esperance_zip(x, m$resultat$parametre_loi$valeur)
+             else if (identical(lien, "log")) exp else if (identical(lien, "logit")) stats::plogis else identity
+  # les valeurs prédites d'une ligne : `t` sur l'étendue de ses valeurs dans les lignes `ici` du modèle,
+  # les catégories `rangs` (nommées par leur variable) pour les variables qualitatives croisées avec lui
+  ligne <- function(t, ici, rangs = integer(0)) {
+    i <- match(t, m$termes)
+    centre <- m$bloc$centre[i]
+    poids <- m$bloc$poids[i]
+    if (!isTRUE(poids > 0)) poids <- 1
+    x <- seq(min(dn[[t]][ici]), max(dn[[t]][ici]), length.out = 80)
+    G <- as.data.frame(as.list(rang_ref), check.names = FALSE)[rep(1, length(x)), , drop = FALSE]
+    for (u in names(rangs)) G[[u]] <- rangs[[u]]
+    B <- bruts_grille(m, quals, G, cov, decale = stats::setNames(list(x / poids + centre), t))
+    L <- lignes_modele(m, colonnes_grille(m, termes, B))[, names(b), drop = FALSE]
+    eta <- as.vector(L %*% b)
+    se <- sqrt(pmax(0, rowSums((L %*% V) * L)))
+    # (et pour l'export vers R, script.R : plan_predictions, l'étendue de la variable dans ses unités et la
+    # valeur des termes simples, celle du terme à NA)
+    S <- B[1, ]
+    S[t] <- NA
+    list(x = x / poids + centre, effet = inverse(eta), bas = inverse(eta - 1.96 * se), haut = inverse(eta + 1.96 * se),
+         valeurs = dn[[t]][ici] / poids + centre, grille = list(de = min(x) / poids + centre, a = max(x) / poids + centre, S = S))
+  }
+  # ce qui reste fixe pour le terme `t` : les autres variables quantitatives, les variables qualitatives
+  # qui ne sont pas croisées avec lui (`croisees` : leurs numéros)
+  fixes <- function(t, croisees = character(0)) {
+    autres <- Filter(function(cv) cv$terme != t, cov)
+    q <- setdiff(names(quals), croisees)
+    list(quantitatives = data.frame(nom = vapply(autres, `[[`, "", "nom"), valeur = vapply(autres, `[[`, 0, "moyenne"), row.names = NULL, stringsAsFactors = FALSE),
+         qualitatives = data.frame(nom = vapply(quals[q], `[[`, "", "nom"), categorie = vapply(q, function(u) quals[[u]]$niveaux[rang_ref[[u]]], ""),
+                                   row.names = NULL, stringsAsFactors = FALSE))
+  }
+  croises <- pentes_croisees(m)
+  tous <- rep(TRUE, nrow(dn))
+  effets <- lapply(c(intersect(m$quantitatifs, m$utiles), setdiff(names(croises), m$quantitatifs)), function(t) {
+    i <- match(t, m$termes)
+    nom <- m$noms_termes[i]
+    courbe <- t %in% m$lisses
+    tout <- dn[[t]] / (if (isTRUE(m$bloc$poids[i] > 0)) m$bloc$poids[i] else 1) + m$bloc$centre[i]
+    if (t %in% names(m$par)) {  # (une courbe par catégorie : chaque niveau du facteur de sa variable qualitative)
+      f <- m$par[[t]]
+      colonnes <- m$facteurs_courbes[[f]]$colonnes
+      niveaux <- lapply(levels(dn[[f]]), function(nv) c(list(niveau = nv), ligne(t, !is.na(dn[[f]]) & dn[[f]] == nv, rang_colonne(colonnes[[nv]]))))
+      u <- names(rang_colonne(colonnes[[1]]))
+      return(list(terme = nom, courbe = TRUE, par_categorie = TRUE, par = m$facteurs_courbes[[f]]$nom, valeurs = tout, niveaux = niveaux, fixes = fixes(t, u)))
+    }
+    if (!is.null(croises[[t]])) {  # (croisé avec des catégories : chaque catégorie, ou combinaison, observée)
+      cellules <- cellules_pentes(m, croises[[t]])
+      niveaux <- lapply(cellules, function(cel) c(list(niveau = cel$niveau), ligne(t, cel$lignes, unlist(lapply(cel$colonnes, rang_colonne)))))
+      u <- unique(unlist(lapply(cellules, function(cel) names(unlist(lapply(cel$colonnes, rang_colonne))))))
+      return(list(terme = nom, courbe = courbe, par = attr(cellules, "par"), valeurs = tout, niveaux = niveaux, fixes = fixes(t, u)))
+    }
+    c(list(terme = nom, courbe = courbe), ligne(t, tous), list(fixes = fixes(t)))
+  })
+  # (`famille` : l'effort à 1 ne donne pas des densités au Poisson à excès de zéros, dont la valeur
+  # attendue d'un comptage n'est pas proportionnelle à l'effort ; `forme_y` : une réponse transformée,
+  # l'échelle des valeurs prédites, log10(compte + 1), comme celle des moyennes ajustées, et `log_y`
+  # quand c'est un logarithme)
+  tr_y <- d$y[[1]]$transform
+  list(effets = effets, lien = lien, famille = m$famille,
+       forme_y = if (!is.null(tr_y) && !identite(tr_y)) formule_transformation(tr_y, m$y$noms, !identical(getOption("nuee.langue"), "en")),
+       log_y = isTRUE(as.character(tr_y$type) %in% c("log10", "ln")),
+       commun = list(aleatoires = I(as.character(m$niveaux)), decalage = m$decalage,
+                     spatial = if (!is.null(m$spatial)) list(nom = m$spatial$nom, x = mean(dn$sx), y = mean(dn$sy))))
 }

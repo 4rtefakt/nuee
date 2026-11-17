@@ -15,8 +15,8 @@
 # silicon et x86) ; la séance en un script ; l'export en anglais ; les régressions
 # (linéaire, mixte avec effets emboîtés et CAR1, GLM de Poisson avec un effort, binomial et gamma,
 # GAMM binomial négatif, GAM de Tweedie avec un jeu de test : coefficients, AIC, R², variances,
-# paramètres des lois, courbes, validation croisée, valeurs ajustées et résidus, résidus quantiles,
-# jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
+# paramètres des lois, courbes, effets de la vue Effets, validation croisée, valeurs ajustées et
+# résidus, résidus quantiles, jeu de test ; la sélection par l'AIC, toutes les combinaisons ou l'élimination descendante ; le
 # modèle mixte de la vue BACI, avec CAR1 ou une fin), en séance et en rapport ; les rapports R
 # Markdown et Quarto (compilés avec knitr s'il est installé).
 #   Rscript moteur/tests/verifier_script.R
@@ -524,7 +524,7 @@ verifier(".RData : données et chaque modèle", all(c("donnees", noms) %in% ls(e
 cat("Régressions (lm, nlme, mgcv)\n")
 # Ce que le moteur donne d'une régression, et ce que son script a calculé (sous ses noms, dans sa langue).
 ATTENDUS_REGRESSION <- c("coefficients", "criteres", "r2", "variances", "phi", "parametre_loi", "dispersion", "courbes", "seuils", "vc", "observations", "test", "selection",
-                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees")
+                         "puissance", "annees_80", "simulation_puissance", "moyennes_ajustees", "effets")
 COURBES_SEUILS <- c("x", "effet", "bas", "haut", "x_pente", "pente", "pente_bas", "pente_haut")
 moteur_regression <- function(m) {
   r <- m$resultat
@@ -536,6 +536,8 @@ moteur_regression <- function(m) {
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, COURBES_SEUILS)),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- rbind(s$plages_pente, s$plages_effet); c(z$de, z$a) })),
        "AIC et vraisemblance" = c(r$logLik, r$parametres, r$AIC, r$AICc, r$BIC), R2 = unlist(r$r2), variances = r$variances$variance,
+       # (les effets de la vue Effets d'un terme seul, courbe ou droite : abscisses, effet, intervalle ; script.R, effets_script)
+       effets = unlist(effets_script(m, m$termes)$valeurs),
        # (la corrélation de chaque pente aléatoire avec l'ordonnée à l'origine de son niveau, nlme)
        "corrélations des pentes" = if (any(!is.na(r$variances$correlation))) r$variances$correlation,
        phi = r$phi, "paramètre de la loi" = r$parametre_loi$valeur, dispersion = r$dispersion, courbes = if (!is.null(r$courbes)) as.matrix(Filter(is.numeric, r$courbes)),
@@ -561,6 +563,7 @@ script_regression <- function(s, langue) {
        "seuils des courbes" = if (length(seuils)) unlist(lapply(seuils, `[`, nom_script(COURBES_SEUILS, langue))),
        "plages des seuils" = if (length(seuils)) unlist(lapply(seuils, function(s) { z <- s[[nom_script("plages", langue)]]; c(z[[3]], z[[4]]) })),
        "AIC et vraisemblance" = n("criteres"), R2 = n("r2"), variances = n("variances")$variance,
+       effets = if (!is.null(n("effets"))) unlist(lapply(unname(n("effets")), unlist, use.names = FALSE)),
        "corrélations des pentes" = n("variances")$correlation,
        phi = n("phi"), "paramètre de la loi" = n("parametre_loi"), dispersion = n("dispersion"), courbes = if (!is.null(n("courbes"))) as.matrix(Filter(is.numeric, n("courbes"))),
        "Q2 et RMSEcv" = c(n("vc")$Q2, n("vc")$RMSEcv), "prédictions de la validation croisée" = n("vc")$prediction,
@@ -771,6 +774,11 @@ verifier("ziP : ziP() de mgcv, ses valeurs ajustées par predict(), ses θ, ses 
            any(grepl("parametre_loi <- setNames(m$family$getTheta(TRUE), c(\"theta1\", \"theta2\"))", lignes_script(r), fixed = TRUE)) &&
            any(grepl("residus_quantiles(cadre[[1]], repartition_zip(m$linear.predictors, m$family$getTheta(TRUE)))", lignes_script(r), fixed = TRUE)) &&
            any(grepl("^esperance_zip <- function", lignes_script(r))) && any(grepl("theta_zip = parametre_loi", lignes_script(r), fixed = TRUE)))
+# (ses commentaires, mis bout à bout : leurs lignes coupent les phrases)
+commentaires_script <- function(r) paste(sub("^\\s*# ?", "", grep("^\\s*#", lignes_script(r), value = TRUE)), collapse = " ")
+verifier("ziP avec un effort : ses valeurs prédites et ses moyennes ajustées à un effort de 1, des comptages attendus, pas des densités",
+         grepl("l'effort à 1 ; la bande à 95 %", commentaires_script(r), fixed = TRUE) && grepl("l'effort à 1 ; les paires de catégories", commentaires_script(r), fixed = TRUE) &&
+           !grepl("densités", commentaires_script(r), fixed = TRUE))
 r <- essayer_regression("glm_beta_profil", pzf, definir_modele(pzf, "GLM", x = uz("x1", "x2", "habitat"), y = uz("prop"), famille = "beta", echelle = "none"))
 verifier("bêta sans terme pénalisé : betar(), et le profil de φ quand mgcv s'arrête en ML (profil_loi) ; ses résidus quantiles de pbeta, sans tirage",
          any(grepl("famille <- function() betar(link = \"logit\")", lignes_script(r), fixed = TRUE)) && any(grepl("^profil_loi <- function", lignes_script(r))) &&
@@ -810,6 +818,9 @@ r <- essayer_regression("lm_puissance_en", pr, definir_modele(pr, "LM", x = ur("
                         puissance = list(tendance = -4, simuler = TRUE, simulation = list(n = 20)))
 verifier("puissance pour une tendance en anglais : simulate_power(), ni nom ni commentaire en français", en_anglais(lignes_script(r)) &&
            any(grepl("^simulate_power <- function", lignes_script(r))) && any(grepl("slope <- log(1 + (-4) / 100)", lignes_script(r), fixed = TRUE)))
+verifier("une réponse transformée (ln(masse)) : ses valeurs prédites nommées sur son échelle, dans le commentaire et sur l'axe de leur graphique",
+         grepl("the value of ln(“masse”) the model predicts", commentaires_script(r), fixed = TRUE) &&
+           any(grepl("ylab = \"Predicted ln(masse)\"", lignes_script(r), fixed = TRUE)) && !any(grepl("Predicted masse", lignes_script(r), fixed = TRUE)))
 # Ajuster ce modèle (sélection par l'AIC) : le modèle choisi garde les lignes du modèle complet (sans
 # x1, ou une densité nulle que son log10 rend manquante) ; son script les laisse de côté de même
 dcomplet <- definir_modele(pr, "LM", x = ur("x1", "x2", "densite"), y = ur("hauteur"), echelle = "none", nom = "M1",
@@ -1177,6 +1188,26 @@ for (i in seq_along(p$models)) {
     verifier(sprintf("%s.%s : le code de ses blocs R tourne (knitr n'est pas installé : pas compilé)", d$name, ext), is.null(attr(messages, "status")))
   }
 }
+
+cat("L'avis de licence et la citation de Nuée (LICENSE-EXCEPTION.md)\n")
+dir.create(ici <- file.path(dossier, "avis"))
+d_avis <- p$models[[1]]
+r_r <- ecrire_script(p, d_avis, file.path(ici, "avis.R"), "moteur", version = "9.9.9", langue = "en")
+r_q <- ecrire_script(p, d_avis, file.path(ici, "avis.qmd"), "moteur", version = "9.9.9", langue = "fr", donnees = "csv")
+t_r <- readLines(r_r$script, encoding = "UTF-8")
+t_q <- readLines(r_q$script, encoding = "UTF-8")
+premier_code <- which(!grepl("^\\s*(#|$)", t_r))[1]
+licence_r <- grep("^# License: you may use, change and share this file under terms of your choice", t_r)
+verifier("un script .R : l'avis à la fin des commentaires du début, avant le code, avec la citation et sa version",
+         length(licence_r) == 1 && licence_r < premier_code && !any(grepl("^\\s*#", t_r[seq_len(licence_r - 2)]) == FALSE) &&
+           any(grepl("LICENSE-EXCEPTION\\.md", t_r[licence_r:premier_code])) &&
+           any(grepl("please cite Nuée: Boutin, C\\. \\(\\d{4}\\)\\. Nuée", t_r[licence_r:premier_code])) &&
+           any(grepl("9\\.9\\.9", t_r[licence_r:premier_code])))
+fins_yaml <- which(t_q == "---")
+verifier("un rapport Quarto : l'en-tête YAML d'abord, puis l'avis en commentaire HTML, en français",
+         t_q[1] == "---" && length(fins_yaml) >= 2 && identical(t_q[fins_yaml[2] + 2], "<!--") &&
+           any(grepl("^Licence : vous pouvez utiliser, modifier et partager ce fichier", t_q)) && any(t_q == "-->") &&
+           which(t_q == "-->")[1] < grep("^## Méthodes", t_q)[1])
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
