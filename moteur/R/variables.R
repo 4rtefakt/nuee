@@ -475,8 +475,27 @@ FONCTIONS_FORMULE <- unique(c(FONCTIONS_CONDITION,
   "switch", "isTRUE", "isFALSE", "richesse", "richness", "shannon", "simpson", "pielou"))
 # (les indices de diversité lisent leurs arguments sans les évaluer : des colonnes, ou des plages a:b)
 FONCTIONS_DIVERSITE <- c("richesse", "richness", "shannon", "simpson", "pielou")
-# (ni T ni F : une colonne T renommée serait lue TRUE sans rien dire ; TRUE et FALSE s'écrivent en entier)
+# (ni T ni F : une colonne T renommée serait lue TRUE sans rien dire ; TRUE et FALSE s'écrivent en entier,
+# sauf donnés à un argument nommé, logiques_nommes)
 CONSTANTES_FORMULE <- c(setdiff(CONSTANTES_CONDITION, c("T", "F")), "LETTERS", "letters", "month.abb", "month.name")
+
+# T et F donnés à un argument nommé (mean(x, na.rm = T), comme les formules de la 1.0 les écrivaient
+# souvent, et comme R les lit) : TRUE et FALSE, sauf quand le projet a une variable ou un identifiant de
+# ce nom (`noms`). Ailleurs (x * T), T reste le nom d'une colonne, qui doit exister : une colonne T
+# renommée par le fichier suivant n'est pas lue TRUE sans rien dire.
+logiques_nommes <- function(x, noms) {
+  if (!is.call(x)) return(x)
+  arguments <- names(x)
+  for (i in seq_along(x)[-1]) {
+    a <- x[[i]]
+    if (is.name(a) && as.character(a) %in% c("T", "F") && !as.character(a) %in% noms && length(arguments) && nzchar(arguments[i])) {
+      x[[i]] <- identical(as.character(a), "T")
+    } else if (is.call(a)) {
+      x[[i]] <- logiques_nommes(a, noms)
+    }
+  }
+  x
+}
 
 # Une formule de Nouvelle variable lue sans être exécutée : l'expression R, après avoir vérifié qu'elle
 # n'appelle que des fonctions de FONCTIONS_FORMULE, sur des noms de variables ou d'identifiants du
@@ -539,8 +558,9 @@ lire_formule_variable <- function(projet, texte) {
       err("« %s » n'a pas sa place dans une formule.", "\"%s\" has no place in a formula.", paste(deparse(x, width.cutoff = 500L), collapse = " "))
     }
   }
-  voir(e[[1]])
-  e[[1]]
+  e <- logiques_nommes(e[[1]], noms)
+  voir(e)
+  e
 }
 
 # L'environnement où se calcule une formule de Nouvelle variable (variable_calculee), et une

@@ -295,16 +295,26 @@ donnees_conformes <- function(p) {
 # viennent, comme une observation sans nom, dont l'identifiant n'est jamais vide ; elles se retrouvent
 # par ce rang, ce que la mise à jour dit (aligner_projet : repetees). Un tableau sans colonne qui les
 # nomme a pour noms les numéros de ses lignes : ses observations se retrouvent par leur place.
+# Seules les observations dont le nom revient prennent les valeurs de `colonnes` : celles du projet, ou
+# des projets qu'une mise à jour ou une fusion compare (colonnes_cle les dit, attribut « repetes »),
+# pour que l'observation d'un nom qui ne revient que d'un côté ait la même clé des deux. Une observation
+# d'un nom à elle se retrouve par son nom seul, quoi qu'une correction fasse à ces colonnes (une
+# présence 0/1 qui distinguait les deux lignes d'un seul nom répété).
 cles_observations <- function(p, colonnes = colonnes_cle(p)) {
   noms <- premiers_noms(p)
   base <- noms
   if (length(colonnes)) {
-    lignes <- lignes_observations(p)
-    base <- do.call(paste, c(list(noms), lapply(colonnes, function(x) {
-      v <- valeurs_colonne_cle(p, x, lignes)
-      v[is.na(v)] <- ""
-      v
-    }), sep = "\u001e"))
+    repetes <- attr(colonnes, "repetes")
+    if (is.null(repetes)) repetes <- unique(noms[duplicated(noms)])
+    concernees <- noms %in% repetes
+    if (any(concernees)) {
+      lignes <- lignes_observations(p)
+      base[concernees] <- do.call(paste, c(list(noms[concernees]), lapply(as.character(colonnes), function(x) {
+        v <- valeurs_colonne_cle(p, x, lignes)[concernees]
+        v[is.na(v)] <- ""
+        v
+      }), sep = "\u001e"))
+    }
   }
   numerotees <- !nzchar(base) | duplicated(base) | duplicated(base, fromLast = TRUE)
   if (!any(numerotees)) return(base)
@@ -361,7 +371,10 @@ colonnes_cle <- function(projets) {
     reste <- restes[k]
     libres <- libres[-k]
   }
-  choisies
+  # (les noms qui reviennent dans l'un des projets : seules leurs observations en prennent les valeurs,
+  # cles_observations)
+  if (!length(choisies)) return(character(0))
+  structure(choisies, repetes = unique(unlist(lapply(projets, function(p) { n <- premiers_noms(p); n[duplicated(n)] }))))
 }
 
 # Les colonnes d'un projet qui peuvent distinguer ses observations d'un même nom (colonnes_cle) : ses
@@ -585,14 +598,16 @@ etape_sautee <- function(raison) stop(structure(class = c("etape_sautee", "error
 
 # Les noms qu'une formule de Nouvelle variable lit et que le projet n'a pas : ni ses variables, ni ses
 # identifiants, ni une constante qu'une formule lit (pi, LETTERS : variables.R, CONSTANTES_FORMULE ;
-# ni T ni F, une colonne T renommée par le fichier suivant serait lue TRUE) : comme
-# lire_formule_variable les refuse, et non un objet quelconque de la séance de R. Une formule qui ne se
-# lit pas n'en a pas, son erreur viendra du calcul.
+# ni T ni F, une colonne T renommée par le fichier suivant serait lue TRUE, sauf donnés à un argument
+# nommé, na.rm = T : logiques_nommes) : comme lire_formule_variable les refuse, et non un objet
+# quelconque de la séance de R. Une formule qui ne se lit pas n'en a pas, son erreur viendra du calcul.
 noms_absents_formule <- function(p, formule) {
   e <- tryCatch(parse(text = formule, keep.source = FALSE), error = function(err) NULL)
   if (is.null(e)) return(character(0))
   n <- noms_condition(p)
-  setdiff(all.vars(e), c(names(n$variables), n$ids, CONSTANTES_FORMULE))
+  noms <- c(names(n$variables), n$ids)
+  lus <- unique(unlist(lapply(as.list(e), function(x) all.vars(logiques_nommes(x, noms)))))
+  setdiff(lus, c(noms, CONSTANTES_FORMULE))
 }
 
 # ---------------------------------------------------------------- les étapes
@@ -1234,16 +1249,40 @@ renumeroter_variable <- function(p, de, vers) {
 #     noms ou leurs numéros) ; le rapport nomme les modèles qui ont pris une catégorie, et les
 #     régressions dont la référence change quand même, sa catégorie n'ayant plus de lignes.
 # Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Avec
-# `selon_rejeu` (une étape retirée : serveur.R, retirer_etape_demande ; la source n'a pas changé), les
-# variables sont telles que la source et les autres étapes les donnent, et non telles que le projet les
-# avait : leur type (une variable qu'un modèle utilise et qui changerait de type : refusé), leurs
+# `selon_rejeu` (une étape retirée : serveur.R, retirer_etape_demande ; la source n'a pas changé : ce
+# que les étapes règlent, reglages_etapes), ce que des étapes règlent des variables est tel que la source
+# et les autres étapes le donnent, et non tel que le projet l'avait : leur type (une variable qu'un modèle utilise et qui changerait de type : refusé), leurs
 # catégories dans leur ordre (les modèles les suivent par leur nom, ou par leurs lignes quand l'étape
 # retirée les avait renommées), leur unité et leur description, les coordonnées ; une variable d'une
-# formule qu'elles n'ont plus part. Rend list(projet, rapport : ce qui a changé ; vers_nouveau : le
+# formule d'une étape qu'elles n'ont plus part. Le reste (ce qu'un projet d'avant la 1.1 avait avant ses
+# étapes) reste tel que le projet l'a, comme dans une mise à jour. Rend list(projet, rapport : ce qui a changé ; vers_nouveau : le
 # numéro dans `nouveau` de chaque observation, nommé par le sien ; absentes : les numéros des variables
 # parties).
+# Ce que des étapes règlent des variables, pour en retirer une (aligner_projet, selon_rejeu) : les noms
+# de celles dont une étape change le type ou les catégories (types), l'unité ou la description
+# (descriptions), que crée une formule (formules), et si une étape règle les coordonnées. Ce qu'aucune
+# étape ne règle (un projet d'avant la 1.1 : ce qu'il avait avant ses étapes, une formule, une unité,
+# des coordonnées) n'est pas l'affaire du rejeu : le projet le garde, comme une mise à jour.
+reglages_etapes <- function(etapes) {
+  r <- list(types = character(0), descriptions = character(0), formules = character(0), coordonnees = FALSE)
+  for (e in etapes) {
+    q <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = FALSE), error = function(err) list())
+    noms <- function(x) as.character(unlist(x))
+    switch(premier_texte(e$demande),
+           type_variable = , categories = { r$types <- c(r$types, noms(q$variable)) },
+           decrire_variables = { r$descriptions <- c(r$descriptions, noms(lapply(q$descriptions, function(d) d$variable))) },
+           variable_calculee = { r$formules <- c(r$formules, noms(q$nom)) },
+           coordonnees = { r$coordonnees <- TRUE },
+           NULL)
+  }
+  r
+}
+
 aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu = FALSE) {
   nom <- function(v) as.character(v$ids[1])
+  # (une étape retirée : ce que les étapes règlent vient du rejeu, le reste reste tel que le projet l'a ;
+  # TRUE : tout vient du rejeu)
+  rejoue <- function(quoi, x = NULL) isTRUE(selon_rejeu) || (is.list(selon_rejeu) && (if (is.null(x)) isTRUE(selon_rejeu[[quoi]]) else x %in% selon_rejeu[[quoi]]))
   uid <- function(x) numeros_entiers(x$uid)
   uids <- function(l) numeros_entiers(vapply(l, `[[`, 0, "uid"))
   avec <- function(p) Filter(function(v) as.character(uid(v)) %in% colnames(p$donnees), p$variables)
@@ -1290,7 +1329,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   communes <- which(!is.na(m))
   for (i in seq_along(vn)) {
     v <- vn[[i]]
-    if (!is.na(k[i]) && selon_rejeu) {
+    if (!is.na(k[i]) && rejoue("types", nom(va[[k[i]]]))) {
       # (une étape retirée : la variable telle que la source et les autres étapes la donnent)
       a <- va[[k[i]]]
       ca <- as.character(unlist(a$categories))
@@ -1311,6 +1350,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
         if (length(neuves)) categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
       }
       v$ids[1] <- nom(a)
+      for (champ in c("unite", "description")) if (!rejoue("descriptions", nom(a)) && is.null(v[[champ]]) && !is.null(a[[champ]])) v[[champ]] <- a[[champ]]
     } else if (!is.na(k[i])) {
       a <- va[[k[i]]]
       ca <- as.character(unlist(a$categories))
@@ -1338,7 +1378,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
         if (length(ca)) cartes[[as.character(uid_v[i])]] <- list(anciennes = ca, neuves = neuves)
       }
       v$ids[1] <- nom(a)
-      for (champ in c("unite", "description")) if (is.null(v[[champ]]) && !is.null(a[[champ]])) v[[champ]] <- a[[champ]]
+      for (champ in c("unite", "description")) if (!rejoue("descriptions", nom(a)) && is.null(v[[champ]]) && !is.null(a[[champ]])) v[[champ]] <- a[[champ]]
     }
     v$uid <- uid_v[i]
     vars[[i]] <- v
@@ -1378,7 +1418,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   co <- if (is.list(co) && length(co$x) && length(co$y)) list(x = unname(mv[as.character(numeros_entiers(co$x))]), y = unname(mv[as.character(numeros_entiers(co$y))]),
                                                                 systeme = co$systeme)
   p["coordonnees"] <- list(if (!is.null(co) && !anyNA(c(co$x, co$y))) co
-                           else if (!selon_rejeu && is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
+                           else if (!rejoue("coordonnees") && is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
   if (!is.null(nouveau$collecte)) p$collecte <- nouveau$collecte
   # (les variables qui manquent : celles d'une formule sont calculées de nouveau, sous leur numéro)
   absentes <- va[setdiff(seq_along(va), k)]
@@ -1386,7 +1426,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   parties <- list()
   for (a in absentes) {
     formule <- if (identical(premier_texte(a$origine$type), "formule")) premier_texte(a$formula) else ""
-    essai <- if (nzchar(formule) && !selon_rejeu) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
+    essai <- if (nzchar(formule) && !rejoue("formules", nom(a))) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
     if (is.null(essai)) {
       parties[[length(parties) + 1]] <- a
       next

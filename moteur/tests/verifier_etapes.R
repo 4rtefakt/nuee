@@ -1194,6 +1194,67 @@ verifier("empreinte MD5 d'un fichier et d'octets, préfixée ; comparée au mêm
            memes_donnees(ed_sha, ed_md5) && !memes_donnees(ed_sha, modifyList(ed_md5, list(sommes = as.list(unlist(ed$sommes) + 1)))))
 unlink(f_md5)
 
+# (la deuxième revue : une seule station répétée par erreur, ses deux lignes que distingue une présence
+# 0/1 : seules ses lignes prennent la présence dans leur identifiant ; les autres stations se retrouvent
+# par leur nom seul, quoi qu'une correction fasse à leur présence)
+set.seed(3)
+noms_st <- paste0("S", 1:30)
+noms_st[6] <- "S5"
+d_st <- data.frame(station = noms_st, presence = rbinom(30, 1, 0.5), x = round(rnorm(30), 3), y = round(rnorm(30), 3))
+d_st$presence[5] <- 0
+d_st$presence[6] <- 1
+csv_st <- fichier("stations.csv")
+utils::write.csv(d_st, csv_st, row.names = FALSE)
+sid <- demande("ouvrir", list(chemin = csv_st))$id
+s12 <- numeros_observations(projet(sid), "S12")
+demande("ajuster", list(projet = sid, type = "LM", x = list(uid_de(projet(sid), "x")), y = uid_de(projet(sid), "y"), nom = "M1", exclues = list(s12)))
+demande("modifier_valeur", list(projet = sid, observation = numeros_observations(projet(sid), "S20"), variable = uid_de(projet(sid), "x"), valeur = "9"))
+d_st$presence[c(12, 20)] <- 1 - d_st$presence[c(12, 20)]
+utils::write.csv(d_st, csv_st, row.names = FALSE)
+r_st <- demande("mettre_a_jour", list(projet = sid, chemin = csv_st))
+verifier("une seule station répétée : la présence corrigée de S12 et de S20 ne les fait ni partir ni revenir (S12 toujours hors de M1, la correction de S20 refaite)",
+         r_st$observations$ajoutees == 0 && r_st$observations$retirees == 0 && all(statuts(r_st) == "ok") &&
+           identical(numeros_observations(projet(sid), "S12"), s12) && !s12 %in% unlist(definition(projet(sid), "M1")$observations) &&
+           isTRUE(unname(valeurs(projet(sid), "x")["S20"]) == 9))
+
+# (une étape retirée d'un projet de la 1.0 mis à jour : ce qu'il avait d'avant ses étapes, une variable
+# calculée et le modèle qui la lit, une unité, des coordonnées, reste ; seule l'étape retirée est défaite)
+csv_10 <- fichier("releves_10.csv")
+set.seed(5)
+utils::write.csv(data.frame(nom = paste0("O", 1:10), X = 1:10, Y = 10:1, x = round(rnorm(10), 3), y = round(rnorm(10), 3)), csv_10, row.names = FALSE)
+p10 <- importer_tableau(csv_10)
+attr(p10, "reglages") <- NULL
+p10 <- variable_calculee(p10, "w", "x * 2")
+p10$variables[[which(vapply(p10$variables, function(v) identical(v$ids[[1]], "y"), NA))]]$unite <- "kg"
+p10$coordonnees <- list(x = uid_de(p10, "X"), y = uid_de(p10, "Y"), systeme = "2154")
+f10 <- fichier("p10.nuee")
+enregistrer_projet(p10, f10)
+j10 <- jsonlite::fromJSON(f10, simplifyVector = FALSE)
+j10$nuee$format <- 2L
+j10$etapes <- j10$empreinte_donnees <- j10$source_donnees <- NULL
+writeLines(as.character(jsonlite::toJSON(j10, auto_unbox = TRUE, null = "null", digits = NA)), f10)
+id10 <- demande("ouvrir", list(chemin = f10))$id
+demande("ajuster", list(projet = id10, type = "LM", x = list(uid_de(projet(id10), "w")), y = uid_de(projet(id10), "y"), nom = "M"))
+demande("mettre_a_jour", list(projet = id10, chemin = csv_10))
+demande("modifier_valeur", list(projet = id10, observation = numeros_observations(projet(id10), "O2"), variable = uid_de(projet(id10), "x"), valeur = "3"))
+demande("modifier_valeur", list(projet = id10, observation = numeros_observations(projet(id10), "O3"), variable = uid_de(projet(id10), "x"), valeur = "4"))
+demande("retirer_etape", list(projet = id10, n = 1))
+p10b <- projet(id10)
+verifier("une étape retirée d'un projet de la 1.0 mis à jour : sa variable calculée (et son modèle), son unité, ses coordonnées restent",
+         "w" %in% unname(p10b$noms_var) && isTRUE(unname(valeurs(p10b, "w")["O3"]) == 8) &&
+           identical(variable_du_projet(p10b, uid_de(p10b, "y"))$unite, "kg") && is.list(p10b$coordonnees) &&
+           !nzchar(refus("ajuster", list(projet = id10, numero = definition(p10b, "M")$number))) &&
+           length(p10b$etapes) == 1 && isTRUE(unname(valeurs(p10b, "x")["O3"]) == 4))
+
+# (na.rm = T, comme les formules de la 1.0 l'écrivaient : TRUE quand aucune colonne ne s'appelle T ; T seul
+# reste le nom d'une colonne, qui doit exister)
+p_tf <- projet_depuis_tableau(data.frame(nom = paste0("o", 1:4), x = c(1, 2, NA, 5)), "tf")
+v_tf <- function(f) tryCatch({ q <- variable_calculee(p_tf, "v", f); unname(colonne(q, uid_de(q, "v"), numeros_observations(q))) }, error = conditionMessage)
+verifier("formule : na.rm = T lu TRUE sans colonne T (et la mise à jour ne le dit pas absent) ; x * T refusé sans colonne T",
+         isTRUE(all.equal(v_tf("x - mean(x, na.rm = T)"), c(-1.667, -0.667, NA, 2.333), tolerance = 1e-3)) &&
+           !length(noms_absents_formule(p_tf, "mean(x, na.rm = T)")) && identical(noms_absents_formule(p_tf, "x * T"), "T") &&
+           is.character(v_tf("x * T")) && grepl("T", v_tf("x * T")))
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

@@ -874,6 +874,36 @@ verifier("steps done in French, said in English", "1 step(s): replacement of “
            "1 step(s): categories of habitat" %in% r$apports$leur)
 options(nuee.langue = "fr")
 
+# (la deuxième revue : une seule station répétée par erreur, ses deux lignes que distingue une présence
+# 0/1. Mon côté corrige la présence de S12, l'autre son x : deux changements qui se fusionnent, S12 une
+# seule fois, sans conflit ; seules les lignes de S5 prennent la présence dans leur identifiant)
+set.seed(3)
+noms_st <- paste0("S", 1:30)
+noms_st[6] <- "S5"
+d_st <- data.frame(station = noms_st, presence = rbinom(30, 1, 0.5), x = round(rnorm(30), 3), y = round(rnorm(30), 3))
+d_st$presence[5] <- 0
+d_st$presence[6] <- 1
+csv_st <- fichier("stations.csv")
+utils::write.csv(d_st, csv_st, row.names = FALSE)
+st_base <- demande("ouvrir", list(chemin = csv_st))$id
+f_st_base <- fichier("stations_base.nuee")
+demande("enregistrer", list(projet = st_base, chemin = f_st_base))
+st_mien <- demande("ouvrir", list(chemin = f_st_base))$id
+demande("modifier_valeur", list(projet = st_mien, observation = numeros_observations(projet(st_mien), "S12"), variable = uid(st_mien, "presence"), valeur = as.character(1 - d_st$presence[12])))
+f_st_mien <- fichier("stations_mien.nuee")
+demande("enregistrer", list(projet = st_mien, chemin = f_st_mien))
+st_leur <- demande("ouvrir", list(chemin = f_st_base))$id
+demande("modifier_valeur", list(projet = st_leur, observation = numeros_observations(projet(st_leur), "S12"), variable = uid(st_leur, "x"), valeur = "7"))
+f_st_leur <- fichier("stations_leur.nuee")
+demande("enregistrer", list(projet = st_leur, chemin = f_st_leur))
+r_st <- fusionner_projets(lire_projet(f_st_base), lire_projet(f_st_mien), lire_projet(f_st_leur), list(), dossier = etude, qui = "Bob")
+noms_f <- vapply(r_st$projet$observations, function(o) premier_texte(o$ids), "")
+x_st <- valeurs(r_st$projet, "x")
+pr_st <- valeurs(r_st$projet, "presence")
+verifier("une seule station répétée : la présence de S12 changée d'un côté, son x de l'autre, fusionnés sans conflit (S12 une fois)",
+         !length(r_st$conflits) && sum(noms_f == "S12") == 1 && length(noms_f) == 30 &&
+           isTRUE(unname(x_st[names(x_st) == "S12"]) == 7) && isTRUE(as.numeric(unname(pr_st[names(pr_st) == "S12"])) == 1 - d_st$presence[12]))
+
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)
