@@ -344,7 +344,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       const v = await f();
       if (v) return v;
       if (!vivant()) throw new Error(`the program stopped (code ${proc.exitCode}) while waiting for ${quoi}:\n${sortie.slice(-2000)}`);
-      if (Date.now() > fin) throw new Error(`waited ${ms / 1000} s for ${quoi}`);
+      // (what the program wrote meanwhile, to tell a slow start from a stuck one)
+      if (Date.now() > fin) throw new Error(`waited ${ms / 1000} s for ${quoi}; the program wrote:\n${sortie.slice(-2000) || '(nothing)'}`);
       await attente(200);
     }
   };
