@@ -13,10 +13,16 @@
 // from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the shared
 // permutation test, a PCoA's permutations in one R), the next request as usual; reloaded, the
 // plugin and the approvals still there. The time of each request goes to <folder>/demandes.json.
-//   node tests/essai_navigateur.mjs [--site=<built site>] [--sortie=<folder>] [--visible]
+// Also the site as served: the page's headers (webR's two, no security policy but its own), where
+// R's packages came from (the site's copy of webR's repository when it has one, miroir_webr.mjs:
+// then nothing from another site until R is ready, and Kendall alone from repo.r-wasm.org), and,
+// under a path, /app redirected to /app/.
+//   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible]
+// --adresse: the site as another server serves it, neither built nor served here (nuee.io's
+// browser version: `wrangler dev` in vitrine/, then --adresse=http://127.0.0.1:8787/app/).
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
 //   PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell
-// The first start downloads R's packages from repo.r-wasm.org. Exits with 1 when a check fails.
+// The first start downloads R's packages from the site's copy, else from repo.r-wasm.org. Exits with 1 when a check fails.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -37,13 +43,17 @@ const options = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsW
 }));
 const sortie = typeof options.sortie === 'string' ? path.resolve(options.sortie) : fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-navigateur-'));
 fs.mkdirSync(sortie, { recursive: true });
-let site = typeof options.site === 'string' ? path.resolve(options.site) : null;
-if (!site) {
-  site = path.join(sortie, 'site');
-  execFileSync(process.execPath, [path.join(APP, 'construire_navigateur.js'), site], { stdio: 'inherit' });
+let serveur = null;
+let adresse = typeof options.adresse === 'string' ? new URL(options.adresse).href : null;
+if (!adresse) {
+  let site = typeof options.site === 'string' ? path.resolve(options.site) : null;
+  if (!site) {
+    site = path.join(sortie, 'site');
+    execFileSync(process.execPath, [path.join(APP, 'construire_navigateur.js'), site], { stdio: 'inherit' });
+  }
+  serveur = await servir(site, 0);
+  adresse = `http://127.0.0.1:${serveur.address().port}/`;
 }
-const serveur = await servir(site, 0);
-const adresse = `http://127.0.0.1:${serveur.address().port}/`;
 const profil = path.join(sortie, 'profil');
 fs.rmSync(profil, { recursive: true, force: true });
 
@@ -56,6 +66,10 @@ const verifier = (nom, ok, valeur) => {
 };
 const erreurs = [];
 const contexte = await chromium.launchPersistentContext(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 } });
+// every request of the pages and of their workers (webR's, which installs R's packages)
+const requetes = [];
+contexte.on('request', (r) => requetes.push(r.url()));
+const ailleurs = () => requetes.filter((u) => /^https?:/.test(u) && new URL(u).origin !== new URL(adresse).origin);
 
 // a page of the site: its errors noted, every request timed (api.js: window.nueeDemandes)
 async function ouvrirPage(url = adresse) {
@@ -161,8 +175,29 @@ try {
   verifier('isolation (SharedArrayBuffer)', await page.evaluate(() => crossOriginIsolated));
   await page.waitForFunction(() => window.nueeDemandes.length > 0 && !document.querySelector('.voile-webr'), null, { timeout: 600000 });
   res.demarrage_s = (Date.now() - debut) / 1000;
+  const dehors = ailleurs();
   const absents = await page.evaluate(() => import('./api.js').then(async (a) => (await a.moteurWebR()).absents()));
   verifier('R démarré dans la page', true, `${res.demarrage_s.toFixed(1)} s ; paquets absents : ${absents.join(', ')}`);
+
+  // ---- the site as served: the page's headers; where R's packages came from (the site's copy of
+  // webR's repository when it has one: then nothing from another site until R was ready); under a
+  // path, that path without its last slash redirected to it, the query kept
+  const entetes = (await fetch(adresse)).headers;
+  verifier('les en-têtes de la page : COOP et COEP, pas d’autre politique de sécurité que la sienne',
+    entetes.get('cross-origin-opener-policy') === 'same-origin' && entetes.get('cross-origin-embedder-policy') === 'require-corp' && !entetes.has('content-security-policy'),
+    ['cross-origin-opener-policy', 'cross-origin-embedder-policy', 'content-security-policy'].map((h) => `${h}: ${entetes.get(h)}`).join(' ; '));
+  const miroir = await page.evaluate(() => window.NUEE_MIROIR_WEBR || null);
+  const duSite = requetes.filter((u) => u.startsWith(adresse) && /\/bin\/emscripten\/contrib\/[\d.]+\/[^/]+\.tgz$/.test(u)).length;
+  res.paquets = { miroir, du_site: duSite, ailleurs: dehors };
+  verifier(miroir ? 'les paquets R depuis le site (sa copie du dépôt de webR), rien d’un autre site avant que R soit prêt' : 'les paquets R depuis repo.r-wasm.org (le site n’a pas de copie du dépôt de webR)',
+    miroir ? duSite > 0 && dehors.length === 0 : dehors.length > 0 && dehors.every((u) => u.startsWith('https://repo.r-wasm.org/')),
+    `${duSite} paquets du site, ${dehors.length} requêtes ailleurs${dehors.length ? ` (${[...new Set(dehors.map((u) => new URL(u).origin))].join(', ')})` : ''}`);
+  if (new URL(adresse).pathname !== '/') {
+    const sansBarre = `${adresse.replace(/\/$/, '')}?aides=0`;
+    const r = await fetch(sansBarre, { redirect: 'manual' });
+    const vers = r.headers.get('location') && new URL(r.headers.get('location'), adresse).href;
+    verifier(`${new URL(sansBarre).pathname} redirigée vers ${new URL(adresse).pathname}`, r.status >= 301 && r.status <= 308 && vers === `${adresse}?aides=0`, `${r.status} ${vers}`);
+  }
   const version = await page.evaluate(() => import('./api.js').then((a) => a.demander('version')));
   res.R = version.R;
 
@@ -456,13 +491,16 @@ try {
       && ['README.md', 'CITATION.cff', 'MANIFEST.sha256', '.nuee'].every(dansZip) && !!toujoursLa && toujoursLa.n === 130,
     tp ? `${tp.suggestedFilename()} : ${octetsZip.length} octets` : 'pas de téléchargement');
 
-  // R code: approved when fitted, its package (Kendall) installed from webR's repository; ranger refused
+  // R code: approved when fitted, its package (Kendall), which the site's copy doesn't have, installed
+  // from webR's repository; ranger refused
+  const avantKendall = requetes.length;
   const codeR = 'k <- Kendall::Kendall(donnees$sugar, donnees$taste_score)\nfit <- lm(taste_score ~ sugar + acidity, data = donnees)\nlist(modele = fit, valeurs = c(tau = unname(k$tau)))';
   const rc = await nouveauModele(page, { type: 'CODE', options: { code: codeR } });
   await page.waitForTimeout(1500);
   const mCode = await modeleActif(page);
-  verifier('un modèle de code R approuvé, son paquet (Kendall) installé depuis le dépôt de webR', !!rc.d && rc.d.ok && !rc.erreur && !!mCode && mCode.type === 'CODE',
-    rc.erreur || `${rc.d && Math.round(rc.d.ms)} ms ; ${mCode && mCode.nom}`);
+  const kendall = requetes.slice(avantKendall).filter((u) => /\/Kendall_[^/]+\.tgz$/.test(u));
+  verifier('un modèle de code R approuvé, son paquet (Kendall) installé depuis le dépôt de webR', !!rc.d && rc.d.ok && !rc.erreur && !!mCode && mCode.type === 'CODE'
+    && kendall.length > 0 && kendall.every((u) => u.startsWith('https://repo.r-wasm.org/')), rc.erreur || `${rc.d && Math.round(rc.d.ms)} ms ; ${mCode && mCode.nom} ; ${kendall.join(', ')}`);
   const rr = await nouveauModele(page, { type: 'CODE', options: { code: 'library(ranger)\nlm(taste_score ~ sugar, data = donnees)' } });
   verifier('un code R qui demande ranger : « il faut l’application de bureau »', /desktop application is needed|application de bureau/.test(rr.erreur) && /ranger/.test(rr.erreur), rr.erreur);
   await page.evaluate(() => document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()));
@@ -559,7 +597,7 @@ try {
 } finally {
   fs.writeFileSync(path.join(sortie, 'demandes.json'), JSON.stringify(res, null, 1));
   await contexte.close().catch(() => {});
-  serveur.close();
+  if (serveur) serveur.close();
   console.log(`\n${echecs.length ? `Échecs : ${echecs.join(', ')}` : 'Toutes les vérifications sont passées.'} (${sortie})`);
   process.exit(echecs.length ? 1 : 0);
 }
