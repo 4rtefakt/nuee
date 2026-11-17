@@ -581,12 +581,16 @@ File › Open a reproducibility package… (or File › Open on its .zip, or the
 window) checks every file against the package's manifest and names any file missing, changed or
 added; opens its project as a new project (Save asks where: nothing is written into the
 package); fits every model again and compares its key results with the deposited ones, in the
-What changed panel: "4 models rerun: 4 give the deposited results, 0 differ", What changed's
-sentences for a model that differs, and which Nuée and R made the deposit and which reran it. A
-model that can't be fitted here (a random forest in the browser version, R code waiting for Run
-it) is said as such, not counted as a difference. The package's link does the same in a browser,
-without installing anything: Nuée fetches the package from Zenodo (a version's DOI, or a concept
-DOI, which gives its latest version), then opens and reruns it in the page.
+What changed panel: "4 models rerun: 4 give the deposited results (3 identical, 1 the same to 6
+significant digits), 0 differ", and which Nuée and R made the deposit and which reran it. A model
+is identical when each value is within 1e-10 of the deposited one; the same to 6 significant
+digits within 1e-6, as another computer's arithmetic or an optimiser stopping a hair further
+leaves it (its largest gap is given; near zero, and for a p-value, the gap is absolute); beyond,
+it differs, with What changed's sentences. A model that can't be fitted here (a random forest in
+the browser version, R code waiting for Run it) is said as such, not counted as a difference.
+The package's link does the same in a browser, without installing anything: Nuée fetches the
+package from Zenodo (a version's DOI, or a concept DOI, which gives its latest version), then
+opens and reruns it in the page; a package larger than 500 MB is for the desktop application.
 
 Methods text
 ------------

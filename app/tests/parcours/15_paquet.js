@@ -217,5 +217,30 @@ module.exports = {
     verifier('paquetRouvertCommande', exporte.bilan === exporte.attendu && exporte.intact && !exporte.doi && exporte.nouveau && exporte.projets.includes('Apples package.nuee'), exporte);
     // (nothing written into the package: the .zip as it was written)
     verifier('paquetIntact', n.lireZip(fs.readFileSync(zip)).size === z.size && manifesteJuste(n.lireZip(fs.readFileSync(zip)), 'Apples package'));
+
+    // ---- last-digit gaps: a copy of the package exported first, M2's deposited Q2 moved by 1e-9
+    // relative (its manifest made again for it), opened again: M2 gives the deposited results to 6
+    // significant digits, its largest relative gap said, the other three identical
+    const { zip: ecrireZip } = await import(require('url').pathToFileURL(path.join(__dirname, '..', '..', 'interface', 'zip.js')).href);
+    const fichiers = new Map(n.lireZip(fs.readFileSync(zip)));
+    const cleResultats = 'Apples package/results/key_results.json';
+    const deposes = JSON.parse(fichiers.get(cleResultats).toString('utf8'));
+    const q2 = deposes.modeles.find((m) => m.nom === 'M2').entrees.find((e) => e.cle === 'Q2');
+    q2.valeur *= 1 + 1e-9;
+    fichiers.set(cleResultats, Buffer.from(JSON.stringify(deposes, null, 2)));
+    const hache = (o) => crypto.createHash('sha256').update(o).digest('hex');
+    fichiers.set('Apples package/MANIFEST.sha256', Buffer.from(fichiers.get('Apples package/MANIFEST.sha256').toString('utf8')
+      .replace(/^[0-9a-f]{64}(  results\/key_results\.json)$/m, (_, reste) => hache(fichiers.get(cleResultats)) + reste)));
+    const ecarts = path.join(dossier, 'Apples gaps.zip');
+    fs.writeFileSync(ecarts, ecrireZip([...fichiers.entries()].map(([k, v]) => [k, new Uint8Array(v)])));
+    const r3 = await ouvrirPaquet(ecarts, 'paquet_ouvrir', 3);
+    const m2 = await n.evaluer(`(async () => {
+      const c = document.querySelector('[data-comparaison^="C3-"] .changements');
+      const s = [...c.querySelectorAll('.modele-change.six-chiffres')];
+      const { phraseBilan } = await import('./changements.js');
+      return { six: s.map((x) => __n.norm(x.querySelector('h3').textContent)), texte: s.map((x) => __n.norm(x.querySelector('.verdict-six').textContent)).join(' | '),
+        attendu: phraseBilan({ relances: 4, identiques: 3, sixChiffres: 1, differents: [] }) };
+    })()`);
+    verifier('paquetSixChiffres', r3.intact && r3.bilan === m2.attendu && m2.six.length === 1 && m2.six[0].startsWith('M2') && /1[.,]0e-9/.test(m2.texte), { bilan: r3.bilan, ...m2 });
   },
 };

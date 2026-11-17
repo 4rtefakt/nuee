@@ -22,13 +22,16 @@
 // DOI is searched for among every version of every record (Zenodo's search, its fields doi and
 // conceptdoi).
 import { t, ajouterTextes, deuxPoints } from './i18n.js';
-import { el, dialogue } from './ui.js';
+import { el, dialogue, decimal } from './ui.js';
 import { demander, deposer, bureau } from './api.js';
 import { VERSION } from './nouveautes.js';
 import { afficherChangements, bilanPaquet, phraseBilan, phraseManifeste } from './changements.js';
 import { progression } from './etapes.js';
 
 const ZENODO = 'https://zenodo.org';
+// The largest .zip the link downloads, in bytes: the tab holds it, then webR's files a copy, and R
+// unzips it beside it; a larger one is for the desktop application.
+const TAILLE_MAX_LIEN = 500e6;
 
 export async function ouvrirPaquet(app, chemin, { nom = null, lien = null } = {}) {
   app.statut(t('relance_ouverture', { nom: nom || String(chemin).split(/[\\/]/).pop() }));
@@ -115,7 +118,7 @@ export function lireDoi(x) {
 }
 const memeDoi = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 
-// A refusal of the link, said as it is (genre: doi, inconnu, reseau, http, sans_paquet).
+// A refusal of the link, said as it is (genre: doi, inconnu, reseau, http, sans_paquet, taille).
 const refus = (genre, message) => Object.assign(new Error(message), { genre });
 
 // The Zenodo record that `record` (its id) or `doi` names: the version a version's DOI names, the
@@ -166,7 +169,8 @@ export function fichiersRecord(r) {
 // The link's package, from Zenodo: the record found, each of its .zip files downloaded from zenodo.org
 // until one is a package (the engine says which isn't), then opened and rerun. What keeps it from
 // opening is said plainly, in a dialog: not a DOI, a DOI or a record Zenodo doesn't know, a record
-// without a package, no network, an error of Zenodo.
+// without a package, a package larger than TAILLE_MAX_LIEN (by the size Zenodo gives, never
+// downloaded: the desktop application opens it), no network, an error of Zenodo.
 export async function ouvrirLien(app, { doi = null, record = null }, recuperer = (url, o) => fetch(url, o)) {
   const quoi = record ? t('relance_lien_record', { record }) : t('relance_lien_doi', { doi });
   // (busy meanwhile, as any request; a refusal is no error of the page: it is said below)
@@ -180,8 +184,10 @@ export async function ouvrirLien(app, { doi = null, record = null }, recuperer =
     const r = await travail(() => recordZenodo({ doi, record }, recuperer));
     const titre = (r.metadata && r.metadata.title) || r.title || '';
     const zips = fichiersRecord(r).filter((f) => /\.zip$/i.test(f.key));
-    for (const f of zips) {
-      app.statut(t('relance_zenodo_telechargement', { nom: f.key, taille: (f.size / 1e6).toFixed(1) }));
+    // (a .zip larger than a tab can hold, by the size Zenodo gives: not downloaded)
+    const tropGros = zips.filter((f) => f.size > TAILLE_MAX_LIEN);
+    for (const f of zips.filter((x) => x.size <= TAILLE_MAX_LIEN)) {
+      app.statut(t('relance_zenodo_telechargement', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)) }));
       const octets = await travail(async () => {
         let x;
         try { x = await recuperer(`${ZENODO}/api/records/${encodeURIComponent(r.id)}/files/${encodeURIComponent(f.key)}/content`); } catch { throw refus('reseau', t('relance_zenodo_reseau')); }
@@ -195,6 +201,10 @@ export async function ouvrirLien(app, { doi = null, record = null }, recuperer =
       } catch (e) {
         if (!(e.reponse && e.reponse.pas_un_paquet)) throw e;
       }
+    }
+    if (tropGros.length) {
+      const f = tropGros[0];
+      throw refus('taille', t('relance_zenodo_trop_gros', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)), max: TAILLE_MAX_LIEN / 1e6 }));
     }
     throw refus('sans_paquet', t('relance_zenodo_sans_paquet', { titre: titre || r.id, doi: r.doi || '' }));
   } catch (e) {
@@ -222,6 +232,7 @@ ajouterTextes({
   relance_zenodo_http: 'Zenodo a répondu par une erreur (HTTP {statut}) : réessayez plus tard.',
   relance_zenodo_fichier: 'Zenodo n’a pas donné le fichier {nom} (HTTP {statut}).',
   relance_zenodo_sans_paquet: 'L’enregistrement « {titre} » de Zenodo ({doi}) n’a pas de paquet de reproductibilité : aucun de ses fichiers n’est un .zip écrit par Nuée.',
+  relance_zenodo_trop_gros: '{nom} fait {taille} Mo : c’est trop pour un navigateur (au plus {max} Mo). Téléchargez-le depuis Zenodo et ouvrez-le avec l’application de bureau de Nuée (https://nuee.io), par Fichier › Ouvrir un paquet de reproductibilité….',
 }, {
   paquet_ouvrir: 'Open a reproducibility package…', relance_format: 'Reproducibility package (.zip)',
   relance_ouverture: 'Package: {nom}, its files checked…', relance_titre: 'Rerun the package “{titre}”',
@@ -239,4 +250,5 @@ ajouterTextes({
   relance_zenodo_http: 'Zenodo answered with an error (HTTP {statut}): try again later.',
   relance_zenodo_fichier: 'Zenodo didn’t give the file {nom} (HTTP {statut}).',
   relance_zenodo_sans_paquet: 'The Zenodo record “{titre}” ({doi}) has no reproducibility package: none of its files is a .zip Nuée wrote.',
+  relance_zenodo_trop_gros: '{nom} is {taille} MB: too large for a browser ({max} MB at most). Download it from Zenodo and open it with Nuée’s desktop application (https://nuee.io), with File › Open a reproducibility package….',
 });

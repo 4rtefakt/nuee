@@ -666,6 +666,59 @@ r <- relancer(glisse, "en")
 verifier("une archive dont un chemin sortirait de son dossier (../dehors.txt) est refusée, sans rien décompresser",
          "../dehors.txt" %in% zip::zip_list(glisse)$filename && grepl("outside its folder: ../dehors.txt", r$o$erreur %||% "", fixed = TRUE) &&
            !file.exists(file.path(tempdir(), "dehors.txt")))
+# des écarts aux derniers chiffres : les résultats déposés retouchés (le Q² de M2 de 1e-9 en relatif, une
+# valeur p de M5 de 4e-7, le R² de M7 de 1e-5 en relatif), le manifeste refait pour eux : M2 et M5 redonnent
+# les résultats déposés à 6 chiffres significatifs près, avec leur plus grand écart ; M7 diffère ; les
+# autres sont identiques
+retoucher <- function(racine) {
+  f <- file.path(racine, "results", "key_results.json")
+  d <- jsonlite::fromJSON(f, simplifyVector = FALSE)
+  noms <- vapply(d$modeles, `[[`, "", "nom")
+  entree <- function(m, test) which(vapply(d$modeles[[match(m, noms)]]$entrees, test, NA))[1]
+  k <- entree("M2", function(e) identical(e$cle, "Q2"))
+  d$modeles[[match("M2", noms)]]$entrees[[k]]$valeur <- d$modeles[[match("M2", noms)]]$entrees[[k]]$valeur * (1 + 1e-9)
+  k <- entree("M5", function(e) !is.null(e$p) && e$p < 0.5)
+  d$modeles[[match("M5", noms)]]$entrees[[k]]$p <- d$modeles[[match("M5", noms)]]$entrees[[k]]$p + 4e-7
+  k <- entree("M7", function(e) identical(e$cle, "R2"))
+  d$modeles[[match("M7", noms)]]$entrees[[k]]$valeur <- d$modeles[[match("M7", noms)]]$entrees[[k]]$valeur * (1 + 1e-5)
+  ecrire_texte_paquet(f, as.character(jsonlite::toJSON(d, auto_unbox = TRUE, pretty = TRUE, digits = NA, null = "null", na = "null")))
+  m <- lire_lignes_paquet(file.path(racine, "MANIFEST.sha256"))
+  m[endsWith(m, "  results/key_results.json")] <- paste0(empreintes_sha256(f), "  results/key_results.json")
+  ecrire_texte_paquet(file.path(racine, "MANIFEST.sha256"), m)
+}
+r <- relancer(alterer("ecarts", retoucher), "en")
+verdicts <- vapply(r$comparaisons, function(cm) cm$resume$verdict, "")
+ecart <- function(nom) r$comparaisons[[nom]]$resume
+verifier(sprintf("des écarts aux derniers chiffres : M2 et M5 à 6 chiffres significatifs près (leur plus grand écart : %s, %s ; %s, %s), M7 diffère (%s), les autres identiques ; le manifeste intact",
+                 format(ecart("M2")$ecart_max, digits = 3), ecart("M2")$cle_ecart_max, format(ecart("M5")$ecart_max, digits = 3), ecart("M5")$cle_ecart_max, format(ecart("M7")$ecart_max, digits = 3)),
+         isTRUE(r$o$manifeste$intact) && identical(unname(verdicts), c("identique", "six_chiffres", "identique", "identique", "six_chiffres", "identique", "differe")) &&
+           abs(ecart("M2")$ecart_max / 1e-9 - 1) < 0.01 && identical(ecart("M2")$cle_ecart_max, "Q2") && identical(ecart("M2")$partie_ecart_max, "valeur") &&
+           abs(ecart("M5")$ecart_max / 4e-7 - 1) < 1e-6 && identical(ecart("M5")$partie_ecart_max, "p") &&
+           abs(ecart("M7")$ecart_max / 1e-5 - 1) < 0.01 && identical(ecart("M7")$cle_ecart_max, "R2"))
+# le verdict, entrée par entrée (resultats_cles.R : verdict_comparaison) : en relatif, rapporté à 1e-10 près de
+# zéro ; une valeur p en absolu ; un intervalle ; une entrée disparue, une catégorie changée ; une nouvelle
+v <- function(a, b) comparer_resultats(a, b, "en")$resume
+e <- function(cle, valeur, ...) entree_resultat(cle, cle, "estimations", valeur, ...)
+base <- list(e("a", 2.5, ic = c(2, 3), p = 0.04), e("b", 1234.5))
+cas <- list(
+  identique = v(base, base),
+  relatif = v(base, list(e("a", 2.5 * (1 + 5e-7), ic = c(2, 3), p = 0.04), e("b", 1234.5))),
+  trop = v(base, list(e("a", 2.5 * (1 + 2e-6), ic = c(2, 3), p = 0.04), e("b", 1234.5))),
+  zero = v(list(e("c", 3e-17)), list(e("c", -2e-17))),
+  zero_trop = v(list(e("c", 3e-17)), list(e("c", 3e-15))),
+  p_queue = v(list(e("d", 6, p = 3e-9)), list(e("d", 6, p = 3.0002e-9))),
+  p_trop = v(list(e("d", 2, p = 0.04)), list(e("d", 2, p = 0.0401))),
+  ic = v(base, list(e("a", 2.5, ic = c(2 * (1 + 1e-8), 3), p = 0.04), e("b", 1234.5))),
+  disparue = v(base, base[1]),
+  nouvelle = v(base, c(base, list(e("n", 7)))),
+  categorie = v(list(entree_resultat("k", "k", "ajustement", 1, classe = "A")), list(entree_resultat("k", "k", "ajustement", 1, classe = "B"))))
+attendus_v <- c(identique = "identique", relatif = "six_chiffres", trop = "differe", zero = "six_chiffres", zero_trop = "differe", p_queue = "six_chiffres",
+                p_trop = "differe", ic = "six_chiffres", disparue = "differe", nouvelle = "identique", categorie = "differe")
+obtenus_v <- vapply(cas, `[[`, "", "verdict")
+verifier(sprintf("le verdict : à 1e-6 près en relatif (5e-7 oui, 2e-6 non), près de zéro en absolu à 1e-10 près (3e-17 et -2e-17 oui, 3e-15 non), une valeur p en absolu (3e-9 à 2e-13 près oui, 0,04 et 0,0401 non), un intervalle ; une entrée disparue ou une catégorie changée diffère, une nouvelle ne compte pas%s",
+                 if (!identical(obtenus_v, attendus_v)) sprintf(" ; OBTENUS : %s", paste(names(obtenus_v), obtenus_v, sep = "=", collapse = ", ")) else ""),
+         identical(obtenus_v, attendus_v) && abs(cas$relatif$ecart_max / 5e-7 - 1) < 1e-6 && identical(cas$relatif$cle_ecart_max, "a") && is.infinite(cas$disparue$ecart_max) &&
+           identical(c(cas$relatif$partie_ecart_max, cas$ic$partie_ecart_max, cas$p_queue$partie_ecart_max), c("valeur", "ic", "p")))
 tableau <- file.path(dossier, "altere", "tableau.zip")
 zip::zip(tableau, files = "orchards.csv", root = file.path(dossier, "altere", "csv", "My package", "data"))
 r <- relancer(tableau, "en")

@@ -633,13 +633,17 @@ déposé sur la fenêtre) vérifie chaque fichier par le manifeste du paquet et 
 manquent, ont changé ou ont été ajoutés ; ouvre son projet comme un nouveau projet (Enregistrer
 demande où : rien ne s'écrit dans le paquet) ; ajuste de nouveau chaque modèle et compare ses
 résultats clés à ceux déposés, dans le panneau Ce qui a changé : « 4 modèles relancés : 4
-redonnent les résultats déposés, 0 diffère », les phrases de Ce qui a changé pour un modèle qui
-diffère, et la Nuée et le R qui ont fait le dépôt et ceux qui l'ont relancé. Un modèle qui ne
-peut pas être ajusté ici (une forêt aléatoire dans la version pour navigateur, du code R qui
-attend Exécuter) est dit tel quel, sans compter comme une différence. Le lien du paquet fait de
-même dans un navigateur, sans rien installer : Nuée va chercher le paquet sur Zenodo (le DOI
-d'une version, ou un DOI de concept, qui donne sa dernière version), puis l'ouvre et le relance
-dans la page.
+redonnent les résultats déposés (3 à l'identique, 1 à 6 chiffres significatifs près), 0
+diffère », et la Nuée et le R qui ont fait le dépôt et ceux qui l'ont relancé. Un modèle est
+identique quand chaque valeur est à 1e-10 près de celle déposée ; à 6 chiffres significatifs
+près à 1e-6 près, comme le laissent le calcul d'un autre ordinateur ou un optimiseur arrêté un
+rien plus loin (son plus grand écart est donné ; près de zéro, et pour une valeur p, l'écart est
+absolu) ; au-delà, il diffère, avec les phrases de Ce qui a changé. Un modèle qui ne peut pas
+être ajusté ici (une forêt aléatoire dans la version pour navigateur, du code R qui attend
+Exécuter) est dit tel quel, sans compter comme une différence. Le lien du paquet fait de même
+dans un navigateur, sans rien installer : Nuée va chercher le paquet sur Zenodo (le DOI d'une
+version, ou un DOI de concept, qui donne sa dernière version), puis l'ouvre et le relance dans
+la page ; un paquet de plus de 500 Mo est pour l'application de bureau.
 
 Texte des méthodes
 ------------------

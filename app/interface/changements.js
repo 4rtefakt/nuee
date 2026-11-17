@@ -13,7 +13,7 @@
 // says first how many give the deposited results, which Nuée and R made the deposit and which reran
 // it, and what its manifest found, then each model as for two versions, the deposited side before.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
-import { el, icone, entreNombres } from './ui.js';
+import { el, icone, entreNombres, decimal } from './ui.js';
 import { demander } from './api.js';
 import { VUES } from './panneaux.js';
 import { valeurResultat, texteP, ecartResultat, drapeauxEntree, apparierModeles, ordonnerComparaisons, entreesChangees } from './versions_texte.js';
@@ -162,42 +162,59 @@ function rendreChangements(app, conteneur, loc) {
   const corps = el('div', { class: 'defile' },
     c.paquet ? sectionPaquet(c) : sectionsMiseAJour(app, c),
     !c.modeles.length && !c.avantSeul.length && !c.apresSeul.length ? el('p', { class: 'note' }, t('changements_aucun_modele')) : null,
-    tries.map((m) => sectionModele(m, loc, () => rendreChangements(app, conteneur, loc), c.paquet ? { cotes, inchange: 'relance_identique' } : { cotes })),
+    tries.map((m) => sectionModele(m, loc, () => rendreChangements(app, conteneur, loc), c.paquet ? { cotes, inchange: 'relance_identique', paquet: true } : { cotes })),
     c.avantSeul.length || c.apresSeul.length ? el('section', { class: 'modele-change seul-cote' },
       c.avantSeul.length ? el('p', {}, el('b', {}, t(c.paquet ? 'relance_depose_seul' : 'changements_avant_seul')), ' ', listeNoms(c.avantSeul)) : null,
       c.apresSeul.length ? el('p', {}, el('b', {}, t(c.paquet ? 'relance_relance_seul' : 'changements_apres_seul')), ' ', listeNoms(c.apresSeul)) : null) : null);
   conteneur.replaceChildren(el('div', { class: 'changements' },
     el('h2', {}, titreComparaison(c)),
     el('p', { class: 'infos' }, compares && !c.paquet ? t('changements_resume', { n: compares, notables }) : '',
-      compares && (!c.paquet || bilanPaquet(c).differents.length) ? el('span', { class: 'aide-drapeaux', title: t('changements_d_aide') }, icone('circle-help')) : null),
+      compares && (!c.paquet || bilanPaquet(c).differents.length || bilanPaquet(c).sixChiffres) ? el('span', { class: 'aide-drapeaux', title: t('changements_d_aide') }, icone('circle-help')) : null),
     corps));
 }
 
 const titreComparaison = (c) => (c.paquet ? t('relance_titre_panneau', { titre: c.titre }) : t('changements_titre', { titre: c.titre }));
 
-// A package's rerun counted (afficherChangements with `paquet`): the models rerun, those whose every
-// deposited value comes back (within comparer_resultats's tolerance: an entry only the rerun has is
-// no difference, nothing was deposited for it), those that differ, those not fitted again here, those
-// without deposited results.
+// A package's rerun counted (afficherChangements with `paquet`): the models rerun, by the engine's
+// verdict (resultats_cles.R: verdict_comparaison): identical (every deposited value within 1e-10),
+// the same to 6 significant digits (within 1e-6: last-digit noise of another BLAS or optimiser),
+// both giving the deposited results, or differing; those not fitted again here, those without
+// deposited results. An entry only the rerun has is no difference: nothing was deposited for it.
 export function bilanPaquet(c) {
-  const b = { relances: 0, identiques: 0, differents: [], nonRelances: [], sansDepot: [] };
+  const b = { relances: 0, identiques: 0, sixChiffres: 0, differents: [], nonRelances: [], sansDepot: [] };
   for (const m of c.modeles) {
     if (m.comparaison) {
       b.relances += 1;
-      if ([].concat(m.comparaison.entrees || []).some((e) => e.change && !e.nouveau)) b.differents.push(m); else b.identiques += 1;
+      const v = verdictModele(m.comparaison);
+      if (v === 'identique') b.identiques += 1; else if (v === 'six_chiffres') b.sixChiffres += 1; else b.differents.push(m);
     } else if (m.relance === 'sans_depot') b.sansDepot.push(m);
     else b.nonRelances.push(m);
   }
   return b;
 }
+const verdictModele = (r) => (r.resume && r.resume.verdict) || ([].concat(r.entrees || []).some((e) => e.change && !e.nouveau) ? 'differe' : 'identique');
 
-// The package's sentence: "4 models rerun: 4 give the deposited results, 0 differ." (French counts 0
+// The package's sentence: "4 models rerun: 4 give the deposited results (3 identical, 1 the same to 6
+// significant digits), 0 differ." (the parts in brackets that count none left out; French counts 0
 // and 1 in the singular, English 1 only)
 export function phraseBilan(b) {
   const un = (n) => (langueActuelle() === 'fr' ? n <= 1 : n === 1);
   const n = (cle, x) => t(`${cle}_${un(x) ? 'un' : 'n'}`, { n: x });
-  return t('relance_bilan', { relances: n('relance_n_relances', b.relances), identiques: n('relance_n_identiques', b.identiques), differents: n('relance_n_differents', b.differents.length) });
+  const sixChiffres = b.sixChiffres || 0;
+  const detail = [b.identiques ? t('relance_dont_identiques', { n: b.identiques }) : '', sixChiffres ? t('relance_dont_six_chiffres', { n: sixChiffres }) : ''].filter(Boolean);
+  return t('relance_bilan', { relances: n('relance_n_relances', b.relances),
+    identiques: n('relance_n_identiques', b.identiques + sixChiffres) + (detail.length ? ` (${detail.join(', ')})` : ''),
+    differents: n('relance_n_differents', b.differents.length) });
 }
+
+// A gap in a sentence: 1.0e-9, its decimal mark the interface's; and where it is (its entry, or the
+// entry's interval or p-value).
+const ecartLisible = (x) => decimal(Number(x).toExponential(1));
+const partieEcart = (s) => {
+  const l = s.libelle_ecart_max || s.cle_ecart_max || '';
+  const dans = l.replace(/^(.)(?=\p{Ll})/u, (c) => c.toLowerCase());  // (as the sentences write a label within them)
+  return s.partie_ecart_max === 'p' ? t('relance_partie_p', { libelle: dans }) : s.partie_ecart_max === 'ic' ? t('relance_partie_ic', { libelle: dans }) : l;
+};
 
 // What a package's manifest found (paquet_ouvrir's manifeste), in a sentence: its files the same,
 // or those missing, changed or added; or no manifest to check them by.
@@ -269,27 +286,32 @@ const entreGuillemets = (...x) => (langueActuelle() === 'fr' ? ['« ', ...x, ' �
 
 // A model's part: its sentences, then the table of what changed (shown when a change is notable,
 // folded otherwise), or what kept it from being compared. `cotes`: the keys of the two columns'
-// names; `inchange`: what to say of a model whose results didn't change.
-function sectionModele(m, loc, redessinerPanneau, { cotes, inchange = 'changements_inchange' }) {
+// names; `inchange`: what to say of a model whose results didn't change. `paquet`: a package's rerun,
+// a model said by its verdict (bilanPaquet): identical, or the same to 6 significant digits with its
+// largest relative gap, its table folded; a model that differs keeps its sentences.
+function sectionModele(m, loc, redessinerPanneau, { cotes, inchange = 'changements_inchange', paquet = false }) {
   const tete = el('h3', {}, m.nom, m.type ? el('span', { class: 'badge' }, m.type) : null);
   if (!m.comparaison) return el('section', { class: `modele-change erreur-change${m.relance ? ` ${m.relance}` : ''}` }, tete, el('p', { class: m.relance ? 'doux' : 'erreur' }, m.erreur || ''));
   const r = m.comparaison;
   const phrases = [].concat(r.phrases || []);
   const changees = entreesChangees(r);
   const total = (r.resume && r.resume.entrees) || [].concat(r.entrees || []).length;
-  if (!changees.length) return el('section', { class: 'modele-change inchange' }, tete, el('p', { class: 'doux' }, t(inchange)));
+  const verdict = paquet ? verdictModele(r) : null;
+  if (!changees.length || verdict === 'identique') return el('section', { class: 'modele-change inchange' }, tete, el('p', { class: 'doux' }, t(inchange)));
+  const six = verdict === 'six_chiffres';
   tete.append(el('span', { class: 'doux compte-change' }, t('changements_entrees', { n: changees.length, total })));
   const tout = !!loc.ouverts[m.nom];
   const lignes = tout ? changees : changees.slice(0, LIGNES);
   const tableau = el('table', { class: 'tableau compact tableau-changements' },
     el('thead', {}, el('tr', {}, [t('changements_resultat'), t(cotes[0]), t(cotes[1]), t('changements_ecart'), ''].map((h) => el('th', {}, h)))),
     el('tbody', {}, lignes.map(ligneEntree)));
-  const details = el('details', { open: phrases.length ? true : undefined },
+  const details = el('details', { open: phrases.length && !six ? true : undefined },
     el('summary', {}, t('changements_entrees', { n: changees.length, total })),
     el('div', { class: 'tableau-court' }, tableau),
     changees.length > lignes.length ? el('button', { onclick: () => { loc.ouverts[m.nom] = true; redessinerPanneau(); } }, t('changements_tout', { n: changees.length })) : null);
-  return el('section', { class: `modele-change${phrases.length ? ' notable' : ''}` }, tete,
-    phrases.length ? el('ul', { class: 'phrases-change' }, phrases.map((f) => el('li', {}, f.texte))) : el('p', { class: 'doux' }, t('changements_peu')),
+  return el('section', { class: `modele-change${six ? ' six-chiffres' : phrases.length ? ' notable' : ''}` }, tete,
+    six ? el('p', { class: 'doux verdict-six' }, t('relance_six_chiffres', { ecart: ecartLisible(r.resume.ecart_max), resultat: partieEcart(r.resume) }))
+      : phrases.length ? el('ul', { class: 'phrases-change' }, phrases.map((f) => el('li', {}, f.texte))) : el('p', { class: 'doux' }, t('changements_peu')),
     details);
 }
 
@@ -325,7 +347,10 @@ ajouterTextes({
   relance_n_differents_un: '{n} diffère', relance_n_differents_n: '{n} diffèrent',
   relance_non_relances: 'Pas ajustés de nouveau ici : {noms}.', relance_sans_depots: 'Sans résultats déposés : {noms}.',
   relance_non_relance: '{nom} n’a pas pu être ajusté de nouveau ici : {message}', relance_sans_depot: 'Le paquet n’a pas de résultats de {nom} : {message}',
-  relance_identique: 'Il redonne les résultats déposés.', relance_depose: 'Déposé', relance_relance: 'Relancé',
+  relance_partie_p: 'la valeur p de {libelle}', relance_partie_ic: 'l’intervalle à 95 % de {libelle}',
+  relance_dont_identiques: '{n} à l’identique', relance_dont_six_chiffres: '{n} à 6 chiffres significatifs près',
+  relance_identique: 'Il redonne les résultats déposés, à l’identique.', relance_depose: 'Déposé', relance_relance: 'Relancé',
+  relance_six_chiffres: 'Il redonne les résultats déposés à 6 chiffres significatifs près : son plus grand écart relatif est de {ecart} ({resultat}).',
   relance_depose_seul: 'Déposés, absents du projet :', relance_relance_seul: 'Dans le projet, sans résultats déposés :',
   relance_version: 'Nuée {nuee} et R {R} ({plateforme})',
   relance_versions: 'Déposé avec {depot}, le {date} ; relancé ici avec {ici}.',
@@ -349,7 +374,10 @@ ajouterTextes({
   relance_n_differents_un: '{n} differs', relance_n_differents_n: '{n} differ',
   relance_non_relances: 'Not fitted again here: {noms}.', relance_sans_depots: 'Without deposited results: {noms}.',
   relance_non_relance: '{nom} couldn’t be fitted again here: {message}', relance_sans_depot: 'The package has no results of {nom}: {message}',
-  relance_identique: 'It gives the deposited results.', relance_depose: 'Deposited', relance_relance: 'Rerun',
+  relance_partie_p: 'the p-value of {libelle}', relance_partie_ic: 'the 95% interval of {libelle}',
+  relance_dont_identiques: '{n} identical', relance_dont_six_chiffres: '{n} the same to 6 significant digits',
+  relance_identique: 'It gives the deposited results, identical.', relance_depose: 'Deposited', relance_relance: 'Rerun',
+  relance_six_chiffres: 'It gives the deposited results to 6 significant digits: its largest relative gap is {ecart} ({resultat}).',
   relance_depose_seul: 'Deposited, not in the project:', relance_relance_seul: 'In the project, without deposited results:',
   relance_version: 'Nuée {nuee} and R {R} ({plateforme})',
   relance_versions: 'Deposited with {depot}, on {date}; rerun here with {ici}.',

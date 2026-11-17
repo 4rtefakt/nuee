@@ -591,7 +591,7 @@ try {
   let horsLigne = false;
   const enregistrement = (id, fichiers) => ({ id, recid: String(id), doi: `10.5281/zenodo.${id}`, conceptdoi: '10.5281/zenodo.7000000', conceptrecid: '7000000',
     title: 'Orchards rerun', metadata: { title: 'Orchards rerun' }, links: { self: `https://zenodo.org/api/records/${id}`, files: `https://zenodo.org/api/records/${id}/files` },
-    files: fichiers.map(([key, o]) => ({ id: `f-${key}`, key, size: o.length, checksum: 'md5:0', links: { self: `https://zenodo.org/api/records/${id}/files/${encodeURIComponent(key)}/content` } })) });
+    files: fichiers.map(([key, o, taille]) => ({ id: `f-${key}`, key, size: taille ?? o.length, checksum: 'md5:0', links: { self: `https://zenodo.org/api/records/${id}/files/${encodeURIComponent(key)}/content` } })) });
   const fichiers7000002 = [['notes.pdf', Buffer.from('%PDF-1.4')], [paquet.nom, octetsPaquet]];
   await contexte.route('https://zenodo.org/**', (route) => {
     const u = new URL(route.request().url());
@@ -600,6 +600,8 @@ try {
     const json = (statut, x) => route.fulfill({ status: statut, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(x) });
     if (u.pathname === '/api/records/7000002' || u.pathname === '/api/records/7000000') return json(200, enregistrement(7000002, fichiers7000002));
     if (u.pathname === '/api/records/7000005') return json(200, enregistrement(7000005, [['notes.pdf', Buffer.from('%PDF-1.4')]]));
+    // (a package of 612 MB, by the size Zenodo gives: its content is never asked for)
+    if (u.pathname === '/api/records/7000007') return json(200, enregistrement(7000007, [['notes.pdf', Buffer.from('%PDF-1.4')], ['Huge package.zip', Buffer.alloc(0), 612345678]]));
     if (u.pathname === `/api/records/7000002/files/${encodeURIComponent(paquet.nom)}/content`) {
       return route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/octet-stream' }, body: octetsPaquet });
     }
@@ -680,9 +682,14 @@ try {
   const inconnu = await dialogueLien('doi=10.5281/zenodo.9999999');
   const attenduInconnu = await libelle(page, 'relance_zenodo_inconnu');
   const sansPaquet = await dialogueLien('record=7000005');
+  const gros = await dialogueLien('record=7000007');
+  const attenduGros = (await libelle(page, 'relance_zenodo_trop_gros')).replace('{nom}', 'Huge package.zip').replace('{taille}', '612.3').replace('{max}', '500');
   verifier('le lien d’un DOI que Zenodo ne connaît pas, celui d’un enregistrement sans paquet : dits dans la page, rien d’ouvert',
     inconnu.texte === attenduInconnu.replace('{doi}', '10.5281/zenodo.9999999') && !inconnu.projets && /7000005/.test(sansPaquet.texte) && /\.zip/.test(sansPaquet.texte) && !sansPaquet.projets,
     `${inconnu.texte} | ${sansPaquet.texte}`);
+  verifier('le paquet d’un enregistrement plus gros que 500 Mo (612 Mo, la taille que Zenodo donne) : refusé avant d’être téléchargé, sa taille dite, l’application de bureau proposée',
+    [attenduGros, attenduGros.replace('612.3', '612,3')].includes(gros.texte) && !gros.projets && !recues.some((x) => x.includes('/api/records/7000007/files/')),
+    gros.texte);
   verifier('le lien ne demande rien qu’à zenodo.org (et R ses paquets, à repo.r-wasm.org), sans violation de la politique de sécurité',
     !autresSites.length && !(await lien.evaluate(() => window.__violations)).length, autresSites.slice(0, 5));
   await lien.close();

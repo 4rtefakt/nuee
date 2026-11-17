@@ -798,6 +798,7 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .paquet-relance .bilan-relance { font-weight: 600; color: var(--ok); }
 .paquet-relance .attention, .paquet-relance .bilan-relance.attention { color: var(--attention); }
 .modele-change.non_relance, .modele-change.sans_depot { border-style: dashed; }
+.modele-change.six-chiffres { border-left: 3px solid color-mix(in srgb, var(--ok) 55%, transparent); }
 
 /* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
    wait for the approval, the account's card, the other ways to sign in */
