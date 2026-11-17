@@ -8,12 +8,13 @@
 // dictionary, one R script that redoes every model, the documents, a README in the interface's
 // language, the licence with its text, CITATION.cff, codemeta.json and the SHA-256 of every file,
 // in one .zip (where the user says on the desktop; downloaded in a browser).
-// Deposit on Zenodo (desktop only): the same package, written in the engine's session folder, then
-// a draft on Zenodo with it and its description (main.js, zenodo.js: bureau.zenodo), with the
-// user's personal access token, which the main process keeps with the tokens of the versions and
-// the sign-ins and never gives back here. Nuée never publishes: the user checks the draft on
-// Zenodo, whose page opens, and publishes it there. sandbox.zenodo.org, Zenodo's test server, is
-// under Advanced.
+// Deposit on Zenodo (desktop only, main.js and zenodo.js: bureau.zenodo): a draft created on Zenodo
+// with its DOI reserved, then the same package written with that DOI (its README, CITATION.cff and
+// codemeta.json name it) in the engine's session folder, then deposited in the draft with its
+// description; with the user's personal access token, which the main process keeps with the tokens
+// of the versions and the sign-ins and never gives back here. Nuée never publishes: the user checks
+// the draft on Zenodo, whose page opens, and publishes it there, which registers its DOI.
+// sandbox.zenodo.org, Zenodo's test server, is under Advanced.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
@@ -128,9 +129,10 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
 
 // Every model of the project fitted (the latest fit of each, in the order of their numbers), each
 // document made a reproducible Quarto file, then the package written by the engine; `chemin`:
-// where (null: in the engine's session folder). Returns the engine's answer, with what could not
-// be done (`notes`) and the documents whose references don't all resolve.
-async function ecrirePaquet(app, pid, meta, chemin) {
+// where (null: in the engine's session folder); `doi`: the package's own, reserved on Zenodo for
+// its draft. Returns the engine's answer, with what could not be done (`notes`) and the documents
+// whose references don't all resolve.
+async function ecrirePaquet(app, pid, meta, chemin, doi = null) {
   return app.occupe(async () => {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (what is being typed in a document first)
     if (app.viderFigures) await app.viderFigures(pid);
@@ -159,7 +161,7 @@ async function ecrirePaquet(app, pid, meta, chemin) {
     }
     app.statut(t('paquet_ecriture'));
     const r = await demander('paquet', { projet: pid, meta, modeles: app.modelesSeance(pid).map((m) => m.id), non_ajustes: nonAjustes,
-      documents: JSON.stringify(documents), session: app.sessionProjet(pid), chemin, version: VERSION, langue: langueActuelle() });
+      documents: JSON.stringify(documents), session: app.sessionProjet(pid), chemin, doi, version: VERSION, langue: langueActuelle() });
     app.majProjet(r.projet);
     app.diffuser('modeles');
     return { ...r, notes };
@@ -180,13 +182,15 @@ function remarques(r) {
     ...liste('paquet_remarques_documents', docs), el('p', { class: 'note' }, t('paquet_remarques_readme')));
 }
 
-// The deposit's dialog: the token (pasted once, then kept by the main process), the host, then
-// the package written and the draft created; its page opens (main.js). Stays open with what went
-// wrong, if something did.
+// The deposit's dialog: the token (pasted once, then kept by the main process), the host; then the
+// draft created with its DOI reserved, the package written with that DOI, and deposited in the
+// draft with its description; its page opens (main.js). Stays open with what went wrong, if
+// something did: tried again, it goes on with the same draft.
 async function dialogueZenodo(app, p, meta) {
   let hote = HOTES[0];
   let etat = { jeton: false, persistant: false };
   let enCours = false;
+  let brouillon = null;  // (the draft created here: { hote, id, doi, page })
   const champ = el('input', { type: 'password', class: 'zenodo-champ', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('zenodo_jeton') });
   const zoneJeton = el('div', { class: 'zenodo-jeton' });
   const erreur = el('div', { class: 'erreur' });
@@ -194,7 +198,7 @@ async function dialogueZenodo(app, p, meta) {
     etat = await bureau.zenodo.etat(hote);
     zoneJeton.replaceChildren(...(etat.jeton
       ? [el('div', { class: 'ligne' }, el('span', {}, t('zenodo_jeton_garde', { hote })),
-        el('button', { onclick: async () => { await bureau.zenodo.oublier(hote); erreur.replaceChildren(); await dessiner(); } }, t('zenodo_oublier')))]
+        el('button', { onclick: async () => { await bureau.zenodo.oublier(hote); brouillon = null; erreur.replaceChildren(); await dessiner(); } }, t('zenodo_oublier')))]
       : [el('label', { class: 'champ' }, el('span', {}, t('zenodo_jeton')), champ),
         el('p', { class: 'note' }, t('zenodo_jeton_aide', { hote }), ' ',
           el('a', { href: `https://${hote}/account/settings/applications/tokens/new/`, target: '_blank', rel: 'noopener' }, t('zenodo_creer_jeton', { hote }))),
@@ -212,19 +216,35 @@ async function dialogueZenodo(app, p, meta) {
       await dessiner();
     }
     enCours = true;
+    // (what went wrong, said in the dialog; a refused token shown again as not kept)
+    const montrer = async (z) => {
+      erreur.replaceChildren(el('p', {}, messageZenodo(z, hote)), z.page ? el('button', { onclick: () => window.open(z.page) }, t('zenodo_ouvrir')) : '');
+      app.statut('');
+      if (z.erreur === 'jeton' || z.erreur === 'droits') await dessiner();
+    };
     try {
-      const r = await ecrirePaquet(app, p.id, meta, null);
-      app.statut(t('zenodo_en_cours', { hote, taille: (r.taille / 1e6).toFixed(1) }));
-      const z = await app.occupe(() => bureau.zenodo.deposer(hote, r.chemin, { ...(r.projet.paquet || meta), langue: langueActuelle() }));
-      if (z.erreur) {
-        erreur.replaceChildren(el('p', {}, messageZenodo(z, hote)), z.page ? el('button', { onclick: () => window.open(z.page) }, t('zenodo_ouvrir')) : '');
-        app.statut('');
-        if (z.erreur === 'jeton' || z.erreur === 'droits') await dessiner();
+      // 1. the draft, its DOI reserved (tried again: the same draft)
+      if (!brouillon || brouillon.hote !== hote) {
+        app.statut(t('zenodo_reservation', { hote }));
+        const b = await app.occupe(() => bureau.zenodo.brouillon(hote));
+        if (b.erreur) { await montrer(b); return; }
+        brouillon = { ...b, hote };
+      }
+      // 2. the package, with that DOI
+      let r;
+      try {
+        r = await ecrirePaquet(app, p.id, meta, null, brouillon.doi);
+      } catch (e) {
+        await montrer({ erreur: 'paquet', detail: e.message, page: brouillon.page });
         return;
       }
+      // 3. in the draft, with its description
+      app.statut(t('zenodo_en_cours', { hote, taille: (r.taille / 1e6).toFixed(1) }));
+      const z = await app.occupe(() => bureau.zenodo.deposer(hote, brouillon.id, r.chemin, { ...(r.projet.paquet || meta), langue: langueActuelle() }));
+      if (z.erreur) { await montrer({ ...z, page: z.page || brouillon.page }); return; }
       d.fermer();
       app.statut(t('zenodo_fait_statut', { page: z.page }));
-      dialogue({ titre: t('zenodo_fait_titre'), contenu: el('div', {}, el('p', {}, t('zenodo_fait')), el('p', { class: 'note' }, z.page), remarques(r)),
+      dialogue({ titre: t('zenodo_fait_titre'), contenu: el('div', {}, el('p', {}, t('zenodo_fait', { doi: z.doi })), el('p', { class: 'note' }, z.page), remarques(r)),
         boutons: [{ libelle: t('zenodo_ouvrir'), action: () => { window.open(z.page); return false; } }, { libelle: t('fermer'), principal: true, action: () => true }] });
     } catch (e) {
       erreur.textContent = e.message;
@@ -243,7 +263,7 @@ async function dialogueZenodo(app, p, meta) {
 
 const messageZenodo = (z, hote) => {
   const cles = { jeton: 'zenodo_erreur_jeton', droits: 'zenodo_erreur_droits', refus: 'zenodo_erreur_refus', taille: 'zenodo_erreur_taille',
-    reseau: 'zenodo_erreur_reseau', sans_jeton: 'zenodo_sans_jeton' };
+    reseau: 'zenodo_erreur_reseau', sans_jeton: 'zenodo_sans_jeton', doi: 'zenodo_erreur_doi', paquet: 'zenodo_erreur_paquet' };
   return t(cles[z.erreur] || 'zenodo_erreur_autre', { detail: z.detail || z.erreur, hote }) + (z.page ? ` ${t('zenodo_erreur_brouillon')}` : '');
 };
 
@@ -273,7 +293,7 @@ ajouterTextes({
   paquet_remarques_documents: 'Documents :', paquet_remarques_readme: 'Le README du paquet le dit aussi.',
   paquet_document_absent: '« {nom} » n’est pas dans le paquet : {erreur}', paquet_document_erreurs: '« {nom} » : {n} référence(s) ne se résolvent pas, écrites comme dans l’aperçu',
   zenodo_titre: 'Déposer sur Zenodo',
-  zenodo_texte: 'Nuée écrit le paquet, puis crée sur Zenodo un brouillon avec lui et sa description. Il ne publie jamais : vous vérifiez le brouillon sur Zenodo, dont la page s’ouvre, et le publiez vous-même ; Zenodo lui donne alors un DOI.',
+  zenodo_texte: 'Nuée crée sur Zenodo un brouillon, qui réserve son DOI, écrit le paquet avec ce DOI (son README, CITATION.cff et codemeta.json le donnent), puis l’y dépose avec sa description. Il ne publie jamais : vous vérifiez le brouillon sur Zenodo, dont la page s’ouvre, et le publiez vous-même ; son DOI est alors enregistré.',
   zenodo_jeton: 'Jeton d’accès personnel', zenodo_jeton_garde: 'Un jeton pour {hote} est gardé sur cet ordinateur.', zenodo_oublier: 'L’oublier',
   zenodo_jeton_aide: 'Sur {hote} : Compte › Applications › Personal access tokens › New token, avec les droits deposit:write et deposit:actions.',
   zenodo_creer_jeton: 'Créer un jeton sur {hote}',
@@ -281,15 +301,16 @@ ajouterTextes({
   zenodo_session: 'Le système n’a pas de trousseau pour le chiffrer : il sera gardé jusqu’à la fermeture de Nuée seulement.',
   zenodo_avance: 'Avancé', zenodo_bac_a_sable: 'Essayer sur sandbox.zenodo.org, le serveur d’essai de Zenodo : ses dépôts ne comptent pas, et il a ses propres comptes et jetons.',
   zenodo_creer: 'Créer le brouillon', zenodo_coller_jeton: 'Collez votre jeton de {hote}.', zenodo_jeton_invalide: 'Ce n’est pas un jeton de Zenodo.',
-  zenodo_en_cours: 'Zenodo : le brouillon sur {hote}, le paquet ({taille} Mo), sa description…',
+  zenodo_reservation: 'Zenodo : le brouillon sur {hote}, son DOI réservé…', zenodo_en_cours: 'Zenodo : le paquet ({taille} Mo) dans le brouillon sur {hote}, sa description…',
   zenodo_fait_titre: 'Brouillon créé sur Zenodo', zenodo_fait_statut: 'Brouillon créé sur Zenodo : {page}',
-  zenodo_fait: 'Le brouillon a le paquet et sa description, et Nuée comme logiciel qui l’a fait. Vérifiez-le sur Zenodo, complétez-le au besoin, puis publiez-le là : rien n’est public avant, et Nuée ne publie jamais.',
+  zenodo_fait: 'Le brouillon a le paquet et sa description, et Nuée comme logiciel qui l’a fait. Son DOI, {doi}, est écrit dans le paquet (son README, CITATION.cff et codemeta.json) ; il mène au paquet une fois le brouillon publié. Vérifiez-le sur Zenodo, complétez-le au besoin, puis publiez-le là : rien n’est public avant, et Nuée ne publie jamais.',
   zenodo_ouvrir: 'Ouvrir le brouillon',
   zenodo_erreur_jeton: 'Zenodo refuse le jeton (HTTP 401) : vérifiez-le, ou oubliez-le et collez-en un autre.',
   zenodo_erreur_droits: 'Le jeton n’a pas les droits qu’il faut (HTTP 403) : deposit:write et deposit:actions.',
   zenodo_erreur_refus: 'Zenodo n’a pas pris le dépôt : {detail}', zenodo_erreur_taille: 'Le paquet est trop gros pour Zenodo (HTTP 413).',
   zenodo_erreur_reseau: 'Zenodo ne répond pas : {detail}', zenodo_erreur_autre: 'Zenodo : {detail}',
   zenodo_erreur_brouillon: 'Le brouillon existe : finissez-le sur Zenodo, ou supprimez-le là.', zenodo_sans_jeton: 'Pas de jeton pour {hote}.',
+  zenodo_erreur_doi: 'Zenodo n’a pas réservé de DOI pour le brouillon, ou lui en donne un autre que celui du paquet.', zenodo_erreur_paquet: 'Le paquet ne s’est pas écrit : {detail}',
 }, {
   paquet: 'Export a reproducibility package…', paquet_zenodo: 'Deposit on Zenodo…',
   paquet_titre: 'Reproducibility package — {nom}', paquet_format: 'Zip archive',
@@ -316,7 +337,7 @@ ajouterTextes({
   paquet_remarques_documents: 'Documents:', paquet_remarques_readme: 'The package’s README says so too.',
   paquet_document_absent: '“{nom}” isn’t in the package: {erreur}', paquet_document_erreurs: '“{nom}”: {n} reference(s) can’t be resolved, written as in the preview',
   zenodo_titre: 'Deposit on Zenodo',
-  zenodo_texte: 'Nuée writes the package, then creates a draft on Zenodo with it and its description. It never publishes: you check the draft on Zenodo, whose page opens, and publish it yourself; Zenodo then gives it a DOI.',
+  zenodo_texte: 'Nuée creates a draft on Zenodo, which reserves its DOI, writes the package with that DOI (its README, CITATION.cff and codemeta.json give it), then deposits it there with its description. It never publishes: you check the draft on Zenodo, whose page opens, and publish it yourself; its DOI is registered then.',
   zenodo_jeton: 'Personal access token', zenodo_jeton_garde: 'A token for {hote} is kept on this computer.', zenodo_oublier: 'Forget it',
   zenodo_jeton_aide: 'On {hote}: Account › Applications › Personal access tokens › New token, with the scopes deposit:write and deposit:actions.',
   zenodo_creer_jeton: 'Create a token on {hote}',
@@ -324,13 +345,14 @@ ajouterTextes({
   zenodo_session: 'The system has no keyring to encrypt it: it will be kept until Nuée closes only.',
   zenodo_avance: 'Advanced', zenodo_bac_a_sable: 'Try on sandbox.zenodo.org, Zenodo’s test server: its deposits don’t count, and it has accounts and tokens of its own.',
   zenodo_creer: 'Create the draft', zenodo_coller_jeton: 'Paste your token from {hote}.', zenodo_jeton_invalide: 'This isn’t a Zenodo token.',
-  zenodo_en_cours: 'Zenodo: the draft on {hote}, the package ({taille} MB), its description…',
+  zenodo_reservation: 'Zenodo: the draft on {hote}, its DOI reserved…', zenodo_en_cours: 'Zenodo: the package ({taille} MB) in the draft on {hote}, its description…',
   zenodo_fait_titre: 'Draft created on Zenodo', zenodo_fait_statut: 'Draft created on Zenodo: {page}',
-  zenodo_fait: 'The draft has the package and its description, and Nuée as the software that made it. Check it on Zenodo, complete it if needed, then publish it there: nothing is public before, and Nuée never publishes.',
+  zenodo_fait: 'The draft has the package and its description, and Nuée as the software that made it. Its DOI, {doi}, is written in the package (its README, CITATION.cff and codemeta.json); it leads to the package once the draft is published. Check it on Zenodo, complete it if needed, then publish it there: nothing is public before, and Nuée never publishes.',
   zenodo_ouvrir: 'Open the draft',
   zenodo_erreur_jeton: 'Zenodo refuses the token (HTTP 401): check it, or forget it and paste another one.',
   zenodo_erreur_droits: 'The token doesn’t have the scopes it needs (HTTP 403): deposit:write and deposit:actions.',
   zenodo_erreur_refus: 'Zenodo didn’t take the deposit: {detail}', zenodo_erreur_taille: 'The package is too big for Zenodo (HTTP 413).',
   zenodo_erreur_reseau: 'Zenodo doesn’t answer: {detail}', zenodo_erreur_autre: 'Zenodo: {detail}',
   zenodo_erreur_brouillon: 'The draft exists: finish it on Zenodo, or delete it there.', zenodo_sans_jeton: 'No token for {hote}.',
+  zenodo_erreur_doi: 'Zenodo reserved no DOI for the draft, or gives it another one than the package’s.', zenodo_erreur_paquet: 'The package couldn’t be written: {detail}',
 });

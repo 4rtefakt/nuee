@@ -219,8 +219,8 @@ journaliser <- function(nom, q, r) {
     paquet = {
       ids <- as.character(unlist(q$modeles))
       c(sprintf("modeles <- lapply(%s, function(id) list(id = id, definition = definition(id), modele = get(id)))", vecteur_r(ids)),
-        sprintf("ecrire_paquet(%s, modeles, %s, %s, langue = %s)", q$projet, code_r(r$chemin), code_r(metadonnees_paquet(q$meta)),
-                code_r(if (identical(q$langue, "en")) "en" else "fr")))
+        sprintf("ecrire_paquet(%s, modeles, %s, %s, langue = %s%s)", q$projet, code_r(r$chemin), code_r(metadonnees_paquet(q$meta)),
+                code_r(if (identical(q$langue, "en")) "en" else "fr"), if (!is.null(doi_paquet(q$doi))) sprintf(", doi = %s", code_r(doi_paquet(q$doi))) else ""))
     },
     NULL)
   if (length(lignes)) noter("appel", lignes)

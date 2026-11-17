@@ -84,6 +84,17 @@ metadonnees_paquet <- function(x) {
   list(titre = titre, auteurs = auteurs, description = description, mots_cles = mots, licence = licence)
 }
 
+# Le DOI du paquet lui-même, celui que Zenodo a réservé pour son brouillon (Déposer sur Zenodo… :
+# zenodo.js, avant d'écrire le paquet), écrit 10.5281/zenodo.123 (ou son adresse https://doi.org/…, ou
+# doi:…) ; NULL quand il n'y en a pas (Exporter, sans dépôt). Un autre texte est refusé.
+doi_paquet <- function(x) {
+  x <- trimws(as.character(unlist(x %||% ""))[1])
+  if (is.na(x) || !nzchar(x)) return(NULL)
+  doi <- sub("^(https?://(dx\\.)?doi\\.org/|doi:)", "", x, ignore.case = TRUE)
+  if (!grepl("^10\\.[0-9]{4,9}/[-._;()/:A-Za-z0-9]+$", doi)) stop(sprintf(traduire("Ce n'est pas un DOI : %s.", "This isn't a DOI: %s."), x), call. = FALSE)
+  doi
+}
+
 # Les réponses gardées dans un projet (p$paquet, relu d'un fichier), nettoyées comme le dialogue les
 # donne, ou NULL quand il n'en a pas (ou plus de valables).
 metadonnees_gardees <- function(x) if (is.null(x)) NULL else tryCatch(metadonnees_paquet(x), error = function(e) NULL)
@@ -364,10 +375,10 @@ auteurs_paquet_r <- function(paquet) {
   })
 }
 
-# CITATION.cff (Citation File Format 1.2.0) : le paquet comme jeu de données (titre, description,
-# auteurs et leur ORCID, mots-clés, licence), puis ce qui l'a fait : Nuée (sa version, son DOI), R et
-# les paquets R qu'appelle son script, avec leurs versions.
-lignes_cff <- function(meta, langue, version, paquets) {
+# CITATION.cff (Citation File Format 1.2.0) : le paquet comme jeu de données (titre, son DOI quand il
+# en a un, description, auteurs et leur ORCID, mots-clés, licence), puis ce qui l'a fait : Nuée (sa
+# version, son DOI), R et les paquets R qu'appelle son script, avec leurs versions.
+lignes_cff <- function(meta, langue, version, paquets, doi = NULL) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
   y <- yaml_texte
   # (une personne : ses prénoms, son nom, son ORCID ; une équipe : son nom, `entite`)
@@ -388,6 +399,7 @@ lignes_cff <- function(meta, langue, version, paquets) {
     sprintf("message: %s", y(tx("Pour citer ces données ou cette analyse, merci d'utiliser les métadonnées de ce fichier.", "If you use these data or this analysis, please cite them using the metadata from this file."))),
     "type: dataset",
     sprintf("title: %s", y(meta$titre)),
+    if (!is.null(doi)) sprintf("doi: %s", y(doi)),
     if (nzchar(meta$description)) sprintf("abstract: %s", y(meta$description)),
     "authors:", unlist(lapply(meta$auteurs, personne, retrait = "  ")),
     if (length(meta$mots_cles)) c("keywords:", sprintf("  - %s", y(meta$mots_cles))),
@@ -405,8 +417,9 @@ lignes_cff <- function(meta, langue, version, paquets) {
 }
 
 # codemeta.json (CodeMeta 3.0) : le même, pour les outils qui lisent les métadonnées de logiciels de
-# recherche ; R et ses paquets en softwareRequirements, Nuée (qui ouvre le .nuee) en softwareSuggestions.
-codemeta_paquet <- function(meta, langue, version, paquets) {
+# recherche (le DOI du paquet en identifier) ; R et ses paquets en softwareRequirements, Nuée (qui
+# ouvre le .nuee) en softwareSuggestions.
+codemeta_paquet <- function(meta, langue, version, paquets, doi = NULL) {
   personne <- function(a) {
     x <- list("@type" = "Person")
     if (nzchar(a$orcid %||% "")) x[["@id"]] <- paste0("https://orcid.org/", a$orcid)
@@ -416,7 +429,7 @@ codemeta_paquet <- function(meta, langue, version, paquets) {
   }
   l <- LICENCES_PAQUET[[meta$licence]]
   x <- list("@context" = "https://w3id.org/codemeta/3.0", "@type" = "SoftwareSourceCode",
-            name = meta$titre, description = if (nzchar(meta$description)) meta$description,
+            name = meta$titre, identifier = if (!is.null(doi)) paste0("https://doi.org/", doi), description = if (nzchar(meta$description)) meta$description,
             author = lapply(meta$auteurs, personne), keywords = I(meta$mots_cles),
             license = paste0("https://spdx.org/licenses/", meta$licence), dateCreated = format(Sys.Date()),
             inLanguage = langue,
@@ -430,10 +443,11 @@ codemeta_paquet <- function(meta, langue, version, paquets) {
   enc2utf8(as.character(jsonlite::toJSON(x, auto_unbox = TRUE, pretty = TRUE, null = "null")))
 }
 
-# README.md, dans la langue du paquet : le titre, la description, les auteurs, ce que contient le
-# paquet, ses modèles, comment le relancer avec R (les paquets et leurs versions), l'ouvrir dans
-# Nuée, vérifier ses fichiers et le citer.
-lignes_readme <- function(meta, langue, version, contenu) {
+# README.md, dans la langue du paquet : le titre, la description, les auteurs, son DOI quand il en a
+# un, ce que contient le paquet, ses modèles, comment le relancer avec R (les paquets et leurs
+# versions), l'ouvrir dans Nuée (avec son DOI, aussi dans la version de Nuée pour navigateur,
+# https://nuee.io/app/?doi=…), vérifier ses fichiers et le citer.
+lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
   tx <- function(fr, en) if (identical(langue, "en")) en else fr
   deux_points <- tx(" : ", ": ")
   l <- LICENCES_PAQUET[[meta$licence]]
@@ -450,11 +464,14 @@ lignes_readme <- function(meta, langue, version, contenu) {
   # (APA : Nom, P., & Nom, P. (année). Titre [Jeu de données].)
   noms_cites <- vapply(meta$auteurs, function(a) paste0(a$nom, if (nzchar(a$prenom)) paste0(", ", gsub("([[:alpha:]])[[:alpha:]'’]*", "\\1.", a$prenom)) else ""), "")
   if (length(noms_cites) > 1) noms_cites[length(noms_cites)] <- paste("&", noms_cites[length(noms_cites)])
-  citation <- paste0(paste(noms_cites, collapse = ", "), sprintf(" (%s). *%s* [%s]. ", annee, texte_sur(meta$titre), tx("Jeu de données", "Data set")))
+  citation <- paste0(paste(noms_cites, collapse = ", "), sprintf(" (%s). *%s* [%s]. ", annee, texte_sur(meta$titre), tx("Jeu de données", "Data set")),
+                     if (!is.null(doi)) sprintf("Zenodo. https://doi.org/%s ", doi))
+  dans_navigateur <- if (!is.null(doi)) paste0("https://nuee.io/app/?doi=", doi)
   c(paste("#", texte_sur(meta$titre)), "",
     if (nzchar(meta$description)) c(gsub("\r", "", meta$description), ""),
     sprintf("- **%s** %s", tx("Auteurs :", "Authors:"), paste(vapply(meta$auteurs, auteur, ""), collapse = ", ")),
     if (length(meta$mots_cles)) sprintf("- **%s** %s", tx("Mots-clés :", "Keywords:"), paste(meta$mots_cles, collapse = ", ")),
+    if (!is.null(doi)) sprintf("- **DOI%s** [%s](https://doi.org/%s)", tx(" :", ":"), doi, doi),
     sprintf("- **%s** [%s](%s), %s", tx("Licence des données :", "Licence of the data:"), l$court, l$url, tx("son texte dans `LICENSE`", "its text in `LICENSE`")),
     sprintf("- **%s** %s", tx("Fait avec :", "Made with:"),
             sprintf(tx("Nuée %s ([doi:%s](https://doi.org/%s)) et R %s, le %s", "Nuée %s ([doi:%s](https://doi.org/%s)) and R %s, on %s"), version, DOI_NUEE, DOI_NUEE, r_version, format(Sys.Date()))),
@@ -502,6 +519,9 @@ lignes_readme <- function(meta, langue, version, contenu) {
     sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient. Il faut Nuée %s ou plus récent.",
                "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were. It takes Nuée %s or later."),
             "https://nuee.io", sprintf("[%s](https://doi.org/%s)", DOI_NUEE, DOI_NUEE), code(ct$nuee), "1.0"),
+    if (!is.null(doi)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI.",
+                                        "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI."),
+                                     sprintf("[%s](%s)", dans_navigateur, dans_navigateur))),
     "",
     paste("##", tx("Vérifier les fichiers", "Check the files")), "",
     sprintf(tx("%s donne l'empreinte SHA-256 de chaque fichier. Dans ce dossier : %s (Linux), %s (macOS), ou %s dans PowerShell (Windows), fichier par fichier.",
@@ -521,11 +541,14 @@ lignes_readme <- function(meta, langue, version, contenu) {
 #   documents  ses documents, comme l'interface les a faits (ecrire_documents_paquet) ;
 #   langue     celle du README, du script, du dictionnaire et des noms des fichiers ;
 #   version    celle de Nuée ; session : la disposition de l'interface, gardée dans le .nuee comme
-#              Enregistrer la garde.
+#              Enregistrer la garde ;
+#   doi        celui du paquet, réservé par Zenodo pour son brouillon (doi_paquet), que le README,
+#              CITATION.cff et codemeta.json donnent ; NULL sans dépôt.
 # Rend le chemin de l'archive, les fichiers qu'elle contient (relatifs à son dossier), chaque modèle
 # (son nom dans le script, ou pourquoi il n'y est pas), les écarts et les documents.
-ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), langue = "fr", version = "", session = NULL) {
+ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), langue = "fr", version = "", session = NULL, doi = NULL) {
   langue <- if (identical(langue, "en")) "en" else "fr"
+  doi <- doi_paquet(doi)
   tx <- function(fr, en) if (langue == "en") en else fr
   if (!grepl("\\.zip$", chemin, ignore.case = TRUE)) chemin <- paste0(chemin, ".zip")
   base <- trimws(gsub("[^[:alnum:]_ ().-]", "_", tools::file_path_sans_ext(basename(chemin))))
@@ -558,9 +581,9 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   contenu <- list(nuee = fichier_nuee, csv = csv, dictionnaire = dictionnaire, script = if (!is.null(s$script)) script, documents = docs$documents,
                   modeles = s$modeles, ecarts = s$ecarts, paquets = s$paquets, n_obs = nrow(tab), n_colonnes = ncol(tab))
   ecrire_texte_paquet(file.path(racine, "LICENSE"), lignes_licence(meta))
-  ecrire_texte_paquet(file.path(racine, "README.md"), lignes_readme(meta, langue, version, contenu))
-  ecrire_texte_paquet(file.path(racine, "CITATION.cff"), lignes_cff(meta, langue, version, s$paquets))
-  ecrire_texte_paquet(file.path(racine, "codemeta.json"), codemeta_paquet(meta, langue, version, s$paquets))
+  ecrire_texte_paquet(file.path(racine, "README.md"), lignes_readme(meta, langue, version, contenu, doi))
+  ecrire_texte_paquet(file.path(racine, "CITATION.cff"), lignes_cff(meta, langue, version, s$paquets, doi))
+  ecrire_texte_paquet(file.path(racine, "codemeta.json"), codemeta_paquet(meta, langue, version, s$paquets, doi))
   # l'empreinte de chaque fichier (dans l'ordre des octets de leurs chemins, comme sort -C)
   fichiers <- sort(list.files(racine, recursive = TRUE, all.files = TRUE, no.. = TRUE), method = "radix")
   ecrire_texte_paquet(file.path(racine, "MANIFEST.sha256"), sprintf("%s  %s", empreintes_sha256(file.path(racine, fichiers)), fichiers))

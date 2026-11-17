@@ -767,8 +767,9 @@ const comptes = creerComptes({
 });
 // Deposit on Zenodo, for a reproducibility package (zenodo.js, interface/paquet.js): the token of
 // zenodo.org and of sandbox.zenodo.org, its test server, kept in the same store, under their names;
-// a package deposited only from R's folder of this run, where the engine wrote it; the draft's page
-// opened in the browser, never published. NUEE_ZENODO: another address answering like Zenodo, for
+// the draft created with its DOI reserved, then the package, which the engine wrote with that DOI,
+// deposited in it only from R's folder of this run; the draft's page opened in the browser, never
+// published. NUEE_ZENODO: another address answering like Zenodo, for
 // the checks (a stand-in: every host goes there, and no page opens).
 const zenodo = creerZenodo({
   jetons,
@@ -858,8 +859,8 @@ function ipc() {
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
   // Zenodo, for a reproducibility package (zenodo.js: creerZenodo): whether a token is kept for a
-  // host (never the token), keeping the one pasted, forgetting it, and the draft deposited; each
-  // answers { erreur } rather than throwing
+  // host (never the token), keeping the one pasted, forgetting it, a draft with its DOI reserved,
+  // then the package deposited in it; each answers { erreur } rather than throwing
   for (const [nom, f] of Object.entries(zenodo)) recevoir(`zenodo-${nom}`, (_, ...args) => f(...args));
   // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
   // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS

@@ -210,7 +210,8 @@ for (langue in c("fr", "en")) {
   }
   zip <- file.path(dossier, langue, tx("Mon paquet.zip", "My package.zip"))
   dir.create(dirname(zip), recursive = TRUE, showWarnings = FALSE)
-  r <- ecrire_paquet(p, c(x$modeles, list(x$perime)), zip, meta, documents, langue, "essai", session = "{\"version\":2}")
+  # (en anglais, avec le DOI que Zenodo a réservé pour son brouillon, du préfixe de sandbox.zenodo.org ; en français sans)
+  r <- ecrire_paquet(p, c(x$modeles, list(x$perime)), zip, meta, documents, langue, "essai", session = "{\"version\":2}", doi = if (!fr) "https://doi.org/10.5072/zenodo.4242")
   verifier("l'archive est écrite, et chaque modèle y a son nom, sauf celui qui ne peut pas être refait",
            file.exists(zip) && identical(vapply(r$modeles, function(i) i$objet %||% NA_character_, ""), c(paste0("M", 1:7), NA)) &&
              identical(r$modeles[[8]]$erreur, x$perime$erreur) && !length(r$ecarts))
@@ -324,6 +325,12 @@ for (langue in c("fr", "en")) {
              any(grepl("sha256sum -c MANIFEST.sha256", readme, fixed = TRUE)) && any(grepl("10.5281/zenodo.24263014", readme, fixed = TRUE)) &&
              any(grepl(if (fr) "## Refaire l'analyse avec R" else "## Redo the analysis with R", readme, fixed = TRUE)) &&
              (!fr || any(grepl("documents/Mon article.qmd", readme, fixed = TRUE))))
+  verifier(if (fr) "sans DOI réservé, le README n'en donne pas d'autre que celui de Nuée"
+           else "le DOI du paquet dans son README : en tête, dans sa citation, et le lien https://nuee.io/app/?doi=… qui l'ouvre dans Nuée pour navigateur",
+           if (fr) !any(grepl("nuee.io/app", readme, fixed = TRUE)) && !any(grepl("^- \\*\\*DOI", readme)) && !any(grepl("10.5072", readme, fixed = TRUE))
+           else "- **DOI:** [10.5072/zenodo.4242](https://doi.org/10.5072/zenodo.4242)" %in% readme &&
+             any(grepl("[https://nuee.io/app/?doi=10.5072/zenodo.4242](https://nuee.io/app/?doi=10.5072/zenodo.4242) opens this package in Nuée", readme, fixed = TRUE)) &&
+             any(grepl("[Data set]. Zenodo. https://doi.org/10.5072/zenodo.4242 Analysed with Nuée", readme, fixed = TRUE)))
   licence <- readLines(file.path(racine, "LICENSE"), encoding = "UTF-8")
   verifier(sprintf("la licence : qui la donne, puis son texte (%s)", meta$licence),
            licence[1] == meta$titre && if (fr) any(grepl("Attribution 4.0 International", licence)) && utils::tail(licence, 1) == "Creative Commons may be contacted at creativecommons.org." &&
@@ -331,19 +338,21 @@ for (langue in c("fr", "en")) {
            else any(grepl("CC0 1.0 Universal", licence)) && any(grepl("dedicated to the public domain", licence)))
   cff <- readLines(file.path(racine, "CITATION.cff"), encoding = "UTF-8")
   structure_yaml <- grepl("^( *)(- )?[a-z-]+: .+$|^( *)- \".*\"$|^[a-z-]+:$|^( +)[a-z-]+:$", cff)
-  verifier("CITATION.cff : un jeu de données, ses auteurs avec leur ORCID, ses mots-clés, sa licence, Nuée (sa version, son DOI), R et rpart avec leurs versions",
+  verifier(sprintf("CITATION.cff : un jeu de données%s, ses auteurs avec leur ORCID, ses mots-clés, sa licence, Nuée (sa version, son DOI), R et rpart avec leurs versions", if (!fr) " et son DOI" else ""),
            all(structure_yaml) && cff[1] == "cff-version: 1.2.0" && "type: dataset" %in% cff && sprintf("title: %s", yaml_texte(meta$titre)) %in% cff &&
              sprintf("    orcid: \"https://orcid.org/%s\"", meta$auteurs[[1]]$orcid) %in% cff && sprintf("license: %s", meta$licence) %in% cff &&
              "    doi: \"10.5281/zenodo.24263014\"" %in% cff && "    version: \"essai\"" %in% cff &&
              sprintf("    version: \"%s.%s\"", R.version$major, R.version$minor) %in% cff && sprintf("    version: \"%s\"", utils::packageDescription("rpart")$Version) %in% cff &&
-             any(grepl("title: \"rpart: ", cff, fixed = TRUE)) && all(sprintf("  - %s", yaml_texte(meta$mots_cles)) %in% cff))
+             any(grepl("title: \"rpart: ", cff, fixed = TRUE)) && all(sprintf("  - %s", yaml_texte(meta$mots_cles)) %in% cff) &&
+             identical(grep("^doi: ", cff, value = TRUE), if (!fr) "doi: \"10.5072/zenodo.4242\"" else character(0)))
   cm <- jsonlite::fromJSON(file.path(racine, "codemeta.json"), simplifyVector = FALSE)
-  verifier("codemeta.json : CodeMeta 3.0, titre, auteurs (ORCID), mots-clés, licence, R et rpart avec leurs versions, Nuée par son DOI",
+  verifier(sprintf("codemeta.json : CodeMeta 3.0, titre%s, auteurs (ORCID), mots-clés, licence, R et rpart avec leurs versions, Nuée par son DOI", if (!fr) ", le DOI du paquet en identifier" else ""),
            identical(cm[["@context"]], "https://w3id.org/codemeta/3.0") && identical(cm$name, meta$titre) &&
              identical(cm$author[[1]][["@id"]], paste0("https://orcid.org/", meta$auteurs[[1]]$orcid)) && identical(unlist(cm$keywords), meta$mots_cles) &&
              identical(cm$license, paste0("https://spdx.org/licenses/", meta$licence)) && identical(cm$programmingLanguage$version, paste(R.version$major, R.version$minor, sep = ".")) &&
              any(vapply(cm$softwareRequirements, function(z) identical(z$name, "rpart") && identical(z$version, utils::packageDescription("rpart")$Version), TRUE)) &&
-             identical(cm$softwareSuggestions[[1]]$identifier, "https://doi.org/10.5281/zenodo.24263014") && identical(cm$softwareSuggestions[[1]]$version, "essai"))
+             identical(cm$softwareSuggestions[[1]]$identifier, "https://doi.org/10.5281/zenodo.24263014") && identical(cm$softwareSuggestions[[1]]$version, "essai") &&
+             identical(cm$identifier, if (!fr) "https://doi.org/10.5072/zenodo.4242"))
 
   # le manifeste : chaque fichier sauf lui, une fois, et son empreinte recalculée ici
   manifeste <- readLines(file.path(racine, "MANIFEST.sha256"), encoding = "UTF-8")
@@ -363,12 +372,17 @@ for (langue in c("fr", "en")) {
   avec <- function(...) { x <- base; v <- list(...); x[names(v)] <- v; x }
   messages <- c(refus(avec(titre = "  ")), refus(avec(auteurs = list())), refus(avec(auteurs = list(list(prenom = "A", nom = "", orcid = "")))),
                 refus(avec(auteurs = list(list(prenom = "A", nom = "B", orcid = "0000-0002-1825-0098")))),
-                refus(avec(auteurs = list(list(prenom = "A", nom = "B", orcid = "1234")))), refus(avec(licence = "MIT")))
-  attendus_refus <- if (langue == "fr") c("pas de titre", "pas d'auteur", "sans nom de famille", "pas un ORCID : 0000-0002-1825-0098", "pas un ORCID : 1234", "Licence inconnue : MIT")
-                    else c("no title", "no author", "without a family name", "isn't an ORCID: 0000-0002-1825-0098", "isn't an ORCID: 1234", "Unknown licence: MIT")
-  verifier(sprintf("en %s : un titre vide, aucun auteur, un auteur sans nom, un ORCID à la clé fausse ou trop court, une licence inconnue",
+                refus(avec(auteurs = list(list(prenom = "A", nom = "B", orcid = "1234")))), refus(avec(licence = "MIT")),
+                tryCatch({ doi_paquet("zenodo.4242"); "" }, error = function(e) conditionMessage(e)))
+  attendus_refus <- if (langue == "fr") c("pas de titre", "pas d'auteur", "sans nom de famille", "pas un ORCID : 0000-0002-1825-0098", "pas un ORCID : 1234", "Licence inconnue : MIT",
+                                          "Ce n'est pas un DOI : zenodo.4242")
+                    else c("no title", "no author", "without a family name", "isn't an ORCID: 0000-0002-1825-0098", "isn't an ORCID: 1234", "Unknown licence: MIT",
+                           "This isn't a DOI: zenodo.4242")
+  verifier(sprintf("en %s : un titre vide, aucun auteur, un auteur sans nom, un ORCID à la clé fausse ou trop court, une licence inconnue, un DOI qui n'en est pas un",
                    if (langue == "fr") "français" else "anglais"),
-           all(mapply(function(m, a) grepl(a, m, fixed = TRUE), messages, attendus_refus)) && identical(refus(base), ""))
+           all(mapply(function(m, a) grepl(a, m, fixed = TRUE), messages, attendus_refus)) && identical(refus(base), "") &&
+             identical(vapply(c("doi:10.5281/zenodo.42", "https://doi.org/10.5281/zenodo.42", " 10.5281/zenodo.42 "), doi_paquet, "", USE.NAMES = FALSE), rep("10.5281/zenodo.42", 3)) &&
+             is.null(doi_paquet("")) && is.null(doi_paquet(NULL)))
 }
 options(nuee.langue = "fr")
 x <- ecrire("fr")

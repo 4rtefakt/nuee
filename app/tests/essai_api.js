@@ -2017,8 +2017,17 @@ async function principal() {
       const t = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en');
       const telecharge = await brute(`/api/fichier?chemin=${encodeURIComponent(t.chemin)}`, { Cookie: cookie });
       verifier(telecharge.statut === 200 && /Apples\.zip$/.test(t.chemin), `téléchargé : HTTP ${telecharge.statut} ${t.chemin}`);
+      // (for Zenodo: in the session folder too, with the DOI Zenodo reserved for its draft, which the package gives)
+      const z = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', doi: '10.5072/zenodo.4242', version: 'essai', langue: 'en' }, 'en');
+      const zz = lireZip(fs.readFileSync(z.chemin));
+      const readme = zz.get('Apples/README.md').toString('utf8');
+      verifier(readme.includes('https://nuee.io/app/?doi=10.5072/zenodo.4242') && readme.includes('[10.5072/zenodo.4242](https://doi.org/10.5072/zenodo.4242)')
+        && zz.get('Apples/CITATION.cff').toString('utf8').includes('\ndoi: "10.5072/zenodo.4242"\n')
+        && JSON.parse(zz.get('Apples/codemeta.json').toString('utf8')).identifier === 'https://doi.org/10.5072/zenodo.4242', 'le DOI réservé dans le README, CITATION.cff et codemeta.json');
       const refus = await api('paquet', { projet: e.id, meta: { ...meta, titre: ' ' }, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en').catch((x) => x);
       verifier(refus instanceof Error && /no title/.test(refus.message), `refusé sans titre : ${refus.message}`);
+      const sansDoi = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', doi: 'zenodo.4242', version: 'essai', langue: 'en' }, 'en').catch((x) => x);
+      verifier(sansDoi instanceof Error && /isn't a DOI/.test(sansDoi.message), `refusé, un DOI qui n'en est pas un : ${sansDoi.message}`);
       await api('fermer_projet', { projet: e.id });
     });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {

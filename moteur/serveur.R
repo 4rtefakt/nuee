@@ -1117,10 +1117,12 @@ script_demande <- function(q) {
 # pourquoi), ses documents q$documents (du JSON, en texte : ce que documents.js en fait), les
 # réponses du dialogue q$meta, gardées dans le projet pour l'export suivant, la disposition de
 # l'interface q$session (comme Enregistrer). Écrit en q$chemin ; sans lui, dans un dossier de la
-# session (le navigateur le télécharge ; main.js le dépose de là sur Zenodo).
+# session (le navigateur le télécharge ; main.js le dépose de là sur Zenodo). q$doi : celui que Zenodo
+# a réservé pour le brouillon où il va (zenodo.js), que le paquet donne (paquet.R : doi_paquet).
 paquet_demande <- function(q) {
   p <- projet(q$projet)
   meta <- metadonnees_paquet(q$meta)
+  doi <- doi_paquet(q$doi)
   modeles <- lapply(as.character(unlist(q$modeles)), function(id) {
     e <- modele(id)
     if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
@@ -1141,7 +1143,7 @@ paquet_demande <- function(q) {
     etat$projets[[p$id]] <- p
   }
   chemin <- q$chemin %||% chemin_temporaire(paste0(trimws(gsub("[^[:alnum:]_ ()-]", "_", substr(meta$titre, 1, 60))), ".zip"))
-  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session)
+  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session, doi)
   c(r, list(projet = resume_projet(p)))
 }
 
