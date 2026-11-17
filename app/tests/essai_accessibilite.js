@@ -109,12 +109,18 @@ async function brancher(cible) {
       return { role: a.getAttribute('role') || a.tagName.toLowerCase(), nom: (a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 60), dans }; })()`),
     async axe(nom) {
       await p.evaluer(AXE);
+      // (for a contrast failure, the first element's colours and ratio, and what is at its place, top first)
       const v = await p.evaluer(`axe.run(document, { resultTypes: ['violations'] }).then((r) => r.violations.map((v) => ({ id: v.id, tags: v.tags, n: v.nodes.length,
-        cible: v.nodes.slice(0, 3).map((x) => x.target.join(' ')).join(' | ') })))`);
+        cible: v.nodes.slice(0, 3).map((x) => x.target.join(' ')).join(' | '),
+        details: v.id !== 'color-contrast' ? '' : (() => { const x = v.nodes[0]; const d = ((x.any || [])[0] || {}).data || {};
+          const e = document.querySelector(x.target[0]); const b = e && e.getBoundingClientRect();
+          const pile = b ? document.elementsFromPoint(b.left + b.width / 2, b.top + b.height / 2).slice(0, 5)
+            .map((y) => y.tagName.toLowerCase() + (y.id ? '#' + y.id : '') + (typeof y.className === 'string' && y.className ? '.' + y.className.trim().split(' ').filter(Boolean).join('.') : '')) : [];
+          return JSON.stringify({ texte: d.fgColor, fond: d.bgColor, rapport: d.contrastRatio, place: b && [Math.round(b.left), Math.round(b.top)], pile }); })() })))`);
       const wcag = v.filter((x) => x.tags.some((t) => /^wcag\d/.test(t)));
       const autres = v.filter((x) => !wcag.includes(x));
       if (autres.length) console.log(`          (${nom}, best practice: ${autres.map((x) => `${x.id}×${x.n}`).join(', ')})`);
-      verifier(!wcag.length, wcag.map((x) => `${x.id}×${x.n} [${x.cible}]`).join(' ; '));
+      verifier(!wcag.length, `${nom}: ` + wcag.map((x) => `${x.id}×${x.n} [${x.cible}]${x.details ? ' ' + x.details : ''}`).join(' ; '));
     },
     fermer: () => ws.close(),
   };
