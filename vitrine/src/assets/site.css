@@ -347,7 +347,7 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
 .dl-tete .chapeau { font-size: 1.1em; }
 .ciel-fin { position: relative; justify-self: center; width: min(100%, 20rem); aspect-ratio: 1; }
 .ciel-fin .zone { inset: 4%; }
-.dl-grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.1rem, 2vw, 1.8rem); margin-top: clamp(2rem, 5vh, 3.2rem); }
+.dl-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.1rem, 2vw, 1.8rem); margin-top: clamp(2rem, 5vh, 3.2rem); }
 .dl-carte { display: flex; flex-direction: column; align-items: flex-start; padding: clamp(1.3rem, 3vw, 2.3rem); border: 1px solid var(--encre); border-radius: 6px; background: var(--papier-clair);
   box-shadow: 10px 12px 0 var(--papier-fonce); transition: box-shadow .3s; }
 .dl-carte.ici { box-shadow: 10px 12px 0 var(--ciel); }
@@ -374,9 +374,6 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
 .perdu .entree-mot { font-size: 2rem; }
 
 /* ---------------------------------------------------------------- narrower screens */
-@media (max-width: 72rem) {
-  .dl-grille { grid-template-columns: minmax(0, 1fr); }
-}
 @media (max-width: 68rem) {
   .menu a:nth-child(-n+3) { display: none; }
 }
@@ -384,7 +381,7 @@ html:not(.js) .tour-figure, html:not(.js) .ciel-fin { display: none; }
   .hero { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; min-height: 0; }
   .hero-texte { padding: 1rem 0 0; }
   .ciel { height: 44svh; min-height: 17rem; margin: 0 calc(-1 * var(--gouttiere)); }
-  .app-grille, .choisir-grille, .r-grille, .pub-grille, .dl-tete, .prive { grid-template-columns: minmax(0, 1fr); }
+  .app-grille, .choisir-grille, .r-grille, .pub-grille, .dl-tete, .prive, .dl-grille { grid-template-columns: minmax(0, 1fr); }
   .fenetre-cadre { box-shadow: 6px 8px 0 var(--papier-fonce); }
   .fenetre .legende { flex-direction: column; }
   /* the plate stays at the top, the steps pass under it */
