@@ -8,8 +8,10 @@
 // in vfs/), or a folder with the same files, as on webr.r-wasm.org/v<version>/.
 // The site: the interface (its page saying window.NUEE_MOTEUR = 'webr', and a security policy
 // that lets webR compile R, fetch its packages from repo.r-wasm.org and start its worker), the
-// engine's files (moteur/, without its tests, and exemple/) with their list
-// (moteur-fichiers.json), webR in webr/, and _headers (the two headers, for hosts that read it).
+// engine's files (moteur/, without its tests, exemple/, the user guide the help panel reads from
+// the engine, the application's package.json the protocol request reads its version from) with
+// their list (moteur-fichiers.json), webR in webr/, and _headers (the two headers, for hosts that
+// read it).
 const fs = require('fs');
 const path = require('path');
 
@@ -45,7 +47,7 @@ fs.writeFileSync(page, html);
 fs.writeFileSync(path.join(sortie, 'navigateur.js'), "// Nuée in the browser: R runs in the page (moteur_webr.js)\nwindow.NUEE_MOTEUR = 'webr';\n");
 fs.writeFileSync(path.join(sortie, '_headers'), '/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n');
 
-// the engine's files and the example, listed for moteur_webr.js
+// the engine's files, the example, the guide and the version, listed for moteur_webr.js
 const liste = [];
 const copier = (rel) => {
   const de = path.join(depot, rel);
@@ -59,6 +61,12 @@ const copier = (rel) => {
 };
 copier('moteur');
 copier('exemple');
+// (serveur.R: guide, the help panel's text; protocole.R: version_application)
+for (const f of ['USER-GUIDE.txt', 'LISEZ-MOI-APPLICATION.txt', 'app/package.json']) {
+  fs.mkdirSync(path.dirname(path.join(sortie, f)), { recursive: true });
+  fs.copyFileSync(path.join(depot, f), path.join(sortie, f));
+  liste.push(f);
+}
 fs.writeFileSync(path.join(sortie, 'moteur-fichiers.json'), JSON.stringify(liste.sort()));
 
 // webR: its module, worker, R and the base R library (not npm's REPL, tests and types)
