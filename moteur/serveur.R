@@ -318,10 +318,16 @@ suivre_conditions_seance <- function(avant, p) {
 # KoboToolbox ou d'ODK Central (kobo.R ; une archive .zip n'est ouverte que comme tel) renvoie
 # l'aperçu de son import (`kobo`), que l'interface propose, sauf pour l'ouvrir tel quel (`brut`) ;
 # `collecte` : l'import est demandé (Fichier › Importer depuis KoboToolbox ou ODK), un autre
-# fichier est refusé ; `kobo` : les réglages de l'import, qui le font (le moteur relancé).
+# fichier est refusé ; `kobo` : les réglages de l'import, qui le font (le moteur relancé). Un paquet de
+# reproductibilité (un .zip qu'ecrire_paquet a écrit : un projet et MANIFEST.sha256, paquet.R :
+# racine_paquet_zip) n'est pas ouvert ici : la réponse le dit (`paquet_ouvrir`), et l'interface le
+# relance (paquet_ouvrir_demande).
 ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = FALSE, collecte = FALSE, kobo = NULL) {
   ext <- extension(nom)
   if (!is.null(kobo)) return(ouvrir_collecte(chemin, nom, kobo))
+  if (ext == "zip" && !brut && !collecte && is.null(table) && !is.null(tryCatch(racine_paquet_zip(chemin, manifeste = TRUE), error = function(e) NULL))) {
+    return(list(paquet_ouvrir = list(chemin = chemin, nom = nom)))
+  }
   if (!brut && is.null(table) && (collecte || (ext %in% EXTENSIONS_COLLECTE && (ext == "zip" || !is.null(detecter_collecte(chemin)))))) {
     return(list(kobo = apercu_collecte(chemin), chemin = chemin, nom = nom))
   }
@@ -517,6 +523,7 @@ resume_projet <- function(p) {
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
        paquet = paquet_pour_interface(p$paquet),  # (les réponses du dernier paquet de reproductibilité : paquet.R)
+       depuis_paquet = p$depuis_paquet,  # (un paquet rouvert : son titre, son DOI, son archive, son manifeste ; paquet_ouvrir_demande)
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
        a_source = !is.null(p$source_donnees),  # (un fichier d'où viennent ses données, que la demande etapes décrit : etapes.R)
        lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
@@ -1120,7 +1127,8 @@ script_demande <- function(q) {
 # réponses du dialogue q$meta, gardées dans le projet pour l'export suivant, la disposition de
 # l'interface q$session (comme Enregistrer). Écrit en q$chemin ; sans lui, dans un dossier de la
 # session (le navigateur le télécharge ; main.js le dépose de là sur Zenodo). q$doi : celui que Zenodo
-# a réservé pour le brouillon où il va (zenodo.js), que le paquet donne (paquet.R : doi_paquet).
+# a réservé pour le brouillon où il va (zenodo.js), que le paquet donne (paquet.R : doi_paquet) ; q$qr :
+# avec lui, le code QR en SVG du lien qui ouvre le paquet dans Nuée pour navigateur (interface/qr.js).
 paquet_demande <- function(q) {
   p <- projet(q$projet)
   meta <- metadonnees_paquet(q$meta)
@@ -1152,8 +1160,48 @@ paquet_demande <- function(q) {
     etat$projets[[p$id]] <- p
   }
   chemin <- q$chemin %||% chemin_temporaire(paste0(trimws(gsub("[^[:alnum:]_ ()-]", "_", substr(meta$titre, 1, 60))), ".zip"))
-  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session, doi)
+  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session, doi, q$qr)
   c(r, list(projet = resume_projet(p)))
+}
+
+# Fichier › Ouvrir un paquet de reproductibilité… (interface/relancer.js ; Fichier › Ouvrir sur un tel .zip
+# demande d'abord ouvrir, qui répond `paquet_ouvrir`) : l'archive q$chemin décompressée dans un dossier de
+# la séance, elle-même jamais touchée (paquet.R : deballer_paquet), ses fichiers vérifiés par son manifeste,
+# puis son projet ouvert comme un projet nouveau, sans fichier (Enregistrer demande où l'écrire : rien
+# ne s'écrit dans le paquet), au nom du paquet. Il garde d'où il vient (p$depuis_paquet : son titre, son
+# DOI, son archive, le verdict du manifeste), et la source de ses données est le CSV du paquet décompressé,
+# par son chemin (Édition › Mettre à jour les données le relit). Rend le projet, ce que le paquet a déposé
+# de ses résultats et qui les a calculés (`depose` : paquet.R, json_resultats_paquet ; l'interface ajuste
+# de nouveau chaque modèle et compare, comparer_resultats), et ce qui calcule ici (`ici` : q$version, celle
+# de Nuée, R et sa plateforme ; `paquets_differents` : les paquets déposés installés ici dans une autre
+# version). q$nom : le nom de l'archive à dire, quand son chemin n'en est pas un (le navigateur).
+paquet_ouvrir_demande <- function(q) {
+  chemin <- premier_texte(q$chemin)
+  if (!nzchar(chemin) || !file.exists(chemin)) stop(traduire("Fichier introuvable : ", "File not found: "), chemin, call. = FALSE)
+  o <- deballer_paquet(chemin, file.path(tempdir(), nouvel_id("paquet")))
+  r <- ouvrir_fichier(o$nuee)
+  p <- projet(r$id)
+  p$nom <- paste0(o$nom, ".nuee")
+  p$chemin <- NULL
+  p$fichier_lu <- NULL  # (pas de fichier : rien à fusionner)
+  if (!is.null(p$source_donnees)) {
+    trouve <- fichier_retrouve(p$source_donnees, o$racine)
+    if (!is.null(trouve)) p$source_donnees$chemin <- trouve
+  }
+  titre <- metadonnees_gardees(p$paquet)$titre %||% o$nom
+  p$depuis_paquet <- list(titre = titre, doi = o$doi, fichier = premier_texte(q$nom, basename(chemin)), manifeste = o$manifeste)
+  etat$projets[[p$id]] <- p
+  ranger_copies(p$id)
+  d <- o$resultats
+  paquets <- d$paquets %||% list()
+  differents <- Filter(Negate(is.null), lapply(names(paquets), function(x) {
+    v <- if (nzchar(system.file(package = x))) version_paquet(x) else NA_character_
+    if (!is.na(v) && !identical(v, premier_texte(paquets[[x]]))) list(paquet = x, depose = premier_texte(paquets[[x]]), ici = v)
+  }))
+  c(list(projet = resume_projet(p)), p$depuis_paquet[c("titre", "doi", "fichier", "manifeste")],
+    list(dossier = o$racine, depose = d,
+         ici = list(nuee = premier_texte(q$version, Sys.getenv("NUEE_VERSION")), R = paste(R.version$major, R.version$minor, sep = "."), plateforme = R.version$platform),
+         paquets_differents = differents, note = r$note))
 }
 
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
@@ -1960,6 +2008,7 @@ DEMANDES <- list(
   classe_selection = classe_demande,
   script_r = script_demande,
   paquet = paquet_demande,
+  paquet_ouvrir = paquet_ouvrir_demande,
   methodes = methodes_demande,
   # Les conditions d'une régression vérifiées et dites en mots (verifications_modele.R), dans la
   # langue de la demande, calculées une fois par langue et gardées avec le modèle.
@@ -2493,6 +2542,8 @@ repondre_erreur <- function(nom, e) {
   # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
   if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
   if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
+  # (une archive qui n'est pas un paquet de reproductibilité : paquet.R, deballer_paquet)
+  if (inherits(e, "pas_un_paquet")) return(repondre(400L, list(erreur = conditionMessage(e), pas_un_paquet = TRUE)))
   repondre(400L, list(erreur = conditionMessage(e)))
 }
 
