@@ -9,7 +9,7 @@
 // etapes_texte.js.
 import { t, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { resumerProjet, afficherChangements, sectionsRapport } from './changements.js';
 import { valeursCitees } from './documents.js';
 import { liste, noms, dateLisible, tailleLisible, nomFichier, etatSource, ICONES_ETAPES, genreEtape, lireRapport, modelesAReajuster, resumeApres,
@@ -401,6 +401,7 @@ function progression(titre) {
     bouton.disabled = true;
     bouton.textContent = t('etapes_arret_demande');
     if (moteur && bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
+    else if (moteur && MOTEUR_WEBR) moteurWebR().then((m) => m.arreter()).catch(() => {});  // (R in the page interrupted)
   }
   return {
     arrete: () => arret,

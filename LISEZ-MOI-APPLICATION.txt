@@ -966,8 +966,8 @@ l'altitude, la pente, l'occupation du sol, le climat… lus dans des fichiers ra
 de chaque observation, et ajoutés au projet comme de nouvelles variables, une par bande.
 Choisissez un ou plusieurs fichiers : GeoTIFF (.tif, celui de QGIS, de la BD ALTI et du RGE ALTI
 de l'IGN, de Copernicus, de CORINE, de WorldClim ou de CHELSA) ou grilles ASCII d'ESRI (.asc,
-avec leur .prj). Dans la version navigateur, tapez le chemin complet de chaque fichier
-(plusieurs : séparés par « ; ») : le moteur lit les fichiers là où ils sont. Avant d'ajouter,
+avec leur .prj). Dans la version navigateur, choisissez les fichiers ensemble, chaque raster
+avec son .tfw ou son .prj : ils vont au R de la page, qui les lit. Avant d'ajouter,
 chaque fichier montre sa taille, son format, sa compression, ses cellules et leur taille, ses
 bandes et leur type, son système de coordonnées, sa valeur manquante, et combien d'observations
 y tombent ; un fichier qui ne se lit pas dit pourquoi. Pour chaque fichier, choisissez la

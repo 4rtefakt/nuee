@@ -8,7 +8,7 @@
 // preview again. "Open as is" keeps the raw table (the sheet or CSV chosen, unchanged).
 import { t, ajouterTextes } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, deposer as deposerFichier } from './api.js';
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
 
@@ -23,7 +23,7 @@ async function deposer(accept) {
     i.click();
   });
   if (!f) return null;
-  return (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+  return deposerFichier(f);
 }
 export const deposerKobo = () => deposer(acceptKobo);
 

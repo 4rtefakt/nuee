@@ -11,7 +11,7 @@
 // it, or pasted, and a copy of those cited from files).
 import { t, tDans, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous, inscrireEditeur } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, lireFichier, MOTEUR_WEBR } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
@@ -1161,8 +1161,23 @@ async function citerChoisies(app, s, choix, narratif) {
 }
 
 // A bibliography file named in the header (bibliography:), relative to the project's folder when it
-// is in it (Quarto reads it beside the document), its references then cited like the others.
+// is in it (Quarto reads it beside the document), its references then cited like the others. In
+// the browser version, where a file has no path R could read again, its references are kept in
+// the document, as pasted ones.
 async function lierFichier(app, s) {
+  if (MOTEUR_WEBR) {
+    const f = await new Promise((resolve) => {
+      const i = el('input', { type: 'file', accept: '.bib,.bibtex,.json', onchange: () => resolve(i.files[0]) });
+      i.click();
+    });
+    if (!f) return;
+    const r = lireBibliographie(await f.text(), f.name);
+    if (!r.entrees.length) { app.statut(t('citer_coller_rien'), true); return; }
+    ajouterAuDocument(s, r.entrees);
+    app.statut(t('citer_coller_fait', { n: r.entrees.length }) + (r.erreurs.length ? ` ${t('citer_coller_erreurs', { n: r.erreurs.length })}` : ''), r.erreurs.length > 0);
+    s.rafraichir();
+    return;
+  }
   const chemin = bureau ? await bureau.choisirFichier([{ name: 'BibTeX, CSL-JSON', extensions: ['bib', 'bibtex', 'json'] }]) : window.prompt(t('citer_chemin'));
   if (!chemin) return;
   const unix = (x) => String(x).replace(/\\/g, '/');
@@ -1311,7 +1326,8 @@ function menuCompiler(app, s) {
     { libelle: t('document_qmd'), icone: 'file-output', action: () => dialogueQuarto(app, s, null) },
     quarto ? { libelle: t('document_quarto'), icone: 'file-output',
       sous: Object.entries(SORTIES_QUARTO).map(([f, n]) => ({ libelle: n, action: () => dialogueQuarto(app, s, f) })) }
-      : { libelle: t('document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
+      // (the browser version: Quarto is a program of the computer, the desktop application's)
+      : { libelle: t(MOTEUR_WEBR ? 'document_quarto_bureau' : 'document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
   ];
 }
 const SORTIES_QUARTO = { docx: 'Word (.docx)', typst: 'PDF (Typst)', html: 'HTML' };
@@ -1405,7 +1421,7 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
       if (!bureau) {
         if (!rep) { telecharger(octets(q.texte), fichier); return; }
         // (one .zip: the .qmd, its references, the figures R doesn't draw, the scripts and their data)
-        const lus = await Promise.all([].concat(rep.fichiers).map(async (f) => new Uint8Array(await (await fetch(`/api/fichier?chemin=${encodeURIComponent(f)}`)).arrayBuffer())));
+        const lus = await Promise.all([].concat(rep.fichiers).map((f) => lireFichier(f)));
         telecharger(zip([[fichier, octets(q.texte)], ...(texteBib ? [[bib, octets(texteBib)]] : []), ...(texteCsl !== null ? [[csl, octets(texteCsl)]] : []),
           ...figures.map((x) => [`${dossier}/figure-${x.numero}.png`, png(x)]), ...[].concat(rep.relatifs).map((f, i) => [f, lus[i]])]), `${nom}.zip`);
         const note = noteReproductible(rep);
@@ -1682,6 +1698,7 @@ ajouterTextes({
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
   document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  document_quarto_bureau: 'Compiler avec Quarto (dans l’application de bureau)',
   reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'Les résultats du document :',
   reproductible_non: 'Écrits en dur', reproductible_non_aide: 'Les valeurs, les graphiques et les tableaux tels que Nuée les montre.',
   reproductible_oui: 'Reproductibles',
@@ -1765,6 +1782,7 @@ ajouterTextes({
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',
   document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  document_quarto_bureau: 'Compile with Quarto (in the desktop application)',
   reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'The document’s results:',
   reproductible_non: 'Written in', reproductible_non_aide: 'The values, plots and tables as Nuée shows them.',
   reproductible_oui: 'Reproducible',

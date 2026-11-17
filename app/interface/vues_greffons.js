@@ -9,7 +9,7 @@
 // opening a file never runs code from it). Imported by app.js.
 import { t, ajouterTextes, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, deposerEnsemble, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { VUES } from './panneaux.js';
 import { ANALYSES, FAMILLES_TYPES, dialogueModele } from './dialogues.js';
 import { VUES_TYPES } from './explorateur.js';
@@ -313,18 +313,31 @@ async function gererGreffons(app) {
   const d = dialogue({ titre: t('greffons_titre'), large: true, contenu: el('div', { class: 'dialogue-greffons' },
     el('p', {}, t('greffons_intro')), e.interdit ? el('p', { class: 'note attention' }, t('greffons_politique')) : null,
     zone, installation, message,
-    el('p', { class: 'note' }, [e.dossier ? t('greffons_dossier', { dossier: e.dossier }) : '', e.organisation ? ` ${t('greffons_dossier_organisation', { dossier: e.organisation })}` : ''].join(''))),
+    el('p', { class: 'note' }, [e.dossier ? t(MOTEUR_WEBR ? 'greffons_dossier_navigateur' : 'greffons_dossier', { dossier: e.dossier }) : '', e.organisation ? ` ${t('greffons_dossier_organisation', { dossier: e.organisation })}` : ''].join(''))),
   boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
 }
 
 // Install from file…: a .nueeplugin (or a plugin's plugin.json), read by the engine without running
 // anything, then shown before it is installed.
 async function installerDepuisFichier(app, apres) {
-  const chemin = bureau ? await bureau.choisirFichier([{ name: t('greffon_filtre'), extensions: ['nueeplugin'] }, { name: 'plugin.json', extensions: ['json'] }]) : null;
+  const chemin = bureau ? await bureau.choisirFichier([{ name: t('greffon_filtre'), extensions: ['nueeplugin'] }, { name: 'plugin.json', extensions: ['json'] }])
+    : MOTEUR_WEBR ? await deposerGreffon() : null;
   if (!chemin) return;
   let lu;
   try { lu = await demander('greffon_lire', { chemin }); } catch (err) { app.statut(err.message, true); return; }
   dialogueInstallation(app, lu, { chemin }, apres);
+}
+
+// (the browser version: a .nueeplugin chosen in the page, or a plugin's plugin.json with its R files,
+// put together into R's file system in the tab, where the engine reads them)
+async function deposerGreffon() {
+  const fichiers = await new Promise((resolve) => {
+    const i = el('input', { type: 'file', multiple: true, accept: '.nueeplugin,.json,.R,.r', onchange: () => resolve([...i.files]) });
+    i.click();
+  });
+  if (!fichiers.length) return null;
+  const chemins = await deposerEnsemble(fichiers);
+  return chemins.find((c) => /\.nueeplugin$/i.test(c)) || chemins.find((c) => /(^|\/)plugin\.json$/i.test(c)) || chemins[0];
 }
 
 // The install dialog: the plugin's card, what it replaces, why it can't be installed when it can't,
@@ -357,23 +370,36 @@ function dialogueInstallation(app, lu, source, apres = null) {
 }
 
 // A plugin's packages installed into the user library of the R Nuée uses (main.js: r-installer-greffon,
-// as File › Settings… installs the engine's), what R says shown meanwhile; in a browser, the line to run.
+// as File › Settings… installs the engine's), what R says shown meanwhile; in a browser, the line to run;
+// in the browser version, from webR's repository into the R of the tab (installerWebR).
 function installerPaquets(app, paquets, apres = null) {
-  const ligne = `install.packages(${paquets.length === 1 ? JSON.stringify(paquets[0]) : `c(${paquets.map((x) => JSON.stringify(x)).join(', ')})`}, repos = "https://cloud.r-project.org")`;
+  const vecteur = paquets.length === 1 ? JSON.stringify(paquets[0]) : `c(${paquets.map((x) => JSON.stringify(x)).join(', ')})`;
+  const ligne = MOTEUR_WEBR ? `webr::install(${vecteur})` : `install.packages(${vecteur}, repos = "https://cloud.r-project.org")`;
+  const w = MOTEUR_WEBR ? '_webr' : '';
   const sortie = el('pre', { class: 'sortie-r' });
-  const etat = el('p', { 'aria-live': 'polite' }, t('greffon_paquets_texte', { paquets: paquets.join(', ') }));
-  const r = bureau && bureau.r && bureau.r.installerGreffon;
+  const etat = el('p', { 'aria-live': 'polite' }, t(`greffon_paquets_texte${w}`, { paquets: paquets.join(', ') }));
+  const r = (bureau && bureau.r && bureau.r.installerGreffon) || (MOTEUR_WEBR ? installerWebR : null);
   const lancer = async () => {
-    etat.textContent = t('greffon_paquets_en_cours', { paquets: paquets.join(', ') });
+    etat.textContent = t(`greffon_paquets_en_cours${w}`, { paquets: paquets.join(', ') });
     let fin;
     try { fin = await r(paquets, (s) => { sortie.textContent = (sortie.textContent + s).slice(-20000); sortie.scrollTop = sortie.scrollHeight; }); } catch (err) { fin = { ok: false, fin: err.message }; }
-    etat.textContent = fin && fin.ok ? t('greffon_paquets_ok', { paquets: paquets.join(', ') }) : t('greffon_paquets_echec', { paquets: liste(fin && fin.manquants).join(', ') || paquets.join(', ') });
+    etat.textContent = fin && fin.ok ? t('greffon_paquets_ok', { paquets: paquets.join(', ') }) : t(`greffon_paquets_echec${w}`, { paquets: liste(fin && fin.manquants).join(', ') || paquets.join(', ') });
     if (apres) await apres(); else await actualiser(app);
   };
   dialogue({ titre: t('greffon_installer_paquets'), contenu: el('div', { class: 'dialogue-r' }, etat,
     el('div', { class: 'ligne-r' }, el('code', {}, ligne), el('button', { onclick: () => navigator.clipboard.writeText(ligne).catch(() => {}) }, icone('copy'), t('r_copier'))), sortie),
   boutons: r ? [{ libelle: t('fermer'), action: () => true }, { libelle: t('greffon_installer_paquets'), principal: true, action: () => { lancer(); return false; } }]
     : [{ libelle: t('fermer'), principal: true, action: () => true }] });
+}
+
+// The browser version: a plugin's packages installed from webR's repository into the R of the tab,
+// for this visit (a model of the plugin installs them again by itself: moteur/R/navigateur.R), as
+// bureau.r.installerGreffon answers.
+async function installerWebR(paquets, surSortie) {
+  surSortie(`webr::install: ${paquets.join(', ')}\n`);
+  const manquants = await (await moteurWebR()).installerPaquets(paquets);
+  if (manquants.length) surSortie(`${manquants.join(', ')}: ✗\n`);
+  return { ok: !manquants.length, manquants };
 }
 
 // ------------------------------------------------------------ the views of a plugin's model
@@ -555,6 +581,7 @@ ajouterTextes({
   greffons_politique: 'Une politique de votre organisation (DisableCustomCode) ne permet que les greffons qu’elle donne : aucun autre ne s’installe ni ne s’exécute.',
   greffons_bureau: 'Les greffons s’installent depuis l’application de bureau.',
   greffons_dossier: 'Les vôtres sont dans {dossier}.', greffons_dossier_organisation: 'Ceux de votre organisation, dans {dossier}.',
+  greffons_dossier_navigateur: 'Les vôtres sont gardés par ce navigateur.',
   greffon_installer_fichier: 'Installer depuis un fichier…', greffon_installer_note: 'Un .nueeplugin, ou le plugin.json du dossier d’un greffon que vous écrivez.',
   greffon_filtre: 'Greffon de Nuée', greffon_installer: 'Installer', greffon_installer_titre: 'Installer le greffon « {nom} » {version} ?',
   greffon_confiance: 'Un greffon est du code R : il s’exécute avec vos droits, comme du code tapé dans la console R, et peut lire ou changer vos fichiers. Ne l’installez que si vous faites confiance à sa source. L’installer l’approuve sur cet ordinateur : les modèles faits avec lui s’ajustent sans le redemander.',
@@ -569,6 +596,9 @@ ajouterTextes({
   greffon_nouveau_modele: 'Nouveau modèle…', greffon_installer_paquets: 'Installer les paquets manquants', greffon_montrer: 'Montrer', greffon_retirer: 'Retirer',
   greffon_retirer_titre: 'Retirer le greffon « {nom} » ?', greffon_retirer_texte: 'Il quitte vos menus. Les projets qui l’utilisent le gardent : ils se refont toujours avec lui sur cet ordinateur (son approbation reste).',
   greffon_paquets_texte: 'Ce greffon demande des paquets que le R qu’utilise Nuée n’a pas : {paquets}. Nuée peut les installer depuis le CRAN dans la bibliothèque de l’utilisateur de ce R (quelques minutes), ou lancez cette ligne dans ce R :',
+  greffon_paquets_texte_webr: 'Ce greffon demande des paquets que la version navigateur n’a pas : {paquets}. Nuée peut les installer depuis le dépôt de webR dans le R de cet onglet (un modèle du greffon les installe aussi de lui-même), ou lancez cette ligne dans la console R de Nuée :',
+  greffon_paquets_en_cours_webr: 'Installation de {paquets} depuis le dépôt de webR…',
+  greffon_paquets_echec_webr: 'Pas installés : {paquets}. Le dépôt de webR ne les a pas, ou webR ne sait pas les charger : il faut l’application de bureau de Nuée.',
   greffon_paquets_en_cours: 'Installation de {paquets} depuis le CRAN…', greffon_paquets_ok: 'Installés : {paquets}. Ajustez de nouveau le modèle.', greffon_paquets_echec: 'Pas installés : {paquets}. Lancez la ligne dans ce R (R ou RStudio).',
   greffon_note_version: '(Version {version}, de {auteurs}.)', greffon_choisir: 'Choisir…', greffon_aucune: '—', greffon_aucune_variable: 'Aucune variable de ce type dans le projet.',
   greffon_n_choisies: '{n} choisie(s)', greffon_entre: 'de {min} à {max}', greffon_au_moins: 'au moins {min}', greffon_cocher: 'Cocher celles-ci', greffon_decocher: 'Décocher celles-ci',
@@ -596,6 +626,7 @@ ajouterTextes({
   greffons_politique: 'Your organisation’s policy (DisableCustomCode) only allows the plugins it provides: no other installs or runs.',
   greffons_bureau: 'Plugins are installed from the desktop application.',
   greffons_dossier: 'Yours are in {dossier}.', greffons_dossier_organisation: 'Your organisation’s, in {dossier}.',
+  greffons_dossier_navigateur: 'Yours are kept by this browser.',
   greffon_installer_fichier: 'Install from file…', greffon_installer_note: 'A .nueeplugin, or the plugin.json of the folder of a plugin you are writing.',
   greffon_filtre: 'Nuée plugin', greffon_installer: 'Install', greffon_installer_titre: 'Install the plugin “{nom}” {version}?',
   greffon_confiance: 'A plugin is R code: it runs with your rights, like code typed in the R console, and can read or change your files. Install it only if you trust where it comes from. Installing it approves it on this computer: models made with it are fitted without asking again.',
@@ -610,6 +641,9 @@ ajouterTextes({
   greffon_nouveau_modele: 'New model…', greffon_installer_paquets: 'Install the missing packages', greffon_montrer: 'Show', greffon_retirer: 'Remove',
   greffon_retirer_titre: 'Remove the plugin “{nom}”?', greffon_retirer_texte: 'It leaves your menus. The projects that use it keep it: they are still redone with it on this computer (its approval stays).',
   greffon_paquets_texte: 'This plugin needs packages the R Nuée uses doesn’t have: {paquets}. Nuée can install them from CRAN into that R’s user library (a few minutes), or run this line in that R:',
+  greffon_paquets_texte_webr: 'This plugin needs packages the browser version doesn’t have: {paquets}. Nuée can install them from webR’s repository into this tab’s R (a model of the plugin also installs them by itself), or run this line in Nuée’s R console:',
+  greffon_paquets_en_cours_webr: 'Installing {paquets} from webR’s repository…',
+  greffon_paquets_echec_webr: 'Not installed: {paquets}. webR’s repository doesn’t have them, or webR can’t load them: Nuée’s desktop application is needed.',
   greffon_paquets_en_cours: 'Installing {paquets} from CRAN…', greffon_paquets_ok: 'Installed: {paquets}. Fit the model again.', greffon_paquets_echec: 'Not installed: {paquets}. Run the line in that R (R or RStudio).',
   greffon_note_version: '(Version {version}, by {auteurs}.)', greffon_choisir: 'Choose…', greffon_aucune: '—', greffon_aucune_variable: 'No variable of this kind in the project.',
   greffon_n_choisies: '{n} chosen', greffon_entre: '{min} to {max}', greffon_au_moins: 'at least {min}', greffon_cocher: 'Tick these', greffon_decocher: 'Untick these',

@@ -2,7 +2,8 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
-import { demander, televerser, bureau, debutAttente } from './api.js';
+import { demander, televerser, deposer, telechargerFichier, bureau, debutAttente, MOTEUR_WEBR, moteurWebR } from './api.js';
+import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
@@ -92,6 +93,8 @@ const garder_ = (res) => garder(res);
 
 const app = {
   bureau,
+  // (the browser version: what only the desktop application does, said so in the status bar)
+  bureauRequis: (cle) => statut(t('bureau_requis', { quoi: t(cle).replace(/…$/, '') }), true),
   projets: () => Object.values(etat.projets),
   projet: (id) => etat.projets[id],
   modele: (id) => etat.modeles[id],
@@ -231,7 +234,7 @@ const app = {
     const choisir = async (spectres) => {
       if (bureau) return spectres ? bureau.choisirFichiers(filtresSpectres()) : [await bureau.choisirFichier(filtresOuverture(true))].filter(Boolean);
       const fichiers = await choisirFichiersNavigateur(spectres ? acceptSpectres() : acceptOuverture(true), spectres);
-      return Promise.all(fichiers.map(async (f) => (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin));
+      return Promise.all(fichiers.map((f) => deposer(f)));
     };
     const nom = (c) => c.split(/[\\/]/).pop();
     const contenu = el('div', { class: 'import-spectres' });
@@ -318,7 +321,7 @@ const app = {
     await apresOuverture(res);
     if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
-    else {
+    else if (!MOTEUR_WEBR) {  // (in the browser version, a file's path is R's in the tab: gone with it)
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
       ecrire('recents', JSON.stringify(recents));
     }
@@ -334,7 +337,9 @@ const app = {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
-    let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
+    // (the browser version: never into R's file system in the tab, where a project opened there was
+    // put; always a copy downloaded)
+    let chemin = !sous && !MOTEUR_WEBR && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
       // (an old version's name has its date, whose dot and colon a file's name can't take as they are)
       const nom = p.lecture_seule ? nomFichier(p.nom) : p.nom.replace(/\.[^.]+$/, '');
@@ -367,7 +372,7 @@ const app = {
       r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
     }
     if (!bureau && !chemin) telecharger(r.chemin);
-    statut(`${t('enregistre')} ${r.chemin}`);
+    statut(`${t('enregistre')} ${bureau ? r.chemin : r.chemin.split('/').pop()}`);  // (downloaded under its name)
     // (the project file, with its models, in File › Open recent and on the start page, where only the
     // table it came from was)
     if (bureau) recents = await bureau.ajouterRecent(r.chemin);
@@ -570,6 +575,7 @@ const app = {
   // written): the explorer and the status bar, no panel drawn again.
   majProjet(res) {
     projetRecu(res);
+    copierBientot(res.id);
     app.rafraichirExplorateur();
     majEtat();
   },
@@ -814,7 +820,7 @@ const app = {
       ? 'couldn’t be read (neither reg.exe nor PowerShell could): R-code models are off, and so are plugins other than the organisation’s'
       : `read by ${pol.par === 'powershell' ? 'PowerShell (reg.exe couldn’t)' : 'reg.exe'}, ${Object.keys(pol.valeurs).length
         ? Object.entries(pol.valeurs).map(([k, x]) => (x === 'set' ? `${k} set` : `${k} = ${x}`)).join(', ') : 'none set'}`);
-    const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
+    const texte = [`Nuée ${VERSION}${MOTEUR_WEBR ? ' (browser version, webR)' : !bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
       `System: ${d.systeme}`,
       d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
       `${v.R}, ${v.plateforme}, ${v.systeme}`,
@@ -921,7 +927,7 @@ const app = {
       chemin = await bureau.choisirFichier(filtresOuverture(true));
     } else {
       const f = await choisirFichierNavigateur(acceptOuverture(true));
-      if (f) chemin = (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+      if (f) chemin = await deposer(f);
     }
     if (!chemin) return null;
     return occupe(() => demander('predire_fichier', { modele: id, chemin }));
@@ -1043,7 +1049,7 @@ const app = {
     if (bureau) return bureau.choisirFichier(filtresOuverture());
     const f = await choisirFichierNavigateur(acceptOuverture());
     if (!f) return null;
-    return (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+    return deposer(f);
   },
   async lirePressePapiers() {
     try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
@@ -1151,6 +1157,8 @@ const app = {
 
   // (loc: the settings the view starts with, a document's: which one it shows)
   ouvrirFenetreVue(vue, id, pid, loc = null) {
+    // (the browser version: another window would start an R of its own, without the projects)
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     const m = id ? etat.modeles[id] : null;
     // (de: the main window it belongs to, also when a view's own window opens it)
     const de = VUE_SEULE ? params.get('de') || ID_FENETRE : ID_FENETRE;
@@ -1164,6 +1172,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, suffixeVue(e.vue, e.loc) ? e.loc : null);
     p.api.close();
   },
@@ -1202,6 +1211,7 @@ const app = {
   },
 
   nouvelleFenetre() {
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     window.open('./?fenetre=' + Math.random().toString(36).slice(2, 8), '_blank', 'popup,width=1300,height=850');
   },
   focusFenetre: (id) => bureau && bureau.focusFenetre(id),
@@ -1310,12 +1320,13 @@ async function occupe(f) {
 // the status bar, after the engine's state; main.js then writes the file the engine's long loops
 // look at between two rounds (moteur/R/arret.R), and the request comes back "stopped", nothing
 // changed. It is an element of its own beside #appli, which a dialog doesn't make inert (aria-live):
-// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file.
+// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file; in the
+// browser version, R in the page is interrupted instead (moteur_webr.js: arreter; navigateur.R).
 const ATTENTE_ARRET = 1500;
 let minuterieArret = null;
 let minuterieArretLent = null;
 function majArret() {
-  if (!bureau || !bureau.arreterCalcul) return;
+  if (!(bureau && bureau.arreterCalcul) && !MOTEUR_WEBR) return;
   clearTimeout(minuterieArret);
   let b = document.getElementById('arret-calcul');
   const debut = debutAttente();
@@ -1355,7 +1366,7 @@ async function arreterCalcul() {
   majArret();
   // (a progress dialog under way, Update the data's, stops after the model being fitted: etapes.js)
   window.dispatchEvent(new CustomEvent('arret-demande'));
-  try { await bureau.arreterCalcul(); } catch { etat.arretDemande = false; majArret(); return; }
+  try { await (MOTEUR_WEBR ? (await moteurWebR()).arreter() : bureau.arreterCalcul()); } catch { etat.arretDemande = false; majArret(); return; }
   // (a computation that doesn't check between rounds, a single fit in compiled code: said after a while)
   clearTimeout(minuterieArretLent);
   minuterieArretLent = setTimeout(() => { if (etat.arretDemande) { etat.arretLent = true; majArret(); } }, 8000);
@@ -1377,7 +1388,7 @@ function choisirFichiersNavigateur(accept, plusieurs) {
 }
 
 function telecharger(chemin) {
-  window.location.href = '/api/fichier?chemin=' + encodeURIComponent(chemin);
+  telechargerFichier(chemin);
 }
 
 // A file with several tables (Excel sheets, objects of an .RData file): the one to open.
@@ -1487,6 +1498,7 @@ async function apresOuverture(res, session = null) {
   // and the project opened brought into view, explorateur.js)
   for (const m of Object.values(etat.modeles)) if (m.projet !== res.id) etat.replies.add(`${m.projet}/m/${m.id}`);
   projetRecu(res);
+  copierBientot(res.id);
   etat.noeud = res.id;
   diffuser('modeles');
   app.rafraichirExplorateur();
@@ -1498,7 +1510,7 @@ async function apresOuverture(res, session = null) {
   if (dock && ![].concat(res.modeles || []).length) app.ouvrirVue('donnees', null, null, res.id);
 }
 
-// ------------------------------------------------------------ recovery copies (desktop app)
+// ------------------------------------------------------------ recovery copies
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
@@ -1512,13 +1524,15 @@ async function apresOuverture(res, session = null) {
 // once it is closed, the next one); any main window that restarts the engine makes them first (moi).
 // moteurEtat: the engine this window's projects are those of (synchroniser); a window that hasn't
 // heard of a restart yet makes no copy, its projects being the engine before's.
-const LANCEMENT = Date.now().toString(36);
+// The browser version (sauvegarderSecoursNavigateur) keeps them in the browser's storage.
+const LANCEMENT = MOTEUR_WEBR ? ONGLET : Date.now().toString(36);
 let moteurEtat = null;
 // the index changed by `f` (index => index), read just before: another main window may have written it
 async function changerSecours(f) {
   await bureau.secoursIndex(f([].concat(await bureau.secoursListe()).filter((e) => e && e.fichier)));
 }
 async function sauvegarderSecours({ moi = false } = {}) {
+  if (MOTEUR_WEBR) return sauvegarderSecoursNavigateur();
   if (!bureau || VUE_SEULE || !dock) return;
   try {
     if (!moi) {
@@ -1554,10 +1568,82 @@ async function sauvegarderSecours({ moi = false } = {}) {
   } catch { /* tried again two minutes later */ }
 }
 
+// The browser version (secours_navigateur.js): a project lives in the tab (one saved there was
+// downloaded, which the next visit doesn't open by itself), so every open project has its copy,
+// in the browser's storage: written again 3 s after a change of the project (aCopier), at each
+// minute when it has unsaved changes, and on each pass when its session changed (views, models);
+// a pass also when the tab is hidden. The index follows the projects opened and closed
+// (indexPerime). Closing or reloading the tab before a change is copied asks first.
+const aCopier = new Set();
+let indexPerime = false;
+const empreintes = new Map();  // project -> what its last copy held
+const derniersSecours = new Map();  // project -> the index's entry of its last copy
+let copieEnCours = null;
+let encoreUneCopie = false;
+let minuterieCopie = null;
+let copieImpossibleDite = false;
+function copierBientot(pid = null) {
+  if (!MOTEUR_WEBR || VUE_SEULE) return;
+  if (pid) aCopier.add(pid); else indexPerime = true;
+  clearTimeout(minuterieCopie);
+  minuterieCopie = setTimeout(sauvegarderSecours, 3000);
+}
+async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
+  if (VUE_SEULE || !dock) return;
+  if (copieEnCours) { encoreUneCopie = true; return; }
+  clearTimeout(minuterieCopie);
+  const changes = new Set(aCopier);
+  aCopier.clear();
+  indexPerime = false;
+  copieEnCours = (async () => {
+    const dossier = await secoursNavigateur.secoursDossier();
+    const entrees = [];
+    for (const p of Object.values(etat.projets)) {
+      const fichier = `${dossier}/${LANCEMENT}-${p.id}.json`;  // (one engine per tab: a project's id is never another's)
+      const session = JSON.stringify(collecterSession(p.id));
+      const empreinte = JSON.stringify([p.revision, p.modifie, p.nom, session]);
+      if (changes.has(p.id) || (chaqueMinute && p.modifie) || empreintes.get(p.id) !== empreinte) {
+        try {
+          await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session, version: VERSION });
+          await secoursNavigateur.garder(fichier);
+          // (no file: the next visit reopens it as the project it was, unsaved changes or not)
+          derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: null, lu: null, modifie: !!p.modifie, date: new Date().toISOString() });
+          empreintes.set(p.id, empreinte);
+        } catch {  // (tried again at the next change, or in a minute; said once: storage full, or refused)
+          aCopier.add(p.id);
+          if (!copieImpossibleDite) { copieImpossibleDite = true; statut(t('secours_navigateur_impossible'), true); }
+        }
+      }
+      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
+    }
+    await secoursNavigateur.secoursIndex(entrees);
+  })().catch(() => { for (const c of changes) aCopier.add(c); indexPerime = true; });
+  await copieEnCours;
+  copieEnCours = null;
+  if (encoreUneCopie) { encoreUneCopie = false; sauvegarderSecoursNavigateur(); }
+}
+// (whether every change is in a copy: the checks, tests/essai_navigateur.mjs, wait for it)
+app.copiesAJour = () => !aCopier.size && !indexPerime && !copieEnCours;
+if (MOTEUR_WEBR && !VUE_SEULE) {
+  // (a document's text or a figure: changed without a new summary of its project)
+  window.addEventListener('nuee-demande', (e) => {
+    if (/^(document|figure)_(enregistrer|supprimer)$/.test(e.detail.nom)) copierBientot(e.detail.corps && e.detail.corps.projet);
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sauvegarderSecours(); });
+  window.addEventListener('beforeunload', (e) => {
+    if (!aCopier.size && !indexPerime && !copieEnCours) return;
+    sauvegarderSecours();
+    e.preventDefault();
+    e.returnValue = '';  // (the browser's own question: leave, or stay while the copy is written)
+  });
+}
+
 // The copies of an earlier stop: reopened as the projects they hold (their name, the file they
 // save to, if any, and unsaved changes), or set aside (deleted). Closing the question without
-// answering keeps them, to be offered again next time.
+// answering keeps them, to be offered again next time. In the browser version, those of the tabs
+// closed since this browser last opened Nuée.
 async function proposerRecuperation() {
+  if (MOTEUR_WEBR) return proposerRecuperationNavigateur();
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
   try { entrees = [].concat(await bureau.secoursListe()).filter((e) => e && e.fichier); } catch { entrees = []; }
@@ -1588,13 +1674,47 @@ async function proposerRecuperation() {
       } }] });
 }
 
+// The browser version: the copies of the tabs closed since (secours_navigateur.js), each with
+// whether it had unsaved changes, reopened as those projects or set aside (deleted); the
+// recovered ones get copies of their own before the old ones go, but those that couldn't be read
+// (kept for another try). Closing the question keeps them all.
+async function proposerRecuperationNavigateur() {
+  if (VUE_SEULE) return;
+  let entrees = [];
+  try { entrees = await secoursNavigateur.secoursListe(); } catch { entrees = []; }
+  if (!entrees.length) return;
+  const onglets = [...new Set(entrees.map((e) => e.onglet))];
+  const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  dialogue({ titre: t('recuperation'),
+    contenu: el('div', {}, el('p', {}, t('recuperation_question_navigateur')),
+      el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}${e.modifie ? ` (${t('recuperation_non_enregistre')})` : ''}`)))),
+    boutons: [
+      { libelle: t('ignorer'), action: () => { onglets.forEach((o) => secoursNavigateur.oublier(o)); return true; } },
+      { libelle: t('recuperer'), principal: true, action: () => {
+        (async () => {
+          const illisibles = [];
+          for (const e of entrees) {
+            try {
+              await secoursNavigateur.rendre(e);
+              await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine: null, nom: e.nom, lu: null, modifie: e.modifie !== false })));
+            } catch { illisibles.push(e); }
+            secoursNavigateur.effacerDansR(e);
+          }
+          await sauvegarderSecours();
+          for (const o of onglets) await secoursNavigateur.oublier(o, illisibles.filter((e) => e.onglet === o));
+          if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
+        })();
+        return true;
+      } }] });
+}
+
 // ------------------------------------------------------------ the R engine stopped
 
 let moteurArrete = false;
 function signalerMoteurArrete() {
   if (moteurArrete || VUE_SEULE) return;
   moteurArrete = true;
-  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t('moteur_navigateur')),
+  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t(MOTEUR_WEBR ? 'moteur_webr_arrete' : 'moteur_navigateur')),
     boutons: bureau ? [{ libelle: t('plus_tard'), action: () => { moteurArrete = false; return true; } },
       { libelle: t('redemarrer_moteur'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }]
       : [{ libelle: t('fermer'), principal: true, action: () => { moteurArrete = false; return true; } }] });
@@ -1777,6 +1897,7 @@ function projetRecu(res) {
 // and label lists, and the views that keep a copy of its data when the data changed.
 function projetChange(res) {
   projetRecu(res);
+  copierBientot(res.id);
   app.rafraichirExplorateur();
   rafraichirModele(null);
   diffuser('modeles');
@@ -1802,6 +1923,7 @@ async function garder(res) {
   // (the project's views that list its models, the map's Colour and Size and Compare models, drawn
   // again: a model fitted after they were opened shows in them at once)
   rafraichirModele(res.projet);
+  copierBientot(res.projet);
   diffuser('modeles');
   majEtat();
 }
@@ -1872,6 +1994,7 @@ function oublierProjet(pid) {
       if ((e && e.params.projet === pid) || (estPage(p) && !etat.modeles[p.id.slice(5)])) p.api.close();
     }
   }
+  copierBientot();  // (its copy leaves the index)
   app.rafraichirExplorateur();
   majEtat();
 }
@@ -2807,6 +2930,7 @@ async function demarrerPrincipal() {
     quoiDeNeuf();
     proposerRecuperation();
     app.signalerRepliR();
+    if (MOTEUR_WEBR) setInterval(() => sauvegarderSecoursNavigateur(true), 60000);
   }
   if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
   setTimeout(prechargerGuide, 3000);  // (the guide read while R waits: F1 then shows it at once)
@@ -2843,7 +2967,7 @@ async function demarrerPrincipal() {
 async function deposerFichiers(fichiers) {
   const ext = (f) => f.name.split('.').pop().toLowerCase();
   const chemin = async (f) => (bureau && bureau.cheminFichier ? bureau.cheminFichier(f)
-    : (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin);
+    : await deposer(f));
   if (fichiers.every((f) => ['jdx', 'dx', 'jcm', 'spc'].includes(ext(f)))) {
     const chemins = await Promise.all(fichiers.map(chemin));
     const res = await occupe(() => demander('importer_spectres', { chemins, nom: chemins.length === 1 ? fichiers[0].name : t('spectres_importes', { n: chemins.length }) }));
@@ -2864,3 +2988,6 @@ document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' :
 document.documentElement.lang = langueActuelle();
 document.title = t('titre');
 if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
+
+// (for the checks that use the page as a person would: import('./app.js'), tests/essai_navigateur.mjs)
+export { app };

@@ -882,8 +882,8 @@ Raster values (Edit › Add raster values…, or the button on the map): an elev
 land cover, a climate layer… read from raster files at each observation's position, and added
 to the project as new variables, one per band. Choose one or several files: GeoTIFF (.tif, as
 QGIS, IGN's BD ALTI and RGE ALTI, Copernicus, CORINE, WorldClim or CHELSA write it) or ESRI
-ASCII grids (.asc, with their .prj). In the browser version, type each file's full path
-(several: separated by ";"): the engine reads the files where they are. Before adding, each
+ASCII grids (.asc, with their .prj). In the browser version, choose the files together, each
+raster with its .tfw or .prj: they go to the page's R, which reads them. Before adding, each
 file shows its size, format, compression, cells and their size, bands and their type,
 coordinate system, no-data value, and how many observations fall in it; a file that can't be
 read says why. For each file, choose the value: the cell holding the observation (classes,

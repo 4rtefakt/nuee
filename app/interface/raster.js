@@ -7,7 +7,7 @@
 // The values join the project as ordinary variables, undone by Ctrl+Z. Imported by app.js.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue, decimal } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, deposerEnsemble, MOTEUR_WEBR } from './api.js';
 
 const liste = (x) => (x === null || x === undefined ? [] : [].concat(x));  // (R sends one value as a scalar)
 const METHODES = ['cellule', 'bilineaire', 'moyenne', 'majorite'];
@@ -109,6 +109,17 @@ export function dialogueRaster(app, p) {
     if (bureau) {
       const chemins = await bureau.choisirFichiers([{ name: t('raster_filtre'), extensions: ['tif', 'tiff', 'asc'] }, { name: t('tous_fichiers'), extensions: ['*'] }]);
       if (chemins && chemins.length) ajouterChemins(chemins);
+      return;
+    }
+    // (the browser version: the files chosen go into R's file system, in the tab)
+    if (MOTEUR_WEBR) {
+      const fichiers = await new Promise((resolve) => {
+        const i = el('input', { type: 'file', multiple: true, accept: '.tif,.tiff,.asc,.tfw,.prj', onchange: () => resolve([...i.files]) });
+        i.click();
+      });
+      // (in one folder: a .tfw or a .prj beside its raster, where the engine looks for it)
+      const rasters = (await deposerEnsemble(fichiers)).filter((c) => /\.(tiff?|asc)$/i.test(c));
+      if (rasters.length) ajouterChemins(rasters);
       return;
     }
     // (in the browser there is no file chooser that gives a path: the files stay where they are, the engine reads them)

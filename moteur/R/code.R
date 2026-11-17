@@ -332,9 +332,11 @@ erreur_code <- function(ev) {
   message <- if (is.na(ev$ligne)) sprintf(traduire("Le code R s'est arrêté : %s", "The R code stopped: %s"), ev$erreur)
              else sprintf(traduire("Le code R s'est arrêté à la ligne %d : %s", "The R code stopped at line %d: %s"), ev$ligne, ev$erreur)
   if (length(ev$paquet) && nzchar(ev$paquet)) {
-    message <- paste(message, sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le pour ce R (install.packages(\"%s\"), dans R ou dans la console R de Nuée), puis ajustez de nouveau.",
-                                               "The package %s isn't installed for the R Nuée uses (R %s): install it for that R (install.packages(\"%s\"), in R or in Nuée's R console), then fit again."),
-                                      ev$paquet, version, ev$paquet))
+    # (dans le navigateur, un paquet que le dépôt de webR n'a pas : navigateur.R)
+    message <- paste(message, if (dans_navigateur()) paquets_absents_navigateur(ev$paquet)
+                              else sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le pour ce R (install.packages(\"%s\"), dans R ou dans la console R de Nuée), puis ajustez de nouveau.",
+                                                    "The package %s isn't installed for the R Nuée uses (R %s): install it for that R (install.packages(\"%s\"), in R or in Nuée's R console), then fit again."),
+                                           ev$paquet, version, ev$paquet))
   }
   refus_code("erreur_code", message, ligne = if (is.na(ev$ligne)) NULL else ev$ligne)
 }
@@ -636,7 +638,8 @@ ajuster_code <- function(projet, d) {
   code <- texte_code(d$options$code %||% "")
   exiger_code_permis(code, d$name)
   donnees <- donnees_code(projet, d)
-  ev <- evaluer_code(code, donnees)
+  # (dans le navigateur, les paquets qu'il demande installés d'abord : navigateur.R)
+  ev <- evaluer_navigateur(function() evaluer_code(code, donnees), paquets_nommes(tryCatch(parse(text = code, keep.source = FALSE), error = function(e) NULL)))
   if (!is.null(ev$erreur)) stop(erreur_code(ev))
   m <- modele_valeur_code(projet, d, ev, donnees)
   m[c("code", "empreinte")] <- list(code, empreinte_code(code))

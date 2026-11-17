@@ -3,6 +3,7 @@
 import { t } from './i18n.js';
 import { el, fmt, icone, menuContextuel } from './ui.js';
 import { ICONES_VUES } from './commandes.js';
+import { MOTEUR_WEBR } from './api.js';
 
 const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
@@ -163,7 +164,7 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
         { libelle: t('versions'), icone: 'history', action: () => app.versions(p.id) },
-        { libelle: t('versions_partager'), icone: 'cloud-upload', actif: !!app.bureau, action: () => app.partagerProjet(p.id) },
+        { libelle: t('versions_partager'), icone: 'cloud-upload', actif: !!app.bureau || MOTEUR_WEBR, action: () => app.partagerProjet(p.id) },
         { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) },
         '-',
         { libelle: t('fermer_projet'), icone: 'x', action: () => app.fermerProjet(p.id) },

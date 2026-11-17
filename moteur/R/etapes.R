@@ -1369,7 +1369,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
         X[, i] <- match(cn[x], v$categories)
       } else if (length(ca)) {
         texte <- ifelse(is.na(x), NA_character_, sprintf("%.15g", x))
-        neuves <- sort(setdiff(unique(stats::na.omit(texte)), ca))
+        neuves <- trier_textes(setdiff(unique(stats::na.omit(texte)), ca))
         v$categories <- categories_alignees(ca, neuves)
         X[, i] <- match(texte, v$categories)
         types[[length(types) + 1]] <- list(variable = nom(a), type = "qualitative", perdues = 0L)

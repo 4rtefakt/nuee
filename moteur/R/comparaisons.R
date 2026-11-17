@@ -437,7 +437,7 @@ comparer_apparies <- function(x, f, cle, niveaux, noms, nom_cle, groupe_ligne = 
   r
 }
 
-ordre_cles <- function(v) v[order(suppressWarnings(as.numeric(v)), v)]
+ordre_cles <- function(v) v[order(suppressWarnings(as.numeric(v)), match(v, trier_textes(unique(v))))]
 
 # La paire A–B : ses clés communes, les lignes sans partenaire ou sans valeur, et ses tests.
 paire_niveaux <- function(x, f, cle, niveaux, noms, nom_cle) {

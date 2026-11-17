@@ -93,6 +93,8 @@ source(file.path(racine, "moteur", "console.R"), encoding = "UTF-8")  # journal 
 # Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json : le
 # programme compilé sous Windows, le script Python ailleurs (python3 sous Linux).
 convertir_usp <- function(chemin) {
+  if (dans_navigateur()) refus_navigateur("Les fichiers .usp", ".usp files", traduire("leur convertisseur est un programme, que le navigateur ne lance pas",
+                                                                                     "their converter is a program, which the browser doesn't run"))
   dossier <- file.path(tempdir(), nouvel_id("usp"))
   dir.create(dossier)
   exe <- Sys.getenv("CONVERTISSEUR_USP", file.path(racine, "outils", "export_project.exe"))
@@ -1851,8 +1853,9 @@ DEMANDES <- list(
   # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
   # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
   # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
-  # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
-  # elle est effacée quand Nuée se ferme.
+  # (q$lu), des changements à enregistrer (q$modifie = FALSE : aucun, la copie d'un projet du
+  # navigateur qui n'en avait pas). Jamais la copie elle-même comme fichier du projet : elle est
+  # effacée quand Nuée se ferme.
   # q$lecture_seule : une ancienne version d'un projet (interface/versions.js), lue d'un fichier
   # temporaire et ouverte sous le nom q$nom (« vergers — version du 12 nov. 2026, 14:32 ») ; sa
   # source (le fichier du projet), son oid et sa date, que l'interface montre et dont elle se sert
@@ -1869,7 +1872,7 @@ DEMANDES <- list(
       p$nom <- q$nom %||% basename(q$origine %||% p$nom)
       p$chemin <- q$origine
       p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
-      p$modifie <- TRUE
+      p$modifie <- !isFALSE(q$modifie)
     }
     if (!is.null(q$lecture_seule)) {
       p$nom <- as.character(q$nom %||% p$nom)[1]
@@ -1925,13 +1928,9 @@ DEMANDES <- list(
   predire = predire_demande,
   hca = hca_demande,
   permutations = function(q) {
-    e <- modele(q$modele, TRUE)
-    if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
-    if (!isTRUE((q$y %||% 1) %in% seq_len(ncol(e$modele$Y)))) {
-      stop(sprintf(traduire("Le modèle n'a pas de Y numéro %s : il en a %d.", "The model has no Y number %s: it has %d."), paste(q$y, collapse = " "), ncol(e$modele$Y)), call. = FALSE)
-    }
-    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
-    c(list(modele = q$modele), r)
+    w <- TRAVAUX$permutations
+    t <- w$taches(q)
+    w$reponse(q, t, permutations_morceau(t, seq_len(t$n)))
   },
   valeurs = valeurs_demande,
   exporter = exporter_demande,
@@ -2461,12 +2460,13 @@ fini <- function(x) {
 
 # Une demande faite (la fonction `f` de DEMANDES, sur ses paramètres `q`), qu'Arrêter peut interrompre
 # (arret.R) : list(reponse) ; NULL quand elle a été arrêtée, la séance remise alors telle qu'elle était
-# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part.
+# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part. (Dans le
+# navigateur, Arrêter interrompt R : navigateur.R, calcul_arretable.)
 faire_demande <- function(f, q) {
   garde <- function() setdiff(ls(etat, all.names = TRUE), c("journal", "n_journal"))
   avant <- mget(garde(), envir = etat)
   arretee <- FALSE
-  r <- withRestarts(f(q), arreter_calcul = function() arretee <<- TRUE)
+  r <- withRestarts(calcul_arretable(f(q)), arreter_calcul = function() arretee <<- TRUE)
   if (!arretee) return(list(reponse = r))
   rm(list = setdiff(garde(), names(avant)), envir = etat)
   for (n in names(avant)) assign(n, avant[[n]], envir = etat)
@@ -2479,6 +2479,100 @@ repondre <- function(statut, contenu) {
                                                      na = "null", null = "null", digits = NA, force = TRUE))))
 }
 
+# Une demande qui échoue : sa réponse, son message et ce qui le précise (un fichier changé depuis sa
+# lecture : 409, avec sa date ; dans le navigateur, un paquet qui y manque : navigateur.R).
+repondre_erreur <- function(nom, e) {
+  e <- erreur_navigateur(e)
+  tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
+  if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
+  # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
+  if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
+  # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
+  if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
+  if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
+  # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
+  if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
+  if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
+  repondre(400L, list(erreur = conditionMessage(e)))
+}
+
+# Une demande de l'interface, `corps` son JSON (brut) : la réponse (statut, en-têtes, corps JSON).
+# Le serveur HTTP ci-dessous et le moteur dans le navigateur (webR : app/interface/moteur_webr.js)
+# passent tous deux par là. `code` : le secret qui accompagne une approbation de code R (l'en-tête
+# X-Nuee-Code), que seule l'application connaît. (Dans le navigateur, Arrêter ne l'interrompt que dans
+# son calcul : navigateur.R, hors_interruptions.)
+traiter_demande <- function(nom, corps = raw(0), langue = "fr", code = NULL) {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")  # langue des messages (langue.R)
+  hors_interruptions(tryCatch({
+    f <- DEMANDES[[nom]]
+    if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
+    # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
+    if (nom == "code_approuve" && nzchar(SECRET_CODE) && !identical(code, SECRET_CODE)) {
+      return(repondre(403L, list(erreur = traduire("Seule l'application approuve du code R (Exécuter, dans la barre au-dessus du projet).",
+                                                   "Only the application approves R code (Run it, in the bar above the project)."))))
+    }
+    q <- lire_demande(nom, corps)
+    fait <- faire_demande(f, q)
+    if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
+      tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
+      return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
+    }
+    r <- fait$reponse
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
+    repondre(200L, r)
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+lire_demande <- function(nom, corps) {
+  q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
+  if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
+    stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
+                  "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
+  }
+  q
+}
+
+# Les demandes qui peuvent se partager entre plusieurs R (le navigateur : moteur/R/travaux.R) :
+# leurs tâches (dont n, leur nombre), la fonction qui en fait un morceau, leur réponse. Une
+# demande faite en un seul R (DEMANDES) passe par les mêmes fonctions.
+TRAVAUX <- list(
+  permutations = list(
+    taches = function(q) {
+      e <- modele(q$modele, TRUE)
+      if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
+      if (!isTRUE((q$y %||% 1) %in% seq_len(ncol(e$modele$Y)))) {
+        stop(sprintf(traduire("Le modèle n'a pas de Y numéro %s : il en a %d.", "The model has no Y number %s: it has %d."), paste(q$y, collapse = " "), ncol(e$modele$Y)), call. = FALSE)
+      }
+      permutations_taches(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    },
+    morceau = "permutations_morceau",
+    reponse = function(q, t, lignes) c(list(modele = q$modele), permutations_fin(t, lignes))
+  )
+)
+# (le R de l'interface) les tâches d'une demande, dans un fichier pour les autres R : { fichier, n }
+travail_preparer <- function(nom, corps = raw(0), langue = "fr") {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  hors_interruptions(tryCatch({
+    w <- TRAVAUX[[nom]]
+    t <- w$taches(lire_demande(nom, corps))
+    fichier <- tempfile("travail", fileext = ".rds")
+    saveRDS(list(morceau = w$morceau, taches = t), fichier, compress = FALSE)
+    repondre(200L, list(fichier = fichier, n = t$n))
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+# (le R de l'interface) les morceaux faits (`sorties`, dans l'ordre), la réponse de la demande
+travail_finir <- function(nom, corps, langue, fichier, sorties) {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  hors_interruptions(tryCatch({
+    q <- lire_demande(nom, corps)
+    r <- TRAVAUX[[nom]]$reponse(q, readRDS(fichier)$taches, do.call(rbind, lapply(sorties, readRDS)))
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)
+    repondre(200L, r)
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+
+# Le serveur HTTP. La version navigateur (webR : app/interface/moteur_webr.js) charge ce fichier
+# jusqu'ici, comme les vérifications du moteur le chargent sans écouter (moteur/tests/verifier_etapes.R) :
+# l'interface y appelle traiter_demande() elle-même.
 appli <- list(
   call = function(req) {
     chemin <- req$PATH_INFO
@@ -2495,6 +2589,7 @@ appli <- list(
     corps <- req$rook.input$read()
     # (un Arrêter d'avant cette demande, venu quand plus rien ne calculait, ne l'arrête pas : arret.R)
     if (nzchar(getOption("nuee.arret", ""))) unlink(getOption("nuee.arret"))
+    if (!nom %in% c("fichier", "televerser", "deposer")) return(traiter_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE))
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -2515,45 +2610,16 @@ appli <- list(
         tryCatch(journaliser("ouvrir", list(chemin = dest), r), error = function(e) NULL)
         return(repondre(200L, r))
       }
-      f <- DEMANDES[[nom]]
-      if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
-      # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
-      if (nom == "code_approuve" && nzchar(SECRET_CODE) && !identical(req$HTTP_X_NUEE_CODE, SECRET_CODE)) {
-        return(repondre(403L, list(erreur = traduire("Seule l'application approuve du code R (Exécuter, dans la barre au-dessus du projet).",
-                                                     "Only the application approves R code (Run it, in the bar above the project)."))))
-      }
-      q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
-      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
-        stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
-                      "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
-      }
-      fait <- faire_demande(f, q)
-      if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
-        tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
-        return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
-      }
-      r <- fait$reponse
-      tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
-      repondre(200L, r)
-    }, error = function(e) {
-      tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
-      if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
-      # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
-      if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
-      # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
-      if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
-      if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
-      # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
-      if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
-      if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
-      repondre(400L, list(erreur = conditionMessage(e)))
-    })
+    }, error = function(e) repondre_erreur(nom, e))
   },
   # (l'interface relue à chaque chargement : no-cache, et 304 quand rien n'a changé. Sans
   # Cache-Control, Chromium la tenait pour fraîche un dixième de son âge, et une nouvelle version
-  # montrait celle d'avant : app/main.js, demarrer)
-  staticPaths = list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
-                     "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  # montrait celle d'avant : app/main.js, demarrer). Sans httpuv, aucune : le R de la version
+  # navigateur, où les vérifications du moteur appellent appli$call elles aussi.
+  staticPaths = if (requireNamespace("httpuv", quietly = TRUE)) {
+    list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
+         "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  }
 )
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)

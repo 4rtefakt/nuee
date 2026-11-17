@@ -86,7 +86,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
     if (is.numeric(x)) {
       donnees[, k] <- x
     } else {
-      cats <- if (is.factor(x)) levels(if (toutes_modalites) x else droplevels(x)) else sort(unique(stats::na.omit(as.character(x))))
+      cats <- if (is.factor(x)) levels(if (toutes_modalites) x else droplevels(x)) else trier_textes(unique(stats::na.omit(as.character(x))))
       v$categories <- cats
       donnees[, k] <- match(as.character(x), cats)
     }

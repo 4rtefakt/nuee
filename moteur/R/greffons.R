@@ -548,6 +548,11 @@ paquets_greffon <- function(g) {
 exiger_paquets_greffon <- function(g) {
   pq <- paquets_greffon(g)
   manquants <- pq$nom[!pq$present]
+  # (dans le navigateur, installés depuis le dépôt de webR quand il les a : navigateur.R)
+  if (length(manquants) && dans_navigateur()) {
+    manquants <- installer_paquets_navigateur(manquants)
+    if (length(manquants)) stop(refus_greffon("greffon_paquets", paquets_absents_navigateur(manquants), paquets_manquants = I(manquants), id = g$id))
+  }
   if (length(manquants)) {
     stop(refus_greffon("greffon_paquets", sprintf(traduire("Le greffon « %s » demande des paquets qui ne sont pas installés pour le R que Nuée utilise (R %s) : %s. Installez-les (Fichier › Greffons…, ou install.packages(%s) dans R), puis ajustez de nouveau.",
                                                            "The plugin \"%s\" needs packages that aren't installed for the R Nuée uses (R %s): %s. Install them (File › Plugins…, or install.packages(%s) in R), then fit again."),
@@ -746,11 +751,14 @@ environnement_greffon <- function(g) {
 # dont le parent est celui où ses fichiers ont été lus. `paquets` : ceux qu'il nomme, dans le manifeste
 # et dans ses fichiers.
 evaluer_greffon <- function(g, donnees, entrees, options) {
-  env <- environnement_greffon(g)
-  if (!is.environment(env)) return(c(env, list(valeur = NULL, pile = list())))
-  ev <- evaluer_code(sprintf("%s(donnees, entrees, options)", g$manifeste$fonction), donnees, objets = list(entrees = entrees, options = options), parent = env)
   nommes <- unlist(lapply(g$fichiers, function(f) if (!identical(f$chemin, "plugin.json")) paquets_nommes(tryCatch(parse(text = f$texte, keep.source = FALSE), error = function(e) NULL))))
-  ev$paquets <- setdiff(unique(c(g$manifeste$paquets, nommes, ev$paquets)), PAQUETS_DE_R)
+  # (dans le navigateur, les paquets que ses fichiers nomment installés d'abord : navigateur.R)
+  ev <- evaluer_navigateur(function() {
+    env <- environnement_greffon(g)
+    if (!is.environment(env)) return(c(env, list(valeur = NULL, pile = list())))
+    evaluer_code(sprintf("%s(donnees, entrees, options)", g$manifeste$fonction), donnees, objets = list(entrees = entrees, options = options), parent = env)
+  }, nommes)
+  if (is.null(ev$fichier)) ev$paquets <- setdiff(unique(c(g$manifeste$paquets, nommes, ev$paquets)), PAQUETS_DE_R)
   ev
 }
 
@@ -765,9 +773,11 @@ erreur_greffon <- function(ev, g) {
   message <- sprintf(if (!is.null(ev$fichier)) traduire("Le greffon %s ne se charge pas%s : %s", "The plugin %s doesn't load%s: %s") else traduire("Le greffon %s s'est arrêté%s : %s", "The plugin %s stopped%s: %s"),
                      nom, ou, ev$erreur)
   if (length(ev$paquet) && nzchar(ev$paquet)) {
-    message <- paste(message, sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le (install.packages(\"%s\")), puis ajustez de nouveau.",
-                                               "The package %s isn't installed for the R Nuée uses (R %s): install it (install.packages(\"%s\")), then fit again."),
-                                      ev$paquet, paste(R.version$major, R.version$minor, sep = "."), ev$paquet))
+    # (dans le navigateur, un paquet que le dépôt de webR n'a pas : navigateur.R)
+    message <- paste(message, if (dans_navigateur()) paquets_absents_navigateur(ev$paquet)
+                              else sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le (install.packages(\"%s\")), puis ajustez de nouveau.",
+                                                    "The package %s isn't installed for the R Nuée uses (R %s): install it (install.packages(\"%s\")), then fit again."),
+                                           ev$paquet, paste(R.version$major, R.version$minor, sep = "."), ev$paquet))
   }
   refus_code("erreur_code", message)
 }
