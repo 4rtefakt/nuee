@@ -192,38 +192,79 @@ function remarques(r) {
     ...liste('paquet_remarques_documents', docs), el('p', { class: 'note' }, t('paquet_remarques_readme')));
 }
 
-// The deposit's dialog: the token (pasted once, then kept by the main process), the host; then the
-// draft created with its DOI reserved, the package written with that DOI, and deposited in the
-// draft with its description; its page opens (main.js). Stays open with what went wrong, if
-// something did: tried again, it goes on with the same draft.
+// The deposit's dialog: signing in with Zenodo (its page in the browser, where the user authorizes
+// Nuée), or a token pasted, either kept by the main process; the host; then the draft created with
+// its DOI reserved, the package written with that DOI, and deposited in the draft with its
+// description; its page opens (main.js). Stays open with what went wrong, if something did: tried
+// again, it goes on with the same draft. A copy of Nuée whose application isn't registered on the
+// host (zenodo.js: IDS) offers the token alone.
 async function dialogueZenodo(app, p, meta) {
   let hote = HOTES[0];
-  let etat = { jeton: false, persistant: false };
+  let etat = { jeton: false, persistant: false, connexion: false };
   let enCours = false;
+  let enConnexion = null;  // (the host of the sign-in under way)
   let brouillon = null;  // (the draft created here: { hote, id, doi, page })
   const champ = el('input', { type: 'password', class: 'zenodo-champ', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('zenodo_jeton') });
   const zoneJeton = el('div', { class: 'zenodo-jeton' });
   const erreur = el('div', { class: 'erreur' });
+  const boutonConnexion = el('button', { class: 'zenodo-connexion', onclick: () => { seConnecter().catch((e) => { erreur.textContent = e.message; }); } }, t('zenodo_connexion'));
   const dessiner = async () => {
     etat = await bureau.zenodo.etat(hote);
+    const parJeton = [el('label', { class: 'champ' }, el('span', {}, t('zenodo_jeton')), champ),
+      el('p', { class: 'note' }, t('zenodo_jeton_aide', { hote }), ' ',
+        el('a', { href: `https://${hote}/account/settings/applications/tokens/new/`, target: '_blank', rel: 'noopener' }, t('zenodo_creer_jeton', { hote })))];
+    const garde = el('p', { class: 'note' }, t(etat.persistant ? 'zenodo_persistant' : 'zenodo_session', { hote }));
     zoneJeton.replaceChildren(...(etat.jeton
       ? [el('div', { class: 'ligne' }, el('span', {}, t('zenodo_jeton_garde', { hote })),
         el('button', { onclick: async () => { await bureau.zenodo.oublier(hote); brouillon = null; erreur.replaceChildren(); await dessiner(); } }, t('zenodo_oublier')))]
-      : [el('label', { class: 'champ' }, el('span', {}, t('zenodo_jeton')), champ),
-        el('p', { class: 'note' }, t('zenodo_jeton_aide', { hote }), ' ',
-          el('a', { href: `https://${hote}/account/settings/applications/tokens/new/`, target: '_blank', rel: 'noopener' }, t('zenodo_creer_jeton', { hote }))),
-        el('p', { class: 'note' }, t(etat.persistant ? 'zenodo_persistant' : 'zenodo_session', { hote }))]));
+      : etat.connexion
+        ? [el('div', { class: 'ligne' }, boutonConnexion), el('p', { class: 'note' }, t('zenodo_connexion_note', { hote })), garde,
+          el('details', { class: 'zenodo-par-jeton' }, el('summary', {}, t('zenodo_par_jeton')), ...parJeton)]
+        : [...parJeton, garde]));
+  };
+  // Signing in with Zenodo: its page opened in the browser, Nuée waiting for its answer (Cancel, the
+  // host changed or the dialog closed end the wait); true once signed in
+  const seConnecter = async () => {
+    if (enConnexion) return false;
+    erreur.replaceChildren();
+    const ici = hote;
+    const c = await bureau.zenodo.connexion(ici, langueActuelle());
+    if (c.erreur) { erreur.textContent = messageZenodo(c, ici); return false; }
+    enConnexion = ici;
+    zoneJeton.replaceChildren(el('p', { class: 'zenodo-attente' }, t('zenodo_attente', { hote: ici })),
+      el('div', { class: 'ligne' },
+        el('button', { onclick: () => window.open(c.adresse) }, t('zenodo_rouvrir')),
+        el('button', { class: 'zenodo-annuler', onclick: () => bureau.zenodo.annulerConnexion(ici) }, t('zenodo_annuler_connexion'))));
+    let r;
+    try {
+      r = await bureau.zenodo.attendreConnexion(ici);
+    } finally {
+      enConnexion = null;
+    }
+    if (hote !== ici || !d.boite.isConnected) return false;
+    await dessiner();
+    if (r.ok) { app.statut(t('zenodo_connecte_statut', { hote: ici })); return true; }
+    if (r.erreur) erreur.textContent = messageZenodo(r, ici);
+    else if (r.raison === 'refusee' || r.raison === 'expiree') erreur.textContent = t(`zenodo_${r.raison}`, { hote: ici });
+    return false;
   };
   const creer = async () => {
-    if (enCours) return;
+    if (enCours || enConnexion) return;
     erreur.replaceChildren();
     if (!etat.jeton) {
       const j = champ.value.trim();
-      if (!j) { erreur.textContent = t('zenodo_coller_jeton', { hote }); champ.focus(); return; }
-      const g = await bureau.zenodo.jeton(hote, j);
-      champ.value = '';
-      if (g.erreur) { erreur.textContent = t('zenodo_jeton_invalide'); return; }
-      await dessiner();
+      if (j) {
+        const g = await bureau.zenodo.jeton(hote, j);
+        champ.value = '';
+        if (g.erreur) { erreur.textContent = t('zenodo_jeton_invalide'); return; }
+        await dessiner();
+      } else if (etat.connexion) {
+        if (!(await seConnecter())) return;
+      } else {
+        erreur.textContent = t('zenodo_coller_jeton', { hote });
+        champ.focus();
+        return;
+      }
     }
     enCours = true;
     // (what went wrong, said in the dialog; a refused token shown again as not kept)
@@ -266,13 +307,14 @@ async function dialogueZenodo(app, p, meta) {
       enCours = false;
     }
   };
-  const bac = el('input', { type: 'checkbox', onchange: (e) => { hote = HOTES[e.target.checked ? 1 : 0]; champ.value = ''; erreur.replaceChildren(); dessiner(); } });
-  const d = dialogue({ titre: t('zenodo_titre'),
+  const finConnexion = () => { if (enConnexion) bureau.zenodo.annulerConnexion(enConnexion); };
+  const bac = el('input', { type: 'checkbox', onchange: (e) => { finConnexion(); hote = HOTES[e.target.checked ? 1 : 0]; champ.value = ''; erreur.replaceChildren(); dessiner(); } });
+  const d = dialogue({ titre: t('zenodo_titre'), surFermeture: finConnexion,
     contenu: el('div', { class: 'dialogue-zenodo' }, el('p', {}, t('zenodo_texte')), zoneJeton,
       el('details', {}, el('summary', {}, t('zenodo_avance')), el('label', { class: 'champ' }, bac, el('span', {}, t('zenodo_bac_a_sable')))), erreur),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('zenodo_creer'), principal: true, action: () => { creer(); return false; } }] });
   await dessiner();
-  if (!etat.jeton) champ.focus();
+  if (!etat.jeton) (etat.connexion ? boutonConnexion : champ).focus();
 }
 
 // The deposited package's link and its QR code (qr.js: codeQR), once its draft has its DOI: the link
@@ -297,7 +339,8 @@ function sectionLien(app, lien, qr, meta) {
 
 const messageZenodo = (z, hote) => {
   const cles = { jeton: 'zenodo_erreur_jeton', droits: 'zenodo_erreur_droits', refus: 'zenodo_erreur_refus', taille: 'zenodo_erreur_taille',
-    reseau: 'zenodo_erreur_reseau', sans_jeton: 'zenodo_sans_jeton', doi: 'zenodo_erreur_doi', paquet: 'zenodo_erreur_paquet' };
+    reseau: 'zenodo_erreur_reseau', sans_jeton: 'zenodo_sans_jeton', doi: 'zenodo_erreur_doi', paquet: 'zenodo_erreur_paquet',
+    port: 'zenodo_erreur_port', oauth: 'zenodo_erreur_oauth' };
   return t(cles[z.erreur] || 'zenodo_erreur_autre', { detail: z.detail || z.erreur, hote }) + (z.page ? ` ${t('zenodo_erreur_brouillon')}` : '');
 };
 
@@ -328,8 +371,14 @@ ajouterTextes({
   paquet_document_absent: '« {nom} » n’est pas dans le paquet : {erreur}', paquet_document_erreurs: '« {nom} » : {n} référence(s) ne se résolvent pas, écrites comme dans l’aperçu',
   zenodo_titre: 'Déposer sur Zenodo',
   zenodo_texte: 'Nuée crée sur Zenodo un brouillon, qui réserve son DOI, écrit le paquet avec ce DOI (son README, CITATION.cff et codemeta.json le donnent), puis l’y dépose avec sa description. Il ne publie jamais : vous vérifiez le brouillon sur Zenodo, dont la page s’ouvre, et le publiez vous-même ; son DOI est alors enregistré.',
-  zenodo_jeton: 'Jeton d’accès personnel', zenodo_jeton_garde: 'Un jeton pour {hote} est gardé sur cet ordinateur.', zenodo_oublier: 'L’oublier',
-  zenodo_jeton_aide: 'Sur {hote} : Compte › Applications › Personal access tokens › New token, avec les droits deposit:write et deposit:actions.',
+  zenodo_jeton: 'Jeton d’accès personnel', zenodo_jeton_garde: 'Nuée est connecté à {hote} sur cet ordinateur.', zenodo_oublier: 'Se déconnecter',
+  zenodo_connexion: 'Se connecter avec Zenodo',
+  zenodo_connexion_note: 'Votre navigateur ouvre la page de {hote}, où vous vous connectez et autorisez Nuée à y déposer, jamais à publier. La connexion dure 60 jours.',
+  zenodo_par_jeton: 'Ou utiliser un jeton d’accès personnel',
+  zenodo_attente: 'Dans votre navigateur, sur la page de {hote} : connectez-vous et autorisez Nuée. Nuée attend sa réponse…',
+  zenodo_rouvrir: 'Rouvrir la page', zenodo_annuler_connexion: 'Annuler la connexion', zenodo_connecte_statut: 'Connecté à {hote}.',
+  zenodo_refusee: 'L’autorisation a été refusée sur {hote} : Nuée n’y est pas connecté.', zenodo_expiree: 'Pas de réponse de {hote} en dix minutes : recommencez.',
+  zenodo_jeton_aide: 'Sur {hote} : Compte › Applications › Personal access tokens › New token, avec le droit deposit:write.',
   zenodo_creer_jeton: 'Créer un jeton sur {hote}',
   zenodo_persistant: 'Il sera gardé sur cet ordinateur, chiffré par le système, et ne quittera Nuée que vers {hote}.',
   zenodo_session: 'Le système n’a pas de trousseau pour le chiffrer : il sera gardé jusqu’à la fermeture de Nuée seulement.',
@@ -342,11 +391,13 @@ ajouterTextes({
   zenodo_lien_texte: 'Une fois le brouillon publié, ce lien ouvre le paquet dans Nuée, dans un navigateur, et le relance ; son code QR aussi (pour une affiche, une diapositive ou un article). Le paquet a les deux.',
   zenodo_copier_lien: 'Copier le lien', zenodo_enregistrer_qr: 'Enregistrer le code QR…', zenodo_lien_copie: 'Lien copié : {lien}',
   zenodo_qr_enregistre: 'Code QR enregistré : {chemin}', zenodo_qr_alt: 'Code QR de {lien}',
-  zenodo_erreur_jeton: 'Zenodo refuse le jeton (HTTP 401) : vérifiez-le, ou oubliez-le et collez-en un autre.',
-  zenodo_erreur_droits: 'Le jeton n’a pas les droits qu’il faut (HTTP 403) : deposit:write et deposit:actions.',
+  zenodo_erreur_jeton: 'Zenodo n’accepte plus cette connexion ni ce jeton (HTTP 401), que Nuée a donc oubliés : reconnectez-vous, ou donnez un autre jeton.',
+  zenodo_erreur_droits: 'La connexion ou le jeton n’a pas le droit qu’il faut (HTTP 403) : deposit:write.',
+  zenodo_erreur_port: 'Nuée ne peut pas attendre la réponse de Zenodo : les ports {detail} de cet ordinateur sont pris. Utilisez un jeton.',
+  zenodo_erreur_oauth: '{hote} n’a pas connecté Nuée : {detail}',
   zenodo_erreur_refus: 'Zenodo n’a pas pris le dépôt : {detail}', zenodo_erreur_taille: 'Le paquet est trop gros pour Zenodo (HTTP 413).',
   zenodo_erreur_reseau: 'Zenodo ne répond pas : {detail}', zenodo_erreur_autre: 'Zenodo : {detail}',
-  zenodo_erreur_brouillon: 'Le brouillon existe : finissez-le sur Zenodo, ou supprimez-le là.', zenodo_sans_jeton: 'Pas de jeton pour {hote}.',
+  zenodo_erreur_brouillon: 'Le brouillon existe : finissez-le sur Zenodo, ou supprimez-le là.', zenodo_sans_jeton: 'Nuée n’est pas connecté à {hote}.',
   zenodo_erreur_doi: 'Zenodo n’a pas réservé de DOI pour le brouillon, ou lui en donne un autre que celui du paquet.', zenodo_erreur_paquet: 'Le paquet ne s’est pas écrit : {detail}',
 }, {
   paquet: 'Export a reproducibility package…', paquet_zenodo: 'Deposit on Zenodo…',
@@ -375,8 +426,14 @@ ajouterTextes({
   paquet_document_absent: '“{nom}” isn’t in the package: {erreur}', paquet_document_erreurs: '“{nom}”: {n} reference(s) can’t be resolved, written as in the preview',
   zenodo_titre: 'Deposit on Zenodo',
   zenodo_texte: 'Nuée creates a draft on Zenodo, which reserves its DOI, writes the package with that DOI (its README, CITATION.cff and codemeta.json give it), then deposits it there with its description. It never publishes: you check the draft on Zenodo, whose page opens, and publish it yourself; its DOI is registered then.',
-  zenodo_jeton: 'Personal access token', zenodo_jeton_garde: 'A token for {hote} is kept on this computer.', zenodo_oublier: 'Forget it',
-  zenodo_jeton_aide: 'On {hote}: Account › Applications › Personal access tokens › New token, with the scopes deposit:write and deposit:actions.',
+  zenodo_jeton: 'Personal access token', zenodo_jeton_garde: 'Nuée is signed in to {hote} on this computer.', zenodo_oublier: 'Sign out',
+  zenodo_connexion: 'Sign in with Zenodo',
+  zenodo_connexion_note: 'Your browser opens {hote}’s page, where you sign in and allow Nuée to upload there, never to publish. The sign-in lasts 60 days.',
+  zenodo_par_jeton: 'Or use a personal access token',
+  zenodo_attente: 'In your browser, on {hote}’s page: sign in and authorize Nuée. Nuée is waiting for its answer…',
+  zenodo_rouvrir: 'Open the page again', zenodo_annuler_connexion: 'Cancel sign-in', zenodo_connecte_statut: 'Signed in to {hote}.',
+  zenodo_refusee: 'The authorization was declined on {hote}: Nuée isn’t signed in there.', zenodo_expiree: 'No answer from {hote} in ten minutes: start again.',
+  zenodo_jeton_aide: 'On {hote}: Account › Applications › Personal access tokens › New token, with the scope deposit:write.',
   zenodo_creer_jeton: 'Create a token on {hote}',
   zenodo_persistant: 'It will be kept on this computer, encrypted by the system, and will leave Nuée only for {hote}.',
   zenodo_session: 'The system has no keyring to encrypt it: it will be kept until Nuée closes only.',
@@ -389,10 +446,12 @@ ajouterTextes({
   zenodo_lien_texte: 'Once the draft is published, this link opens the package in Nuée, in a browser, and reruns it; so does its QR code (for a poster, a slide or a paper). The package holds both.',
   zenodo_copier_lien: 'Copy link', zenodo_enregistrer_qr: 'Save the QR code…', zenodo_lien_copie: 'Link copied: {lien}',
   zenodo_qr_enregistre: 'QR code saved: {chemin}', zenodo_qr_alt: 'QR code of {lien}',
-  zenodo_erreur_jeton: 'Zenodo refuses the token (HTTP 401): check it, or forget it and paste another one.',
-  zenodo_erreur_droits: 'The token doesn’t have the scopes it needs (HTTP 403): deposit:write and deposit:actions.',
+  zenodo_erreur_jeton: 'Zenodo no longer accepts this sign-in or token (HTTP 401), so Nuée has forgotten it: sign in again, or give another token.',
+  zenodo_erreur_droits: 'The sign-in or token doesn’t have the scope it needs (HTTP 403): deposit:write.',
+  zenodo_erreur_port: 'Nuée can’t wait for Zenodo’s answer: this computer’s ports {detail} are taken. Use a token instead.',
+  zenodo_erreur_oauth: '{hote} didn’t sign Nuée in: {detail}',
   zenodo_erreur_refus: 'Zenodo didn’t take the deposit: {detail}', zenodo_erreur_taille: 'The package is too big for Zenodo (HTTP 413).',
   zenodo_erreur_reseau: 'Zenodo doesn’t answer: {detail}', zenodo_erreur_autre: 'Zenodo: {detail}',
-  zenodo_erreur_brouillon: 'The draft exists: finish it on Zenodo, or delete it there.', zenodo_sans_jeton: 'No token for {hote}.',
+  zenodo_erreur_brouillon: 'The draft exists: finish it on Zenodo, or delete it there.', zenodo_sans_jeton: 'Nuée isn’t signed in to {hote}.',
   zenodo_erreur_doi: 'Zenodo reserved no DOI for the draft, or gives it another one than the package’s.', zenodo_erreur_paquet: 'The package couldn’t be written: {detail}',
 });

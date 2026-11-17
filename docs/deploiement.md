@@ -241,7 +241,9 @@ of the plugins as its value.
   spell-checker; where they can't be downloaded, documents are simply not spell-checked); and,
   when a user asks Nuée to install R packages (from 1.1) — those another R lacks (*File ›
   Settings…*), or those a plugin needs (*File › Plugins…*), into Nuée's own R as into another —,
-  their download from CRAN (`cloud.r-project.org`), made by that R itself. There is no telemetry,
+  their download from CRAN (`cloud.r-project.org`), made by that R itself; and a reproducibility
+  package a user deposits on Zenodo (from 1.2, *File › Deposit on Zenodo…*), to `zenodo.org` (or
+  `sandbox.zenodo.org`, its test server), as a draft. There is no telemetry,
   no usage statistics, no crash report, no account of Nuée's own and no licence server.
 - All of it goes through the system's proxy settings and certificates, as Chrome does (see
   [Proxies and certificates](#proxies-and-certificates)), except the downloads from CRAN, which R
@@ -252,6 +254,9 @@ of the plugins as its value.
   each request must carry a random token drawn at each start, in a cookie that no other site can
   send, and name 127.0.0.1 as its host. Web pages open in a browser can't use it, and neither can
   other users of a shared computer (Remote Desktop).
+- *Sign in with Zenodo* (from 1.2) listens on `127.0.0.1` as well, port 47864 (or 47865 when another
+  program has it), from the click until Zenodo's page sends the browser back with its answer, ten
+  minutes at most; again no firewall rule is needed.
 
 ## Proxies and certificates
 
@@ -261,7 +266,8 @@ check: the system's proxy settings (manual, a PAC file or WPAD) and the system's
 store apply, so a proxy that inspects TLS works once its root certificate is trusted by the
 computer, as in Chrome or Edge. The hosts are `github.com`, `api.github.com` and
 `avatars.githubusercontent.com` (the account's picture) for GitHub; `gitlab.com`, or your own
-GitLab's host. The page where users approve Nuée opens in their default browser. *Use this
+GitLab's host. Zenodo is reached the same way (`zenodo.org`, and `sandbox.zenodo.org` for a test
+deposit). The page where users approve Nuée opens in their default browser. *Use this
 computer's git sign-in*, in the sign-in dialog, asks the git installed on the computer for its
 stored sign-in (`git credential fill`), which follows git's own settings. The spell-checking
 dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
@@ -278,7 +284,7 @@ dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
 | Projects | Wherever users save them (`.nuee`) |
 | Projects' versions (1.1) | A hidden folder beside the projects, `.nuee-versions`: see [The versions folder](#the-versions-folder) |
 | Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
-| Sign-ins and tokens for GitHub and GitLab, and the Zenodo token of *File › Deposit on Zenodo…*, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
+| Sign-ins and tokens for GitHub and GitLab, and the Zenodo sign-in or token of *File › Deposit on Zenodo…*, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
 | The R a user chose in *File › Settings…* (1.1) | `%APPDATA%\Nuee\reglages.json` |
 | The plugins a user installed (1.1) | `%APPDATA%\Nuee\greffons`, one folder per plugin (its `plugin.json` and R files); approving them, their fingerprints in `reglages.json` |
 | Packages installed for that R, or for a plugin, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |

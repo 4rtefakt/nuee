@@ -97,12 +97,16 @@ contextBridge.exposeInMainWorld('bureau', {
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
   // Zenodo, for a reproducibility package (paquet.js, zenodo.js), given a host (zenodo.org,
-  // sandbox.zenodo.org): whether a token is kept (the main process never gives it back), keeping
-  // one, forgetting it; a draft created with its DOI reserved ({ id, doi, page }), then the package
-  // (a .zip the engine wrote in its session folder, with that DOI) deposited in it, never
-  // published; each answers { erreur } when it can't
+  // sandbox.zenodo.org): whether a token is kept (the main process never gives it back), signing in
+  // with Zenodo (its page opened in the browser: { adresse }; then its answer waited for, or the
+  // sign-in cancelled), keeping a token pasted, forgetting it; a draft created with its DOI reserved
+  // ({ id, doi, page }), then the package (a .zip the engine wrote in its session folder, with that
+  // DOI) deposited in it, never published; each answers { erreur } when it can't
   zenodo: {
     etat: (hote) => ipcRenderer.invoke('zenodo-etat', hote),
+    connexion: (hote, langue) => ipcRenderer.invoke('zenodo-connexion', hote, langue),
+    attendreConnexion: (hote) => ipcRenderer.invoke('zenodo-attendreConnexion', hote),
+    annulerConnexion: (hote) => ipcRenderer.invoke('zenodo-annulerConnexion', hote),
     jeton: (hote, jeton) => ipcRenderer.invoke('zenodo-jeton', hote, jeton),
     oublier: (hote) => ipcRenderer.invoke('zenodo-oublier', hote),
     brouillon: (hote) => ipcRenderer.invoke('zenodo-brouillon', hote),

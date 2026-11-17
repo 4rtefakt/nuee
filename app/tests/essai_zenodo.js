@@ -5,15 +5,18 @@
 // reservation refused, and the other ways it goes wrong. Then creerZenodo, what main.js gives the
 // interface: the token of each host kept in the store of the versions and the sign-ins
 // (versions.js: magasinJetons, with a stand-in for Electron's safeStorage), never given back, the
-// drafts in that order, and the deposit of a .zip of the engine's session folder only. Nothing here
-// reaches zenodo.org or sandbox.zenodo.org.
+// drafts in that order, and the deposit of a .zip of the engine's session folder only. Then signing
+// in with Zenodo against a stand-in for its OAuth server: Nuée listening on 127.0.0.1 at its
+// registered ports, the code exchanged for a token by a public client, the state checked, declined,
+// refused, cancelled, replaced, too late, the ports taken. Nothing here reaches zenodo.org or
+// sandbox.zenodo.org.
 //   node tests/essai_zenodo.js
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { creerZenodo, creerBrouillon, remplirBrouillon, metadonneesZenodo, DOI_NUEE } = require('../zenodo');
+const { creerZenodo, creerBrouillon, remplirBrouillon, metadonneesZenodo, DOI_NUEE, PORTS_RETOUR } = require('../zenodo');
 const { magasinJetons } = require('../versions');
 
 let echecs = 0;
@@ -70,6 +73,65 @@ function zenodo() {
   });
   return new Promise((ok) => s.serveur.listen(0, '127.0.0.1', () => ok(s)));
 }
+
+// A stand-in for Zenodo's OAuth server (invenio-oauth2server), the user already signed in there:
+// /oauth/authorize authorizes at once, the browser sent back to the address given with a code and
+// the state (`mode` refus: declined, error=access_denied); /oauth/token gives the token for that code
+// to a public client (its id and the same address, no secret), or refuses it (`mode` mauvais_code:
+// invalid_grant). Every request recorded, with what it asked.
+const JETON_OAUTH = 'oaTOKENfromSigningIn0123456789abcdefABCDEF0123456789abcdef';
+function oauth() {
+  const s = { recues: [], mode: '', codes: new Map() };
+  s.serveur = http.createServer((req, res) => {
+    const morceaux = [];
+    req.on('data', (d) => morceaux.push(d));
+    req.on('end', () => {
+      const u = new URL(req.url, 'http://x');
+      const corps = Buffer.concat(morceaux).toString('utf8');
+      const champs = Object.fromEntries(new URLSearchParams(corps));
+      s.recues.push({ method: req.method, chemin: u.pathname, question: Object.fromEntries(u.searchParams), champs, type: req.headers['content-type'] || '' });
+      if (req.method === 'GET' && u.pathname === '/oauth/authorize') {
+        const q = Object.fromEntries(u.searchParams);
+        const vers = new URL(q.redirect_uri);
+        if (s.mode === 'refus') vers.searchParams.set('error', 'access_denied');
+        else {
+          const code = crypto.randomBytes(12).toString('hex');
+          s.codes.set(code, q);
+          vers.searchParams.set('code', code);
+        }
+        vers.searchParams.set('state', q.state);
+        res.writeHead(302, { Location: vers.href });
+        res.end();
+      } else if (req.method === 'POST' && u.pathname === '/oauth/token') {
+        const q = s.codes.get(champs.code);
+        const json = (statut, x) => { res.writeHead(statut, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(x)); };
+        if (s.mode === 'mauvais_code' || !q || champs.grant_type !== 'authorization_code' || champs.client_id !== q.client_id || champs.redirect_uri !== q.redirect_uri) {
+          json(400, { error: 'invalid_grant', error_description: `the code ${champs.code} is not valid` });
+          return;
+        }
+        s.codes.delete(champs.code);
+        json(200, { access_token: JETON_OAUTH, token_type: 'Bearer', expires_in: 5184000, scope: q.scope, refresh_token: 'rafraichissement-inutile', user: { id: '4242' } });
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+  });
+  return new Promise((ok) => s.serveur.listen(0, '127.0.0.1', () => ok(s)));
+}
+
+// The browser at Zenodo's page: sent back to Nuée (the redirect followed); where it ended, and the
+// page Nuée showed there
+async function navigateur(adresse) {
+  const r = await fetch(adresse);
+  return { url: r.url, statut: r.status, connexion: r.headers.get('connection'), texte: await r.text() };
+}
+
+// Whether something listens on 127.0.0.1 at that port
+const ecoute = (port) => new Promise((ok) => {
+  const c = require('net').connect(port, '127.0.0.1', () => { c.destroy(); ok(true); });
+  c.on('error', () => ok(false));
+});
 
 // The package as the engine writes it once the DOI is known (moteur/R/paquet.R): here, bytes with
 // the DOI among them, in a .zip of `ici`
@@ -189,14 +251,15 @@ const requetes = (s) => s.recues.map((x) => `${x.method} ${x.url}`).join(' | ');
   fs.mkdirSync(session);
   const ouverts = [];
   const z = creerZenodo({ jetons: magasin(), base: () => base, dossier: () => session, ouvrir: (page) => ouverts.push(page) });
-  verifier('no token kept yet, and one kept would outlive the session', JSON.stringify(await z.etat('zenodo.org')) === '{"jeton":false,"persistant":true}');
+  verifier('no token kept yet, one kept would outlive the session, and no application registered in this copy of Nuée (IDS: a placeholder)',
+    JSON.stringify(await z.etat('zenodo.org')) === '{"jeton":false,"persistant":true,"connexion":false}' && (await z.connexion('zenodo.org')).erreur === 'non_regle');
   const garde = await z.jeton('zenodo.org', `  ${JETON}\n`);
   const texte = fs.readFileSync(f, 'utf8');
   verifier('kept under zenodo.org, encrypted, in the same file as github.com’s, which stays', garde.persistant === true && !texte.includes(JETON)
     && Object.keys(JSON.parse(texte)).sort().join() === 'github.com,zenodo.org' && await magasin().lire('github.com') === GITHUB, texte);
   const etat = await z.etat('zenodo.org');
   verifier('the interface learns that a token is kept, never the token; the next session reads it; one host at a time',
-    JSON.stringify(etat) === '{"jeton":true,"persistant":true}' && await magasin().lire('zenodo.org') === JETON
+    JSON.stringify(etat) === '{"jeton":true,"persistant":true,"connexion":false}' && await magasin().lire('zenodo.org') === JETON
       && (await creerZenodo({ jetons: magasin(), dossier: () => session }).etat('zenodo.org')).jeton === true && (await z.etat('sandbox.zenodo.org')).jeton === false);
   verifier('another host, or what isn’t a token, refused: nothing kept',
     (await z.jeton('github.com', JETON)).erreur === 'demande' && (await z.etat('evil.example')).erreur === 'demande' && (await z.oublier('github.com')).erreur === 'demande'
@@ -235,9 +298,11 @@ const requetes = (s) => s.recues.map((x) => `${x.method} ${x.url}`).join(' | ');
   s.mode = '';
   verifier('a DOI not reserved: code doi with the draft’s page, and that draft can’t be given a package', sansDoi.erreur === 'doi' && sansDoi.page === `${base}/deposit/4242`
     && (await z.deposer('zenodo.org', 4242, zip, META)).erreur === 'demande', JSON.stringify(sansDoi));
-  const refuse = await creerZenodo({ jetons: { lire: async () => 'faux-jeton-qui-ne-marche-pas', present: async () => true, seulementSession: async () => false },
-    base: () => base, dossier: () => session }).brouillon('zenodo.org');
-  verifier('a token refused: its code, and its detail without the token', refuse.erreur === 'jeton' && !JSON.stringify(refuse).includes('faux-jeton'), JSON.stringify(refuse));
+  const ecrits = [];
+  const refuse = await creerZenodo({ jetons: { lire: async () => 'faux-jeton-qui-ne-marche-pas', present: async () => true, seulementSession: async () => false,
+    ecrire: async (h, j) => { ecrits.push([h, j]); } }, base: () => base, dossier: () => session }).brouillon('zenodo.org');
+  verifier('a token refused (401): its code, its detail without the token, and forgotten (expired, or replaced by a sign-in elsewhere)',
+    refuse.erreur === 'jeton' && !JSON.stringify(refuse).includes('faux-jeton') && JSON.stringify(ecrits) === '[["zenodo.org",""]]', JSON.stringify([refuse, ecrits]));
   await z.oublier('zenodo.org');
   verifier('forgotten: gone from the file, github.com’s kept', !(await z.etat('zenodo.org')).jeton && !('zenodo.org' in JSON.parse(fs.readFileSync(f, 'utf8')))
     && await magasin().lire('github.com') === GITHUB);
@@ -247,8 +312,98 @@ const requetes = (s) => s.recues.map((x) => `${x.method} ${x.url}`).join(' | ');
   const g2 = await z2.jeton('zenodo.org', JETON);
   verifier('without encryption: kept for the session only, nothing written', g2.persistant === false && (await z2.etat('zenodo.org')).jeton && !fs.existsSync(f2)
     && !(await creerZenodo({ jetons: magasin(false, f2), dossier: () => session }).etat('zenodo.org')).jeton);
+  // ---- Signing in with Zenodo, against the stand-in of its OAuth server: Nuée's application there
+  // "nuee-essai" (as main.js gives it with NUEE_ZENODO), the browser a fetch that follows Zenodo's
+  // redirect back to Nuée
+  const o = await oauth();
+  const baseO = `http://127.0.0.1:${o.serveur.address().port}`;
+  const f3 = path.join(dossier, 'jetons-connexion.json');
+  const ouvertes = [];
+  const zc = (options = {}) => creerZenodo({ jetons: magasin(true, f3), base: () => baseO, dossier: () => session, ouvrirNavigateur: (a) => ouvertes.push(a),
+    idClient: () => 'nuee-essai', delaiConnexion: 20000, ...options });  // (a sign-in that never hears back fails in 20 s, not ten minutes)
+  const c = zc();
+  const etatC = await c.etat('zenodo.org');
+  const debut = await c.connexion('zenodo.org', 'fr');
+  const q = debut.adresse ? Object.fromEntries(new URL(debut.adresse).searchParams) : {};
+  verifier('signing in: Zenodo’s page to authorize Nuée opened in the browser, on the host, asking for a code, deposit:write alone, and the way back to Nuée',
+    etatC.connexion === true && debut.adresse && debut.adresse.startsWith(`${baseO}/oauth/authorize?`) && ouvertes.join() === debut.adresse && q.response_type === 'code'
+      && q.client_id === 'nuee-essai' && q.scope === 'deposit:write' && q.redirect_uri === `http://127.0.0.1:${PORTS_RETOUR[0]}/zenodo` && /^[0-9a-f]{48}$/.test(q.state)
+      && Object.keys(q).length === 5, debut.adresse);
+  const vu = await navigateur(debut.adresse);
+  const fini = await c.attendreConnexion('zenodo.org');
+  const echange = o.recues.find((x) => x.chemin === '/oauth/token') || { champs: {} };
+  verifier('Zenodo’s code exchanged for a token: the code, the client id and the same way back, a form, no secret; the token kept, encrypted, never given back',
+    fini.ok === true && fini.persistant === true && JSON.stringify(Object.keys(echange.champs).sort()) === '["client_id","code","grant_type","redirect_uri"]'
+      && echange.champs.grant_type === 'authorization_code' && echange.champs.client_id === 'nuee-essai' && echange.champs.redirect_uri === q.redirect_uri
+      && echange.type === 'application/x-www-form-urlencoded' && await magasin(true, f3).lire('zenodo.org') === JETON_OAUTH
+      && !fs.readFileSync(f3, 'utf8').includes(JETON_OAUTH) && !JSON.stringify([debut, fini, await c.etat('zenodo.org')]).includes(JETON_OAUTH)
+      && (await c.etat('zenodo.org')).jeton === true, JSON.stringify([fini, echange]));
+  verifier('the browser back at Nuée’s address, shown that Nuée is signed in (in the interface’s language), the connection closed (kept, the next sign-in’s answer would reach this one’s server); then Nuée no longer listens there',
+    vu.url.startsWith(`${q.redirect_uri}?code=`) && vu.statut === 200 && vu.texte.includes('Nuée est connecté à Zenodo') && vu.connexion === 'close'
+      && !(await ecoute(PORTS_RETOUR[0])), JSON.stringify(vu));
+  // another state (an old tab, another sign-in's): refused, the sign-in still waiting; then Zenodo's
+  // own answer
+  o.recues.length = 0;
+  const debut2 = await c.connexion('sandbox.zenodo.org');
+  const retour2 = new URL(debut2.adresse).searchParams.get('redirect_uri');
+  const intrus = await navigateur(`${retour2}?code=abc&state=${'0'.repeat(48)}`);
+  const vu2 = await navigateur(debut2.adresse);
+  const fini2 = await c.attendreConnexion('sandbox.zenodo.org');
+  verifier('another state than the one given to Zenodo: refused, nothing exchanged, the sign-in going on; then the right one, the host’s token kept apart',
+    intrus.statut === 400 && intrus.texte.includes('isn’t the sign-in Nuée is waiting for') && vu2.statut === 200 && vu2.texte.includes('Nuée is signed in to Zenodo')
+      && fini2.ok === true && o.recues.filter((x) => x.chemin === '/oauth/token').length === 1 && await magasin(true, f3).lire('sandbox.zenodo.org') === JETON_OAUTH,
+    JSON.stringify([intrus.statut, fini2]));
+  // the authorization declined on Zenodo; a code Zenodo then refuses
+  await c.oublier('zenodo.org');
+  o.mode = 'refus';
+  const d3 = await c.connexion('zenodo.org');
+  const vu3 = await navigateur(d3.adresse);
+  const fini3 = await c.attendreConnexion('zenodo.org');
+  o.mode = 'mauvais_code';
+  const d4 = await c.connexion('zenodo.org');
+  const vu4 = await navigateur(d4.adresse);
+  const fini4 = await c.attendreConnexion('zenodo.org');
+  o.mode = '';
+  const code4 = new URL(vu4.url).searchParams.get('code');
+  verifier('declined on Zenodo: refusee, nothing kept; a code Zenodo refuses: code oauth with Zenodo’s words, the code taken out, nothing kept; each said in the browser',
+    fini3.ok === false && fini3.raison === 'refusee' && vu3.texte.includes('declined') && fini4.erreur === 'oauth' && /invalid_grant/.test(fini4.detail)
+      && !!code4 && !fini4.detail.includes(code4) && vu4.texte.includes('couldn’t sign in') && !(await c.etat('zenodo.org')).jeton, JSON.stringify([fini3, fini4]));
+  // cancelled, replaced by another, no answer in time; the ports taken; the host and the sign-in asked for
+  const d5 = await c.connexion('zenodo.org');
+  const attente5 = c.attendreConnexion('zenodo.org');
+  const d6 = await c.connexion('zenodo.org');
+  const fini5 = await attente5;
+  await c.annulerConnexion('zenodo.org');
+  const fini6 = await c.attendreConnexion('zenodo.org');
+  const lent = zc({ delaiConnexion: 200 });
+  await lent.connexion('zenodo.org');
+  const fini7 = await lent.attendreConnexion('zenodo.org');
+  verifier('a sign-in replaced by a new one, cancelled, or without an answer in time (expiree): ended, nothing kept, Nuée no longer listening',
+    !!d5.adresse && !!d6.adresse && fini5.raison === 'annulee' && fini6.raison === 'annulee' && fini7.raison === 'expiree' && !(await c.etat('zenodo.org')).jeton
+      && !(await ecoute(PORTS_RETOUR[0])) && !(await ecoute(PORTS_RETOUR[1])), JSON.stringify([fini5, fini6, fini7]));
+  const pris = [];
+  for (let k = 0; k < 2; k += 1) pris.push(await new Promise((ok) => { const x = http.createServer(); x.listen(0, '127.0.0.1', () => ok(x)); }));
+  const [p1, p2] = pris.map((x) => x.address().port);
+  const libre = await new Promise((ok) => { const x = http.createServer(); x.listen(0, '127.0.0.1', () => { const p = x.address().port; x.close(() => ok(p)); }); });
+  const second = zc({ ports: [p1, libre] });
+  const d8 = await second.connexion('zenodo.org');
+  await second.annulerConnexion('zenodo.org');
+  const aucun = await zc({ ports: [p1, p2] }).connexion('zenodo.org');
+  for (const x of pris) await new Promise((ok) => x.close(ok));
+  verifier('the first port taken by another program: the second; both taken: code port, naming them',
+    new URL(d8.adresse).searchParams.get('redirect_uri') === `http://127.0.0.1:${libre}/zenodo` && aucun.erreur === 'port' && aucun.detail === `${p1}, ${p2}`,
+    JSON.stringify([d8, aucun]));
+  verifier('another host, or no sign-in under way: refused',
+    (await c.connexion('evil.example')).erreur === 'demande' && (await c.attendreConnexion('evil.example')).erreur === 'aucune'
+      && (await zc().attendreConnexion('sandbox.zenodo.org')).erreur === 'aucune');
+  // signed in, then the token refused by Zenodo (a sign-in to the same account elsewhere since): forgotten
+  const zr = creerZenodo({ jetons: magasin(true, f3), base: () => base, dossier: () => session });
+  const refuse2 = await zr.brouillon('sandbox.zenodo.org');
+  verifier('the sign-in’s token refused (401): forgotten, Sign in offered again', refuse2.erreur === 'jeton' && !(await zr.etat('sandbox.zenodo.org')).jeton, JSON.stringify(refuse2));
+  verifier('never a client secret, in an address or a form', o.recues.every((x) => !JSON.stringify([x.question, x.champs]).includes('secret')));
+
   // (fetch keeps its connections open: closed from the server's side, before leaving)
-  for (const x of [s, autre]) {
+  for (const x of [s, autre, o]) {
     x.serveur.closeAllConnections();
     await new Promise((ok) => x.serveur.close(ok));
   }

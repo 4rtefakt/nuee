@@ -43,8 +43,8 @@ function adresses(hote) {
     : { code: `https://${hote}/oauth/authorize_device`, jeton: `https://${hote}/oauth/token`, api: `https://${hote}/api/v4`, portee: 'api read_user write_repository' };
 }
 
-// A client id as GitHub (Ov23li…, Iv1.…) and GitLab (64 hex digits) give them; a placeholder such
-// as "<to fill>" isn't one
+// A client id as GitHub (Ov23li…, Iv1.…), GitLab (64 hex digits) and Zenodo (zenodo.js: 40 letters
+// and digits) give them; a placeholder such as "<to fill>" isn't one
 const idValide = (id) => typeof id === 'string' && /^[\w.-]{6,200}$/.test(id);
 
 // git on the PATH, or null. macOS's /usr/bin/git counts only once the command line tools are
@@ -729,4 +729,4 @@ function creerComptes({ fetch, jeton: ecrireJeton, jetons, renouvellements, regl
   };
 }
 
-module.exports = { creerComptes, nomDepot, titreGitlab, trouverGit };
+module.exports = { creerComptes, nomDepot, titreGitlab, trouverGit, idValide };
