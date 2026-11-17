@@ -108,8 +108,11 @@ async function session(url) {
 // What the main process does instead of the system's dialogs, opening files and following links
 // (installed once its inspector answers; main.js holds the same `dialog`, `shell` and `app`).
 const SUBSTITUTS = `(() => {
-  // (the inspector's own require, until main.js is the main module)
-  const { dialog, shell, app } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  // (not before main.js is the main module: until Electron has set itself up, the inspector's own
+  // require finds the npm package electron from the program's working folder, whose index.js
+  // downloads Electron when it isn't there, holding the main process for good: GitHub's arm64 Mac)
+  if (!process.mainModule) return false;
+  const { dialog, shell, app } = process.mainModule.require('electron');
   const E = globalThis.__essai = globalThis.__essai || { ouvrir: [], enregistrer: [], messages: [], appels: [], ouverts: [], liens: [], recents: [] };
   const sans = (a, b) => (b === undefined ? a : b);  // (the window is optional)
   dialog.showOpenDialog = async (a, b) => {
@@ -147,7 +150,7 @@ const SUBSTITUTS = `(() => {
 // tracking off, demarrer; their pages never throttled as hidden ones).
 const HORS_ECRAN = process.env.NUEE_HORS_ECRAN === '1';
 const SANS_ECRAN = `(() => {
-  const { app, BrowserWindow } = (process.mainModule ? process.mainModule.require.bind(process.mainModule) : require)('electron');
+  const { app, BrowserWindow } = process.mainModule.require('electron');  // (after SUBSTITUTS)
   const cacher = (w) => { w.setPosition(-32000, -32000); w.setSkipTaskbar(true); w.webContents.setBackgroundThrottling(false); };
   BrowserWindow.prototype.show = function show() { cacher(this); this.showInactive(); };
   BrowserWindow.prototype.focus = function focus() {};
@@ -343,7 +346,8 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
       const v = await f();
       if (v) return v;
       if (!vivant()) throw new Error(`the program stopped (code ${proc.exitCode}) while waiting for ${quoi}:\n${sortie.slice(-2000)}`);
-      if (Date.now() > fin) throw new Error(`waited ${ms / 1000} s for ${quoi}`);
+      // (what the program wrote meanwhile, to tell a slow start from a stuck one)
+      if (Date.now() > fin) throw new Error(`waited ${ms / 1000} s for ${quoi}; the program wrote:\n${sortie.slice(-2000) || '(nothing)'}`);
       await attente(200);
     }
   };
@@ -351,15 +355,16 @@ async function demarrer({ programme, options = [], dossier, profil = path.join(d
   const lister = async (port) => { try { return await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) })).json(); } catch { return null; } };
 
   try {
-    // the main process first: its dialogs answered before the window can ask anything
-    const cibleNode = await jusqua(async () => ((await lister(portNode)) || [])[0], 30000, 'the main process’s inspector');
+    // the main process first: its dialogs answered before the window can ask anything (90 s at
+    // most: a program started again on a busy macOS Intel runner took more than 30)
+    const cibleNode = await jusqua(async () => ((await lister(portNode)) || [])[0], 90000, 'the main process’s inspector');
     const principal = await session(cibleNode.webSocketDebuggerUrl);
     const evaluerPrincipal = async (expression) => {
       const r = await principal.envoyer('Runtime.evaluate', { expression, includeCommandLineAPI: true, returnByValue: true, awaitPromise: true });
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
       return r.result.value;
     };
-    await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 30000, 'the main process’s modules');
+    await jusqua(() => evaluerPrincipal(SUBSTITUTS).catch(() => false), 90000, 'the main process’s modules');
     await evaluerPrincipal(GARDIEN(process.pid));
     if (HORS_ECRAN) await evaluerPrincipal(SANS_ECRAN);
 
@@ -493,9 +498,20 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       async fermerFenetre() {
         await f.evaluer('setTimeout(() => window.close(), 50), true').catch(() => {});
         s.fermer();
-        const fin = Date.now() + 5000;
-        while (Date.now() < fin && ((await lister(portPage)) || []).some((c) => c.id === cible.id)) await attente(100);
+        await partie();
       },
+      // a click on what closes its own window (Move back): the window may be gone before the click's
+      // answer, so the connection's closing is no error then; gone too before the run goes on
+      async cliquerQuiFerme(expression) {
+        await f.cliquer(expression).catch((e) => { if (!/: connection closed$/.test(e.message)) throw e; });
+        s.fermer();
+        await partie();
+      },
+    };
+    // (the window gone from the program's pages, 5 s at most)
+    const partie = async () => {
+      const fin = Date.now() + 5000;
+      while (Date.now() < fin && ((await lister(portPage)) || []).some((c) => c.id === cible.id)) await attente(100);
     };
     await f.attendre("document.readyState === 'complete'");
     await f.evaluer(`window.__essai || ${ESPION}`);
