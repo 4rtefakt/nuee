@@ -93,7 +93,10 @@ read again at each build, so a build takes the latest versions. None of it is co
 from the `_headers` that `construire_navigateur.js` writes for a site of its own, then removed),
 and takes the landing page's security policy off it: the app's page has its own, which lets R compile
 (`'wasm-unsafe-eval'`) and fetch from repo.r-wasm.org. Workers' static assets redirect `/app` to
-`/app/` themselves (`html_handling`), the query kept; the Worker isn't involved.
+`/app/` themselves (`html_handling`), the query kept; the Worker isn't involved. The copy's
+`.tgz` files, whose names carry their version, are kept a year (`/app/repo/bin/*.tgz`,
+`immutable`); its index (`PACKAGES`, `.gz`, `.rds`) is checked again at each visit, so that a new
+copy is seen at once. `robots.txt` keeps crawlers out of `/app/repo/`.
 
 To check it as served, with `npx wrangler dev` running:
 

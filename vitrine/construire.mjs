@@ -290,7 +290,9 @@ ecrire(path.join(DIST, 'fr', '404.html'), page404('fr', v));
 // copy of the R packages it installs (app/miroir_webr.mjs), so that a first visit asks nothing of
 // another site. Its headers, webR's two (its _headers, written for a site of its own), go under
 // /app/ after the page's rules, which Cloudflare applies in order: there they also take the page's
-// security policy off, since the app's page has its own.
+// security policy off, since the app's page has its own. The copy's binaries, whose names carry
+// their version, are kept a year; its index (PACKAGES, .gz, .rds) is checked again at each visit,
+// so that a new copy is seen at once. Crawlers keep out of the copy (robots.txt).
 const APP = path.join(DIST, 'app');
 for (const script of ['construire_navigateur.js', 'miroir_webr.mjs']) execFileSync(process.execPath, [path.join(DEPOT, 'app', script), APP], { stdio: 'inherit' });
 const entetesApp = lire(APP, '_headers').replace(/^\/(.*)$/gm, '/app/$1\n  ! Content-Security-Policy');
@@ -306,8 +308,11 @@ ecrire(path.join(DIST, '_headers'), `/assets/*
   Permissions-Policy: geolocation=(), camera=(), microphone=()
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
 
-${entetesApp}`);
-ecrire(path.join(DIST, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://nuee.io/sitemap.xml\n');
+${entetesApp}
+/app/repo/bin/*.tgz
+  Cache-Control: public, max-age=31536000, immutable
+`);
+ecrire(path.join(DIST, 'robots.txt'), 'User-agent: *\nDisallow: /app/repo/\nAllow: /\n\nSitemap: https://nuee.io/sitemap.xml\n');
 const alternees = '<xhtml:link rel="alternate" hreflang="en" href="https://nuee.io/"/><xhtml:link rel="alternate" hreflang="fr" href="https://nuee.io/fr/"/>';
 ecrire(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
