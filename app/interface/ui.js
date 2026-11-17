@@ -100,8 +100,7 @@ export function fermerMenus(rendre = true) {
 // Enter or Space to run one, right to open a submenu (in a menu of the menu bar, else the next
 // menu), left or Escape to go back, Tab to leave. (A disabled item can be reached, not run.)
 export function construireMenu(items, surFermeture, parent = null) {
-  // (out of sight, and out of the pointer's reach, until placer() has put it in its place)
-  const m = el('div', { class: 'menu', role: 'menu', tabindex: -1, style: { visibility: 'hidden' } });
+  const m = el('div', { class: 'menu', role: 'menu', tabindex: -1 });
   m._parent = parent;
   m._fermerSous = () => {
     if (!m._sous) return;
@@ -201,7 +200,6 @@ function placer(m, x, y, xAlternatif) {
   if (gx + r.width > vw) gx = xAlternatif !== undefined ? xAlternatif - r.width : vw - r.width - 4;
   m.style.left = Math.max(2, gx) + 'px';
   m.style.top = Math.max(2, Math.min(y, vh - r.height - 4)) + 'px';
-  m.style.visibility = '';
 }
 
 // The element in focus, where the keyboard goes back after a menu (not the page itself, nor a menu)
