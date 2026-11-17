@@ -5,7 +5,13 @@
 // random forests, whose package the browser version lacks, say they need the desktop app while
 // the rest goes on; the recovery copies: a reload, then a closed tab, offer the projects again,
 // with their models and their unsaved changes, and a second tab open meanwhile is offered
-// nothing. The time of each request goes to <folder>/demandes.json.
+// nothing, and without OPFS's createWritable they go to IndexedDB. Then 1.1 in a tab of its own:
+// History and Share say they need the desktop app; a table opened (File › Open), a data step (New
+// variable), Data steps, Update the data with next year's file chosen in the page, What changed;
+// a project saved, opened, saved again, downloaded each time; an R-code model, its package
+// (Kendall) installed from webR's repository, and one needing ranger refused; a plugin installed
+// from its file and fitted; the help panel's guide; reloaded, the plugin and the approvals still
+// there. The time of each request goes to <folder>/demandes.json.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--sortie=<folder>] [--visible]
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
 //   PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell
@@ -122,7 +128,9 @@ async function nouveauModele(page, reglages) {
     const { dialogueModele } = await import('./dialogues.js');
     const p = app.projet(app.projetActif());
     const u = (nom) => p.variables.find((v) => v.nom === nom).uid;
-    const q = { ...r, x: r.x.map(u), y: r.y.map(u), ...(r.aleatoires ? { aleatoires: r.aleatoires.map((v) => ({ by: 'variable', variable: u(v) })) } : {}) };
+    // (an R-code model has no X or Y; a plugin's inputs are given by their variables' names)
+    const q = { ...r, x: (r.x || []).map(u), y: (r.y || []).map(u), ...(r.aleatoires ? { aleatoires: r.aleatoires.map((v) => ({ by: 'variable', variable: u(v) })) } : {}),
+      ...(r.entrees ? { options: { ...r.options, entrees: Object.fromEntries(Object.entries(r.entrees).map(([k, v]) => [k, v.map(u)])) } } : {}) };
     dialogueModele(app, p, q);
   }, reglages);
   await page.click('.fond-dialogue .pied-dialogue button.principal');
@@ -325,6 +333,159 @@ try {
   });
   verifier('sans OPFS : copie dans IndexedDB, reprise après un rechargement', !!lmm2.d && lmm2.d.ok && (entreesIdb || []).length === 1 && !!reprisIdb && reprisIdb.modifie === true && reprisIdb.definitions === 5,
     `${JSON.stringify(entreesIdb)} ; repris : ${JSON.stringify(reprisIdb)}`);
+  await sansOpfs.close({ runBeforeUnload: true });
+
+  // ---- 1.1 in the page, in a tab of its own: what needs the desktop application says so; a table
+  // opened, a data step, Data steps, Update the data with next year's file chosen in the page, What
+  // changed; a project saved, opened, saved again (downloaded each time); an R-code model approved,
+  // its package installed from webR's repository, and one that webR can't have; a plugin installed
+  // from its file; then, the tab reloaded, the plugin and the approvals still there
+  page = await ouvrirPage();
+  await page.waitForFunction(() => window.nueeDemandes.length > 0 && !document.querySelector('.voile-webr'), null, { timeout: 600000 });
+  const statutTexte = () => page.evaluate(() => document.getElementById('statut').textContent);
+  const pidActif = () => page.evaluate(() => import('./app.js').then((m) => m.app.projetActif()));
+  const projetActif = () => page.evaluate(async () => {
+    const { app } = await import('./app.js');
+    const p = app.projet(app.projetActif());
+    return p ? { id: p.id, nom: p.nom, n: p.observations.uid.length, variables: p.variables.map((v) => v.nom), modeles: app.modelesDe(p.id).map((m) => m.nom) } : null;
+  });
+  const cliquerTexte = (selecteur, texte) => page.evaluate(([s, x]) => {
+    const b = [...document.querySelectorAll(s)].find((e) => e.textContent.includes(x));
+    if (!b) throw new Error(`no ${s} with ${x}`);
+    b.click();
+  }, [selecteur, texte]);
+  // (File › Open, the file chosen in the page)
+  async function ouvrirFichier(f) {
+    const n = await combien(page, 'ouvrir');
+    const choix = page.waitForEvent('filechooser', { timeout: 15000 });
+    await commande(page, 'ouvrir');
+    await (await choix).setFiles(f);
+    const d = await attendreDemande(page, 'ouvrir', n);
+    await page.waitForTimeout(1500);
+    return d;
+  }
+  // the table exported above, and next year's: ten more rows
+  const lignesCsv = fs.readFileSync(csv, 'utf8').replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  const csv2027 = path.join(sortie, 'orchards_2027.csv');
+  fs.writeFileSync(csv2027, [...lignesCsv, ...lignesCsv.slice(1, 11).map((l) => l.replace(/^"P/, '"N'))].join('\n'));
+  const ouvert = await ouvrirFichier(csv);
+  const tableau = await projetActif();
+  verifier('un tableau ouvert dans la page (File › Open)', !!ouvert && ouvert.ok && !!tableau && tableau.n === 120, JSON.stringify(tableau && { nom: tableau.nom, n: tableau.n }));
+
+  // what only the desktop application does: History, Share, said in the status bar
+  const desktop = [];
+  for (const cle of ['versions', 'versions_partager']) {
+    await commande(page, cle);
+    await page.waitForTimeout(400);
+    desktop.push(await statutTexte());
+  }
+  verifier('Historique… et Partager : « il faut l’application de bureau »', desktop.every((s) => /desktop application is needed|application de bureau/.test(s)), desktop.join(' | '));
+
+  // a model, then a data step: a new variable (its dialog)
+  const lmCsv = await nouveauModele(page, { type: 'LM', x: ['sugar'], y: ['taste_score'], echelle: 'none' });
+  await page.waitForTimeout(1000);
+  const nVar = await combien(page, 'variable_calculee');
+  await commande(page, 'nouvelle_variable');
+  await page.waitForSelector('.dialogue-variable textarea.formule', { timeout: 10000 });
+  await page.fill('.dialogue-variable .grille-champs input', 'sugar_acid');
+  await page.fill('.dialogue-variable textarea.formule', 'sugar / acidity');
+  await page.click('.fond-dialogue .pied-dialogue button.principal');
+  const variable = await attendreDemande(page, 'variable_calculee', nVar);
+  await page.waitForTimeout(1000);
+  await commande(page, 'etapes_donnees');
+  await page.waitForFunction(() => { const c = document.querySelector('.contenu-etapes'); return c && !c.querySelector('.attente'); }, null, { timeout: 30000 });
+  const texteEtapes = await page.evaluate(() => document.querySelector('.contenu-etapes').textContent);
+  verifier('une étape (Nouvelle variable), Données › Étapes : la source et l’étape', !!lmCsv.d && lmCsv.d.ok && variable.ok && /orchards\.csv/.test(texteEtapes) && /sugar_acid/.test(texteEtapes),
+    texteEtapes.replace(/\s+/g, ' ').slice(0, 300));
+  await page.evaluate(() => document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()));
+
+  // Update the data: next year's file chosen in the page, its preview, then the update, What changed
+  const nMaj = await combien(page, 'mettre_a_jour');
+  await commande(page, 'etapes_mettre_a_jour');
+  await page.waitForSelector('.dialogue-maj .choisir-fichier-maj', { timeout: 20000 });
+  const choixMaj = page.waitForEvent('filechooser', { timeout: 15000 });
+  await page.click('.dialogue-maj .choisir-fichier-maj');
+  await (await choixMaj).setFiles(csv2027);
+  await page.waitForFunction(() => document.querySelector('.dialogue-maj .resume-maj'), null, { timeout: 60000 });
+  const apercuMaj = await page.evaluate(() => document.querySelector('.dialogue-maj .resume-maj').textContent);
+  await page.waitForFunction(() => { const b = document.querySelector('.fond-dialogue .pied-dialogue button.principal'); return b && !b.disabled; }, null, { timeout: 30000 });
+  await page.click('.fond-dialogue .pied-dialogue button.principal');
+  await page.waitForFunction(([a]) => window.nueeDemandes.filter((d) => d.nom === 'mettre_a_jour' && !(d.corps && d.corps.apercu)).length > 0 && window.nueeDemandes.filter((d) => d.nom === 'mettre_a_jour').length > a, [nMaj], { timeout: 120000 });
+  await page.waitForFunction(() => document.querySelector('.dv-default-tab[data-panneau^="changements:"]'), null, { timeout: 120000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const apresMaj = await projetActif();
+  const changements = await page.evaluate(() => [...document.querySelectorAll('.dv-default-tab[data-panneau^="changements:"]')].map((e) => e.textContent));
+  const majOk = await page.evaluate(() => window.nueeDemandes.filter((d) => d.nom === 'mettre_a_jour' && !(d.corps && d.corps.apercu)).pop());
+  verifier('Mettre à jour les données (le fichier choisi dans la page) : 130 observations, l’étape rejouée, Ce qui a changé',
+    !!majOk && majOk.ok && !!apresMaj && apresMaj.n === 130 && apresMaj.variables.includes('sugar_acid') && changements.length > 0,
+    `aperçu : ${apercuMaj.slice(0, 160)} ; après : ${JSON.stringify(apresMaj && { n: apresMaj.n, modeles: apresMaj.modeles })} ; ${changements.join(', ')}`);
+
+  // Save downloads the project; opened again in the page, Save downloads it again (never into R's
+  // file system of the tab, where an opened file is put)
+  const telechargementNuee = page.waitForEvent('download', { timeout: 60000 });
+  await commande(page, 'enregistrer');
+  const tn = await telechargementNuee;
+  const nuee = path.join(sortie, tn.suggestedFilename());
+  await tn.saveAs(nuee);
+  await ouvrirFichier(nuee);
+  const rouvert = await projetActif();
+  const telechargementNuee2 = page.waitForEvent('download', { timeout: 30000 }).catch(() => null);
+  await commande(page, 'enregistrer');
+  const tn2 = await telechargementNuee2;
+  verifier('un projet enregistré, rouvert dans la page, enregistré de nouveau : téléchargé chaque fois', !!tn2 && /\.nuee$/.test(tn.suggestedFilename()) && !!rouvert && rouvert.n === 130,
+    `${tn.suggestedFilename()} ; rouvert : ${rouvert && rouvert.nom} ; ${tn2 ? tn2.suggestedFilename() : 'pas de second téléchargement'}`);
+
+  // R code: approved when fitted, its package (Kendall) installed from webR's repository; ranger refused
+  const codeR = 'k <- Kendall::Kendall(donnees$sugar, donnees$taste_score)\nfit <- lm(taste_score ~ sugar + acidity, data = donnees)\nlist(modele = fit, valeurs = c(tau = unname(k$tau)))';
+  const rc = await nouveauModele(page, { type: 'CODE', options: { code: codeR } });
+  await page.waitForTimeout(1500);
+  const mCode = await modeleActif(page);
+  verifier('un modèle de code R approuvé, son paquet (Kendall) installé depuis le dépôt de webR', !!rc.d && rc.d.ok && !rc.erreur && !!mCode && mCode.type === 'CODE',
+    rc.erreur || `${rc.d && Math.round(rc.d.ms)} ms ; ${mCode && mCode.nom}`);
+  const rr = await nouveauModele(page, { type: 'CODE', options: { code: 'library(ranger)\nlm(taste_score ~ sugar, data = donnees)' } });
+  verifier('un code R qui demande ranger : « il faut l’application de bureau »', /desktop application is needed|application de bureau/.test(rr.erreur) && /ranger/.test(rr.erreur), rr.erreur);
+  await page.evaluate(() => document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()));
+
+  // a plugin installed from its file (File › Plugins… › Install from file…), then fitted
+  const nInst = await combien(page, 'greffon_installer');
+  await commande(page, 'greffons');
+  await page.waitForSelector('.dialogue-greffons', { timeout: 30000 });
+  const choixGreffon = page.waitForEvent('filechooser', { timeout: 15000 });
+  await cliquerTexte('.dialogue-greffons button', await libelle(page, 'greffon_installer_fichier'));
+  await (await choixGreffon).setFiles(path.join(APP, '..', 'docs', 'site', 'greffons', 'mann-kendall.nueeplugin'));
+  await page.waitForSelector('.installation-greffon', { timeout: 30000 });
+  await page.evaluate(() => document.querySelector('.installation-greffon').closest('.fond-dialogue').querySelector('.pied-dialogue button.principal').click());
+  const installe = await attendreDemande(page, 'greffon_installer', nInst, 60000).catch(() => null);
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => document.querySelectorAll('.fond-dialogue').forEach((f) => f.remove()));
+  const mk = await nouveauModele(page, { type: 'PLUGIN:mann-kendall', options: { greffon: { id: 'mann-kendall' }, options: {} }, entrees: { series: ['taste_score'] } });
+  await page.waitForTimeout(1500);
+  const mGreffon = await modeleActif(page);
+  verifier('un greffon installé depuis son fichier dans la page, puis ajusté', !!installe && installe.ok && !!mk.d && mk.d.ok && !mk.erreur && !!mGreffon && mGreffon.type === 'PLUGIN',
+    mk.erreur || `${mGreffon && mGreffon.nom}`);
+
+  // reloaded: the project offered and recovered, its R-code model still approved; the plugin still installed
+  await copiesAJour(page);
+  await page.reload();
+  await page.waitForFunction((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, { timeout: 120000 });
+  await page.click('.fond-dialogue .pied-dialogue button.principal');
+  await page.waitForFunction(() => window.nueeDemandes.filter((d) => d.nom === 'ouvrir' && d.ok).length >= 1, null, { timeout: 300000 });
+  await page.waitForTimeout(4000);
+  const apresRechargement = await page.evaluate(async () => {
+    const { app } = await import('./app.js');
+    const { demander } = await import('./api.js');
+    const g = await demander('greffons');
+    const codes = [];
+    for (const p of app.projets()) codes.push(...[].concat((await demander('code_modeles', { projet: p.id })).modeles || []));
+    return { greffons: [].concat(g.liste || []).map((x) => ({ id: x.id, permis: x.permis })), codes: codes.map((c) => ({ nom: c.nom, approuve: c.approuve })) };
+  });
+  await commande(page, 'guide');
+  const aide = await attendre(page, () => { const c = document.querySelector('.aide-corps'); return c && c.textContent.length > 500 ? c.textContent.length : 0; }, null, 30000).catch(() => 0);
+  verifier('le guide dans le panneau d’aide (F1)', aide > 500, `${aide} caractères`);
+  verifier('rechargé : le greffon encore installé et approuvé, le code R encore approuvé',
+    apresRechargement.greffons.some((x) => x.id === 'mann-kendall' && x.permis) && apresRechargement.codes.length >= 1 && apresRechargement.codes.some((c) => c.approuve),
+    JSON.stringify(apresRechargement));
+
   // (but the refusal of the random forest, which the interface writes to the console as any refusal)
   const autres = erreurs.filter((e) => !/desktop application is needed|application de bureau/.test(e));
   verifier('sans erreur dans la page', autres.length === 0, autres.slice(0, 10));
