@@ -1128,6 +1128,13 @@ paquet_demande <- function(q) {
     if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
     # (une catégorie qu'il a vue a changé de nom ou disparu : à ajuster de nouveau, il n'est pas refait)
     perime <- tryCatch({ modele(id, TRUE); NULL }, error = function(err) conditionMessage(err))
+    # (une autre analyse, son export sur le projet tel qu'elle l'a vu, ses catégories dans l'ordre
+    # d'alors, avec la définition de son ajustement, comme script_demande ; les modèles de la séance
+    # sur les données d'aujourd'hui, leur définition rapportée à leurs catégories : modele)
+    vu <- etat$modeles[[id]]
+    if (est_autre_analyse(e$definition) && length(vu$ordres)) {
+      return(list(id = id, definition = vu$definition, modele = e$modele, erreur = perime, projet = projet_tel_ajuste(p, vu$ordres)))
+    }
     list(id = id, definition = e$definition, modele = e$modele, erreur = perime)
   })
   na <- q$non_ajustes

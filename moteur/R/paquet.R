@@ -202,13 +202,27 @@ objet_paquet <- function(nom, pris, langue) {
   x
 }
 
+# L'avis de licence qu'un export vers R porte (script.R : avec_avis_licence), retiré de ses lignes :
+# le script du paquet le porte une fois, en tête, et non dans chacune de ses parties.
+sans_avis_licence <- function(lignes, langue, version) {
+  avis <- avis_licence_script(langue, version)
+  n <- length(avis)
+  for (k in seq_len(max(0, length(lignes) - n + 1))) if (identical(lignes[k:(k + n - 1)], avis)) return(lignes[-(k:(k + n - 1))])
+  lignes
+}
+
 # Le script R du paquet : un seul fichier qui refait chaque modèle avec R. Les modèles de composantes
 # (ACP, PLS, OPLS) et les régressions forment la séance de l'export vers R (script.R :
 # ecrire_script_seance ; leurs données et leurs fonctions une fois, chacun gardé dans une liste à son
 # nom) ; chaque autre analyse suit avec son propre export vers R (ecrire_script), dans un
 # environnement à elle (local()), qui est gardé sous son nom. Les données sont dans le script : il ne
 # lit aucun fichier. Chaque export est vérifié comme Fichier › Exporter vers R le vérifie (son `ecart`).
-#   modeles   une liste de list(id, definition, modele, erreur), erreur : pourquoi il n'est pas refait.
+# Son en-tête est celui d'un export vers R : ce qu'il refait, puis l'avis de licence (l'exception à la
+# GPL pour ce que Nuée écrit, et comment citer Nuée avec son DOI : avis_licence_script), et que ses
+# données, elles, sont sous la licence des données du paquet.
+#   modeles   une liste de list(id, definition, modele, erreur, projet), erreur : pourquoi il n'est pas
+#             refait ; projet : celui sur lequel écrire l'export d'une autre analyse (le projet tel
+#             qu'elle l'a vu, quand l'ordre de ses catégories a changé depuis : serveur.R, paquet_demande).
 # Rend, pour chaque modèle, son nom R (objet) ou pourquoi il n'y est pas (erreur) ; les écarts ; les
 # paquets R qu'il appelle (paquets_appeles) ; NULL comme script quand aucun modèle n'y est.
 script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
@@ -237,7 +251,7 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
     if (inherits(r, "error")) {
       for (k in principaux) infos[[k]]$erreur <- conditionMessage(r)
     } else if (!is.null(r)) {
-      seance <- lire_lignes_paquet(r$script)
+      seance <- sans_avis_licence(lire_lignes_paquet(r$script), langue, version)
       for (j in seq_along(principaux)) infos[[principaux[j]]]$objet <- r$noms[j]
       if (!is.null(r$ecart)) ecarts <- c(ecarts, r$ecart)
     }
@@ -247,7 +261,7 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
   for (k in which(vapply(modeles, function(x) is.null(x$erreur) && est_autre_analyse(x$definition), TRUE))) {
     x <- modeles[[k]]
     f <- file.path(tmp, sprintf("analyse%d.R", k))
-    r <- tryCatch(ecrire_script(projet, x$definition, f, "moteur", m = x$modele, version = version, langue = langue), error = function(e) e)
+    r <- tryCatch(ecrire_script(x$projet %||% projet, x$definition, f, "moteur", m = x$modele, version = version, langue = langue), error = function(e) e)
     if (inherits(r, "error")) {
       infos[[k]]$erreur <- conditionMessage(r)
       next
@@ -256,7 +270,7 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
     pris <- c(pris, objet)
     infos[[k]]$objet <- objet
     if (!is.null(r$ecart)) ecarts <- c(ecarts, sprintf(tx("%s : %s", "%s: %s"), objet, r$ecart))
-    blocs[[length(blocs) + 1]] <- list(objet = objet, info = infos[[k]], lignes = lire_lignes_paquet(f))
+    blocs[[length(blocs) + 1]] <- list(objet = objet, info = infos[[k]], lignes = sans_avis_licence(lire_lignes_paquet(f), langue, version))
   }
   faits <- Filter(function(i) !is.null(i$objet), infos)
   if (!length(faits)) return(list(script = NULL, modeles = infos, ecarts = ecarts, paquets = paquets_appeles(character(0))))
@@ -291,7 +305,10 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
                         unlist(lapply(sans, function(i) sub("^# ", "#   ", commentaire(sprintf(tx("%s : %s", "%s: %s"), i$nom, i$erreur)))))),
     commentaire(sprintf(tx("Écrit avec %s.", "Written with %s."), texte_paquets(paquets$paquet, langue, versions = TRUE))),
     commentaire(tx("Dans RStudio, Ctrl+Maj+O affiche ses parties.", "In RStudio, Ctrl+Shift+O shows its parts.")))
-  ecrire_texte_paquet(chemin, c(entete, corps))
+  l <- LICENCES_PAQUET[[meta$licence]]
+  donnees <- commentaire(sprintf(tx("Ses données sont celles du paquet, sous sa licence des données : %s (%s, LICENSE). L'avis ci-dessus porte sur le code.",
+                                    "Its data are the package's, under its licence of the data: %s (%s, LICENSE). The notice above is about the code."), l$court, l$url))
+  ecrire_texte_paquet(chemin, c(entete, avis_licence_script(langue, version), donnees, corps))
   list(script = chemin, modeles = infos, ecarts = ecarts, paquets = paquets)
 }
 

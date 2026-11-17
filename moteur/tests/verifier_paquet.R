@@ -254,6 +254,16 @@ for (langue in c("fr", "en")) {
   verifier("le script : chaque modèle sous son nom, l'arbre et les k-moyennes chacun dans un environnement à lui, ses données dedans, rien du moteur",
            all(c("M6 <- local({", "M7 <- local({") %in% texte) && !any(grepl("^M[1-5] <- local", texte)) && !any(grepl("charger\\.R|load\\.R|read\\.csv|readRDS", texte)) &&
              any(grepl(tx("Pas dans ce script", "Not in this script"), texte)) && any(grepl("M8", texte)))
+  # (son en-tête : celui d'un export vers R, l'avis de licence une fois pour tout le script, puis la licence de ses données)
+  avis <- avis_licence_script(langue, "essai")
+  debut_code <- which(!grepl("^\\s*(#|$)", texte))[1]
+  ou <- which(vapply(seq_len(length(texte) - length(avis) + 1), function(k) identical(texte[k:(k + length(avis) - 1)], avis), NA))
+  entete <- paste(sub("^#\\s?", "", texte[seq_len(debut_code - 1)]), collapse = " ")
+  verifier("son en-tête, celui d'un export vers R : l'exception à la GPL et comment citer Nuée avec son DOI, une fois pour tout le script, avant le code ; puis la licence de ses données",
+           length(ou) == 1 && ou < debut_code && sum(grepl("LICENSE-EXCEPTION.md", texte, fixed = TRUE)) == 1 &&
+             sum(grepl(tx("merci de citer Nuée", "please cite Nuée"), texte, fixed = TRUE)) == 1 && grepl("Nuée (version essai) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014", entete, fixed = TRUE) &&
+             grepl(sprintf("%s (%s, LICENSE)", LICENCES_PAQUET[[meta$licence]]$court, LICENCES_PAQUET[[meta$licence]]$url), entete, fixed = TRUE) &&
+             grepl(tx("L'avis ci-dessus porte sur le code.", "The notice above is about the code."), entete, fixed = TRUE))
   s <- lancer(script, paste0("M", 1:7), racine)
   if (!length(s)) {
     verifier(sprintf("le script tourne dans une session neuve (%s)", paste(utils::tail(attr(s, "messages"), 4), collapse = " / ")), FALSE)
