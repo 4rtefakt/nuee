@@ -76,7 +76,7 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis; two classes paired by a key: paired t or Wilcoxon signed-rank on the keys both have) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; paired tests (paired t, Wilcoxon signed-rank) between two levels, on the keys both have (`paires_cle()`, shared with the tests by variable), every pair of levels (or those within each group: the sectors of a site) with Holm's correction, after Friedman's omnibus test (`tests_friedman()`: on the keys where every level has a value, with Kendall's W; one per group, Holm over the groups), or two measurements of the same rows; before/after with a control (`baci()`: at each time the gap between the impact's and the controls' means, after against before by Welch's t, Student's t or Mann–Whitney; the time, the event and the end numbers or dates) and its mixed model (`modele_baci()`: the two 0/1 variables of the period and the impact, `variables_baci()`, reused when they exist with these values, refused when another variable has their name; `definition_baci()`, y ~ period × impact + (1 \| unit) with CAR1 within each unit if chosen, its settings kept in `d$baci_origine`; `effet_baci()`, the period × impact coefficient and its sentence); the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
 | `moteur/R/travaux.R` | Long requests shared among several R (the browser version): `travail_morceau()` runs a piece of a request listed in `TRAVAUX` (`serveur.R`) from a file of tasks |
-| `moteur/R/navigateur.R` | The browser version's limits (see Browser version): `dans_navigateur()` (`options(nuee.navigateur)`), a refusal for a package the page lacks said as "needs the desktop application" (`erreur_navigateur`, from `repondre_erreur`; `nuee.paquets_absents`, `FONCTIONS_PAQUETS`), and what the page can't run at all (`refus_navigateur`: `.usp` files) |
+| `moteur/R/navigateur.R` | The browser version's limits (see Browser version): `dans_navigateur()` (`options(nuee.navigateur)`), a refusal for a package the page lacks said as "needs the desktop application" (`erreur_navigateur`, from `repondre_erreur`; `nuee.paquets_absents`, `FONCTIONS_PAQUETS`), and what the page can't run at all (`refus_navigateur`: `.usp` files); texts in the desktop's order in webR (`trier_textes`: the browser's `Intl.Collator`); the packages of R code and plugins installed from webR's repository (`installer_paquets_navigateur`, `evaluer_navigateur`, never those of `nuee.paquets_sans_webr`; `paquets_absents_navigateur`); Stop in the page (`calcul_arretable`, `hors_interruptions`, `passer_interruption`) |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them; the models, validated like the files (their default: the full model's centres and weights) with the groups read in the files, are compared on Q2 and Q2(cum) and on their coefficients' jack-knife intervals too |
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
 | `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed; data with no variation left: a clear message, and automatic fitting stops without error |
@@ -139,8 +139,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/interface/etapes_texte.js`, `app/tests/essai_etapes.mjs` | What etapes.js shows, pure: a source's state and its notice's key (`etatSource`), an update's report in sections (`lireRapport`: new, missing, changed, the steps replayed, skipped or failed with their reasons, the models that can't be fitted again, new categories and changed reference categories, how the file was read), the models to fit again (`modelesAReajuster`), the summary after an update with the models not fitted again given their reason (`resumeApres`), a cited value's sentence (`phraseAutour`) and the values an update changed (`valeursChangees`); checked on reports shaped as the engine sends them |
 | `app/interface/vues_trim.js` | The views of a TRIM model (the summary with the overall slope and its class in words, the indices with their band and base time, the time totals, the slopes, parameters and Wald tests, each site's counts against the model's), its New model fields (site, time, model, changepoints, stepwise, σ², ρ, weights, base time) and report parts |
 | `app/interface/vues_distance.js` | The views of a distance sampling model (the summary with the model chosen and the AIC of the candidates, p, ESW or EDR, the parameters and the goodness of fit; the detection function over the histogram of distances scaled as mrds's `plot.ds`, each detection on the curve, the pdf of distances for points, the chi-square's classes; the QQ plot; density and abundance by stratum and overall, of individuals or groups), its New model fields (transects, transect, effort, stratum, area, group size, truncation, key, covariates — the Z role, also added and removed from the General tab —, adjustment terms, monotonicity, units, proposed from Distance's column names; a uniform key or a transformed covariate refused) and report parts; with covariates, the summary's covariates, coefficients and exp(β), p̄, the average detection function and one curve per category of a chosen qualitative covariate |
-| `app/interface/vues_code.js` | R-code models: New model's fields (the code editor, CodeMirror from `vendor/editeur.min.js` with line numbers and an R stream language of its own, Ctrl+Enter fits; its help and an example made of the project's variables; only the General and Observations tabs: `ANALYSES.CODE`'s `onglets`), the typed code approved before it is fitted (`avantAjuster`: `empreinte_code`, then `bureau.approuverCode`, or `code_approuve` in a browser), the cursor put on an error's line (`surErreur`); its views (the summary, the coefficients, the residuals against the fitted values and the QQ plot, the code's plots, its values and tables, the code), report parts, Edit the code (`app.modifierModele`: the new fit takes the old one's place and name, `ajusterDefinition`'s `remplace`); the bar over a project whose code isn't approved here (`app.barresCode` from `majEtat`: Show the code, `code_modeles`; Run it, the fingerprints approved then each model fitted); a restored session doesn't ask for those models (app.js: `codeEnAttente`) |
-| `app/interface/vues_greffons.js` | Plugins: File › Plugins… (the engine's `greffons`, each plugin's card: authors and ORCID, licence, citations and their BibTeX, packages present or missing and their installation through `bureau.r.installerGreffon`, Show, New model…, Remove), Install from file… (`greffon_lire`, the card and the code, then `approuver` and `greffon_installer`), Model › Plugins (`app.menuGreffons`, from `commandes.js`); each usable plugin an entry of `ANALYSES`, `PLUGIN:<id>` (its `typeMoteur` PLUGIN), its General tab made from the manifest's inputs and options, a model's own version `PLUGIN:<id>@<fingerprint>` when editing it (`app.modifierGreffon`); its views (an R-code model's summary, `rendreResumeCode`, with the plugin's card; `greffon_source`); report parts; the bar over a project whose plugin isn't approved here (`app.barresGreffons` from `majEtat`: Show, `greffon_projet`; Install and run, Run the project's version, Use the installed version, `greffon_mettre_a_jour`) |
+| `app/interface/vues_code.js` | R-code models: New model's fields (the code editor, CodeMirror from `vendor/editeur.min.js` with line numbers and an R stream language of its own, Ctrl+Enter fits; its help and an example made of the project's variables; only the General and Observations tabs: `ANALYSES.CODE`'s `onglets`), the typed code approved before it is fitted (`avantAjuster`: `empreinte_code`, then `bureau.approuverCode`, or `code_approuve` in a browser, which the browser version also keeps for the next visits: `moteur_webr.js`'s `garderApprobations`), the cursor put on an error's line (`surErreur`); its views (the summary, the coefficients, the residuals against the fitted values and the QQ plot, the code's plots, its values and tables, the code), report parts, Edit the code (`app.modifierModele`: the new fit takes the old one's place and name, `ajusterDefinition`'s `remplace`); the bar over a project whose code isn't approved here (`app.barresCode` from `majEtat`: Show the code, `code_modeles`; Run it, the fingerprints approved then each model fitted); a restored session doesn't ask for those models (app.js: `codeEnAttente`) |
+| `app/interface/vues_greffons.js` | Plugins: File › Plugins… (the engine's `greffons`, each plugin's card: authors and ORCID, licence, citations and their BibTeX, packages present or missing and their installation through `bureau.r.installerGreffon` (in the browser version, from webR's repository: `installerWebR`; Install from file… takes a file chosen in the page, `deposerGreffon`), Show, New model…, Remove), Install from file… (`greffon_lire`, the card and the code, then `approuver` and `greffon_installer`), Model › Plugins (`app.menuGreffons`, from `commandes.js`); each usable plugin an entry of `ANALYSES`, `PLUGIN:<id>` (its `typeMoteur` PLUGIN), its General tab made from the manifest's inputs and options, a model's own version `PLUGIN:<id>@<fingerprint>` when editing it (`app.modifierGreffon`); its views (an R-code model's summary, `rendreResumeCode`, with the plugin's card; `greffon_source`); report parts; the bar over a project whose plugin isn't approved here (`app.barresGreffons` from `majEtat`: Show, `greffon_projet`; Install and run, Run the project's version, Use the installed version, `greffon_mettre_a_jour`) |
 | `app/interface/vues_forets.js` | The views of a random forest and of boosted trees (summary, importance or relative influence, partial dependence asked of the engine with its rug, observed / predicted out of bag, cross-validated or fitted, classification table and ROC, the error against the number of trees), their New model fields and report parts |
 | `app/interface/vues_ordination.js` | The views of an RDA and a CA (ordination, eigenvalues, permutation tests, contributions), their New model fields and report parts |
 | `app/interface/vues_indicatrices.js` | Indicator species: the table of species (sortable, a species clicked highlighted in the plot), their indicator values or one species' A and B by group, the summary, New model fields (an analysis without X: its roles offer none), report parts; the CCA's views are vues_ordination.js's |
@@ -159,12 +159,12 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/comptes_ids.js` | The OAuth client ids of Nuée's applications on github.com and gitlab.com (see [Signing in to GitHub and GitLab](#signing-in-to-github-and-gitlab)); with a placeholder instead (a copy built without its own applications), signing in says it isn't set up for that server |
 | `app/tests/essai_comptes.js`, `app/tests/serveur_comptes.js` | comptes.js without Electron (`npx electron tests/essai_comptes.js`: the same through `net.fetch`), against `serveur_comptes.js`, a local stand-in of GitHub's and GitLab's device flow and REST API (the fetch it gives refuses any other host): approved, refused, expired (said, or the code's time over), `slow_down`, cancelled; not set up, an unknown application, the device flow off, a GitLab without it, a self-hosted GitLab's ID; the account and its picture, the server unreachable, a token refused, revoked, or given in Versions; a GitLab token renewed, at start-up too, then refused; repositories and invitations; `git credential fill` with a stand-in git first on the PATH (a shell script, or on Windows a `git.exe` compiled by the .NET Framework's `csc.exe`): what it is given, nothing, refused, too slow, cancelled, absent, asked again quietly; signing out; no token, refresh token or device code in a message, return value, log, address, page opened or file in clear |
 | `app/interface/connexion.js` | The sign-in and invitation dialogs over `window.bureau.comptes`, which History and Share call (versions.js): `ouvrirConnexion(app, { hote })` → `{ ok, compte }` (without `hote`, GitHub, GitLab or the institution's GitLab chosen first; the code big and copyable, Open the page, which copies it too, the wait, refused or expired with a new code, the account's card; this computer's git sign-in when git is found, a token under "Use a token instead"; a self-hosted GitLab without its application ID asks for it), `ouvrirInvitation(app, { hote, url })` → `{ ok, invites }`, and `carteCompte(hote, compte)`, the account's card. The accounts' refusals reach the page as an object with its `message` and `code` (preload.js: an Error crossing the context bridge keeps its message only) |
-| `app/interface/moteur_webr.js` | The engine in the page, for the browser version: webR started with the engine's files and packages (each on its own: those it lacks given to R), each request sent to `traiter_demande()`, files in and out of webR's file system, other webR instances for the requests in `TRAVAUX` |
+| `app/interface/moteur_webr.js` | The engine in the page, for the browser version: webR started with the engine's files and packages (each on its own: those it lacks given to R), `serveur.R` read up to its HTTP server, each request sent to `traiter_demande()`, files in and out of webR's file system, other webR instances for the requests in `TRAVAUX`; the plugins installed in the page (`NUEE_GREFFONS=/greffons`, kept in the browser's storage: `garderGreffons`, `rendreGreffons`), the code approved there (`garderApprobations`, given back at each visit), a plugin's packages from webR's repository (`installerPaquets`), Stop (`arreter`: `webR.interrupt()`) |
 | `app/interface/paquets_webr.js` | The R packages of the browser version (`PAQUETS_WEBR`), and those it leaves out, with why (`SANS_WEBR`) |
-| `app/interface/secours_navigateur.js` | The browser version's recovery copies: OPFS, else IndexedDB; a tab's copies and index under its name, its lock while it is open; a closed tab's copies offered by the next one (see Browser version) |
-| `app/construire_navigateur.js`, `app/servir_navigateur.js` | Builds the browser version: a static site with the interface, the engine's files and webR; and serves it on 127.0.0.1 with the headers webR needs (see Browser version) |
+| `app/interface/secours_navigateur.js` | The browser version's recovery copies: OPFS, else IndexedDB (`magasin(name)`, a folder or database for each use: the recovery copies, the plugins installed); a tab's copies and index under its name, its lock while it is open; a closed tab's copies offered by the next one (see Browser version) |
+| `app/construire_navigateur.js`, `app/servir_navigateur.js` | Builds the browser version: a static site with the interface, the engine's files (with the user guide and `app/package.json`) and webR; and serves it on 127.0.0.1 with the headers webR needs (see Browser version) |
 | `app/tests/essai_moteur_webr.mjs`, `app/tests/webr_rscript.mjs`, `app/tests/webr_chemins.mjs` | The engine's checks in webR's R, in Node, each as Rscript runs it (see Browser version) |
-| `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), and its speed against native R (see Browser version and Speed) |
+| `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), 1.1's features in the page included, and its speed against native R (see Browser version and Speed) |
 | `app/interface/references.js` | The `{{model.path[:format] [#label] [\| caption]}}` references, pure: reading them, their values in the document's language (`formeReference`: how a value is written, a number, a percentage, a p-value, a coefficient with its interval; `texteForme` writes it, and a reproducible `.qmd` the same in R), what each kind of model offers, the numbering of figures and tables |
 | `app/interface/rendu_document.js` | A document read by markdown-it (references as tokens; those alone on their line are blocks) and written as the preview's HTML, a PDF's page, a `.docx` (with `zip.js`) or a `.qmd` (results written in, `@fig-` cross-references; or reproducible, `versQmd(..., { reproductible })`: the engine's first chunk after the header, each value `` `r …` ``, a plot or table at the start of its line a chunk with its label and caption, what stays written in after an HTML comment; `referencesReproductibles` is what the request `document_reproductible` receives) |
 | `app/copier-vendor.js` | Copies the libraries the interface loads into `interface/vendor/`, and bundles the document editor (CodeMirror 6 and markdown-it) with esbuild into `vendor/editeur.min.js` (the licence of each package it holds at its end), loaded when a document is first opened |
@@ -778,10 +778,12 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
 
 **Build and serve.**
 - `node app/construire_navigateur.js [<folder>] [<webR folder>]` builds a static site, in
-  `dist/navigateur` unless given (59 MB):
+  `dist/navigateur` unless given (62 MB):
   - the interface, its page saying `window.NUEE_MOTEUR = 'webr'` (`navigateur.js`), its security
     policy with `'wasm-unsafe-eval'` (R's WebAssembly) and `https://repo.r-wasm.org` (R's packages);
-  - the engine's files (`moteur/` without its tests, `exemple/`), listed in `moteur-fichiers.json`;
+  - the engine's files (`moteur/` without its tests, `exemple/`, the user guide that the help panel
+    asks the engine for, `app/package.json` where the protocol request reads Nuée's version),
+    listed in `moteur-fichiers.json`;
   - webR, from the npm package `webr` (a devDependency, pinned: the engine's packages are built
     for its R): its browser build `webr.js`, served as `webr/webr.mjs` (npm's own `webr.mjs`
     imports Node's modules), `webr-worker.js`, `R.js`, `R.wasm`, BLAS, LAPACK and base R in
@@ -794,8 +796,10 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
 **The engine in the page.**
 - `api.js` sends each request to `moteur_webr.js` instead of the local server. That module starts
   webR, writes the engine's files into its file system, installs R's packages from webR's
-  repository, and loads `moteur/serveur.R` with `NUEE_NAVIGATEUR=1`: no HTTP server then. Each
-  request goes to `traiter_demande()`, which the HTTP server calls too: the same code, the same
+  repository, and reads `moteur/serveur.R` up to its HTTP server (`appli <- list(`), as the
+  engine's checks of the requests read it (`verifier_etapes.R`): every request goes to
+  `traiter_demande()`, which the HTTP server calls too, with 1.1's handling (the approval secret,
+  Stop's `faire_demande`, the refusals that say more than their message): the same code, the same
   numbers.
 - The packages: `paquets_webr.js` (`PAQUETS_WEBR`): jsonlite, nlme, mgcv, MASS, rpart, cluster,
   foreign, openxlsx, readxl, haven and zip, with what they depend on (39 packages, 77 MB once
@@ -806,12 +810,35 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
   whose library fails to load leaves webR unable to load any library after it (Emscripten keeps
   its missing symbol), so these are never installed. Each package is installed on its own: one
   that fails leaves only its features out (`?sans=a,b` leaves those out, to see it).
-- R gets `options(nuee.navigateur = TRUE, nuee.paquets_absents = ...)`. A request refused for a
-  package the page lacks, by `loadNamespace()` or by the engine's own refusal that names it, says
-  that it needs the desktop application (`navigateur.R`: `erreur_navigateur`, called by
-  `repondre_erreur`): "Random forests: Nuée's desktop application is needed (the R package ranger
-  isn't in the browser version)." So do `.usp` files (`convertir_usp`: their converter is a
-  program, and the page starts none). The rest goes on.
+- R gets `options(nuee.navigateur = TRUE, nuee.paquets_absents = ..., nuee.paquets_sans_webr = ...)`.
+  A request refused for a package the page lacks, by `loadNamespace()` or by the engine's own
+  refusal that names it, says that it needs the desktop application (`navigateur.R`:
+  `erreur_navigateur`, called by `repondre_erreur`; the engine's classed refusals keep their
+  class): "Random forests: Nuée's desktop application is needed (the R package ranger isn't in
+  the browser version)." So do `.usp` files (`convertir_usp`: their converter is a program, and
+  the page starts none). The rest goes on.
+- R code and plugins (1.1): the packages a model's code or a plugin names are installed from
+  webR's repository before it runs, and any still missing when it runs, then it runs again
+  (`navigateur.R`: `installer_paquets_navigateur`, from `evaluer_navigateur` in `ajuster_code` and
+  `evaluer_greffon`, and `exiger_paquets_greffon`); never one whose dependencies include a package
+  of `SANS_WEBR`. One the repository doesn't have, or webR can't load, says that the desktop
+  application is needed (`paquets_absents_navigateur`), instead of `install.packages()`. File ›
+  Plugins… installs a plugin in the page (a `.nueeplugin`, or a `plugin.json` with its R files,
+  chosen there) into `NUEE_GREFFONS=/greffons` of webR's file system, kept in the browser's
+  storage after each install or removal and put back at each visit (`moteur_webr.js`:
+  `garderGreffons`, `rendreGreffons`; `secours_navigateur.js`: `magasin('nuee-greffons')`, OPFS
+  else IndexedDB); its missing packages install from webR's repository (`vues_greffons.js`:
+  `installerWebR`). The code and plugins approved in the page are kept by the browser
+  (`localStorage['nuee-code-approuve']`, the latest 10,000, as `main.js` keeps them in the
+  settings) and given to the engine at each visit (`approuver_codes`); `NUEE_VERSION` is the
+  interface's version.
+- Texts in the desktop's order: webR's R sorts texts by their bytes (no ICU, and musl's `strcoll`
+  is `strcmp`), "B" before "a" and "traité" before "témoin", so a table opened in the page would
+  get other categories first, and its regressions another reference. `trier_textes()`
+  (`navigateur.R`) orders them with the browser's `Intl.Collator` in webR's worker
+  (`webr::eval_js`), where the engine makes categories from texts (`nouveau.R`, `variables.R`,
+  `etapes.R`, `kobo.R`, `formats.R`'s jamovi levels) and for the keys of a pairing (`ordre_cles`);
+  elsewhere `sort()`, as before.
 - Writing what webR's iconv can't (musl's: no `//TRANSLIT`, `*` for any letter outside ASCII):
   dBase texts in Windows-1252 and variable names in ASCII take the base letter of an accented
   one from a table of U+00C0 to U+024F (`formats.R`: `en_cp1252`, `en_ascii`, `sans_accents`);
@@ -819,18 +846,40 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
 - Files the user opens go into webR's file system (`deposer`; several in one folder,
   `deposerEnsemble`: a raster beside its `.tfw`); those the engine writes are downloaded
   (`telechargerFichier`) or read (`lireFichier`: a reproducible document's scripts, put in a
-  `.zip`). A linked BibTeX or CSL-JSON file has its references kept in the document, as pasted
-  ones. Recent files aren't kept, and views don't move to windows of their own (another window
-  would start an R of its own, without the projects). Zotero, Quarto and the native dialogs stay
-  the desktop's.
+  `.zip`). Save always downloads the project, never writes into webR's file system, where a
+  project opened from a file was put. A linked BibTeX or CSL-JSON file has its references kept in
+  the document, as pasted ones. Recent files aren't kept, and views don't move to windows of their
+  own (another window would start an R of its own, without the projects).
 - Each webR has one core. Other webR instances (the engine without the server or packages,
   `?aides=N`, by default one per core left, 4 at most) take pieces of the requests listed in
   `TRAVAUX` (`serveur.R`), so far the permutation test:
   - `travail_preparer()` draws the shuffles and writes the tasks to a file;
   - each instance runs `travail_morceau()` (`moteur/R/travaux.R`), computing the X side of the
-    model once for its piece, as one R does (`cote_x_modele`);
+    model once for its piece, as one R does (`cote_x_modele`), with 1.1's `verifier_arret()`
+    before each refit;
   - `travail_finir()` assembles the pieces with the same functions as the request in one R.
   - The answer is the one-R answer: `identical()` to 1.0's loop, in one piece and in three.
+- Stop (1.1): no file can reach R while it computes, so Stop interrupts it (`webR.interrupt()`,
+  `moteur_webr.js`: `arreter`, and the other R of a shared request), which R sees within a
+  thousand evaluations, anywhere in R code (not in a package's compiled code: a fit of nlme or mgcv
+  ends first). A request is interrupted in its computation only, where the interruption becomes
+  the restart `arreter_calcul` of the desktop's stop file (`navigateur.R`: `calcul_arretable`,
+  from `faire_demande`): the request answers "stopped" and the session is as it was. An
+  interruption from before it (Stop just as the last one ended) is passed first, and one that
+  comes once the computation is done doesn't change its answer (`hors_interruptions`, around
+  `traiter_demande`, `travail_preparer` and `travail_finir`; `passer_interruption`).
+
+**What 1.1 has in the page.** Data steps and Update the data (the new file chosen in the page; a
+project opened in the tab has its file there as its source, read again while the tab lives, not
+found after a reload: another file then), What changed, Undo and Redo, the help panel's guide,
+accessibility, the documents (Quarto's `.qmd` in a `.zip`), R-code models and plugins as above,
+Stop, the recovery copies below. What stays the desktop's, said so: File › History…, Share on
+GitHub or GitLab… and Open from GitHub or GitLab… (also the project's right-click) say in the
+status bar that they need the desktop application (`app.bureauRequis`, `versions.js`), so do
+pop-out windows (`fenetre_webr`), Zotero in the citations dialog, and Compile with Quarto ("in the
+desktop application"); File › Settings… (the installed R) and Quit aren't in the menu, as in any
+browser; Help › Restart the R engine and the zoom are greyed out (reloading the page restarts R,
+the browser zooms by itself); the native dialogs are the browser's file choosers.
 
 **Keeping the work.** A project lives in the tab (one saved there was downloaded, which the next
 visit doesn't open by itself), so every open project has a recovery copy in the browser's storage:
@@ -840,21 +889,26 @@ file system and the browser's). R writes it as it writes the desktop's (`sauvega
 is written again 3 s after a change of the project, at each minute when it has unsaved changes,
 when its session changes (views, models) and when the tab is hidden (`app.js`:
 `sauvegarderSecoursNavigateur`); closing or reloading the tab before a change is copied asks
-first. Each tab writes its own copies and index, under its name (`ONGLET`), and holds a lock (Web
-Locks) while it is open: the copies of a tab without its lock are those of a closed tab, which the
-next tab offers (`proposerRecuperationNavigateur`), holding that lock meanwhile, so that two tabs
-never offer the same ones. Recovered, a project opens with its name, its session and whether it
-had unsaved changes (`ouvrir`: `modifie`), and gets copies of its own before the old ones go;
-set aside, they go; the question closed without an answer keeps them for next time.
+first. Each tab writes its own copies and index, under its name (`ONGLET`; a copy is
+`<tab>-<project>.json`, one engine per tab), and holds a lock (Web Locks) while it is open: the
+copies of a tab without its lock are those of a closed tab, which the next tab offers
+(`proposerRecuperationNavigateur`), holding that lock meanwhile, so that two tabs never offer the
+same ones. Recovered, a project opens with its name, its session and whether it had unsaved
+changes (`ouvrir`: `modifie`), and gets copies of its own before the old ones go; set aside, they
+go; the question closed without an answer keeps them for next time.
 
 **Checks.**
 - `node app/tests/essai_moteur_webr.mjs [verifier_x.R ...] [--rscript=<Rscript>]` runs the
   engine's checks in webR's R, in Node, each as Rscript runs it (`webr_rscript.mjs`: the file read
   by R's console, each expression at the top level; R's packages installed once into
-  `node_modules/.cache/nuee-webr`; R's session folder on this computer's disk, so that an
-  `Rscript` started by `system2()` is that script again, in a process of its own, started from
-  webR's worker; `webr_chemins.mjs`: webR's worker loads `R.js` by a path Node refuses on Windows).
+  `node_modules/.cache/nuee-webr`; R's temporary folder, `/tmp` with its session folder, on this
+  computer's disk, so that an `Rscript` started by `system2()` is that script again, in a process
+  of its own, started from webR's worker, and finds the files the checks write beside
+  `tempdir()`; `webr_chemins.mjs`: webR's worker loads `R.js` by a path Node refuses on Windows).
   `verifier_references.R` is left out (its exported projects aren't in the repository).
+  `verifier_forets.R` fails there, as random forests need ranger; `verifier_etapes.R` and
+  `verifier_resultats_cles.R` leave their forests out without ranger; `appli`'s static paths are
+  left out without httpuv, so that the checks calling `appli$call` run there.
 - `node app/tests/essai_navigateur.mjs` builds the site, serves it and uses it in a headless
   Chromium (`playwright-core`, its browser installed in `app/node_modules/.cache/ms-playwright`:
   `PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell`):
@@ -862,7 +916,14 @@ set aside, they go; the question closed without an answer keeps them for next ti
   views, the data downloaded as CSV, a random forest says it needs the desktop application while
   a PLS-DA still fits, and the recovery copies: a reload, then a closed tab, offer the project
   again (its models, its unsaved changes), a second tab open meanwhile is offered nothing, and
-  in a browser without OPFS's `createWritable` the copies go to IndexedDB.
+  in a browser without OPFS's `createWritable` the copies go to IndexedDB. Then 1.1, in a tab of
+  its own: History and Share say they need the desktop application; the CSV opened (File › Open),
+  a data step (New variable), Data steps, Update the data with next year's file chosen in the page
+  (130 observations, the step replayed, What changed); a project saved, opened, saved again,
+  downloaded each time; an R-code model whose package (Kendall) comes from webR's repository, one
+  needing ranger refused; a plugin installed from its file and fitted; Stop in the shared
+  permutation test and in a PCoA's permutations, the next request as usual; the help panel's
+  guide; reloaded, the plugin and the approvals still there.
 - `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
   R server (see Speed).
 
