@@ -507,7 +507,13 @@ lignes_noms_code <- function(noms, n) {
 # nomme pas) : chaque valeur n'est pas rapportée à une observation, plutôt qu'à une autre. `autres` :
 # la réponse `y` du modèle (une colonne de `donnees`) n'a pas, à ces lignes, les valeurs de `donnees`
 # (fitted() + residuals(type = "response")) : le code l'a ajusté sur d'autres données (par site,
-# transformées), et ses lignes ne sont pas des observations.
+# transformées), et ses lignes ne sont pas des observations. Des lignes données par des noms sont aussi
+# vérifiées sur les données mêmes du modèle (model.frame()) : ses colonnes que `donnees` a aussi, de la
+# même espèce, doivent y avoir à ces lignes les valeurs de `donnees` (une catégorie par son nom ; une
+# colonne que le code a recodée en une autre espèce n'est pas comparée). Un sous-ensemble dont le code
+# a renuméroté les lignes (un tibble, merge(), rownames(d) <- NULL) a des noms 1, 2, 3… qui désignent
+# d'autres observations : ses valeurs ne sont alors rapportées à aucune, plutôt qu'à d'autres, même
+# quand sa réponse est une catégorie, que fitted() + residuals() ne vérifie pas.
 lignes_ajustement_code <- function(fit, f, e, donnees, y, greffon = FALSE) {
   n <- nrow(donnees)
   nombre <- length(nombres_ou_rien(f))
@@ -515,11 +521,15 @@ lignes_ajustement_code <- function(fit, f, e, donnees, y, greffon = FALSE) {
   lignes <- if (nombre) noms(f) %||% noms(e)
   cadre <- if (is.list(fit) && !isS4(fit)) fit[["model"]]
   if (is.null(lignes) && is.data.frame(cadre) && nrow(cadre) == nombre) lignes <- lignes_noms_code(rownames(cadre), n)
+  par_place <- FALSE
   if (is.null(lignes) && greffon && nombre && is.null(names(f))) {
     omis <- essai_code(stats::na.action(fit))
     omis <- if (length(omis)) suppressWarnings(as.integer(omis)) else integer(0)
     gardees <- setdiff(seq_len(n), omis)
-    if (!anyNA(omis) && length(gardees) == nombre) lignes <- gardees
+    if (!anyNA(omis) && length(gardees) == nombre) {
+      lignes <- gardees
+      par_place <- TRUE
+    }
   }
   autres <- FALSE
   if (!is.null(lignes) && !is.null(y) && is.numeric(donnees[[y]])) {
@@ -528,6 +538,20 @@ lignes_ajustement_code <- function(fit, f, e, donnees, y, greffon = FALSE) {
       vu <- nombres_ou_rien(f) + r
       ok <- !is.na(vu)
       autres <- !isTRUE(all.equal(vu[ok], donnees[[y]][lignes][ok], tolerance = 1e-6, check.attributes = FALSE))
+    }
+  }
+  if (!autres && !is.null(lignes) && !par_place) {
+    mf <- essai_code(stats::model.frame(fit))
+    lignes_mf <- if (is.data.frame(mf)) lignes_noms_code(rownames(mf), n)
+    if (!is.null(lignes_mf)) {
+      pareil <- function(a, b) {
+        if (is.numeric(a) && is.numeric(b)) return(isTRUE(all.equal(as.numeric(a), as.numeric(b), tolerance = 1e-6, check.attributes = FALSE)))
+        if (is.logical(a) && is.logical(b)) return(identical(as.vector(a), as.vector(b)))
+        if ((is.factor(a) || is.character(a)) && (is.factor(b) || is.character(b))) return(identical(as.character(a), as.character(b)))
+        NA
+      }
+      communes <- intersect(names(mf), names(donnees))
+      if (any(vapply(communes, function(v) isFALSE(pareil(mf[[v]], donnees[[v]][lignes_mf])), NA))) lignes <- NULL
     }
   }
   list(lignes = if (!autres) lignes, autres = autres)

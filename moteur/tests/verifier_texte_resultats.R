@@ -139,5 +139,25 @@ verifier(sprintf("une catégorie sans présence : la séparation signalée, les 
          grepl("^Les? coefficients? de « hab\\([abc]\\) » \\(β = -?1[89]", v_categorie %||% "") && !grepl("« x »", v_categorie %||% "", fixed = TRUE) &&
            !grepl("numériquement", v_categorie %||% "") &&
            grepl("^Le coefficient de « x1 » \\(β = ", v_separee %||% "") && grepl("observations ont une probabilité ajustée numériquement de 0 ou 1", v_separee %||% "", fixed = TRUE))
+# (une année non centrée, 2001 à 2012, croisée avec l'habitat, sans interaction : un coefficient
+# démesuré et incertain par colinéarité, ses probabilités ajustées loin de 0 et de 1, n'est pas une
+# séparation ; une courbe qui sépare, si : ses probabilités numériquement 0 ou 1 le disent)
+set.seed(2)
+dn <- data.frame(nom = sprintf("n%03d", 1:240), an = rep(2001:2012, 20), hab = rep(c("a", "b"), each = 120))
+dn$presence <- stats::rbinom(240, 1, stats::plogis(-0.2 + 0.05 * (dn$an - 2006)))
+pn <- projet_depuis_tableau(dn, "annees")
+d_an <- definir_modele(pn, "GLM", x = numeros(pn, c("an", "hab")), y = numeros(pn, "presence"), observations = numeros_observations(pn),
+                       echelle = c(defaut = "none"), famille = "binomiale", croises = list(numeros(pn, c("an", "hab"))))
+m_an <- ajuster(pn, d_an)
+set.seed(3)
+dg <- data.frame(nom = sprintf("g%03d", 1:120), x = stats::runif(120, 0, 10))
+dg$sep <- as.integer(dg$x > 5)
+pg <- projet_depuis_tableau(dg, "courbe")
+v_courbe <- texte_separation(pg, definir_modele(pg, "GAM", x = numeros(pg, "x"), y = numeros(pg, "sep"), observations = numeros_observations(pg),
+                                                echelle = c(defaut = "none"), famille = "binomiale", lisses = numeros(pg, "x")))
+verifier(sprintf("une année non centrée croisée avec l'habitat (des coefficients de p = %s, ses probabilités entre %.2f et %.2f) : pas de séparation ; une courbe qui sépare : signalée",
+                 paste(round(m_an$resultat$coefficients$p, 2), collapse = ", "), min(m_an$resultat$ajuste), max(m_an$resultat$ajuste)),
+         is.null(Find(function(v) identical(v$cle, "separation"), verifications_regression(pn, m_an, d_an))) &&
+           grepl("une courbe du modèle sépare sans doute les présences des absences", v_courbe %||% "", fixed = TRUE))
 cat(if (echecs) sprintf("%d échec(s)\n", echecs) else "Tout est bon.\n")
 if (echecs) quit(status = 1)

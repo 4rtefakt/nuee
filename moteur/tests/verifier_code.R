@@ -352,6 +352,17 @@ verifier("lme (ses valeurs nommées par ses groupes) sur donnees réordonné : s
 verifier("un modèle ajusté par le code sur des moyennes par site : ses 6 résidus rapportés à aucune observation, hors de la comparaison par l'AIC (d'autres données)",
          length(m_agg$ajustees$residu) == 6 && !length(m_agg$ajustees$uid) && is.null(m_agg$comparaison$signature) && grepl("autres données", m_agg$comparaison$raison))
 
+# (un sous-ensemble dont le code renumérote les lignes, sa réponse une catégorie que fitted() +
+# residuals() ne vérifie pas : ses valeurs rapportées à aucune observation, plutôt qu'aux premières ;
+# les données mêmes du modèle, model.frame(), le disent)
+code_renum <- "d2 <- donnees[donnees$x > 2, ]
+rownames(d2) <- NULL
+glm(g ~ x, family = binomial, data = d2)"
+approuver(code_renum)
+m_renum <- ajuste_code(code_renum, "O4")
+verifier("un sous-ensemble aux lignes renumérotées par le code (rownames(d2) <- NULL), sa réponse une catégorie : ses valeurs rapportées à aucune observation, les observations prises dites inconnues",
+         length(m_renum$ajustees$residu) == sum(df$x > 2) && !length(m_renum$ajustees$uid) && !isTRUE(e_de(m_renum)$modele$utilisees_connues))
+
 # ---------------------------------------------------------------- l'export vers R
 
 cat("L'export vers R : lancé seul, les mêmes nombres\n")

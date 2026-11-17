@@ -110,14 +110,23 @@ verifications_regression <- function(projet, m, d = NULL) {
   # donne aussi. Les observations dont la probabilité ajustée est numériquement 0 ou 1, à 10 ε près
   # (comme glm.fit le dit, « fitted probabilities numerically 0 or 1 occurred »), sont comptées quand il
   # y en a ; une catégorie sans présence n'en a souvent pas (l'ajustement s'y arrête vers 1e-9).
-  if (famille == "binomiale" && NROW(r$coefficients)) {
+  # Inversement, un coefficient démesuré et incertain ne suffit pas : celui d'une interaction ou d'un
+  # carré d'une année non centrée (2001 à 2012) l'est aussi, par colinéarité, ses probabilités ajustées
+  # loin de 0 et de 1. La séparation, elle, en mène toujours près de 0 ou de 1 (1e-7 et en deçà) : un
+  # coefficient diverge donc quand, en plus, une probabilité ajustée est à moins de 1e-6 de 0 ou de 1.
+  # Une courbe qui sépare (au-delà d'une valeur de son X, rien que des présences) n'a pas de coefficient
+  # ici : quand aucun ne diverge, ses probabilités numériquement 0 ou 1 le disent.
+  if (famille == "binomiale" && (NROW(r$coefficients) || NROW(r$courbes))) {
     co <- r$coefficients
-    t_co <- m$termes[match(co$terme, m$noms_termes)]
-    etendue <- vapply(t_co, function(s) if (!is.na(s) && s %in% names(m$donnees)) diff(range(m$donnees[[s]], na.rm = TRUE)) else NA_real_, 0)
-    diverge <- which(is.finite(etendue) & etendue > 0 & abs(co$estimation) * etendue > 10 & is.finite(co$erreur_type) & co$erreur_type > abs(co$estimation))
+    eps <- 10 * .Machine$double.eps
+    bords <- sum(r$ajuste < eps | r$ajuste > 1 - eps, na.rm = TRUE)
+    diverge <- integer(0)
+    if (NROW(co) && any(r$ajuste < 1e-6 | r$ajuste > 1 - 1e-6, na.rm = TRUE)) {
+      t_co <- m$termes[match(co$terme, m$noms_termes)]
+      etendue <- vapply(t_co, function(s) if (!is.na(s) && s %in% names(m$donnees)) diff(range(m$donnees[[s]], na.rm = TRUE)) else NA_real_, 0)
+      diverge <- which(is.finite(etendue) & etendue > 0 & abs(co$estimation) * etendue > 10 & is.finite(co$erreur_type) & co$erreur_type > abs(co$estimation))
+    }
     if (length(diverge)) {
-      eps <- 10 * .Machine$double.eps
-      bords <- sum(r$ajuste < eps | r$ajuste > 1 - eps, na.rm = TRUE)
       v3 <- function(z) trimws(formatC(z, digits = 3, format = "fg", decimal.mark = if (fr) "," else "."))
       termes <- vapply(diverge, function(i) sprintf(if (fr) "« %s » (β = %s, erreur-type %s%s)" else "“%s” (β = %s, standard error %s%s)", co$terme[i], v3(co$estimation[i]),
                                                    v3(co$erreur_type[i]), if (is.finite(co$p[i])) paste0(", ", sub("= +", "= ", pv(co$p[i]))) else ""), "")
@@ -132,6 +141,11 @@ verifications_regression <- function(projet, m, d = NULL) {
               else sprintf(if (plusieurs) "The coefficients of %s are huge, and their standard errors larger still: terms of the model separate the presences from the absences (a category without presences or without absences, or a threshold of an X beyond which there are only presences)%s. Their coefficients would grow without bound if the fit went on, and their tests say nothing of their effect: remove the term that separates, or merge its categories."
                            else "The coefficient of %s is huge, and its standard error larger still: this term separates the presences from the absences (a category without presences or without absences, or a threshold of an X beyond which there are only presences)%s. Its coefficient would grow without bound if the fit went on, and its test says nothing of its effect: remove the term that separates, or merge its categories.",
                            quoi, au_bord))
+    } else if (NROW(r$courbes) && bords) {
+      ajouter("separation", "attention",
+              sprintf(if (fr) "%d des %d observations %s une probabilité ajustée numériquement de 0 ou 1 : une courbe du modèle sépare sans doute les présences des absences (au-delà d'une valeur de son X, rien que des présences, ou que des absences). Son test et sa bande n'en disent alors rien : regardez les données de part et d'autre de cette valeur."
+                      else "%d of the %d observations %s a fitted probability numerically 0 or 1: a curve of the model likely separates the presences from the absences (beyond a value of its X, only presences, or only absences). Its test and its band then say nothing of it: look at the data on either side of that value.",
+                      bords, n, if (fr) (if (bords > 1) "ont" else "a") else (if (bords > 1) "have" else "has")))
     }
   }
   # --- colinéarité des termes quantitatifs (VIF : la diagonale de l'inverse de leur matrice de corrélation)

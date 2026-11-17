@@ -298,6 +298,7 @@ expression_cle <- function(famille, chemin, d, m, o, n) {
     # D.Nord.ic, avant une partie de la densité totale, D.ic)
     if (startsWith(k, "D.")) {
       strates <- as.character(m$densite$strate[!is.na(m$densite$strate)])
+      strates <- strates[order(-nchar(strates))]  # (la plus longue d'abord : Nord.Est avant Nord)
       s <- Find(function(x) identical(k, paste0("D.", x)) || startsWith(k, paste0("D.", x, ".")), strates)
       if (!is.null(s)) {
         p <- if (identical(k, paste0("D.", s))) "valeur" else substring(k, nchar(s) + 4)
