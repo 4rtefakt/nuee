@@ -88,8 +88,7 @@ module.exports = {
     await w2.fermerFenetre();
 
     // ---- Move back to the main window: the scores of the new fit there
-    await f.cliquer("[...document.querySelectorAll('#tete-seul button')].pop()");
-    f.fermer();
+    await f.cliquerQuiFerme("[...document.querySelectorAll('#tete-seul button')].pop()");
     const rattache = await n.attendre(`!!__n.onglet(${JSON.stringify(scores)})`).catch(() => false);
     verifier('rattacheeAuNouvelAjustement', !!rattache);
 

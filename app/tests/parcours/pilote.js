@@ -493,9 +493,20 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       async fermerFenetre() {
         await f.evaluer('setTimeout(() => window.close(), 50), true').catch(() => {});
         s.fermer();
-        const fin = Date.now() + 5000;
-        while (Date.now() < fin && ((await lister(portPage)) || []).some((c) => c.id === cible.id)) await attente(100);
+        await partie();
       },
+      // a click on what closes its own window (Move back): the window may be gone before the click's
+      // answer, so the connection's closing is no error then; gone too before the run goes on
+      async cliquerQuiFerme(expression) {
+        await f.cliquer(expression).catch((e) => { if (!/: connection closed$/.test(e.message)) throw e; });
+        s.fermer();
+        await partie();
+      },
+    };
+    // (the window gone from the program's pages, 5 s at most)
+    const partie = async () => {
+      const fin = Date.now() + 5000;
+      while (Date.now() < fin && ((await lister(portPage)) || []).some((c) => c.id === cible.id)) await attente(100);
     };
     await f.attendre("document.readyState === 'complete'");
     await f.evaluer(`window.__essai || ${ESPION}`);
