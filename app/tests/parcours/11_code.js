@@ -106,7 +106,7 @@ module.exports = {
       return x.length === 1 && x[0].code === ${JSON.stringify(CODE2b)} ? x[0] : null; })`);
     const suivi = await fr.attendre(`location.search.includes(${JSON.stringify(`modele=${m3.id}`)}) && __n.tous('.resume').some((x) => __n.norm(x.textContent).includes('lme'))`).catch((e) => e.message);
     verifier('modifierLeCodeDepuisSaFenetre', suivi === true && m3.numero === m.numero, suivi);
-    await fr.evaluer('window.close(), true').catch(() => {});
+    await fr.evaluer('setTimeout(() => window.close(), 100), true').catch(() => {});
     fr.fermer();
     await n.plotlyPret(coefficients, 1);
 

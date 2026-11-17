@@ -173,14 +173,22 @@ async function brancher(cible) {
     }
     await etape('axe : accueil (clair)', () => p.axe('accueil'));
     await etape('barre de menus : Alt, les flèches, Échap', async () => {
+      // (what the keyboard went through, and the menus' state, said when a step fails)
+      await p.evaluer(`(() => { const j = window.__journalClavier = []; const nom = (e) => (e && e.nodeType === 1 ? (e.className || e.tagName) + ':' + (e.textContent || '').trim().slice(0, 14) : String(e));
+        for (const t of ['focusin', 'focusout', 'keydown']) document.addEventListener(t, (e) => j.push(t + ' ' + (t === 'keydown' ? e.key + ' ' : '') + nom(e.target)), true);
+        window.addEventListener('blur', () => j.push('window blur')); window.addEventListener('error', (e) => j.push('error ' + e.message));
+        window.addEventListener('unhandledrejection', (e) => j.push('rejection ' + (e.reason && e.reason.stack || e.reason))); return true; })()`);
+      const etat = () => p.evaluer(`(() => { const m = document.querySelector('.menu'); return { menus: document.querySelectorAll('.menu').length,
+        visibilite: m && getComputedStyle(m).visibility, place: m && [m.style.left, m.style.top], pageFocus: document.hasFocus(), vue: [innerWidth, innerHeight],
+        journal: (window.__journalClavier || []).slice(-14) }; })()`);
       await p.touche('Alt');
       let f = await p.focus();
-      verifier(f.dans === 'barre' && f.nom === 'File', `Alt: ${JSON.stringify(f)}`);
+      verifier(f.dans === 'barre' && f.nom === 'File', `Alt: ${JSON.stringify(f)} ${JSON.stringify(await etat())}`);
       await p.touche('ArrowRight');
       verifier((await p.focus()).nom === 'Edit', `→: ${JSON.stringify(await p.focus())}`);
       await p.touche('ArrowDown');
       f = await p.focus();
-      verifier(f.dans === 'menu' && /^menuitem/.test(f.role), `↓: ${JSON.stringify(f)}`);
+      verifier(f.dans === 'menu' && /^menuitem/.test(f.role), `↓: ${JSON.stringify(f)} ${JSON.stringify(await etat())}`);
       verifier(await p.evaluer("document.querySelector('#menus [aria-expanded=\"true\"]').textContent === 'Edit'"), 'aria-expanded');
       await p.touche('Escape');
       verifier((await p.focus()).dans === 'barre', 'Escape: back to the menu bar');
