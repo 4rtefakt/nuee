@@ -86,17 +86,18 @@ calcul_arretable <- function(expr) {
 # ---------------------------------------------------------------- les paquets d'un code R, d'un greffon
 
 # Les paquets que demande un modèle de code R ou un greffon (code.R, greffons.R), dans le navigateur :
-# ceux qui manquent installés dans le R de l'onglet depuis le dépôt de webR (repo.r-wasm.org), comme
-# moteur_webr.js installe ceux du moteur ; pas ceux dont un des paquets est de ceux que webR ne sait
-# pas charger (nuee.paquets_sans_webr : une bibliothèque qui ne se charge pas empêche webR d'en charger
-# aucune autre ensuite). Rend ceux qui manquent encore.
+# ceux qui manquent installés dans le R de l'onglet comme moteur_webr.js installe ceux du moteur, depuis
+# les dépôts de l'option webr_pkg_repos : la copie du dépôt de webR du site s'il en a une (nuee.io),
+# puis le dépôt de webR lui-même (repo.r-wasm.org), pour ce qu'elle n'a pas ; pas ceux dont un des
+# paquets est de ceux que webR ne sait pas charger (nuee.paquets_sans_webr : une bibliothèque qui ne se
+# charge pas empêche webR d'en charger aucune autre ensuite). Rend ceux qui manquent encore.
 installer_paquets_navigateur <- function(paquets) {
   present <- function(p) nzchar(system.file(package = p))
   paquets <- setdiff(unique(as.character(unlist(paquets))), c("", PAQUETS_DE_R))
   manque <- paquets[!vapply(paquets, present, TRUE)]
   installer <- if (length(manque)) tryCatch(getExportedValue("webr", "install"), error = function(e) NULL)
   if (is.null(installer)) return(manque)
-  depot <- sprintf("%s/bin/emscripten/contrib/%s", sub("/$", "", as.character(getOption("webr_pkg_repos") %||% "https://repo.r-wasm.org")[1]),
+  depot <- sprintf("%s/bin/emscripten/contrib/%s", sub("/$", "", as.character(getOption("webr_pkg_repos") %||% "https://repo.r-wasm.org")),
                    sub("\\.[^.]+$", "", as.character(getRversion())))
   info <- tryCatch(utils::available.packages(contriburl = depot), error = function(e) NULL)
   if (is.null(info)) return(manque)

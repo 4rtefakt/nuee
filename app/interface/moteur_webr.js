@@ -85,6 +85,21 @@ async function garderGreffons(webR) {
 // without them: their features say they need the desktop application)
 const sansPaquets = () => (new URLSearchParams(location.search).get('sans') || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+// Where they come from: the site's own copy of webR's repository when it has one (navigateur.js:
+// window.NUEE_MIROIR_WEBR, written by miroir_webr.mjs, as on nuee.io), so that a first visit asks
+// nothing of another site; webR's repository for what that copy lacks, such as an R-code model's own
+// package (navigateur.R: installer_paquets_navigateur reads the repositories from webr_pkg_repos).
+// { depots: the repositories in that order, miroir: the packages of the site's copy }
+const DEPOT_WEBR = 'https://repo.r-wasm.org';
+async function depotsPaquets(webR) {
+  const sans = { depots: [DEPOT_WEBR], miroir: new Set() };
+  if (!window.NUEE_MIROIR_WEBR) return sans;
+  const miroir = new URL(window.NUEE_MIROIR_WEBR, location.href).href.replace(/\/$/, '');
+  const index = await fetch(`${miroir}/bin/emscripten/contrib/${webR.versionR.replace(/\.\d+$/, '')}/PACKAGES`).catch(() => null);
+  if (!index || !index.ok) return sans;
+  return { depots: [miroir, DEPOT_WEBR], miroir: new Set([...(await index.text()).matchAll(/^Package:\s*(\S+)/gm)].map((m) => m[1])) };
+}
+
 // One webR with the engine. The main one answers the interface's requests: every package, and
 // the request layer (serveur.R). The others (`aide`) take pieces of long requests: the engine
 // alone, no package (what they compute needs none: TRAVAUX in serveur.R).
@@ -106,15 +121,18 @@ async function nouveauR(progres = () => {}, aide = false) {
     await webR.evalRVoid('setwd("/nuee"); source("moteur/charger.R", encoding = "UTF-8")');
     return { webR, absents: [] };
   }
-  // each package on its own: one webR can't install leaves only its features out
+  // each package on its own: one webR can't install leaves only its features out; from the site's
+  // copy alone when it has the package (what it depends on is there too)
   const sans = sansPaquets();
   const absents = [...Object.keys(SANS_WEBR)];
   const paquets = PAQUETS_WEBR.filter((p) => !sans.includes(p));
   absents.push(...PAQUETS_WEBR.filter((p) => sans.includes(p)));
+  const { depots, miroir } = await depotsPaquets(webR);
+  if (miroir.size) await webR.evalRVoid('options(webr_pkg_repos = depots)', { env: { depots } });
   for (const [i, p] of paquets.entries()) {
     progres(texte('paquet', { p, i: i + 1, n: paquets.length }), 0.1 + 0.85 * (i / paquets.length));
     try {
-      await webR.installPackages([p], { quiet: true });
+      await webR.installPackages([p], { quiet: true, repos: miroir.has(p) ? depots.slice(0, 1) : depots });
     } catch (e) {
       console.warn(`Nuée : le paquet R ${p} n'a pas pu être installé`, e);
       absents.push(p);
