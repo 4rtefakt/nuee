@@ -12,7 +12,13 @@
 // (Kendall) installed from webR's repository, and one needing ranger refused; a plugin installed
 // from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the shared
 // permutation test, a PCoA's permutations in one R), the next request as usual; reloaded, the
-// plugin and the approvals still there. The time of each request goes to <folder>/demandes.json.
+// plugin and the approvals still there. Then 1.2's link of a reproducibility package, ?doi=,
+// against a stand-in for Zenodo's API (Playwright's routes; zenodo.org never resolves in this
+// browser): the package written in the page opened from its record and rerun, every model giving
+// its deposited results, then chosen in the page (File › Open, File › Open a reproducibility
+// package…); a concept DOI, a record, an unknown DOI, another one, not a DOI, no network; the link
+// of an unknown DOI and of a record without a package said plainly; nothing asked of another site.
+// The time of each request goes to <folder>/demandes.json.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--sortie=<folder>] [--visible]
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
 //   PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell

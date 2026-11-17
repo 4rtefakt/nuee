@@ -893,10 +893,11 @@ the browser zooms by itself); the native dialogs are the browser's file choosers
 **A reproducibility package's link (1.2).** `?doi=<doi>` or `?record=<id>` (the README of a
 package deposited on Zenodo gives `https://nuee.io/app/?doi=<doi>`, and its QR code too) opens the
 package from Zenodo and reruns it, as File › Open a reproducibility package… does (relancer.js:
-`ouvrirLien`). The page asks nothing of any other site: only Zenodo's API, which answers any page
-(`Access-Control-Allow-Origin: *` on `/api/records/<id>`, its files and their content, Range
-included), so the site's security policy adds `https://zenodo.org` to `connect-src`
-(`construire_navigateur.js`).
+`ouvrirLien`; that command, File › Open on a package's `.zip` and a `.zip` dropped work in the page
+too, the file chosen there). The page asks nothing of any other site: only Zenodo's API, which
+answers any page (`Access-Control-Allow-Origin: *` on `/api/records/<id>`, its files and their
+content, Range included), so the site's security policy adds `https://zenodo.org` to
+`connect-src` (`construire_navigateur.js`).
 - The record (`recordZenodo`): a version's DOI, `10.5281/zenodo.<id>`, is the record `<id>`
   (`GET /api/records/<id>`, its `doi` the DOI given); a concept DOI's id is its parent's, which
   Zenodo's records endpoint redirects to its latest version (invenio-rdm-records' `read`, on
