@@ -2415,12 +2415,13 @@ fini <- function(x) {
 
 # Une demande faite (la fonction `f` de DEMANDES, sur ses paramètres `q`), qu'Arrêter peut interrompre
 # (arret.R) : list(reponse) ; NULL quand elle a été arrêtée, la séance remise alors telle qu'elle était
-# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part.
+# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part. (Dans le
+# navigateur, Arrêter interrompt R : navigateur.R, calcul_arretable.)
 faire_demande <- function(f, q) {
   garde <- function() setdiff(ls(etat, all.names = TRUE), c("journal", "n_journal"))
   avant <- mget(garde(), envir = etat)
   arretee <- FALSE
-  r <- withRestarts(f(q), arreter_calcul = function() arretee <<- TRUE)
+  r <- withRestarts(calcul_arretable(f(q)), arreter_calcul = function() arretee <<- TRUE)
   if (!arretee) return(list(reponse = r))
   rm(list = setdiff(garde(), names(avant)), envir = etat)
   for (n in names(avant)) assign(n, avant[[n]], envir = etat)
@@ -2453,10 +2454,11 @@ repondre_erreur <- function(nom, e) {
 # Une demande de l'interface, `corps` son JSON (brut) : la réponse (statut, en-têtes, corps JSON).
 # Le serveur HTTP ci-dessous et le moteur dans le navigateur (webR : app/interface/moteur_webr.js)
 # passent tous deux par là. `code` : le secret qui accompagne une approbation de code R (l'en-tête
-# X-Nuee-Code), que seule l'application connaît.
+# X-Nuee-Code), que seule l'application connaît. (Dans le navigateur, Arrêter ne l'interrompt que dans
+# son calcul : navigateur.R, hors_interruptions.)
 traiter_demande <- function(nom, corps = raw(0), langue = "fr", code = NULL) {
   options(nuee.langue = if (identical(langue, "en")) "en" else "fr")  # langue des messages (langue.R)
-  tryCatch({
+  hors_interruptions(tryCatch({
     f <- DEMANDES[[nom]]
     if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
     # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
@@ -2473,7 +2475,7 @@ traiter_demande <- function(nom, corps = raw(0), langue = "fr", code = NULL) {
     r <- fait$reponse
     tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
     repondre(200L, r)
-  }, error = function(e) repondre_erreur(nom, e))
+  }, error = function(e) repondre_erreur(nom, e)))
 }
 lire_demande <- function(nom, corps) {
   q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
@@ -2504,23 +2506,23 @@ TRAVAUX <- list(
 # (le R de l'interface) les tâches d'une demande, dans un fichier pour les autres R : { fichier, n }
 travail_preparer <- function(nom, corps = raw(0), langue = "fr") {
   options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
-  tryCatch({
+  hors_interruptions(tryCatch({
     w <- TRAVAUX[[nom]]
     t <- w$taches(lire_demande(nom, corps))
     fichier <- tempfile("travail", fileext = ".rds")
     saveRDS(list(morceau = w$morceau, taches = t), fichier, compress = FALSE)
     repondre(200L, list(fichier = fichier, n = t$n))
-  }, error = function(e) repondre_erreur(nom, e))
+  }, error = function(e) repondre_erreur(nom, e)))
 }
 # (le R de l'interface) les morceaux faits (`sorties`, dans l'ordre), la réponse de la demande
 travail_finir <- function(nom, corps, langue, fichier, sorties) {
   options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
-  tryCatch({
+  hors_interruptions(tryCatch({
     q <- lire_demande(nom, corps)
     r <- TRAVAUX[[nom]]$reponse(q, readRDS(fichier)$taches, do.call(rbind, lapply(sorties, readRDS)))
     tryCatch(journaliser(nom, q, r), error = function(e) NULL)
     repondre(200L, r)
-  }, error = function(e) repondre_erreur(nom, e))
+  }, error = function(e) repondre_erreur(nom, e)))
 }
 
 # Le serveur HTTP. La version navigateur (webR : app/interface/moteur_webr.js) charge ce fichier

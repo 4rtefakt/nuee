@@ -60,6 +60,29 @@ erreur_navigateur <- function(e) {
                                  sprintf(traduire("le paquet R %s n'est pas dans la version navigateur", "the R package %s isn't in the browser version"), paquet)))
 }
 
+# ---------------------------------------------------------------- Arrêter
+
+# Dans le navigateur, Arrêter interrompt le R de l'onglet (webR.interrupt() : moteur_webr.js), qui le
+# voit au plus tard mille évaluations plus loin, partout dans du code R (pas dans le code compilé d'un
+# paquet : un ajustement de nlme ou de mgcv finit d'abord). Une demande (serveur.R : traiter_demande)
+# n'est interrompue que dans son calcul, où l'interruption devient le redémarrage « arreter_calcul » du
+# fichier d'arrêt de l'application de bureau (faire_demande : calcul_arretable) : la demande rend
+# « arrêtée », la séance telle qu'elle était avant elle. Une interruption venue avant elle (Arrêter à la
+# fin de la précédente) passe d'abord, et une qui vient le calcul fini ne change pas sa réponse.
+passer_interruption <- function() tryCatch(for (i in seq_len(1001L)) NULL, interrupt = function(c) NULL)
+hors_interruptions <- function(expr) {
+  if (!dans_navigateur()) return(expr)
+  passer_interruption()
+  r <- NULL
+  tryCatch(suspendInterrupts(r <- expr), interrupt = function(c) NULL)
+  passer_interruption()
+  r
+}
+calcul_arretable <- function(expr) {
+  if (!dans_navigateur()) return(expr)
+  allowInterrupts(withCallingHandlers(expr, interrupt = function(c) invokeRestart("arreter_calcul")))
+}
+
 # ---------------------------------------------------------------- les paquets d'un code R, d'un greffon
 
 # Les paquets que demande un modèle de code R ou un greffon (code.R, greffons.R), dans le navigateur :

@@ -2,7 +2,7 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
-import { demander, televerser, deposer, telechargerFichier, bureau, debutAttente, MOTEUR_WEBR } from './api.js';
+import { demander, televerser, deposer, telechargerFichier, bureau, debutAttente, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
@@ -1312,12 +1312,13 @@ async function occupe(f) {
 // the status bar, after the engine's state; main.js then writes the file the engine's long loops
 // look at between two rounds (moteur/R/arret.R), and the request comes back "stopped", nothing
 // changed. It is an element of its own beside #appli, which a dialog doesn't make inert (aria-live):
-// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file.
+// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file; in the
+// browser version, R in the page is interrupted instead (moteur_webr.js: arreter; navigateur.R).
 const ATTENTE_ARRET = 1500;
 let minuterieArret = null;
 let minuterieArretLent = null;
 function majArret() {
-  if (!bureau || !bureau.arreterCalcul) return;
+  if (!(bureau && bureau.arreterCalcul) && !MOTEUR_WEBR) return;
   clearTimeout(minuterieArret);
   let b = document.getElementById('arret-calcul');
   const debut = debutAttente();
@@ -1357,7 +1358,7 @@ async function arreterCalcul() {
   majArret();
   // (a progress dialog under way, Update the data's, stops after the model being fitted: etapes.js)
   window.dispatchEvent(new CustomEvent('arret-demande'));
-  try { await bureau.arreterCalcul(); } catch { etat.arretDemande = false; majArret(); return; }
+  try { await (MOTEUR_WEBR ? (await moteurWebR()).arreter() : bureau.arreterCalcul()); } catch { etat.arretDemande = false; majArret(); return; }
   // (a computation that doesn't check between rounds, a single fit in compiled code: said after a while)
   clearTimeout(minuterieArretLent);
   minuterieArretLent = setTimeout(() => { if (etat.arretDemande) { etat.arretLent = true; majArret(); } }, 8000);

@@ -183,37 +183,52 @@ export async function demarrer() {
     const octets = await webR.FS.readFile(fichier);
     const tous = [webR, ...autres].slice(0, n);
     const morceaux = tous.map((r, i) => [Math.floor((i * n) / tous.length) + 1, Math.floor(((i + 1) * n) / tous.length)]);
+    // (Stop interrupts each R: its piece comes back "arrete", and so does the request, nothing
+    // changed; an interruption from before, passed first: navigateur.R, passer_interruption)
+    const morceau = (debut, fin, f, s) => `local({ passer_interruption(); tryCatch({ travail_morceau("${f}", ${debut}, ${fin}, "${s}"); "fait" }, interrupt = function(c) "arrete") })`;
+    partage = tous.filter((r) => r !== webR);
     const sorties = await Promise.all(tous.map(async (r, i) => {
       const [debut, fin] = morceaux[i];
       const ici = `/tmp/morceau-${i + 1}.rds`;
-      if (r === webR) {
-        await webR.evalRVoid(`travail_morceau("${fichier}", ${debut}, ${fin}, "${ici}")`);
-        return ici;
-      }
+      if (r === webR) return (await webR.evalRString(morceau(debut, fin, fichier, ici))) === 'fait' ? ici : null;
       await r.FS.writeFile('/tmp/travail.rds', octets);
-      await r.evalRVoid(`travail_morceau("/tmp/travail.rds", ${debut}, ${fin}, "/tmp/morceau.rds")`);
+      if ((await r.evalRString(morceau(debut, fin, '/tmp/travail.rds', '/tmp/morceau.rds'))) !== 'fait') return null;
       await webR.FS.writeFile(ici, await r.FS.readFile('/tmp/morceau.rds'));
       return ici;
-    }));
+    })).finally(() => { partage = null; });
+    if (sorties.includes(null)) return { statut: 400, json: { erreur: langue === 'en' ? 'Computation stopped.' : 'Calcul arrêté.', arrete: true } };
     return traiter(webR, 'travail_finir(nom, charToRaw(enc2utf8(corps)), langue, fichier, sorties)', { ...env, fichier, sorties });
   }
   let depot = 0;
   let file = Promise.resolve();  // (one shared request at a time: the other R hold one task each)
+  let enCours = 0;  // (requests R is computing or about to: Stop interrupts it only then)
+  let partage = null;  // (the other R of the shared request under way)
   return {
     // a request, as the local server answers it: { statut, json }
     async demander(nom, corps, langue) {
       const autres = PARTAGEABLES[nom] && PARTAGEABLES[nom](corps ?? {}) >= SEUIL_PARTAGE && aides ? await aides : null;
-      if (autres && autres.length) {
-        const r = file.then(() => partager(nom, corps, langue, autres));
-        file = r.catch(() => {});
-        return r;
-      }
-      const r = await traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
+      enCours += 1;
+      let r;
+      try {
+        if (autres && autres.length) {
+          const p = file.then(() => partager(nom, corps, langue, autres));
+          file = p.catch(() => {});
+          return await p;
+        }
+        r = await traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
+      } finally { enCours -= 1; }
       // (a plugin installed or removed: the plugins' folder kept in the browser's storage)
       if (r.statut === 200 && (nom === 'greffon_installer' || nom === 'greffon_retirer')) {
         await garderGreffons(webR).catch((e) => console.warn('Nuée : les greffons installés n’ont pas pu être gardés', e));
       }
       return r;
+    },
+    // Stop (app.js: arreterCalcul; etapes.js): R interrupted where it computes, and the other R of a
+    // shared request (navigateur.R: calcul_arretable); nothing when no request is under way
+    arreter() {
+      if (!enCours) return;
+      webR.interrupt();
+      for (const r of partage || []) r.interrupt();
     },
     // the packages the browser version doesn't have (SANS_WEBR, ?sans=, failed installs)
     absents: () => absents,

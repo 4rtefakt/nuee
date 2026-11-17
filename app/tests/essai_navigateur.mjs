@@ -10,8 +10,9 @@
 // variable), Data steps, Update the data with next year's file chosen in the page, What changed;
 // a project saved, opened, saved again, downloaded each time; an R-code model, its package
 // (Kendall) installed from webR's repository, and one needing ranger refused; a plugin installed
-// from its file and fitted; the help panel's guide; reloaded, the plugin and the approvals still
-// there. The time of each request goes to <folder>/demandes.json.
+// from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the shared
+// permutation test, a PCoA's permutations in one R), the next request as usual; reloaded, the
+// plugin and the approvals still there. The time of each request goes to <folder>/demandes.json.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--sortie=<folder>] [--visible]
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
 //   PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell
@@ -479,6 +480,49 @@ try {
     for (const p of app.projets()) codes.push(...[].concat((await demander('code_modeles', { projet: p.id })).modeles || []));
     return { greffons: [].concat(g.liste || []).map((x) => ({ id: x.id, permis: x.permis })), codes: codes.map((c) => ({ nom: c.nom, approuve: c.approuve })) };
   });
+  // Stop: R in the page interrupted, in the permutation test shared with the other R of the page
+  // (999) and in a PCoA's permutations in one R (99,999); each answers "stopped", the project as it
+  // was, and the next request as usual
+  const ex = await page.evaluate(async () => {
+    const a = await import('./api.js');
+    const p = await a.demander('exemple', { nom: 'pommes' });
+    const m = await a.demander('ajuster', { projet: p.id, numero: 2 });
+    return { pid: p.id, m2: m.id, definitions: [].concat(p.modeles || []).length };
+  });
+  const arreter = async (f, arg) => {
+    const fini = page.evaluate(f, arg);
+    await page.waitForSelector('#arret-calcul:not([hidden]) button:not([disabled])', { timeout: 60000 });
+    await page.click('#arret-calcul button');
+    return fini;
+  };
+  const arretPermutations = await arreter(async ({ m2 }) => {
+    const a = await import('./api.js');
+    const t0 = performance.now();
+    try { await a.demander('permutations', { modele: m2, n: 999 }); return { fini: true, s: (performance.now() - t0) / 1000 }; } catch (e) {
+      return { arrete: !!(e.reponse && e.reponse.arrete), message: e.message, s: (performance.now() - t0) / 1000 };
+    }
+  }, ex);
+  const arretPcoa = await arreter(async ({ pid }) => {
+    const a = await import('./api.js');
+    const p = await a.demander('projet', { projet: pid });
+    const u = (n) => p.variables.find((v) => v.nom === n).uid;
+    const y = ['weight', 'diameter', 'firmness', 'sugar', 'acidity', 'starch', 'dry_matter', 'polyphenols', 'colour_a', 'colour_b', 'juice', 'calcium', 'nitrogen', 'storage'];
+    const t0 = performance.now();
+    try {
+      await a.demander('ajuster', { projet: pid, type: 'PCOA', x: [u('variety')], y: y.map(u), echelle: 'none', options: { distance: 'gower', permutations: 99999, graine: 1 }, nom: 'PCoA' });
+      return { fini: true, s: (performance.now() - t0) / 1000 };
+    } catch (e) { return { arrete: !!(e.reponse && e.reponse.arrete), message: e.message, s: (performance.now() - t0) / 1000 }; }
+  }, ex);
+  const apresArret = await page.evaluate(async ({ pid }) => {
+    const a = await import('./api.js');
+    const p = await a.demander('projet', { projet: pid });
+    const m = await a.demander('ajuster', { projet: pid, numero: 1 });
+    return { definitions: [].concat(p.modeles || []).length, pca: !!m.id };
+  }, ex);
+  verifier('Arrêter : le test de permutation partagé et une PCoA arrêtés, rien de changé, la demande suivante comme d’habitude',
+    arretPermutations.arrete && arretPcoa.arrete && apresArret.definitions === ex.definitions && apresArret.pca,
+    `${JSON.stringify(arretPermutations)} ; ${JSON.stringify(arretPcoa)} ; ${JSON.stringify(apresArret)}`);
+
   await commande(page, 'guide');
   const aide = await attendre(page, () => { const c = document.querySelector('.aide-corps'); return c && c.textContent.length > 500 ? c.textContent.length : 0; }, null, 30000).catch(() => 0);
   verifier('le guide dans le panneau d’aide (F1)', aide > 500, `${aide} caractères`);
