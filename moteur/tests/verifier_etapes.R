@@ -50,8 +50,9 @@
 #     dit qu'il ne se réajuste plus sans eux) ; le numéro d'une variable partie ne revient jamais à une
 #     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler ;
 #   - Annuler et Rétablir, et les modèles ajustés depuis : un modèle ajusté après un changement reste quand
-#     on l'annule (refusé quand il lit une variable que l'annulation retirerait) ; un modèle ajusté après
-#     Annuler ne laisse plus Rétablir ; les modèles réajustés par leur numéro, si ;
+#     on l'annule (sauf s'il lit une variable que l'annulation retire : il part avec elle, Rétablir les
+#     rend) ; un modèle ajusté après Annuler ne laisse plus Rétablir ; les modèles réajustés par leur
+#     numéro, si ;
 #   - une étape retirée défait ce qu'elle avait fait : des coordonnées, des catégories renommées et rangées
 #     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
 #     modèle l'y utilise) ;
@@ -1059,9 +1060,12 @@ verifier("Annuler, puis chaque modèle réajusté par son numéro (une ACP à 2 
 demande("retablir", list(projet = aid))
 demande("variable_calculee", list(projet = aid, nom = "w", formule = "x * 2"))
 demande("ajuster", list(projet = aid, type = "LM", x = list(ua("w")), y = ua("y"), nom = "M3"))
-avant_refus <- projet(aid)
-verifier("un modèle ajusté sur une variable qu'Annuler retirerait : Annuler refusé, en disant de supprimer d'abord le modèle",
-         grepl("M3", refus("annuler", list(projet = aid))) && grepl("« w »", refus("annuler", list(projet = aid))) && identical(projet(aid), avant_refus))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("z")), y = ua("y"), nom = "M4"))
+demande("annuler", list(projet = aid))
+verifier("Annuler une variable sur laquelle un modèle a été ajusté depuis : il part avec elle, un autre ajusté depuis reste",
+         !"w" %in% projet(aid)$noms_var && !"M3" %in% noms_modeles() && "M4" %in% noms_modeles())
+demande("retablir", list(projet = aid))
+verifier("Rétablir : la variable et ce modèle reviennent", "w" %in% projet(aid)$noms_var && all(c("M3", "M4") %in% noms_modeles()))
 
 cat("Une étape retirée : les variables telles que la source et les autres étapes les donnent\n")
 # (une variable en catégories, une unité, des catégories renommées et rangées, des coordonnées : chaque

@@ -150,7 +150,7 @@ annuler_demande <- function(q) {
   pile <- etat$annulations[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à annuler", "Nothing to undo"))
   actuel <- projet(q$projet)
-  ancien <- revenir_a(actuel, pile[[1]], retablir = FALSE)
+  ancien <- revenir_a(actuel, pile[[1]])
   etat$annulations[[q$projet]] <- pile[-1]
   etat$retablissements[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], ancien)), etat$retablissements[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- ancien
@@ -166,7 +166,7 @@ retablir_demande <- function(q) {
   pile <- etat$retablissements[[q$projet]]
   if (!length(pile)) stop(traduire("Rien à rétablir", "Nothing to redo"))
   actuel <- projet(q$projet)
-  apres <- revenir_a(actuel, pile[[1]], retablir = TRUE)
+  apres <- revenir_a(actuel, pile[[1]])
   etat$retablissements[[q$projet]] <- pile[-1]
   etat$annulations[[q$projet]] <- utils::head(c(list(entree_inverse(actuel, pile[[1]], apres)), etat$annulations[[q$projet]] %||% list()), 20)
   etat$projets[[q$projet]] <- apres
@@ -176,10 +176,9 @@ retablir_demande <- function(q) {
 }
 
 # Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
-# Annuler prend la plus récente des annulations, Rétablir (`retablir`) celle des rétablissements. Les
-# modèles ajustés depuis (Ajuster ne passe pas par Annuler) restent, comme les documents et les figures
-# (modeles_venus).
-revenir_a <- function(actuel, e, retablir = FALSE) {
+# Annuler prend la plus récente des annulations, Rétablir celle des rétablissements. Les modèles ajustés
+# depuis (Ajuster ne passe pas par Annuler) restent, comme les documents et les figures (modeles_venus).
+revenir_a <- function(actuel, e) {
   ancien <- e$projet
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
   # (une fusion annulée : les documents, les figures et l'état du fichier qu'elle avait pris redeviennent
@@ -201,7 +200,7 @@ revenir_a <- function(actuel, e, retablir = FALSE) {
     }
   }
   if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
-  ancien$models <- c(ancien$models, numeros_venus(ancien, modeles_venus(ancien, actuel, e, retablir), actuel$id))
+  ancien$models <- c(ancien$models, numeros_venus(ancien, modeles_venus(ancien, actuel, e), actuel$id))
   # (le numéro d'une variable qu'Annuler retire ne reviendra pas à une autre : variables.R)
   ancien <- numero_variable_garde(ancien, dernier_numero_variable(actuel))
   ancien$modifie <- TRUE
@@ -214,35 +213,21 @@ revenir_a <- function(actuel, e, retablir = FALSE) {
 # lui-même a ajoutés, e$modeles), rapportées aux données d'`ancien` : leurs observations qu'elles n'ont
 # pas en partent (etapes.R : definition_suivie), leurs catégories prennent leurs numéros par leur nom
 # (atelier.R : aligner_categories). Un modèle qui lit une variable, ou une catégorie, qu'`ancien` n'a
-# pas : le retour est refusé, et dit de supprimer d'abord ce modèle.
-modeles_venus <- function(ancien, actuel, e, retablir = FALSE) {
+# pas (fait sur ce que le retour défait : une variable calculée, les variables BACI, des catégories
+# fusionnées) part avec elle, comme le modèle mixte BACI avec ses variables ; Rétablir le rend.
+modeles_venus <- function(ancien, actuel, e) {
   noms <- vapply(ancien$models %||% list(), function(d) premier_texte(d$name), "")
   venus <- Filter(function(d) !premier_texte(d$name) %in% c(noms, as.character(unlist(e$modeles))), actuel$models %||% list())
   if (!length(venus)) return(list())
-  fr <- !identical(getOption("nuee.langue"), "en")
-  quoi <- if (retablir) traduire("Rétablir", "Redo") else traduire("Annuler", "Undo")
   obs <- numeros_observations(ancien)
-  lapply(venus, function(d) {
-    nom <- premier_texte(d$name)
-    manquent <- Filter(function(u) !nom_numero(u) %in% colnames(ancien$donnees), variables_definition(d))
-    if (length(manquent)) {
-      v <- tryCatch(variable_du_projet(actuel, manquent[1]), error = function(err) NULL)
-      stop(sprintf(traduire("%s retirerait %s, qu'utilise %s, ajusté depuis : supprimez d'abord ce modèle (ou gardez le changement).",
-                            "%s would remove %s, which %s, fitted since, uses: delete that model first (or keep the change)."),
-                   quoi, guillemets_texte(if (is.null(v)) nom_numero(manquent[1]) else as.character(v$ids[1]), fr), nom), call. = FALSE)
-    }
+  gardes <- lapply(venus, function(d) {
+    if (!all(nom_numero(variables_definition(d)) %in% colnames(ancien$donnees))) return(NULL)
     a <- aligner_categories(ancien, d, categories_definition(actuel, d))
-    if (!is.null(attr(a, "perimee"))) {
-      vues <- categories_definition(actuel, d)
-      change <- Filter(function(u) !identical(as.character(unlist(vues[[u]])), as.character(unlist(tryCatch(variable_du_projet(ancien, as.numeric(u))$categories, error = function(err) NULL)))), names(vues))
-      v <- tryCatch(variable_du_projet(actuel, as.numeric(change[1])), error = function(err) NULL)
-      stop(sprintf(traduire("%s changerait les catégories de %s, qu'utilise %s, ajusté depuis : supprimez d'abord ce modèle (ou gardez le changement).",
-                            "%s would change the categories of %s, which %s, fitted since, uses: delete that model first (or keep the change)."),
-                   quoi, guillemets_texte(if (is.null(v)) change[1] else as.character(v$ids[1]), fr), nom), call. = FALSE)
-    }
+    if (!is.null(attr(a, "perimee"))) return(NULL)
     vues <- as.numeric(unlist(a[c("observations", "cochees", "test", "exclues")]))
     definition_suivie(a, ancien, numeric(0), setdiff(vues, obs), prend = FALSE)
   })
+  Filter(Negate(is.null), gardes)
 }
 
 # Les définitions `venus` (modeles_venus) avec chacune un numéro qu'aucun modèle de `ancien` n'a : un modèle
