@@ -211,17 +211,26 @@ async function rendreDocument(app, conteneur, params, loc) {
   }
 }
 
-function creerEditeur(app, conteneur, pid, d, loc) {
-  const CM = window.CM;
-  const s = {
-    pid, id: d.id, titre: d.titre || '', langue: d.langue || langueActuelle(), conteneur, loc,
-    modifie: false, ferme: false, distant: false, attente: null, attenteApercu: null, generation: 0,
-    erreurs: new Set(), versionErreurs: 0, quarto: null,
+// What a document's state holds besides its editor (`d`: the request `document`'s answer): what
+// resoudre() and citer() read and keep. creerEditeur adds the editor's; documentPourPaquet reads a
+// document of the project with it, without opening it.
+function etatDocument(pid, d) {
+  return {
+    pid, id: d.id, titre: d.titre || '', langue: d.langue || langueActuelle(),
     // what the references gave (plots, tables, Methods texts, models computed for the document)
     images: new Map(), tableaux: new Map(), methodes: new Map(), calculs: new Map(), urls: new Map(),
     // its citations: the references kept in it (BibTeX), their style, the files read, the keys not found
     bib: d.bib || '', style: STYLES.includes(d.style) ? d.style : STYLES[0], bibEnvoye: d.bib || '', styleEnvoye: d.style || STYLES[0],
     biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0, conflits: new Set(), dernierConflit: '' }, citesInconnues: new Set(),
+  };
+}
+
+function creerEditeur(app, conteneur, pid, d, loc) {
+  const CM = window.CM;
+  const s = {
+    ...etatDocument(pid, d), conteneur, loc,
+    modifie: false, ferme: false, distant: false, attente: null, attenteApercu: null, generation: 0,
+    erreurs: new Set(), versionErreurs: 0, quarto: null,
   };
   ouverts.add(s);
   if (bureau && bureau.quartoDisponible) bureau.quartoDisponible().then((q) => { s.quarto = q; }).catch(() => { s.quarto = false; });
@@ -1342,6 +1351,14 @@ const octets = (texte) => new TextEncoder().encode(texte);
 // a figure's PNG, from its data: address
 const png = (x) => { const b = atob(String(x.image).split(',')[1]); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
 
+// A document's text as Compile writes it: every reference resolved, its plots and tables among them,
+// then its citations in its style, those of the Methods texts it cites joining its list (citer)
+async function resoudreDocument(app, s, texte) {
+  const analyse = analyser(md, texte);
+  const resolus = await resoudre(app, s, analyse, true);
+  return { texte, analyse, resolus, citations: await citer(app, s, analyse, resolus) };
+}
+
 // The document written in `format` (docx, pdf, html, or qmd with its figures beside it), its
 // references resolved now; then compiled by Quarto when `quarto` names its output. `reproductible`
 // (qmd): R recomputes its results when Quarto renders it, with the cited models' Export to R
@@ -1349,12 +1366,7 @@ const png = (x) => { const b = atob(String(x.image).split(',')[1]); return Uint8
 async function compiler(app, s, format, quarto = null, reproductible = false) {
   await s.enregistrer();
   const base = (s.titre || t('document_sans_titre')).replace(/[^\p{L}\p{N} _.()-]+/gu, '_').trim() || 'document';
-  const r = await app.occupe(async () => {
-    const texte = s.vue.state.doc.toString();
-    const analyse = analyser(md, texte);
-    const resolus = await resoudre(app, s, analyse, true);
-    return { texte, analyse, resolus, citations: await citer(app, s, analyse, resolus) };
-  });
+  const r = await app.occupe(() => resoudreDocument(app, s, s.vue.state.doc.toString()));
   const erreurs = r.resolus.filter((x) => x.erreur).length + (r.citations ? r.citations.inconnues.length : 0);
   if (erreurs && !window.confirm(t('document_compiler_erreurs', { n: erreurs }))) return;
   // (Quarto runs the code chunks of a .qmd: a project received may hold some)
@@ -1458,21 +1470,20 @@ async function preparerQmd(app, s, r, nom, rep, titre) {
 
 // A document of the project as a reproducible Quarto file, for the project's reproducibility
 // package (paquet.js), read from the project: it needn't be open. What Compile › Quarto ›
-// Reproducible writes, with `nom` as the .qmd's name: its text; the references it cites and its
-// CSL style; the figures R doesn't redraw (base64 PNG, at their path beside it); and the cited
-// models' Export to R scripts with their data, which the engine writes in a folder of its session
-// (`fichiers`, each to go at its path in `relatifs`). `erreurs`: its references not resolved.
+// Reproducible writes, with `nom` as the .qmd's name, through the same steps (etatDocument,
+// resoudreDocument, the request document_reproductible, preparerQmd): its text; the references it
+// cites (those of the files its header names, of Zotero kept in it, of the Methods texts it cites)
+// and its CSL style; the figures R doesn't redraw (base64 PNG, at their path beside it); and the
+// cited models' Export to R scripts with their data, which the engine writes in a folder of its
+// session (`fichiers`, each to go at its path in `relatifs`). `erreurs`: its references not resolved.
 export async function documentPourPaquet(app, pid, id, nom) {
   await chargerEditeur();
   const d = await demander('document', { projet: pid, id });
   const texte = d.texte || '';
-  // (what resoudre() and citer() read of an open document, without its editor)
-  const s = { pid, id: d.id, titre: d.titre || '', langue: d.langue || langueActuelle(), vue: { state: { doc: { toString: () => texte } } },
-    images: new Map(), tableaux: new Map(), methodes: new Map(), calculs: new Map(), urls: new Map(),
-    bib: d.bib || '', style: STYLES.includes(d.style) ? d.style : STYLES[0], garder: () => {},
-    biblio: { signature: null, fichiers: [], version: 0, lecture: null, cache: null, date: 0, conflits: new Set(), dernierConflit: '' }, citesInconnues: new Set() };
-  const analyse = analyser(md, texte);
-  const r = { texte, analyse, resolus: await resoudre(app, s, analyse, true), citations: await citer(app, s, analyse).catch(() => null) };
+  // (an open document's state, without its editor: its text as written; the references it cites
+  // from files aren't kept in it here, as an open one keeps them while it is previewed, garderCitees)
+  const s = { ...etatDocument(pid, d), vue: { state: { doc: { toString: () => texte } } }, garder: () => {} };
+  const r = await resoudreDocument(app, s, texte);
   const rep = await demander('document_reproductible', { projet: pid, langue: s.langue, version: VERSION, nom, dossier: null, ...referencesReproductibles(r.resolus) });
   const q = await preparerQmd(app, s, r, nom, rep, s.titre || nom);
   return { nom, titre: s.titre, qmd: q.texte, bib: q.texteBib, csl: q.csl ? { nom: q.csl, texte: q.texteCsl } : null,
