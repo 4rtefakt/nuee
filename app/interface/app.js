@@ -43,6 +43,7 @@ import { installerReglages } from './reglages.js';
 import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 import { dialoguePaquet } from './paquet.js';
+import { ouvrirPaquet, choisirPaquet, ouvrirLien } from './relancer.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -210,7 +211,9 @@ const app = {
     }
     const f = await choisirFichierNavigateur(acceptOuverture());
     if (!f) return;
-    const res = await choisirTable(await occupe(() => televerser(f)));
+    const lu = await occupe(() => televerser(f));
+    if (await siPaquet(lu, f.name)) return;
+    const res = await choisirTable(lu);
     if (res) await apresOuverture(res);
   },
 
@@ -316,10 +319,13 @@ const app = {
       statut(t('deja_ouvert', { nom: ouvert.nom }));
       return;
     }
-    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined })));
-    if (!res) return;
-    await apresOuverture(res);
-    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
+    const lu = await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined }));
+    // (a reproducibility package: opened and rerun, relancer.js)
+    const paquet = await siPaquet(lu);
+    const res = paquet ? null : await choisirTable(lu);
+    if (!res && !paquet) return;
+    if (res) await apresOuverture(res);
+    if (res && [].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
     else if (!MOTEUR_WEBR) {  // (in the browser version, a file's path is R's in the tab: gone with it)
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
@@ -973,6 +979,10 @@ const app = {
   // data, one R script for every model, its documents, its citation, in one .zip
   exporterPaquet: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p); },
   deposerZenodo: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p, { zenodo: true }); },
+  // File › Open a reproducibility package…: opened, every model fitted again and compared with its
+  // deposited results (relancer.js); and a project the engine opened, shown as File › Open shows one
+  choisirPaquet: () => choisirPaquet(app),
+  projetOuvert: (res, session = null) => apresOuverture(res, session),
   // (for the package: the latest fit of each model of the project, and the session Save keeps)
   modelesSeance: (pid) => modelesSeance(pid),
   sessionProjet: (pid) => (VUE_SEULE || !dock ? undefined : JSON.stringify(collecterSession(pid))),
@@ -2945,6 +2955,9 @@ async function demarrerPrincipal() {
   if (ID_FENETRE === 'principale' && bureau && bureau.seance && etat.seance.precedente.length && !Object.keys(etat.projets).length
     && await bureau.seance.rouvrir().catch(() => false) && !(await bureau.secoursListe().catch(() => [])).length) await app.rouvrirSeance();
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
+  // (the browser version's link of a reproducibility package, https://nuee.io/app/?doi=<doi> or
+  // ?record=<id>: fetched from Zenodo, opened and rerun, relancer.js)
+  if (MOTEUR_WEBR && ID_FENETRE === 'principale' && (params.get('doi') || params.get('record'))) ouvrirLien(app, { doi: params.get('doi'), record: params.get('record') });
   if (!VUE_SEULE) {
     document.addEventListener('dragover', (e) => {
       if (![...e.dataTransfer.types].includes('Files')) return;  // not the panels' own tabs
@@ -2978,10 +2991,21 @@ async function deposerFichiers(fichiers) {
   for (const f of fichiers) {
     if (bureau && bureau.cheminFichier) await app.ouvrirChemin(bureau.cheminFichier(f));
     else {
-      const res = await choisirTable(await occupe(() => televerser(f)));
+      const lu = await occupe(() => televerser(f));
+      if (await siPaquet(lu, f.name)) continue;
+      const res = await choisirTable(lu);
       if (res) await apresOuverture(res);
     }
   }
+}
+
+// What ouvrir answers for a reproducibility package (paquet_ouvrir: the engine opens it with that
+// request instead): the package opened and rerun (relancer.js); true then. `nom`: the file's name
+// in the page.
+async function siPaquet(lu, nom = null) {
+  if (!lu || !lu.paquet_ouvrir) return false;
+  await ouvrirPaquet(app, lu.paquet_ouvrir.chemin, { nom: nom || lu.paquet_ouvrir.nom });
+  return true;
 }
 
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';

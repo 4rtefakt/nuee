@@ -46,6 +46,9 @@ export function creerCommandes(app) {
     // its citation, in one .zip; and the same deposited on Zenodo as a draft (paquet.js; desktop only)
     paquet: { icone: 'package', actif: () => !!app.projetActif(), action: () => app.exporterPaquet(app.projetActif()) },
     paquet_zenodo: { icone: 'cloud-upload', actif: () => !!app.projetActif() && !!app.bureau, action: () => app.deposerZenodo(app.projetActif()) },
+    // a reproducibility package opened again: its files checked, every model fitted again and compared
+    // with the results it deposited (relancer.js)
+    paquet_ouvrir: { icone: 'package-open', action: () => app.choisirPaquet() },
     // a document of the project: text that refers to its results (documents.js)
     nouveau_document: { icone: 'file-text', actif: () => !!app.projetActif(), action: () => app.nouveauDocument(app.projetActif()) },
     rapport: { icone: 'file-text', actif: avecModele, action: () => app.rapport(m()) },
@@ -196,7 +199,7 @@ export function menus(app, C) {
     return { ...it('retablir_action'), libelle: p && p.retablissable ? `${t('retablir_action')} ${entre(p.retablissable)}` : t('retablir_action') };
   };
   return [
-    { cle: 'm_fichier', items: () => [it('ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
+    { cle: 'm_fichier', items: () => [it('ouvrir'), it('paquet_ouvrir'), it('coller'), it('kobo_importer'), it('importer_spectres'),
       { libelle: t('recents'), sous: recents.length ? recents.map((r) => ({ libelle: r, action: () => app.ouvrirChemin(r) }))
         : [{ libelle: t('aucun_recent'), actif: false, action: () => {} }] },
       '-', it('enregistrer'), it('enregistrer_sous'), '-', it('versions'), it('versions_partager'), it('versions_ouvrir_distant'), '-', it('exporter_donnees'), it('exporter'), it('script_r'), it('rapport'), '-',

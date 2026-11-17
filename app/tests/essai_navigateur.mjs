@@ -55,13 +55,17 @@ const verifier = (nom, ok, valeur) => {
   if (!ok) echecs.push(nom);
 };
 const erreurs = [];
-const contexte = await chromium.launchPersistentContext(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 } });
+// (zenodo.org never resolves in this browser: its API is a stand-in, Playwright's routes below, and a
+// request that would get past them, a redirect's, fails rather than reach Zenodo)
+const contexte = await chromium.launchPersistentContext(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 },
+  args: ['--host-resolver-rules=MAP zenodo.org ~NOTFOUND, MAP *.zenodo.org ~NOTFOUND'] });
 
-// a page of the site: its errors noted, every request timed (api.js: window.nueeDemandes)
+// a page of the site: its errors noted (but the stand-in for Zenodo's planned refusals, a 404, no
+// network), every request timed (api.js: window.nueeDemandes)
 async function ouvrirPage(url = adresse) {
   const page = await contexte.newPage();
   page.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') erreurs.push(`console : ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !(m.location().url || '').startsWith('https://zenodo.org/')) erreurs.push(`console : ${m.text()}`); });
   page.on('dialog', (d) => d.accept());  // (leaving the page while a copy is written: leave)
   await page.addInitScript(() => {
     window.nueeDemandes = [];
@@ -453,7 +457,7 @@ try {
   const toujoursLa = await projetActif().catch(() => null);
   verifier('un paquet de reproductibilité exporté dans la page : téléchargé (.zip), la page restée',
     !!tp && /\.zip$/.test(tp.suggestedFilename()) && octetsZip.subarray(0, 2).toString() === 'PK'
-      && ['README.md', 'CITATION.cff', 'MANIFEST.sha256', '.nuee'].every(dansZip) && !!toujoursLa && toujoursLa.n === 130,
+      && ['README.md', 'CITATION.cff', 'MANIFEST.sha256', '.nuee', 'results/key_results.json'].every(dansZip) && !!toujoursLa && toujoursLa.n === 130,
     tp ? `${tp.suggestedFilename()} : ${octetsZip.length} octets` : 'pas de téléchargement');
 
   // R code: approved when fitted, its package (Kendall) installed from webR's repository; ranger refused
@@ -549,6 +553,133 @@ try {
   verifier('rechargé : le greffon encore installé et approuvé, le code R encore approuvé',
     apresRechargement.greffons.some((x) => x.id === 'mann-kendall' && x.permis) && apresRechargement.codes.length >= 1 && apresRechargement.codes.some((c) => c.approuve),
     JSON.stringify(apresRechargement));
+
+  // ---- 1.2, a reproducibility package's link: https://nuee.io/app/?doi=<doi>, against a stand-in for
+  // Zenodo's API (Playwright's routes; zenodo.org itself never resolves here). The package written in
+  // the page (the example's four models, a mixed model and a PCoA, with the DOI of record 7000002) is
+  // the record's .zip, beside a PDF; its link opens it in a tab of its own and reruns it: each model
+  // gives its deposited results. A concept DOI gives the record of its latest version (Zenodo
+  // redirects /api/records/<concept> to it, which fetch follows: the stand-in answers that record), a
+  // record by its id; a DOI Zenodo doesn't know, a record without a package and no network are said.
+  const paquet = await page.evaluate(async () => {
+    const { app } = await import('./app.js');
+    const a = await import('./api.js');
+    const p = await a.demander('exemple', { nom: 'pommes' });
+    await app.projetOuvert(p);
+    const u = (nom) => p.variables.find((v) => v.nom === nom).uid;
+    for (const d of p.modeles) await app.calculerDiscret(p.id, d.numero);
+    await app.calculerDiscret(p.id, (await a.demander('ajuster', { projet: p.id, type: 'LMM', x: [u('sugar'), u('firmness')], y: [u('taste_score')], echelle: 'none', nom: 'R1',
+      aleatoires: [{ by: 'variable', variable: u('orchard') }] })).numero);
+    await app.calculerDiscret(p.id, (await a.demander('ajuster', { projet: p.id, type: 'PCOA', x: [u('variety')], y: ['sugar', 'acidity', 'firmness', 'starch'].map(u), echelle: 'none',
+      options: { distance: 'gower', permutations: 99, graine: 1 }, nom: 'P1' })).numero);
+    const ids = app.modelesSeance(p.id).map((m) => m.id);
+    const r = await a.demander('paquet', { projet: p.id, meta: { titre: 'Orchards rerun', auteurs: [{ prenom: 'Alice', nom: 'Exemple', orcid: '' }], licence: 'CC-BY-4.0' },
+      modeles: ids, documents: '[]', session: app.sessionProjet(p.id), doi: '10.5281/zenodo.7000002', version: 'essai', langue: 'en' });
+    const o = await a.lireFichier(r.chemin);
+    let s = '';
+    for (let i = 0; i < o.length; i += 8192) s += String.fromCharCode(...o.subarray(i, i + 8192));
+    return { nom: r.chemin.split('/').pop(), octets: btoa(s), n: ids.length };
+  });
+  const octetsPaquet = Buffer.from(paquet.octets, 'base64');
+  const recues = [];
+  let horsLigne = false;
+  const enregistrement = (id, fichiers) => ({ id, recid: String(id), doi: `10.5281/zenodo.${id}`, conceptdoi: '10.5281/zenodo.7000000', conceptrecid: '7000000',
+    title: 'Orchards rerun', metadata: { title: 'Orchards rerun' }, links: { self: `https://zenodo.org/api/records/${id}`, files: `https://zenodo.org/api/records/${id}/files` },
+    files: fichiers.map(([key, o]) => ({ id: `f-${key}`, key, size: o.length, checksum: 'md5:0', links: { self: `https://zenodo.org/api/records/${id}/files/${encodeURIComponent(key)}/content` } })) });
+  const fichiers7000002 = [['notes.pdf', Buffer.from('%PDF-1.4')], [paquet.nom, octetsPaquet]];
+  await contexte.route('https://zenodo.org/**', (route) => {
+    const u = new URL(route.request().url());
+    recues.push(`${route.request().method()} ${u.pathname}${u.search}`);
+    if (horsLigne) return route.abort('internetdisconnected');
+    const json = (statut, x) => route.fulfill({ status: statut, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(x) });
+    if (u.pathname === '/api/records/7000002' || u.pathname === '/api/records/7000000') return json(200, enregistrement(7000002, fichiers7000002));
+    if (u.pathname === '/api/records/7000005') return json(200, enregistrement(7000005, [['notes.pdf', Buffer.from('%PDF-1.4')]]));
+    if (u.pathname === `/api/records/7000002/files/${encodeURIComponent(paquet.nom)}/content`) {
+      return route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/octet-stream' }, body: octetsPaquet });
+    }
+    if (u.pathname === '/api/records') return json(200, { hits: { hits: [], total: 0 }, links: {} });
+    return json(404, { status: 404, message: 'The persistent identifier does not exist.' });
+  });
+  const autresSites = [];
+  const ouvrirLien = async (requete) => {
+    const p = await contexte.newPage();
+    p.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
+    p.on('console', (m) => { if (m.type() === 'error' && !(m.location().url || '').startsWith('https://zenodo.org/')) erreurs.push(`console : ${m.text()}`); });
+    p.on('request', (r) => { const h = new URL(r.url()).hostname; if (!['127.0.0.1', 'zenodo.org', 'repo.r-wasm.org'].includes(h) && !/^(data|blob):/.test(r.url())) autresSites.push(r.url()); });
+    await p.addInitScript(() => { window.nueeDemandes = []; window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`)); });
+    await p.goto(`${adresse}?${requete}`);
+    return p;
+  };
+  const debutLien = Date.now();
+  const lien = await ouvrirLien('doi=10.5281/zenodo.7000002');
+  const rapport = await attendre(lien, async (n) => {
+    const c = [...document.querySelectorAll('.changements')].find((x) => x.querySelector('.paquet-relance .bilan-relance'));
+    if (!c) return null;
+    const { phraseBilan } = await import('./changements.js');
+    const { app } = await import('./app.js');
+    const p = app.projet(app.projetActif());
+    return { bilan: c.querySelector('.bilan-relance').textContent, attendu: phraseBilan({ relances: n, identiques: n, differents: [] }),
+      intact: !c.querySelector('.manifeste-relance').classList.contains('attention'), texte: c.innerText, projet: p && p.nom, chemin: p && p.chemin };
+  }, paquet.n, 900000).catch((e) => ({ erreur: e.message }));
+  res.lien_s = (Date.now() - debutLien) / 1000;
+  const demandesZenodo = [...recues];
+  verifier(`le lien ?doi= : le paquet de l’enregistrement (stand-in de Zenodo), ouvert et relancé, ses ${paquet.n} modèles redonnent les résultats déposés`,
+    rapport.bilan === rapport.attendu && rapport.intact && rapport.projet === 'Orchards rerun.nuee' && !rapport.chemin && /record 7000002|enregistrement 7000002/.test(rapport.texte)
+      && JSON.stringify(demandesZenodo) === JSON.stringify(['GET /api/records/7000002', `GET /api/records/7000002/files/${encodeURIComponent(paquet.nom)}/content`]),
+    `${rapport.erreur || rapport.bilan} (${res.lien_s.toFixed(1)} s) ; ${demandesZenodo.join(' | ')}`);
+  if (options.capture !== false) await lien.screenshot({ path: path.join(sortie, 'lien.png') });
+  const resolutions = await lien.evaluate(async () => {
+    const m = await import('./relancer.js');
+    const id = async (x) => { try { return (await m.recordZenodo(x)).id; } catch (e) { return `${e.genre} : ${e.message}`; } };
+    return { concept: await id({ doi: 'https://doi.org/10.5281/zenodo.7000000' }), record: await id({ record: '7000002' }), inconnu: await id({ doi: '10.5281/zenodo.9999999' }),
+      autre: await id({ doi: '10.5061/dryad.x1' }), pasDoi: await id({ doi: 'zenodo.12' }) };
+  });
+  horsLigne = true;
+  resolutions.reseau = await lien.evaluate(() => import('./relancer.js').then((m) => m.recordZenodo({ doi: '10.5281/zenodo.7000002' }).then((r) => r.id, (e) => `${e.genre} : ${e.message}`)));
+  horsLigne = false;
+  verifier('un DOI de concept donne sa dernière version, un enregistrement son id ; un DOI que Zenodo ne connaît pas, un autre qui n’est pas un DOI, pas de réseau : dits',
+    resolutions.concept === 7000002 && resolutions.record === 7000002 && /^inconnu : .*10\.5281\/zenodo\.9999999/.test(resolutions.inconnu)
+      && /^inconnu : .*10\.5061\/dryad\.x1/.test(resolutions.autre) && /^doi : /.test(resolutions.pasDoi) && /^reseau : .*zenodo\.org/.test(resolutions.reseau), resolutions);
+  // the same package chosen in the page: File › Open on its .zip, then File › Open a reproducibility
+  // package…, each opened again as a new project and rerun (the 2nd and 3rd comparisons of the tab)
+  const zipLien = path.join(sortie, paquet.nom);
+  fs.writeFileSync(zipLien, octetsPaquet);
+  const rouvrir = async (ouvrir, k) => {
+    const choix = lien.waitForEvent('filechooser', { timeout: 15000 });
+    await ouvrir();
+    await (await choix).setFiles(zipLien);
+    return attendre(lien, async ([n, kk]) => {
+      const c = document.querySelector(`[data-comparaison^="C${kk}-"] .changements`);
+      const b = c && c.querySelector('.paquet-relance .bilan-relance');
+      if (!b) return null;
+      const { phraseBilan } = await import('./changements.js');
+      const { app } = await import('./app.js');
+      return { bilan: b.textContent, attendu: phraseBilan({ relances: n, identiques: n, differents: [] }), projets: app.projets().length };
+    }, [paquet.n, k], 600000).catch((e) => ({ erreur: e.message }));
+  };
+  const parOuvrir = await rouvrir(() => lien.evaluate(() => import('./app.js').then((m) => { m.app.ouvrir(); })), 2);
+  const parCommande = await rouvrir(() => commande(lien, 'paquet_ouvrir'), 3);
+  verifier('le même paquet choisi dans la page, par Fichier › Ouvrir puis par Fichier › Ouvrir un paquet de reproductibilité… : chaque fois un nouveau projet, relancé',
+    parOuvrir.bilan === parOuvrir.attendu && parCommande.bilan === parCommande.attendu && parOuvrir.projets === 2 && parCommande.projets === 3,
+    `${parOuvrir.erreur || parOuvrir.bilan} | ${parCommande.erreur || parCommande.bilan}`);
+  const dialogueLien = async (requete) => {
+    const p = await ouvrirLien(requete);
+    // (the link's dialog, not one a start may offer: the recovery copies of a tab closed before)
+    const texte = await attendre(p, () => { const d = [...document.querySelectorAll('.fond-dialogue .corps-dialogue')].find((x) => /Zenodo/.test(x.textContent)); return d ? d.textContent : null; },
+      null, 300000).catch(() => '');
+    const projets = await p.evaluate(() => import('./app.js').then((m) => m.app.projets().length));
+    await p.close();
+    return { texte, projets };
+  };
+  const inconnu = await dialogueLien('doi=10.5281/zenodo.9999999');
+  const attenduInconnu = await libelle(page, 'relance_zenodo_inconnu');
+  const sansPaquet = await dialogueLien('record=7000005');
+  verifier('le lien d’un DOI que Zenodo ne connaît pas, celui d’un enregistrement sans paquet : dits dans la page, rien d’ouvert',
+    inconnu.texte === attenduInconnu.replace('{doi}', '10.5281/zenodo.9999999') && !inconnu.projets && /7000005/.test(sansPaquet.texte) && /\.zip/.test(sansPaquet.texte) && !sansPaquet.projets,
+    `${inconnu.texte} | ${sansPaquet.texte}`);
+  verifier('le lien ne demande rien qu’à zenodo.org (et R ses paquets, à repo.r-wasm.org), sans violation de la politique de sécurité',
+    !autresSites.length && !(await lien.evaluate(() => window.__violations)).length, autresSites.slice(0, 5));
+  await lien.close();
 
   // (but the refusal of the random forest, which the interface writes to the console as any refusal)
   const autres = erreurs.filter((e) => !/desktop application is needed|application de bureau/.test(e));

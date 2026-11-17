@@ -383,8 +383,9 @@ const LIBELLES = {
 // The progress of an update, in a dialog: what is being done, a bar, and Stop: the model being
 // fitted stopped too (moteur/R/arret.R, the stop of the status bar, which this Stop follows), and no
 // more models fitted again (before the data change, no update at all). Closing the dialog (Esc, ×;
-// not a click beside it) fits no more models either, the one being fitted finishing.
-function progression(titre) {
+// not a click beside it) fits no more models either, the one being fitted finishing. (Also a package's
+// rerun: relancer.js.)
+export function progression(titre) {
   const etape = el('p', { class: 'etape-maj' });
   const barre = el('progress', { class: 'barre-maj' });
   const detail = el('p', { class: 'note' });
