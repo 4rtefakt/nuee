@@ -1,6 +1,6 @@
 // A reproducibility package (interface/paquet.js, moteur/R/paquet.R) deposited on Zenodo as a
-// draft, from the main process (main.js: IPC zenodo-deposer), with the user's personal access token
-// (on Zenodo: Account › Applications › Personal access tokens, scopes deposit:write and
+// draft, from the main process (main.js: IPC zenodo-*, creerZenodo), with the user's personal
+// access token (on Zenodo: Account › Applications › Personal access tokens, scopes deposit:write and
 // deposit:actions), through its deposit API (developers.zenodo.org): the draft created, the
 // package's .zip put in the draft's bucket (its MD5 checked against the one Zenodo computes), then
 // the draft's description filled in from the package's dialog (title, authors with their ORCID,
@@ -14,6 +14,8 @@ const fs = require('fs');
 const path = require('path');
 
 const DOI_NUEE = '10.5281/zenodo.24263014';
+// Zenodo and its test server, whose deposits don't count (it has accounts and tokens of its own)
+const HOTES = ['zenodo.org', 'sandbox.zenodo.org'];
 // the licences the package offers (moteur/R/paquet.R: LICENCES_PAQUET), by their SPDX id, and Zenodo's
 const LICENCES = { 'CC-BY-4.0': 'cc-by-4.0', 'CC0-1.0': 'cc0-1.0', 'CC-BY-SA-4.0': 'cc-by-sa-4.0', 'CC-BY-NC-4.0': 'cc-by-nc-4.0' };
 
@@ -106,4 +108,62 @@ async function deposerBrouillon({ base, jeton, fichier, metadonnees, fetch = glo
   return { id, page, fichier: nom, taille: octets.length };
 }
 
-module.exports = { deposerBrouillon, metadonneesZenodo, ErreurZenodo, DOI_NUEE };
+// A file inside a folder (its real path: no link nor `..` gets out of it)
+function dansDossier(fichier, dossier) {
+  try {
+    const rel = path.relative(fs.realpathSync(dossier), fs.realpathSync(fichier));
+    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  } catch { return false; }
+}
+
+// What main.js gives the interface (preload.js: bureau.zenodo, IPC zenodo-<name>). The personal
+// access token of each host (zenodo.org, sandbox.zenodo.org) is kept under the host's name in the
+// store of the versions and the sign-ins (versions.js: magasinJetons, the same one main.js gives
+// them): encrypted by the system, or until Nuée closes where it can't encrypt. It never goes back to
+// the interface, which only learns whether one is kept. Each function answers { erreur: code,
+// detail, page } rather than throwing: `demande` for what is refused (a host other than Zenodo's, a
+// package that isn't a .zip of the engine's session folder), `jeton_invalide`, `sans_jeton`, and
+// the codes of ErreurZenodo, the token taken out of their detail.
+//   jetons: magasinJetons(...); fetch: Electron's (main.js: net.fetch, the system's proxy);
+//   base(hote): the address of a host's API (main.js: NUEE_ZENODO, a stand-in for the checks);
+//   dossier(): the engine's session folder (R's temporary folder of this run), the only one a
+//   package is deposited from; ouvrir(page): the draft's page opened in the browser.
+function creerZenodo({ jetons, fetch, base = (hote) => `https://${hote}`, dossier, ouvrir = () => {} }) {
+  const hote = (h) => (HOTES.includes(h) ? h : null);
+  return {
+    // whether a token is kept for the host, and whether one kept now outlives this session
+    async etat(h) {
+      if (!hote(h)) return { erreur: 'demande' };
+      return { jeton: await jetons.present(h), persistant: !(await jetons.seulementSession()) };
+    },
+    // the token the user pasted, kept for the host
+    async jeton(h, valeur) {
+      if (!hote(h)) return { erreur: 'demande' };
+      const j = String(valeur || '').trim();
+      if (!/^[\x21-\x7e]{8,512}$/.test(j)) return { erreur: 'jeton_invalide' };
+      await jetons.ecrire(h, j);
+      return { persistant: !(await jetons.seulementSession()) };
+    },
+    async oublier(h) {
+      if (!hote(h)) return { erreur: 'demande' };
+      await jetons.ecrire(h, '');
+      return {};
+    },
+    // the package (the .zip the engine wrote in its session folder) deposited as a draft, whose page opens
+    async deposer(h, chemin, meta) {
+      const fichier = String(chemin || '');
+      if (!hote(h) || !/\.zip$/i.test(fichier) || !dansDossier(fichier, dossier())) return { erreur: 'demande' };
+      const jeton = await jetons.lire(h);
+      if (!jeton) return { erreur: 'sans_jeton' };
+      try {
+        const r = await deposerBrouillon({ base: base(h), jeton, fichier, fetch, metadonnees: metadonneesZenodo(meta || {}, { langue: meta && meta.langue }) });
+        ouvrir(r.page);
+        return { page: r.page, id: r.id };
+      } catch (e) {
+        return { erreur: e.code || 'reseau', detail: String((e && e.message) || e).split(jeton).join('…'), page: (e && e.page) || null };
+      }
+    },
+  };
+}
+
+module.exports = { creerZenodo, deposerBrouillon, metadonneesZenodo, ErreurZenodo, DOI_NUEE, HOTES };

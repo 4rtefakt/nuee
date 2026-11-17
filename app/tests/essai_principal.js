@@ -20,6 +20,7 @@
 // - the organisation's policies: R code off when they say so and when they couldn't be read, then
 //   given so to the engine at start-up, read before it starts; NUEE_GREFFONS_ORGANISATION not taken
 //   by an installed copy on Windows; Help › Diagnostic information says whether they were read.
+// - Zenodo's tokens kept in the store of the versions and the sign-ins (jetons.json), never given back.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -364,6 +365,36 @@ async function derniereSeance(dossier) {
   }
 }
 
+// Zenodo's tokens (zenodo.js: creerZenodo) in the store of the versions and the sign-ins: the one
+// main.js makes for jetons.json and gives versions.js and comptes.js, under the host's name; neither
+// the refresh tokens' store nor a third one, and never given back to the window
+async function jetonsZenodo(dossier) {
+  console.log('Zenodo : ses jetons dans le magasin des versions et des connexions');
+  const magasins = [];
+  const recus = {};
+  const magasinJetons = ({ fichier }) => {
+    const m = { fichier: fichier(), jetons: new Map() };
+    Object.assign(m, { present: async (h) => m.jetons.has(h), lire: async (h) => m.jetons.get(h) || null, seulementSession: async () => false,
+      connus: async () => [...m.jetons.values()], ecrire: async (h, j) => { if (j) m.jetons.set(h, j); else m.jetons.delete(h); } });
+    magasins.push(m);
+    return m;
+  };
+  const m = chargerMain(dossier, {
+    './versions': { ...versionsFactices, magasinJetons, creerVersions: (o) => { recus.versions = o.jetons; return versionsFactices.creerVersions(); } },
+    './comptes': { creerComptes: (o) => { recus.comptes = o.jetons; return comptesFactices.creerComptes(); } },
+  });
+  const demander = demandeur(m);
+  const JETON = `zenodo-essai-${Date.now()}-0123456789`;
+  const garde = await demander('zenodo-jeton', 'zenodo.org', JETON);
+  const etat = await demander('zenodo-etat', 'zenodo.org');
+  const principal = magasins.find((x) => path.basename(x.fichier) === 'jetons.json');
+  verifier(magasins.length === 2 && !!principal && recus.versions === principal && recus.comptes === principal && principal.jetons.get('zenodo.org') === JETON
+    && magasins.every((x) => x === principal || !x.jetons.size) && egal(etat, { jeton: true, persistant: true }) && !JSON.stringify([garde, etat]).includes(JETON),
+  'le jeton de zenodo.org dans jetons.json, le magasin des versions et des connexions ; jamais rendu à la fenêtre', { fichiers: magasins.map((x) => x.fichier), garde, etat });
+  await demander('zenodo-oublier', 'zenodo.org');
+  verifier(!principal.jetons.size && egal(await demander('zenodo-etat', 'sandbox.zenodo.org'), { jeton: false, persistant: true }), 'oublié de ce magasin', [...principal.jetons.keys()]);
+}
+
 // The organisation's policies as main.js reads them (r-installes.js: lirePolitiques): R code off when
 // they say so, and when they couldn't be read; NUEE_GREFFONS_ORGANISATION not taken by an installed
 // copy on Windows; Help › Diagnostic information says whether they were read
@@ -487,6 +518,7 @@ async function principal() {
     await derniereSeance(dossier);
     await fermerUneFois(dossier);
     await lesPolitiques(dossier);
+    await jetonsZenodo(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

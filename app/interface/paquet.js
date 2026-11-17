@@ -9,10 +9,11 @@
 // language, the licence with its text, CITATION.cff, codemeta.json and the SHA-256 of every file,
 // in one .zip (where the user says on the desktop; downloaded in a browser).
 // Deposit on Zenodo (desktop only): the same package, written in the engine's session folder, then
-// a draft on Zenodo with it and its description (main.js, zenodo.js), with the user's personal
-// access token, which the main process keeps (jetons.js) and never gives back here. Nuée never
-// publishes: the user checks the draft on Zenodo, whose page opens, and publishes it there.
-// sandbox.zenodo.org, Zenodo's test server, is under Advanced.
+// a draft on Zenodo with it and its description (main.js, zenodo.js: bureau.zenodo), with the
+// user's personal access token, which the main process keeps with the tokens of the versions and
+// the sign-ins and never gives back here. Nuée never publishes: the user checks the draft on
+// Zenodo, whose page opens, and publishes it there. sandbox.zenodo.org, Zenodo's test server, is
+// under Advanced.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau } from './api.js';
@@ -190,10 +191,10 @@ async function dialogueZenodo(app, p, meta) {
   const zoneJeton = el('div', { class: 'zenodo-jeton' });
   const erreur = el('div', { class: 'erreur' });
   const dessiner = async () => {
-    etat = await bureau.zenodoEtat(hote);
+    etat = await bureau.zenodo.etat(hote);
     zoneJeton.replaceChildren(...(etat.jeton
       ? [el('div', { class: 'ligne' }, el('span', {}, t('zenodo_jeton_garde', { hote })),
-        el('button', { onclick: async () => { await bureau.zenodoOublier(hote); erreur.replaceChildren(); await dessiner(); } }, t('zenodo_oublier')))]
+        el('button', { onclick: async () => { await bureau.zenodo.oublier(hote); erreur.replaceChildren(); await dessiner(); } }, t('zenodo_oublier')))]
       : [el('label', { class: 'champ' }, el('span', {}, t('zenodo_jeton')), champ),
         el('p', { class: 'note' }, t('zenodo_jeton_aide', { hote }), ' ',
           el('a', { href: `https://${hote}/account/settings/applications/tokens/new/`, target: '_blank', rel: 'noopener' }, t('zenodo_creer_jeton', { hote }))),
@@ -205,7 +206,7 @@ async function dialogueZenodo(app, p, meta) {
     if (!etat.jeton) {
       const j = champ.value.trim();
       if (!j) { erreur.textContent = t('zenodo_coller_jeton', { hote }); champ.focus(); return; }
-      const g = await bureau.zenodoJeton(hote, j);
+      const g = await bureau.zenodo.jeton(hote, j);
       champ.value = '';
       if (g.erreur) { erreur.textContent = t('zenodo_jeton_invalide'); return; }
       await dessiner();
@@ -214,7 +215,7 @@ async function dialogueZenodo(app, p, meta) {
     try {
       const r = await ecrirePaquet(app, p.id, meta, null);
       app.statut(t('zenodo_en_cours', { hote, taille: (r.taille / 1e6).toFixed(1) }));
-      const z = await app.occupe(() => bureau.zenodoDeposer(hote, r.chemin, { ...(r.projet.paquet || meta), langue: langueActuelle() }));
+      const z = await app.occupe(() => bureau.zenodo.deposer(hote, r.chemin, { ...(r.projet.paquet || meta), langue: langueActuelle() }));
       if (z.erreur) {
         erreur.replaceChildren(el('p', {}, messageZenodo(z, hote)), z.page ? el('button', { onclick: () => window.open(z.page) }, t('zenodo_ouvrir')) : '');
         app.statut('');

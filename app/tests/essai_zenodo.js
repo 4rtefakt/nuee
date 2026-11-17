@@ -1,16 +1,18 @@
 // Checks zenodo.js (a reproducibility package deposited on Zenodo as a draft) against a stand-in for
 // Zenodo's deposit API on 127.0.0.1, which answers as developers.zenodo.org describes it: the draft
-// created, the file put in its bucket (with its MD5), the description checked; then jetons.js, the
-// tokens kept per host with a stand-in for Electron's safeStorage. Nothing here reaches zenodo.org
-// or sandbox.zenodo.org.
+// created, the file put in its bucket (with its MD5), the description checked; then creerZenodo,
+// what main.js gives the interface: the token of each host kept in the store of the versions and the
+// sign-ins (versions.js: magasinJetons, with a stand-in for Electron's safeStorage), never given back,
+// and the deposit of a .zip of the engine's session folder only. Nothing here reaches zenodo.org or
+// sandbox.zenodo.org.
 //   node tests/essai_zenodo.js
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { deposerBrouillon, metadonneesZenodo, DOI_NUEE } = require('../zenodo');
-const { creerJetons } = require('../jetons');
+const { creerZenodo, deposerBrouillon, metadonneesZenodo, DOI_NUEE } = require('../zenodo');
+const { magasinJetons } = require('../versions');
 
 let echecs = 0;
 const verifier = (nom, ok, detail = '') => {
@@ -123,41 +125,73 @@ function zenodo() {
   await new Promise((ok) => ferme.serveur.close(ok));
   e = await deposerBrouillon({ base: `http://127.0.0.1:${portFerme}`, jeton: JETON, fichier, metadonnees: m }).catch((x) => x);
   verifier('Zenodo out of reach: code reseau', e.code === 'reseau', `${e.code} ${e.message}`);
+
+  // ---- creerZenodo: the token of each host kept in the store of the versions and the sign-ins
+  // (versions.js: magasinJetons, the same file as their github.com's), with a stand-in for Electron's
+  // safeStorage; never given back to the interface
+  const coffre = (disponible = true) => ({
+    isAsyncEncryptionAvailable: async () => disponible,
+    getSelectedStorageBackend: () => 'gnome_libsecret',
+    // (a stand-in for the system's encryption: reversible, and nothing like the token)
+    encryptStringAsync: async (x) => Buffer.from(`chiffre:${Buffer.from(x, 'utf8').toString('hex').split('').reverse().join('')}`, 'utf8'),
+    decryptStringAsync: async (b) => {
+      const x = b.toString('utf8');
+      if (!x.startsWith('chiffre:')) throw new Error('not ours');
+      return { shouldReEncrypt: false, result: Buffer.from(x.slice(8).split('').reverse().join(''), 'hex').toString('utf8') };
+    },
+  });
+  const f = path.join(dossier, 'jetons.json');
+  const magasin = (disponible = true, fichier = f) => magasinJetons({ fichier: () => fichier, safeStorage: coffre(disponible) });
+  const GITHUB = 'ghp_jetonDeGitHubPourLesVersions0123456789';
+  await magasin().ecrire('github.com', GITHUB);
+  const session = path.join(dossier, 'seance');
+  fs.mkdirSync(session);
+  const ouverts = [];
+  const z = creerZenodo({ jetons: magasin(), base: () => base, dossier: () => session, ouvrir: (page) => ouverts.push(page) });
+  verifier('no token kept yet, and one kept would outlive the session', JSON.stringify(await z.etat('zenodo.org')) === '{"jeton":false,"persistant":true}');
+  const garde = await z.jeton('zenodo.org', `  ${JETON}\n`);
+  const texte = fs.readFileSync(f, 'utf8');
+  verifier('kept under zenodo.org, encrypted, in the same file as github.com’s, which stays', garde.persistant === true && !texte.includes(JETON)
+    && Object.keys(JSON.parse(texte)).sort().join() === 'github.com,zenodo.org' && await magasin().lire('github.com') === GITHUB, texte);
+  const etat = await z.etat('zenodo.org');
+  verifier('the interface learns that a token is kept, never the token; the next session reads it; one host at a time',
+    JSON.stringify(etat) === '{"jeton":true,"persistant":true}' && await magasin().lire('zenodo.org') === JETON
+      && (await creerZenodo({ jetons: magasin(), dossier: () => session }).etat('zenodo.org')).jeton === true && (await z.etat('sandbox.zenodo.org')).jeton === false);
+  verifier('another host, or what isn’t a token, refused: nothing kept',
+    (await z.jeton('github.com', JETON)).erreur === 'demande' && (await z.etat('evil.example')).erreur === 'demande' && (await z.oublier('github.com')).erreur === 'demande'
+      && (await z.jeton('sandbox.zenodo.org', 'deux mots')).erreur === 'jeton_invalide' && (await z.jeton('sandbox.zenodo.org', 'court')).erreur === 'jeton_invalide'
+      && await magasin().lire('github.com') === GITHUB && !(await magasin().present('sandbox.zenodo.org')));
+  // the deposit: only a .zip of the engine's session folder, with the host's token
+  const zip = path.join(session, 'Apples package.zip');
+  fs.writeFileSync(zip, octets);
+  const pasZip = path.join(session, 'Apples.txt');
+  fs.writeFileSync(pasZip, 'x');
+  verifier('a package outside the engine’s session folder, or not a .zip, refused; another host refused',
+    (await z.deposer('zenodo.org', fichier, META)).erreur === 'demande' && (await z.deposer('zenodo.org', pasZip, META)).erreur === 'demande'
+      && (await z.deposer('evil.example', zip, META)).erreur === 'demande');
+  verifier('without a token for the host: sans_jeton', (await z.deposer('sandbox.zenodo.org', zip, META)).erreur === 'sans_jeton');
+  s.mode = '';
+  s.recues.length = 0;
+  const d = await z.deposer('zenodo.org', zip, { ...META, langue: 'fr' });
+  verifier('deposited with the host’s token: the draft, its package, its description; its page opened', d.id === 4242 && d.page === `${base}/deposit/4242`
+    && ouverts.join() === d.page && s.recues.length === 3 && s.recues.every((x) => x.auth === `Bearer ${JETON}`) && s.metadonnees.language === 'fra', JSON.stringify(d));
+  const refuse = await creerZenodo({ jetons: { lire: async () => 'faux-jeton-qui-ne-marche-pas', present: async () => true, seulementSession: async () => false },
+    base: () => base, dossier: () => session }).deposer('zenodo.org', zip, META);
+  verifier('a token refused: its code, and its detail without the token', refuse.erreur === 'jeton' && !JSON.stringify(refuse).includes('faux-jeton'), JSON.stringify(refuse));
+  await z.oublier('zenodo.org');
+  verifier('forgotten: gone from the file, github.com’s kept', !(await z.etat('zenodo.org')).jeton && !('zenodo.org' in JSON.parse(fs.readFileSync(f, 'utf8')))
+    && await magasin().lire('github.com') === GITHUB);
+  // (a system that can't encrypt: for this session only, nothing written)
+  const f2 = path.join(dossier, 'jetons-session.json');
+  const z2 = creerZenodo({ jetons: magasin(false, f2), dossier: () => session });
+  const g2 = await z2.jeton('zenodo.org', JETON);
+  verifier('without encryption: kept for the session only, nothing written', g2.persistant === false && (await z2.etat('zenodo.org')).jeton && !fs.existsSync(f2)
+    && !(await creerZenodo({ jetons: magasin(false, f2), dossier: () => session }).etat('zenodo.org')).jeton);
   // (fetch keeps its connections open: closed from the server's side, before leaving)
   for (const x of [s, autre]) {
     x.serveur.closeAllConnections();
     await new Promise((ok) => x.serveur.close(ok));
   }
-
-  // ---- jetons.js: one token per host, encrypted in the profile, or for the session only
-  const coffre = (disponible, fond = 'gnome_libsecret') => ({
-    isEncryptionAvailable: () => disponible,
-    getSelectedStorageBackend: () => fond,
-    // (a stand-in for the system's encryption: reversible, and nothing like the token)
-    encryptString: (x) => Buffer.from(`chiffre:${Buffer.from(x, 'utf8').toString('hex').split('').reverse().join('')}`, 'utf8'),
-    decryptString: (b) => { const t = b.toString('utf8'); if (!t.startsWith('chiffre:')) throw new Error('not ours'); return Buffer.from(t.slice(8).split('').reverse().join(''), 'hex').toString('utf8'); },
-  });
-  const f = path.join(dossier, 'jetons.json');
-  const j1 = creerJetons({ fichier: f, coffre: coffre(true) });
-  const garde = j1.garder('zenodo.org', JETON);
-  const texte = fs.readFileSync(f, 'utf8');
-  verifier('kept encrypted in the profile: the file holds no token in clear', garde === true && j1.persistant() && !texte.includes(JETON) && JSON.parse(texte)['zenodo.org'].length > 0);
-  verifier('read back, in this session and the next; one host at a time', j1.lire('zenodo.org') === JETON && creerJetons({ fichier: f, coffre: coffre(true) }).lire('zenodo.org') === JETON
-    && j1.lire('sandbox.zenodo.org') === null);
-  j1.garder('sandbox.zenodo.org', 'autre-jeton-du-bac-a-sable');
-  j1.oublier('zenodo.org');
-  verifier('forgotten: gone from the profile, the other host’s kept', j1.lire('zenodo.org') === null && !('zenodo.org' in JSON.parse(fs.readFileSync(f, 'utf8')))
-    && creerJetons({ fichier: f, coffre: coffre(true) }).lire('sandbox.zenodo.org') === 'autre-jeton-du-bac-a-sable');
-  const f2 = path.join(dossier, 'jetons-session.json');
-  for (const [nom, c, plateforme] of [['no encryption', coffre(false), 'win32'], ['Linux without a keyring (basic_text)', coffre(true, 'basic_text'), 'linux']]) {
-    const j2 = creerJetons({ fichier: f2, coffre: c, plateforme });
-    const g = j2.garder('zenodo.org', JETON);
-    verifier(`${nom}: kept for the session only, nothing written`, g === false && !j2.persistant() && j2.lire('zenodo.org') === JETON && !fs.existsSync(f2)
-      && creerJetons({ fichier: f2, coffre: c, plateforme }).lire('zenodo.org') === null);
-  }
-  fs.writeFileSync(f2, '{ pas du JSON');
-  const j3 = creerJetons({ fichier: f2, coffre: coffre(true) });
-  verifier('a damaged file: no token, and the next one kept over it', j3.lire('zenodo.org') === null && j3.garder('zenodo.org', JETON) && j3.lire('zenodo.org') === JETON);
 
   fs.rmSync(dossier, { recursive: true, force: true });
   console.log(echecs ? `${echecs} vérification(s) en échec` : 'Tout est bon');
