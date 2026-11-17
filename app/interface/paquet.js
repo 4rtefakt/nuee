@@ -17,7 +17,7 @@
 // sandbox.zenodo.org, Zenodo's test server, is under Advanced.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, telechargerFichier } from './api.js';
 import { VERSION } from './nouveautes.js';
 import { documentPourPaquet } from './documents.js';
 
@@ -108,7 +108,8 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
       }
       d.fermer();
       const r = await ecrirePaquet(app, p.id, meta, chemin);
-      if (!bureau) window.location.href = `/api/fichier?chemin=${encodeURIComponent(r.chemin)}`;
+      // (in a browser: downloaded, from the local server or from webR's files in the page)
+      if (!bureau) telechargerFichier(r.chemin);
       app.statut(t(bureau ? 'paquet_ecrit' : 'paquet_telecharge', { chemin: r.chemin, n: [].concat(r.fichiers).length }));
       const x = remarques(r);
       if (x) dialogue({ titre: t('paquet_remarques_titre'), contenu: x, boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });

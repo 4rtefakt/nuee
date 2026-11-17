@@ -436,6 +436,26 @@ try {
   verifier('un projet enregistré, rouvert dans la page, enregistré de nouveau : téléchargé chaque fois', !!tn2 && /\.nuee$/.test(tn.suggestedFilename()) && !!rouvert && rouvert.n === 130,
     `${tn.suggestedFilename()} ; rouvert : ${rouvert && rouvert.nom} ; ${tn2 ? tn2.suggestedFilename() : 'pas de second téléchargement'}`);
 
+  // File › Export a reproducibility package: written in R's files of the page, then downloaded (the
+  // page stays: no address of the local server)
+  const telechargementPaquet = page.waitForEvent('download', { timeout: 180000 }).catch(() => null);
+  await commande(page, 'paquet');
+  await page.waitForSelector('.dialogue-paquet .paquet-auteurs tbody tr input', { timeout: 15000 });
+  const champsAuteur = page.locator('.dialogue-paquet .paquet-auteurs tbody tr').first().locator('input');
+  await champsAuteur.nth(0).fill('Alice');
+  await champsAuteur.nth(1).fill('Exemple');
+  await page.click('.fond-dialogue .pied-dialogue button.principal');
+  const tp = await telechargementPaquet;
+  const zip = tp ? path.join(sortie, tp.suggestedFilename()) : null;
+  if (tp) await tp.saveAs(zip);
+  const octetsZip = zip ? fs.readFileSync(zip) : Buffer.alloc(0);
+  const dansZip = (nom) => octetsZip.includes(Buffer.from(nom));
+  const toujoursLa = await projetActif().catch(() => null);
+  verifier('un paquet de reproductibilité exporté dans la page : téléchargé (.zip), la page restée',
+    !!tp && /\.zip$/.test(tp.suggestedFilename()) && octetsZip.subarray(0, 2).toString() === 'PK'
+      && ['README.md', 'CITATION.cff', 'MANIFEST.sha256', '.nuee'].every(dansZip) && !!toujoursLa && toujoursLa.n === 130,
+    tp ? `${tp.suggestedFilename()} : ${octetsZip.length} octets` : 'pas de téléchargement');
+
   // R code: approved when fitted, its package (Kendall) installed from webR's repository; ranger refused
   const codeR = 'k <- Kendall::Kendall(donnees$sugar, donnees$taste_score)\nfit <- lm(taste_score ~ sugar + acidity, data = donnees)\nlist(modele = fit, valeurs = c(tau = unname(k$tau)))';
   const rc = await nouveauModele(page, { type: 'CODE', options: { code: codeR } });
