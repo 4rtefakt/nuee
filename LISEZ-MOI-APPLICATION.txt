@@ -615,6 +615,32 @@ de votre choix, y compris les parties du moteur de Nuée qu'il recopie (une exce
 licence GPL de Nuée, LICENSE-EXCEPTION.md). Ses commentaires du début le disent, et comment
 citer Nuée si vous publiez des résultats obtenus avec lui.
 
+Paquet de reproductibilité
+--------------------------
+Fichier › Exporter un paquet de reproductibilité… : une archive .zip que quiconque a R, ou Nuée,
+peut relancer : le projet, ses données en CSV avec leur dictionnaire, un seul script R qui refait
+chaque modèle, les documents en fichiers Quarto reproductibles, les résultats clés de chaque
+modèle tels que Nuée les a calculés (resultats/resultats_cles.json, avec les versions de Nuée, de
+R et des paquets R), un README, la licence des données et son texte, CITATION.cff, codemeta.json
+et l'empreinte SHA-256 de chaque fichier (MANIFEST.sha256). Fichier › Déposer sur Zenodo…
+(application de bureau) crée sur Zenodo un brouillon qui réserve son DOI, écrit le paquet avec ce
+DOI et l'y dépose ; Nuée ne publie jamais : vous vérifiez le brouillon sur Zenodo et le publiez
+là. Son dernier dialogue donne le lien qui ouvre le paquet dans Nuée, dans un navigateur,
+https://nuee.io/app/?doi=<DOI>, et son code QR (Copier le lien, Enregistrer le code QR… en SVG ou
+en PNG, pour une affiche ou une diapositive) ; le paquet a les deux.
+Fichier › Ouvrir un paquet de reproductibilité… (ou Fichier › Ouvrir sur son .zip, ou le .zip
+déposé sur la fenêtre) vérifie chaque fichier par le manifeste du paquet et nomme ceux qui
+manquent, ont changé ou ont été ajoutés ; ouvre son projet comme un nouveau projet (Enregistrer
+demande où : rien ne s'écrit dans le paquet) ; ajuste de nouveau chaque modèle et compare ses
+résultats clés à ceux déposés, dans le panneau Ce qui a changé : « 4 modèles relancés : 4
+redonnent les résultats déposés, 0 diffère », les phrases de Ce qui a changé pour un modèle qui
+diffère, et la Nuée et le R qui ont fait le dépôt et ceux qui l'ont relancé. Un modèle qui ne
+peut pas être ajusté ici (une forêt aléatoire dans la version pour navigateur, du code R qui
+attend Exécuter) est dit tel quel, sans compter comme une différence. Le lien du paquet fait de
+même dans un navigateur, sans rien installer : Nuée va chercher le paquet sur Zenodo (le DOI
+d'une version, ou un DOI de concept, qui donne sa dernière version), puis l'ouvre et le relance
+dans la page.
+
 Texte des méthodes
 ------------------
 Modèle › Texte pour la section Méthodes : un paragraphe écrit d'après le modèle, en français
