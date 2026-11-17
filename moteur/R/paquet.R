@@ -21,10 +21,10 @@
 DOI_NUEE <- "10.5281/zenodo.24263014"
 
 # Les licences proposées pour les données, par leur identifiant SPDX. Leur texte est dans
-# moteur/licences : la CC BY 4.0 telle que creativecommons.org la donne en texte (legalcode.txt), la
-# CC0 1.0 telle que R la livre (share/licenses/CC0-1.0) ; la BY-SA et la BY-NC écrites de la BY avec
-# ce qui les en distingue (leurs définitions, la clause de partage à l'identique ou d'usage non
-# commercial).
+# moteur/licences, octet pour octet tel que creativecommons.org le donne en texte : le legalcode.txt
+# de la CC BY 4.0, de la CC BY-SA 4.0 et de la CC BY-NC 4.0 (https://creativecommons.org/licenses/
+# <by, by-sa, by-nc>/4.0/legalcode.txt), et celui de la CC0 1.0, que R livre aussi
+# (share/licenses/CC0-1.0). verifier_paquet.R le vérifie par leurs empreintes.
 LICENCES_PAQUET <- list(
   "CC-BY-4.0" = list(nom = "Creative Commons Attribution 4.0 International", court = "CC BY 4.0",
                      url = "https://creativecommons.org/licenses/by/4.0/"),
@@ -334,10 +334,11 @@ ecrire_documents_paquet <- function(documents, dossier) {
 }
 
 # LICENSE : qui donne les données sous quelle licence, puis son texte (moteur/licences, fins de
-# ligne « \n »). En anglais, comme le texte des licences.
+# ligne « \n », sans la ligne vide qui le finit). En anglais, comme le texte des licences.
 lignes_licence <- function(meta) {
   l <- LICENCES_PAQUET[[meta$licence]]
   texte <- lire_lignes_paquet(file.path(getOption("nuee.moteur", "moteur"), "licences", paste0(meta$licence, ".txt")))
+  while (length(texte) && !nzchar(trimws(texte[length(texte)]))) texte <- texte[-length(texte)]
   qui <- liste_auteurs(meta, "en")
   c(texte_sur(meta$titre), "",
     if (identical(meta$licence, "CC0-1.0")) sprintf("The data of this package, by %s, are dedicated to the public domain under the %s (%s).", qui, l$nom, l$url)

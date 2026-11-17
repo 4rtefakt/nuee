@@ -7,7 +7,8 @@
 # README, la licence et son texte, CITATION.cff et codemeta.json ; le script R lancé dans une session
 # R neuve (Rscript --vanilla, sans le moteur), qui redonne les nombres du moteur pour chaque modèle,
 # et le document refait de là ; les empreintes du manifeste, recalculées ici par un SHA-256 écrit à
-# part (FIPS 180-4), vérifié d'abord sur ses exemples publiés. Puis les réponses du dialogue refusées
+# part (FIPS 180-4), vérifié d'abord sur ses exemples publiés, qui vérifie aussi que les textes des
+# licences sont ceux de creativecommons.org. Puis les réponses du dialogue refusées
 # (titre, auteurs, ORCID, licence), en français et en anglais, un modèle dont le script ne s'écrit
 # pas (les autres refaits sans lui), et les chemins qu'un document ne peut pas donner.
 #   Rscript moteur/tests/verifier_paquet.R
@@ -85,6 +86,42 @@ verifier("FIPS 180-4 : « », « abc », 448 bits, 1000 « a »",
          identical(sha256_fichiers(fichiers_exemples),
                    c("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                      "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3")))
+
+# ---------------------------------------------------------------- les textes des licences
+
+cat("Les textes des licences : ceux de creativecommons.org\n")
+# Le legalcode.txt de chacune, tel que creativecommons.org le donnait le 17 novembre 2026 (celui de la
+# CC0 1.0 est aussi celui que R livre, share/licenses/CC0-1.0) : leurs empreintes, sur leur texte en
+# fins de ligne « \n » (une copie de Git sous Windows les écrit en « \r\n »).
+officielles <- c("CC-BY-4.0" = "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+                 "CC-BY-SA-4.0" = "28a9529c7d0bb4dc51f4bf5c116a3d16ef247a052f7591466768ddf563fd1cf5",
+                 "CC-BY-NC-4.0" = "41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0",
+                 "CC0-1.0" = "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499")
+sans_cr <- vapply(names(officielles), function(l) {
+  f <- file.path("moteur", "licences", paste0(l, ".txt"))
+  o <- readBin(f, "raw", file.size(f))
+  copie <- file.path(dossier, paste0(l, ".txt"))
+  writeBin(o[o != as.raw(13)], copie)
+  copie
+}, "")
+cc0_r <- file.path(R.home("share"), "licenses", "CC0-1.0")
+verifier(sprintf("les %d textes de moteur/licences sont octet pour octet ceux de creativecommons.org (legalcode.txt)%s", length(officielles),
+                 if (file.exists(cc0_r)) ", la CC0 1.0 celle de R" else ""),
+         identical(unname(sha256_fichiers(sans_cr)), unname(officielles)) && (!file.exists(cc0_r) || identical(sha256_fichiers(cc0_r), officielles[["CC0-1.0"]])))
+# chaque LICENSE : qui donne les données et sous quelle licence, puis le texte de la licence, jusqu'à sa dernière ligne
+meta_licence <- function(l) metadonnees_paquet(list(titre = "T", auteurs = list(list(prenom = "Alice", nom = "Exemple", orcid = "")), licence = l))
+licences <- lapply(stats::setNames(names(officielles), names(officielles)), function(l) lignes_licence(meta_licence(l)))
+titres <- c("CC-BY-4.0" = "Attribution 4.0 International", "CC-BY-SA-4.0" = "Attribution-ShareAlike 4.0 International",
+            "CC-BY-NC-4.0" = "Attribution-NonCommercial 4.0 International", "CC0-1.0" = "Creative Commons Legal Code")
+fins <- c(rep("Creative Commons may be contacted at creativecommons.org.", 3), "    this CC0 or use of the Work.")
+verifier("chaque LICENSE : la licence nommée, son texte entier après elle, de son titre à sa dernière ligne",
+         all(vapply(seq_along(licences), function(k) {
+           x <- licences[[k]]
+           l <- names(licences)[k]
+           debut <- which(x == strrep("=", 71))[1] + 2
+           identical(x[debut], titres[[l]]) && identical(utils::tail(x, 1), fins[k]) && any(grepl(LICENCES_PAQUET[[l]]$nom, x, fixed = TRUE)) &&
+             identical(x[debut:length(x)], lire_lignes_paquet(sans_cr[[l]])[seq_len(length(x) - debut + 1)])
+         }, TRUE)))
 
 # ---------------------------------------------------------------- le projet d'exemple, et ce qu'on y ajoute
 
