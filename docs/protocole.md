@@ -2,7 +2,7 @@
 
 <!-- Written by docs/ecrire_protocole.R from moteur/protocole.json: change the description there, then run Rscript docs/ecrire_protocole.R (moteur/tests/verifier_protocole.R checks that this page is up to date). -->
 
-Version **2.1** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 128 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
+Version **2.2** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 129 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
 
 It is written from `moteur/protocole.json`, the description that the request [`protocole`](#protocole) also gives (with `complet`); `moteur/tests/verifier_protocole.R` checks that every request the engine answers is described there, and nothing else. `outils/exemple_client.py` is a client in Python, with nothing but its standard library: it starts the engine from the sources, opens the example project and fits one of its models.
 
@@ -29,6 +29,7 @@ The protocol's version is MAJOR.MINOR. MINOR grows when a request, a parameter o
 | 1.0 | The requests of Nuée 1.0.0, before the protocol had a version: an engine that answers protocole with "Unknown request: protocole" speaks 1.0. |
 | 2.0 | Nuée 1.1.0. New requests: protocole; retablir (Redo); the data steps, etapes, mettre_a_jour and retirer_etape; renommer_variable, supprimer_variable and type_variable; the versions of a project, fichier_change, fusionner and fusionner_finir; R-code models (the model type CODE) with empreinte_code, code_approuve and code_modeles; plugins (the model type PLUGIN) with greffons, greffon_lire, greffon_installer, greffon_retirer, greffon_projet and greffon_mettre_a_jour; resultats_cles and comparer_resultats; guide. New parameters: exemple's nom, ouvrir's lecture_seule and cache, enregistrer's auteur, reajuster's centrer, effets' echelle, ajouter_colonnes' colle, a model definition's meme_numero. New fields: Projet's retablissable, a_source and lecture_seule; ResumeModele's code_r and greffon; Modele's cles and an R-code or plugin model's own; annuler's documents, reajuster and a_reajuster, and retablir's; projets_modifies' ids; fusionner_finir's documents; RapportMiseAJour's changements_avant_etapes and its observations' distinguees; etat's code_interdit and greffons; error answers with fields of their own (arrete for a computation stopped, source_modifiee, code_non_approuve and empreinte, ligne, a plugin's refusal, a 409's fusion). Changed in a way a client of 1.0 notices: annuler keeps the model definitions added since the change (fitted models), which 1.0 took back with it; enregistrer without chemin no longer marks the project saved (it is a download); document_enregistrer and figure_enregistrer refuse an id the project doesn't have instead of making a new document or figure, and document_supprimer and figure_supprimer refuse it too; fermer_projet, rapports_vraisemblance, console and completer refuse an unknown project or model, which 1.0 ignored; exporter_prediction names its columns in the request's language; moyennes and puissance_tendance take only their own settings; an unknown model type or cross-validation is refused, not fitted as a PLS or validated by centres; an id is read as text (1 no longer names the first project); a missing projet or modele, an unknown observation and the choices the requests check get the engine's own messages instead of R's; most undo labels are in the request's language. |
 | 2.1 | New request: paquet, the reproducibility package (a .zip of the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data, CITATION.cff, codemeta.json and the SHA-256 of every file), with the DOI Zenodo reserved for the draft it goes in. New field: Projet's paquet, the answers kept from the last one. |
+| 2.2 | New request: paquet_ouvrir, a reproducibility package opened again: unzipped in the engine's temporary folder, its files checked against its manifest, its project opened as a new project, with the results it deposited (ResultatsDeposes) to compare with its models fitted again. New parameter: paquet's qr, the QR code of its link. New fields: comparer_resultats' resume's verdict (identique, six_chiffres or differe), ecart_max, cle_ecart_max, libelle_ecart_max and partie_ecart_max. New fields: ouvrir's paquet_ouvrir (a reproducibility package, to open with paquet_ouvrir), Projet's depuis_paquet, the error answer's pas_un_paquet; paquet's .zip holds results/key_results.json (ResultatsDeposes), and with doi and qr, qr-code.svg. |
 
 ## Starting the engine
 
@@ -110,7 +111,7 @@ The answer is written by jsonlite::toJSON(auto_unbox = TRUE, dataframe = "column
 
 A vector of one element is written as that element: a field described as an array can arrive as a single value when it has one element, unless the engine keeps it an array (I() in its code). A table (data.frame) becomes an object of columns, each always an array; a matrix, an array of its rows; a missing value, NaN or an infinity, null; numbers keep all their digits.
 
-Errors carry no code, only their message, said for a user in the request's language: a client tells them apart by their status and the fields some carry besides erreur, not by their words: conflit, date and fusion (409, enregistrer), arrete (a computation stopped), source_modifiee (retirer_etape), code_non_approuve and empreinte (an R-code model not approved here), ligne (an error in an R-code model's or a plugin's code), and a plugin's refusal: greffon_non_approuve, empreinte, id and version; greffon_interdit; paquets_manquants and id. A malformed parameter often gets R's own message, untranslated. A few requests answer 200 with an error inside: series' tendances_erreur, raster_infos' erreur for a file it can't read, test_deux_variables' erreur for a pair it can't test.
+Errors carry no code, only their message, said for a user in the request's language: a client tells them apart by their status and the fields some carry besides erreur, not by their words: conflit, date and fusion (409, enregistrer), arrete (a computation stopped), source_modifiee (retirer_etape), code_non_approuve and empreinte (an R-code model not approved here), ligne (an error in an R-code model's or a plugin's code), a plugin's refusal: greffon_non_approuve, empreinte, id and version; greffon_interdit; paquets_manquants and id; and pas_un_paquet (paquet_ouvrir: a .zip that isn't a reproducibility package). A malformed parameter often gets R's own message, untranslated. A few requests answer 200 with an error inside: series' tendances_erreur, raster_infos' erreur for a file it can't read, test_deux_variables' erreur for a pair it can't test.
 
 Stop: the engine reads no request while it computes, so a client stops a long computation by writing the file NUEE_ARRET names (any content). The loops that look at it (permutations, cross-validation rounds, the AIC selection, boosting, simulations…: arret.R), five times a second at most, end the request at once: it answers 400 {"erreur": "Computation stopped.", "arrete": true}, the session put back as it was before the request (its projects, models, undo steps), the R console's log aside. The engine deletes the file when the next request comes, so that a Stop that came after the computation ended stops nothing.
 
@@ -220,6 +221,7 @@ A project's summary (serveur.R: resume_projet): what the interface shows of it, 
 | `documents` | `object[]` | Its documents, each {id, titre, langue}. |
 | `figures` | `object[]` | Its figures, each {id, titre}. |
 | `paquet` | `object` \| `null` | The answers of its last reproducibility package (paquet's meta), kept in the project and saved with it, as paquet cleans them: {titre, auteurs (each {prenom, nom, orcid}), description, mots_cles (always an array), licence}; null when it has none. Since 2.1. |
+| `depuis_paquet` | `object` \| `null` | A project opened from a reproducibility package (paquet_ouvrir): {titre, doi (the package's own, null without), fichier (its .zip's name), manifeste (paquet_ouvrir's)}, kept for the session only, never saved; null otherwise. Since 2.2. |
 | `kobo` | `object` \| `null` | The settings of the KoboToolbox or ODK import that made it, to make it again (kobo.R); null otherwise. |
 | `a_source` | `boolean` | Whether its data came from a file it keeps as their source (a table opened, an export imported, an ODK archive's table opened as it is, the file of an update), which etapes describes and mettre_a_jour reads again. Since 2.0. |
 | `lecture_seule` | `object` \| `null` | An old version opened read-only (ouvrir's lecture_seule): {source, oid, date}, as ouvrir was given them; null otherwise. Since 2.0. |
@@ -498,6 +500,22 @@ A key result of a fitted model (resultats_cles.R: entree_resultat): a number, or
 | `axe` | `string` | The component of a value whose sign is arbitrary (a PCA loading: "1", "2"…), which comparer_resultats turns the other fit's way. |
 | `classe` | `string` | A category that goes with the value or makes the entry: TRIM's trend class, an indicator species' group, the detection function chosen, the most important variable, the first split's. |
 | `classe_texte` | `string` | That category in words, when its code doesn't read (TRIM's class). |
+
+### Type `ResultatsDeposes`
+
+A reproducibility package's key results, its file results/key_results.json (resultats/resultats_cles.json in a French package; paquet.R: json_resultats_paquet): written by paquet from the latest fit of each model in the session, read back by paquet_ouvrir, its numbers to 15 significant digits.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `format` | `number` | The file's format: 1. |
+| `nuee` | `string` | The version of Nuée that wrote it (paquet's version). |
+| `R` | `string` | R's version, X.Y.Z. |
+| `plateforme` | `string` | R's platform (x86_64-w64-mingw32, aarch64-apple-darwin20, wasm32-unknown-emscripten…). |
+| `paquets` | `object` | Every R package loaded then but R's own (base, stats, utils…), its version under its name. |
+| `date` | `string` | When it was written, YYYY-MM-DD. |
+| `langue` | `string` | The package's language, that of the labels: fr or en. |
+| `doi` | `string` \| `null` | The package's own DOI (paquet's doi), null without. |
+| `modeles` | `object[]` | Each model, in the order paquet got them: {nom, numero, titre, type (ResumeModele's: PCA, OPLS-DA, LM…), A (its fit's number of components, which a fit again takes; 0 for a regression or another analysis), entrees (ResultatCle[], as resultats_cles gives them, in the package's language)}, or, for a model the package doesn't redo (its categories changed since its fit, not fitted: paquet's non_ajustes), {nom, numero, titre, type, erreur} (always an array). |
 
 ## Parameter sets
 
@@ -1048,7 +1066,7 @@ Since 2.0. Changes nothing.
 
 ### Opening and importing
 
-[`ouvrir`](#ouvrir) · [`exemple`](#exemple) · [`coller`](#coller) · [`importer_spectres`](#importer_spectres) · [`kobo_apercu`](#kobo_apercu) · [`kobo_importer`](#kobo_importer)
+[`ouvrir`](#ouvrir) · [`exemple`](#exemple) · [`coller`](#coller) · [`importer_spectres`](#importer_spectres) · [`kobo_apercu`](#kobo_apercu) · [`kobo_importer`](#kobo_importer) · [`paquet_ouvrir`](#paquet_ouvrir)
 
 #### `ouvrir`
 
@@ -1070,10 +1088,11 @@ Since 1.0. Changes the session, not a project's content. Opens a new project (wi
 | `lecture_seule` | `object` | no | An old version of a project, written to a temporary file (File › History), opened read-only: {source: the project's file, oid: the version's id in its history, date: its date}, kept as texts ("" for one left out) in Projet's lecture_seule, which the interface shows and uses to restore it. Saving never writes it over the file it was read from; saved elsewhere, it becomes a project like any other. Since 2.0. |
 | `cache` | `boolean` | no | true for a project the interface doesn't show (an old version compared with the project of today while its models are refitted): etat leaves it and its models out. Default: `false`. Since 2.0. |
 
-**Result:** [`Projet`](#type-projet) \| `object`, with the fields below. The new project's summary; or, when chemin holds several tables and table isn't given, {choisir, chemin, nom (the file's name)}; or, for a KoboToolbox or ODK export (or with collecte), {kobo, chemin, nom}, its import's preview with the default settings, and nothing opened. With kobo, the imported project's summary with collecte.
+**Result:** [`Projet`](#type-projet) \| `object`, with the fields below. The new project's summary; or, when chemin holds several tables and table isn't given, {choisir, chemin, nom (the file's name)}; or, for a KoboToolbox or ODK export (or with collecte), {kobo, chemin, nom}, its import's preview with the default settings, and nothing opened; or, for a reproducibility package (a .zip that holds a .nuee project and MANIFEST.sha256 at its root or in its one folder), {paquet_ouvrir: {chemin, nom}}, nothing opened: paquet_ouvrir opens it. With kobo, the imported project's summary with collecte.
 
 | Field | Type | Meaning |
 |---|---|---|
+| `paquet_ouvrir` | `object` | Instead of a project, the reproducibility package to open with paquet_ouvrir: {chemin, nom}. Since 2.2. |
 | `note` | `string[]` | What to know about the reading (values read as missing, short lines…) and a project saved by a newer Nuée; always an array, present only when there is something to say, and never with secours, origine, lecture_seule or cache. |
 | `collecte` | `object` | With kobo, what the import did: {coordonnees (whether it set the project's coordinates), lignes, colonnes, phrases (one sentence per change, in the request's language; always an array)}. |
 | `choisir` | `string[]` | Instead of a project, the file's tables to choose from (always an array), to ask again with table. |
@@ -1245,6 +1264,43 @@ Also the parameters of the set [`import_kobo`](#set-import_kobo).
 | “&lt;table&gt;” isn't a parent table of “&lt;table&gt;” (its parent tables: “&lt;table&gt;”, …). | parents names a table that isn't a parent of the imported table. ([`table_parente_inconnue`](#errors)) |
 | The table “&lt;table&gt;” has no column “&lt;column&gt;”. | parents names a column that the parent table's import doesn't give. ([`colonne_parente_inconnue`](#errors)) |
 | The table is empty | The table read has no row or no column (nouveau.R: projet_depuis_tableau). ([`tableau_vide`](#errors)) |
+
+#### `paquet_ouvrir`
+
+Opens a reproducibility package again (paquet's .zip): unzips it into a folder of the engine's temporary folder, checks each of its files against its manifest, opens its project as a new project without a file, and gives the results it deposited, which a client compares with its models fitted again (ajuster with numero and A, resultats_cles, comparer_resultats).
+
+Since 2.2. Changes the session, not a project's content. Unzips the package into a new folder of the engine's temporary folder and opens a new project (its .nuee read as ouvrir reads one, then without a file); the .zip doesn't change.
+
+| Parameter | Type | Required | Meaning |
+|---|---|---|---|
+| `chemin` | `string` | yes | The .zip: one folder holding a .nuee project (MANIFEST.sha256 beside it), as paquet writes it, or those files at its root; the .zip itself is never written. |
+| `nom` | `string` | no | The .zip's name to keep (Projet's depuis_paquet), when chemin's isn't it (a file a browser put in its own folder); by default chemin's. |
+| `version` | `string` | no | Nuée's version here, given back in ici; by default NUEE_VERSION's. |
+
+**Result:** `object`, with the fields below.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `projet` | [`Projet`](#type-projet) | The project opened: named after the package's folder (&lt;folder&gt;.nuee), without a file (chemin and chemin_enregistrement null: enregistrer asks where, nothing is written into the package), not modified, its data's source the package's CSV in the unzipped folder (mettre_a_jour reads it again), depuis_paquet set. |
+| `titre` | `string` | The package's title (its project's paquet answers), else its folder's name. |
+| `doi` | `string` \| `null` | The package's own DOI (its key results', else CITATION.cff's), null without. |
+| `fichier` | `string` | The .zip's name (nom, else chemin's). |
+| `dossier` | `string` | The unzipped package's folder, in the engine's temporary folder. |
+| `manifeste` | `object` | Its files against MANIFEST.sha256 (each SHA-256 computed again): {present (it has one), intact (it has one, and each file it names is there with its hash, and no other), fichiers (how many it names), manquants, changes (there with another hash), ajoutes (there, not named), the three arrays of paths relative to the package's folder, illisibles (lines that aren't "&lt;hash&gt;  &lt;path&gt;")}. |
+| `depose` | [`ResultatsDeposes`](#type-resultatsdeposes) \| `null` | The results the package deposited, as its file gives them; null for a package without (Nuée 1.1's) or one whose file doesn't read. |
+| `ici` | `object` | What computes here: {nuee (version), R (X.Y.Z), plateforme}. |
+| `paquets_differents` | `object[]` | The deposit's R packages installed here in another version, each {paquet, depose, ici} (always an array). |
+| `note` | `string[]` \| `null` | What to know about the project's reading (ouvrir's note), or null. |
+
+**Errors:**
+
+| Message (in English) | When |
+|---|---|
+| File not found: &lt;chemin&gt; | chemin is empty or names no file. |
+| This .zip archive can't be read: &lt;the zip package's message&gt; | chemin isn't a .zip archive. |
+| This .zip archive has a file outside its folder: &lt;path&gt;. | A path of the archive would land outside the folder it is unzipped in (.., an absolute path, a drive, a control character): nothing is unzipped. |
+| &lt;file&gt; isn't a reproducibility package from Nuée: it holds no project (.nuee). | Neither the archive's root nor one of its first folders holds a .nuee. Besides erreur, the answer carries pas_un_paquet: true. |
+| &lt;the project's reading error&gt; | The package's .nuee doesn't read, as ouvrir would say. |
 
 ### Editing the data
 
@@ -3651,7 +3707,7 @@ Since 2.0. Changes nothing.
 |---|---|---|
 | `entrees` | `object[]` | Every key of either side, in the order after (an entry gone placed after the last entry before it that stays), each with all its fields, null when it has nothing (always an array): cle, libelle, groupe, alias, forme, axe (the entry's, from after when it is there); avant and apres, the two values; ic_avant and ic_apres, [low, high]; p_avant and p_apres; n_avant and n_apres; classe_avant and classe_apres; classe_texte_avant and classe_texte_apres; ecart, apres − avant; ecart_relatif, ecart over \|avant\| (null when avant is 0); booleans change (anything differs), signe (the value crossed its limite: it changed sign), seuil (its p crossed 0.05; without p, its interval now excludes its limite or no longer does; or the value crossed its repere), ic (the value after is outside the interval before), nouveau, disparu, categorie (its classe changed), retourne (an axe that came out reflected, a PCA component whose sign is arbitrary: apres and ic_apres are given with their sign changed); importance, a number (0 without change); phrase, the change in a sentence as the Results text writes it, in langue, when it counts (a flag, a large move, a whole number that changes…), else null. |
 | `phrases` | `object[]` | The sentences of the changes that count, the most important first, each {texte, cles (the keys it speaks of, always an array), importance}: one per entry, except more than 8 per-variable or per-species values, said in one sentence per flag; a reflected component has a sentence of its own (importance 0). Always an array. |
-| `resume` | `object` | The counts: {entrees (compared), changees, identiques, nouvelles, disparues, signe, seuil, ic, categorie (the entries with that flag), retournees (the components reflected), phrases}. |
+| `resume` | `object` | The counts: {entrees (compared), changees, identiques, nouvelles, disparues, signe, seuil, ic, categorie (the entries with that flag), retournees (the components reflected), phrases}; and since 2.2 the verdict a package's rerun gives each model (resultats_cles.R: verdict_comparaison): verdict, identique (no value before changes beyond 1e-10 relative), six_chiffres (each within 1e-6: a value and its interval's bounds relative to the larger of the two, or to 1e-10 near zero; a p-value absolute, to six decimals; nothing gone, no category changed) or differe; ecart_max, the largest of those gaps (null without an entry on both sides, or for one gone or of another category), cle_ecart_max and libelle_ecart_max, its entry's, and partie_ecart_max, the part of it (valeur, ic or p). An entry only after counts for none of them. |
 
 **Errors:** none of its own.
 
@@ -4509,7 +4565,8 @@ Since 2.1. Changes the project, without an undo step. Writes the .zip, beside it
 | `modeles` | `string[]` | no | The fitted models' ids (M1…), all of this project, in the order of their numbers: the latest fit of each model. Those of components and the regressions make one session script, each other analysis follows with its own export to R in local(); a model whose categories changed since its fit, or whose script can't be written, is named with why, the others redone without it. |
 | `non_ajustes` | `object[]` | no | The project's models the client couldn't fit, each {nom, erreur}: named in the script and the README with why. |
 | `documents` | `string` | no | JSON text: the documents as reproducible Quarto files, each {nom (the .qmd's name, without / or \\), titre, qmd (its text), bib (its .bib, or null), csl ({nom, texte}, or null), figures (each {chemin, png: base64}), fichiers and relatifs (the files document_reproductible wrote in the engine's temporary folder, and their paths beside the .qmd), note}; written in the package's documents/. Default: `"[]"`. |
-| `doi` | `string` | no | The package's own DOI, the one Zenodo reserved for the draft it will go in (10.5281/zenodo.123, its https://doi.org/ address or doi: taken): the README gives it, with the link https://nuee.io/app/?doi=&lt;doi&gt;, and so do CITATION.cff and codemeta.json; without it, none. |
+| `doi` | `string` | no | The package's own DOI, the one Zenodo reserved for the draft it will go in (10.5281/zenodo.123, its https://doi.org/ address or doi: taken): the README gives it, with the link https://nuee.io/app/?doi=&lt;doi&gt;, and so do CITATION.cff, codemeta.json and the key results; without it, none. |
+| `qr` | `string` | no | With doi, the QR code of that link as an SVG document (the interface draws it: interface/qr.js), written as qr-code.svg (code-qr.svg in French); ignored without doi. Since 2.2. |
 | `session` | `string` | no | The interface's session (its views and fitted models), JSON text only it reads, kept in the package's .nuee as enregistrer keeps it. |
 | `chemin` | `string` | no | The .zip to write (.zip added when missing); without it, one named after the title in a new folder of the engine's temporary folder, for a browser to fetch with /api/fichier. |
 | `version` | `string` | no | Nuée's version, written in the files. Default: `""`. |
@@ -4522,7 +4579,7 @@ Since 2.1. Changes the project, without an undo step. Writes the .zip, beside it
 | `chemin` | `string` | The .zip written. |
 | `chemins` | `string[]` | The same, as an array. |
 | `dossier` | `string` | The folder the .zip holds, named after it. |
-| `fichiers` | `string[]` | Every file of that folder, relative to it, in the order of their bytes: &lt;project&gt;.nuee (format 3, its data's source its own CSV by its path in the package, without the project's steps nor any path of the computer it was written on), data/&lt;project&gt;.csv and its dictionary, analysis.R, documents/…, README.md, LICENSE, CITATION.cff, codemeta.json, MANIFEST.sha256. |
+| `fichiers` | `string[]` | Every file of that folder, relative to it, in the order of their bytes: &lt;project&gt;.nuee (format 3, its data's source its own CSV by its path in the package, without the project's steps nor any path of the computer it was written on), data/&lt;project&gt;.csv and its dictionary, analysis.R, documents/…, results/key_results.json (each model's key results, ResultatsDeposes; since 2.2), qr-code.svg (with doi and qr; since 2.2), README.md, LICENSE, CITATION.cff, codemeta.json, MANIFEST.sha256; French names in French (donnees/, analyse.R, resultats/resultats_cles.json, code-qr.svg). |
 | `modeles` | `object[]` | One per model, each {id, nom, objet (its name in the script), erreur (why it isn't redone)}, one of objet and erreur. |
 | `ecarts` | `string[]` | The models whose script doesn't give back Nuée's results exactly, and how (always an array). |
 | `documents` | `object[]` | Each document written, {nom, titre, note}. |
@@ -4543,6 +4600,7 @@ Since 2.1. Changes the project, without an undo step. Writes the .zip, beside it
 | This isn't an ORCID: &lt;text&gt; (16 digits, 0000-0002-1825-0097). | An orcid isn't 16 digits (the last may be X) whose last checks the others (ISO 7064 11,2). |
 | Unknown licence: &lt;licence&gt;. | meta's licence isn't one of the four. |
 | This isn't a DOI: &lt;doi&gt;. | doi isn't 10.&lt;4 to 9 digits&gt;/&lt;suffix&gt;. |
+| The package's QR code isn't an SVG image. | With doi, qr isn't an SVG document (its &lt;svg&gt; first, after an XML declaration), or holds a script, a link or an event handler. |
 | Document name refused in the package: &lt;name&gt; | A document's nom is empty or holds / or \\. |
 | Two documents with the same name: &lt;name&gt; | Two documents' nom are the same, in any case. |
 | Path refused in the package: &lt;path&gt; | A document's figure or file would go outside the package (.., an absolute path, a control character). |

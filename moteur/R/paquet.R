@@ -10,6 +10,12 @@
 #                                    licence une fois, en tête (script_paquet) ;
 #   documents/                       les documents du projet en fichiers Quarto reproductibles
 #                                    (document_reproductible.R ; le .qmd vient de l'interface) ;
+#   resultats/resultats_cles.json    (results/key_results.json) les résultats clés de chaque modèle tels
+#                                    que la séance les a (resultats_cles.R), avec les versions de Nuée, de R
+#                                    et des paquets : ce que Nuée compare quand il relance le paquet
+#                                    (json_resultats_paquet ; serveur.R : paquet_ouvrir) ;
+#   code-qr.svg                      (qr-code.svg) avec un DOI, le code QR du lien qui ouvre le paquet dans
+#                                    Nuée pour navigateur, dessiné par l'interface (interface/qr.js) ;
 #   README.md                        ce qu'il contient, comment le relancer avec R (les paquets et leurs
 #                                    versions) et l'ouvrir dans Nuée, dans la langue de l'interface ; son
 #                                    DOI, quand Zenodo en a réservé un pour lui (doi_paquet) ;
@@ -19,6 +25,9 @@
 #   MANIFEST.sha256                  l'empreinte SHA-256 de chaque fichier (sha256sum -c la vérifie).
 # Les réponses du dialogue (titre, auteurs, description, mots-clés, licence) sont gardées dans le
 # projet (p$paquet) : l'export suivant repart d'elles.
+# Un paquet se rouvre (Fichier › Ouvrir un paquet de reproductibilité…, serveur.R : paquet_ouvrir) :
+# décompressé dans la séance (deballer_paquet), ses fichiers vérifiés par son manifeste
+# (verifier_manifeste), ses résultats déposés relus (lire_resultats_paquet), puis son projet ouvert.
 
 # Le DOI de Nuée, celui de toutes ses versions (Zenodo), cité par le paquet.
 DOI_NUEE <- "10.5281/zenodo.24263014"
@@ -141,9 +150,60 @@ lignes_csv <- function(df) {
 # caractère de contrôle ; refusé sinon (il ne peut rien écrire hors du paquet).
 chemin_relatif_paquet <- function(x) {
   x <- gsub("\\\\", "/", as.character(x %||% "")[1])
+  if (!chemin_dans_paquet(x)) stop(traduire("Chemin refusé dans le paquet : ", "Path refused in the package: "), x, call. = FALSE)
+  x
+}
+# (relatif, en « / », sans « .. », « . », partie vide ni caractère de contrôle : il reste dans son dossier)
+chemin_dans_paquet <- function(x) {
   parties <- strsplit(x, "/", fixed = TRUE)[[1]]
-  if (is.na(x) || !nzchar(x) || grepl("^/|^[A-Za-z]:", x) || any(parties %in% c("", ".", "..")) || grepl("[[:cntrl:]]", x)) {
-    stop(traduire("Chemin refusé dans le paquet : ", "Path refused in the package: "), x, call. = FALSE)
+  !(is.na(x) || !nzchar(x) || grepl("^/|^[A-Za-z]:", x) || any(parties %in% c("", ".", "..")) || grepl("[[:cntrl:]]", x))
+}
+
+# Les noms des fichiers du paquet que sa langue nomme, hors de ses données et de son script : ses
+# résultats clés et le code QR de son lien.
+fichier_resultats_paquet <- function(langue) if (identical(langue, "en")) "results/key_results.json" else "resultats/resultats_cles.json"
+fichier_qr_paquet <- function(langue) if (identical(langue, "en")) "qr-code.svg" else "code-qr.svg"
+
+# Les paquets R chargés, sauf ceux de R lui-même (base, stats...), et leurs versions : ceux qui ont
+# calculé les résultats (nlme, mgcv, rpart, ranger...), et le reste de ce que la séance a chargé.
+paquets_charges <- function() {
+  noms <- sort(Filter(function(x) !identical(utils::packageDescription(x, fields = "Priority"), "base"), loadedNamespaces()), method = "radix")
+  stats::setNames(lapply(noms, version_paquet), noms)
+}
+
+# Les résultats clés de chaque modèle du paquet, tels que la séance les a (resultats_cles.R :
+# resume_resultats, dans la langue du paquet), en JSON : ce que Nuée compare à ses modèles ajustés de
+# nouveau quand il relance le paquet (serveur.R : paquet_ouvrir ; interface/relancer.js). Pour chacun son
+# nom, son numéro, son titre, son type (celui de l'explorateur, resume_modele : PCA, OPLS-DA, LM...), son
+# nombre de composantes (celui de son ajustement, qu'il reprend) et ses entrées ; un modèle qui n'est pas
+# refait, pourquoi, sans entrées. Avec la version de Nuée, celle de R et sa plateforme, les paquets
+# chargés (paquets_charges), la date, la langue et le DOI du paquet. Ses nombres à 15 chiffres
+# significatifs : relus, ils sont ceux de la séance à 1e-15 près, bien moins que ce que comparer_resultats
+# tient pour un changement.
+json_resultats_paquet <- function(projet, modeles, langue, version, doi = NULL) {
+  ancienne <- options(nuee.langue = langue)
+  on.exit(options(ancienne), add = TRUE)
+  un <- function(x) {
+    d <- x$definition
+    m <- list(nom = as.character(d$name %||% ""), numero = d$number %||% NULL, titre = as.character(d$title %||% ""),
+              type = paste0(if (isTRUE(d$opls)) "O" else "", if (isTRUE(d$plsda)) "PLS-DA" else as.character(d$type %||% "")))
+    if (!is.null(x$erreur) || is.null(x$modele)) return(c(m, list(erreur = as.character(x$erreur %||% ""))))
+    entrees <- tryCatch(resume_resultats(projet, list(definition = d, modele = x$modele)), error = function(e) e)
+    if (inherits(entrees, "error")) return(c(m, list(erreur = conditionMessage(entrees))))
+    c(m, list(A = if (sans_composantes(d)) 0L else as.integer(x$modele$A %||% 0L), entrees = entrees))
+  }
+  x <- list(format = 1L, nuee = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."), plateforme = R.version$platform,
+            paquets = paquets_charges(), date = format(Sys.Date()), langue = langue, doi = doi, modeles = lapply(modeles, un))
+  enc2utf8(as.character(jsonlite::toJSON(x, auto_unbox = TRUE, pretty = TRUE, digits = NA, null = "null", na = "null")))
+}
+
+# Le code QR du lien du paquet, en SVG, tel que l'interface le dessine (interface/qr.js) : une image SVG
+# (sa balise <svg> d'abord, après une déclaration XML), sans script ni lien vers ailleurs ; refusé sinon.
+svg_qr_paquet <- function(x) {
+  x <- as.character(unlist(x %||% ""))[1]
+  if (is.na(x) || !nzchar(x)) return(NULL)
+  if (nchar(x, type = "bytes") > 1e6 || !grepl("^\\s*(<\\?xml[^>]*\\?>\\s*)?<svg[\\s>]", x, perl = TRUE) || grepl("<script|<foreignObject|href\\s*=|\\son[a-z]+\\s*=", x, ignore.case = TRUE)) {
+    stop(traduire("Le code QR du paquet n'est pas une image SVG.", "The package's QR code isn't an SVG image."), call. = FALSE)
   }
   x
 }
@@ -521,6 +581,10 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
     sprintf("| %s | %s |", code(ct$dictionnaire), tx("Chaque colonne des données : son type, son unité, sa description et ses catégories", "Each column of the data: its type, unit, description and categories")),
     if (!is.null(ct$script)) sprintf("| %s | %s |", code(ct$script), tx("Un seul script R qui refait chaque modèle à partir des données", "One R script that redoes every model from the data")),
     if (length(ct$documents)) sprintf("| %s | %s |", code("documents/"), tx("Les documents du projet, en fichiers Quarto reproductibles", "The project's documents, as reproducible Quarto files")),
+    sprintf("| %s | %s |", code(ct$resultats), tx("Les résultats clés de chaque modèle tels que Nuée les a calculés pour ce paquet (l'ajustement, chaque estimation avec son intervalle et sa valeur p…), avec les versions de Nuée, de R et des paquets R : ce à quoi Nuée compare les modèles quand il relance le paquet",
+                                                  "Each model's key results as Nuée computed them for this package (the fit, each estimate with its interval and p-value…), with the versions of Nuée, R and the R packages: what Nuée compares the models with when it reruns the package")),
+    if (!is.null(ct$qr)) sprintf("| %s | %s |", code(ct$qr), tx("Le code QR du lien qui ouvre ce paquet dans Nuée, dans un navigateur (pour une affiche, une diapositive ou un article)",
+                                                               "The QR code of the link that opens this package in Nuée, in a browser (for a poster, a slide or a paper)")),
     sprintf("| %s | %s |", code("LICENSE"), tx("La licence des données, et son texte", "The licence of the data, with its text")),
     sprintf("| %s | %s |", paste(code("CITATION.cff"), code("codemeta.json"), sep = ", "), tx("Comment citer ce paquet, et ses métadonnées", "How to cite this package, and its metadata")),
     sprintf("| %s | %s |", code("MANIFEST.sha256"), tx("L'empreinte SHA-256 de chaque fichier", "The SHA-256 hash of every file")),
@@ -553,12 +617,17 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
               code("quarto render documents/<document>.qmd")), "",
       vapply(ct$documents, function(d) paste0("- ", code(paste0("documents/", d$nom, ".qmd")), if (nzchar(d$note)) paste0(" — ", texte_sur(d$note)) else ""), ""), ""),
     paste("##", tx("L'ouvrir dans Nuée", "Open it in Nuée")), "",
-    sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient ; Édition › Mettre à jour les données relit les données du CSV du paquet, changé ou non. Il faut Nuée %s ou plus récent.",
-               "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were; Edit › Update the data reads the data again from the package's CSV, changed or not. It takes Nuée %s or later."),
-            "https://nuee.io", sprintf("[%s](https://doi.org/%s)", DOI_NUEE, DOI_NUEE), code(ct$nuee), "1.1"),
-    if (!is.null(doi)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI.",
-                                        "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI."),
-                                     sprintf("[%s](%s)", dans_navigateur, dans_navigateur))),
+    sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir un paquet de reproductibilité…, ou Fichier › Ouvrir sur ce .zip (Nuée %s ou plus récent) : Nuée vérifie chaque fichier par %s, ouvre le projet, ajuste de nouveau chaque modèle et dit si chacun redonne les résultats de %s.",
+               "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open a reproducibility package…, or File › Open on this .zip (Nuée %s or later): Nuée checks each file against %s, opens the project, fits every model again and says whether each gives the results of %s."),
+            "https://nuee.io", sprintf("[%s](https://doi.org/%s)", DOI_NUEE, DOI_NUEE), "1.2", code("MANIFEST.sha256"), code(ct$resultats)),
+    "",
+    sprintf(tx("Avec Nuée %s, Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient ; Édition › Mettre à jour les données relit les données du CSV du paquet, changé ou non.",
+               "With Nuée %s, File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were; Edit › Update the data reads the data again from the package's CSV, changed or not."),
+            "1.1", code(ct$nuee)),
+    if (!is.null(doi)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI, et le relance%s.",
+                                        "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI, and reruns it%s."),
+                                     sprintf("[%s](%s)", dans_navigateur, dans_navigateur),
+                                     if (!is.null(ct$qr)) sprintf(tx(" ; son code QR est %s", "; its QR code is %s"), code(ct$qr)) else "")),
     "",
     paste("##", tx("Vérifier les fichiers", "Check the files")), "",
     sprintf(tx("%s donne l'empreinte SHA-256 de chaque fichier. Dans ce dossier : %s (Linux), %s (macOS), ou %s dans PowerShell (Windows), fichier par fichier.",
@@ -605,12 +674,15 @@ source_paquet <- function(p, fichier, relatif, tab) {
 #   version    celle de Nuée ; session : la disposition de l'interface, gardée dans le .nuee comme
 #              Enregistrer la garde ;
 #   doi        celui du paquet, réservé par Zenodo pour son brouillon (doi_paquet), que le README,
-#              CITATION.cff et codemeta.json donnent ; NULL sans dépôt.
+#              CITATION.cff et codemeta.json donnent ; NULL sans dépôt ;
+#   qr         avec un DOI, le code QR en SVG du lien qui ouvre le paquet dans Nuée pour navigateur
+#              (svg_qr_paquet), que l'interface dessine.
 # Rend le chemin de l'archive, les fichiers qu'elle contient (relatifs à son dossier), chaque modèle
 # (son nom dans le script, ou pourquoi il n'y est pas), les écarts et les documents.
-ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), langue = "fr", version = "", session = NULL, doi = NULL) {
+ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), langue = "fr", version = "", session = NULL, doi = NULL, qr = NULL) {
   langue <- if (identical(langue, "en")) "en" else "fr"
   doi <- doi_paquet(doi)
+  qr <- if (!is.null(doi)) svg_qr_paquet(qr)
   tx <- function(fr, en) if (langue == "en") en else fr
   if (!grepl("\\.zip$", chemin, ignore.case = TRUE)) chemin <- paste0(chemin, ".zip")
   base <- trimws(gsub("[^[:alnum:]_ ().-]", "_", tools::file_path_sans_ext(basename(chemin))))
@@ -642,8 +714,13 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   s <- script_paquet(projet, modeles, file.path(racine, script), meta, langue, version)
   # les documents
   docs <- if (length(documents)) ecrire_documents_paquet(documents, file.path(racine, "documents")) else list(fichiers = character(0), documents = list())
+  # les résultats clés de chaque modèle, ceux que Nuée compare quand il relance le paquet ; le code QR de son lien
+  resultats <- fichier_resultats_paquet(langue)
+  ecrire_texte_paquet(file.path(racine, resultats), json_resultats_paquet(projet, modeles, langue, version, doi))
+  fichier_qr <- if (!is.null(qr)) fichier_qr_paquet(langue)
+  if (!is.null(qr)) writeBin(charToRaw(enc2utf8(gsub("\r\n?", "\n", qr))), file.path(racine, fichier_qr))
   contenu <- list(nuee = fichier_nuee, csv = csv, dictionnaire = dictionnaire, script = if (!is.null(s$script)) script, documents = docs$documents,
-                  modeles = s$modeles, ecarts = s$ecarts, paquets = s$paquets, n_obs = nrow(tab), n_colonnes = ncol(tab))
+                  modeles = s$modeles, ecarts = s$ecarts, paquets = s$paquets, n_obs = nrow(tab), n_colonnes = ncol(tab), resultats = resultats, qr = fichier_qr)
   ecrire_texte_paquet(file.path(racine, "LICENSE"), lignes_licence(meta))
   ecrire_texte_paquet(file.path(racine, "README.md"), lignes_readme(meta, langue, version, contenu, doi))
   ecrire_texte_paquet(file.path(racine, "CITATION.cff"), lignes_cff(meta, langue, version, s$paquets, doi))
@@ -660,4 +737,102 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   list(chemin = chemin, chemins = I(chemin), dossier = base, fichiers = I(c(sort(c(fichiers, "MANIFEST.sha256"), method = "radix"))),
        modeles = lapply(s$modeles, function(i) list(id = i$id, nom = i$nom, objet = i$objet %||% NULL, erreur = i$erreur %||% NULL)),
        ecarts = I(s$ecarts), documents = docs$documents, taille = file.size(chemin))
+}
+
+# ---------------------------------------------------------------- rouvrir un paquet
+
+# Le dossier du paquet dans l'archive .zip `chemin` : celui qui a un projet .nuee (et MANIFEST.sha256,
+# avec `manifeste`), le dossier au nom de l'archive qu'ecrire_paquet écrit, ou la racine de l'archive
+# quand ses fichiers y ont été remis sans lui ; list(racine : son chemin dans l'archive, "" pour la
+# racine ; nuee : le projet, son chemin depuis ce dossier ; manifeste : s'il l'a), ou NULL quand
+# l'archive n'en a pas. Une archive qui ne se lit pas, ou dont un chemin sortirait du dossier où elle se
+# décompresse (« .. », un chemin absolu : un fichier écrit ailleurs sur l'ordinateur), est refusée.
+racine_paquet_zip <- function(chemin, manifeste = FALSE) {
+  noms <- tryCatch(as.character(zip::zip_list(chemin)$filename),
+                   error = function(e) stop(traduire("Cette archive .zip ne se lit pas : ", "This .zip archive can't be read: "), conditionMessage(e), call. = FALSE))
+  noms <- gsub("\\\\", "/", enc2utf8(noms))
+  dehors <- noms[!vapply(sub("/$", "", noms), chemin_dans_paquet, NA)]
+  if (length(dehors)) stop(sprintf(traduire("Cette archive .zip a un fichier hors de son dossier : %s.", "This .zip archive has a file outside its folder: %s."), dehors[1]), call. = FALSE)
+  fichiers <- noms[!endsWith(noms, "/")]
+  dossier <- ifelse(grepl("/", fichiers, fixed = TRUE), sub("/[^/]*$", "", fichiers), "")
+  # (la racine, puis chaque dossier du premier niveau, dans l'ordre de leurs octets)
+  for (r in unique(c("", sort(unique(dossier[!grepl("/", dossier, fixed = TRUE)]), method = "radix")))) {
+    ici <- fichiers[dossier == r]
+    projets <- ici[grepl("\\.nuee$", ici, ignore.case = TRUE)]
+    a_manifeste <- paste0(if (nzchar(r)) paste0(r, "/"), "MANIFEST.sha256") %in% ici
+    if (length(projets) && (a_manifeste || !manifeste)) {
+      return(list(racine = r, nuee = sub("^.*/", "", sort(projets, method = "radix")[1]), manifeste = a_manifeste))
+    }
+  }
+  NULL
+}
+
+# Les fichiers du paquet décompressé dans le dossier `racine`, vérifiés par son manifeste
+# (MANIFEST.sha256 : « empreinte  chemin », une ligne par fichier, comme sha256sum l'écrit et le vérifie ;
+# l'empreinte SHA-256 de chacun recalculée, empreintes_sha256, quel que soit le R) : `present` (il a son
+# manifeste), `fichiers` (combien il en nomme), `manquants` (nommés et absents), `changes` (là, d'une autre
+# empreinte), `ajoutes` (là sans qu'il les nomme), `illisibles` (ses lignes qui ne sont pas « empreinte
+# chemin ») ; `intact` : un manifeste, et rien de tout cela.
+verifier_manifeste <- function(racine) {
+  presents <- setdiff(sort(list.files(racine, recursive = TRUE, all.files = TRUE, no.. = TRUE), method = "radix"), "MANIFEST.sha256")
+  f <- file.path(racine, "MANIFEST.sha256")
+  if (!file.exists(f)) {
+    return(list(present = FALSE, intact = FALSE, fichiers = 0L, manquants = I(character(0)), changes = I(character(0)), ajoutes = I(presents), illisibles = 0L))
+  }
+  lignes <- lire_lignes_paquet(f)
+  lignes <- lignes[nzchar(trimws(lignes))]
+  lisibles <- grepl("^[0-9a-fA-F]{64} [ *][^ ].*$", lignes)
+  noms <- substring(lignes[lisibles], 67)
+  attendues <- tolower(substr(lignes[lisibles], 1, 64))
+  garder <- !duplicated(noms)
+  noms <- noms[garder]
+  attendues <- attendues[garder]
+  la <- noms %in% presents
+  empreintes <- empreintes_sha256(file.path(racine, noms[la]))
+  changes <- noms[la][empreintes != attendues[la]]
+  manquants <- noms[!la]
+  ajoutes <- setdiff(presents, noms)
+  list(present = TRUE, intact = !length(manquants) && !length(changes) && !length(ajoutes) && all(lisibles),
+       fichiers = length(noms), manquants = I(manquants), changes = I(changes), ajoutes = I(ajoutes), illisibles = sum(!lisibles))
+}
+
+# Les résultats que le paquet a déposés (json_resultats_paquet), relus de son dossier décompressé
+# `racine` : sous leur nom anglais ou français ; NULL sans eux (un paquet de Nuée 1.1) ou quand le fichier
+# ne se lit plus.
+lire_resultats_paquet <- function(racine) {
+  for (f in c(fichier_resultats_paquet("en"), fichier_resultats_paquet("fr"))) {
+    chemin <- file.path(racine, f)
+    if (file.exists(chemin)) return(tryCatch(jsonlite::fromJSON(chemin, simplifyVector = FALSE), error = function(e) NULL))
+  }
+  NULL
+}
+
+# Le DOI que le paquet se donne (CITATION.cff : sa ligne « doi: », écrite par lignes_cff), ou NULL.
+doi_paquet_ecrit <- function(racine) {
+  f <- file.path(racine, "CITATION.cff")
+  if (!file.exists(f)) return(NULL)
+  ligne <- grep("^doi: ", lire_lignes_paquet(f), value = TRUE)[1]
+  if (is.na(ligne)) return(NULL)
+  tryCatch(doi_paquet(gsub("^doi: *\"?|\"? *$", "", ligne)), error = function(e) NULL)
+}
+
+# L'archive `chemin` d'un paquet décompressée dans le dossier `dossier` (de la séance : l'archive, elle,
+# ne change pas), puis vérifiée : list(racine : le dossier du paquet décompressé ; nuee : son projet ;
+# nom : le nom de son dossier, ou de l'archive sans lui ; manifeste : verifier_manifeste ; resultats : ses
+# résultats déposés, lire_resultats_paquet ; doi). Refusée quand ce n'est pas un paquet (sans projet
+# .nuee), d'une erreur de classe pas_un_paquet.
+deballer_paquet <- function(chemin, dossier) {
+  r <- racine_paquet_zip(chemin)
+  if (is.null(r)) {
+    stop(structure(class = c("pas_un_paquet", "error", "condition"),
+                   list(message = sprintf(traduire("%s n'est pas un paquet de reproductibilité de Nuée : il n'a pas de projet (.nuee).",
+                                                   "%s isn't a reproducibility package from Nuée: it holds no project (.nuee)."), basename(chemin)), call = NULL)))
+  }
+  dir.create(dossier, recursive = TRUE, showWarnings = FALSE)
+  zip::unzip(chemin, exdir = dossier)
+  racine <- if (nzchar(r$racine)) file.path(dossier, r$racine) else dossier
+  resultats <- lire_resultats_paquet(racine)
+  doi <- tryCatch(doi_paquet(resultats$doi), error = function(e) NULL) %||% doi_paquet_ecrit(racine)
+  list(racine = racine, nuee = file.path(racine, r$nuee), nom = if (nzchar(r$racine)) r$racine else tools::file_path_sans_ext(basename(chemin)),
+       manifeste = verifier_manifeste(racine), resultats = resultats, doi = doi)
 }

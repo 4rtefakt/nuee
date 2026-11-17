@@ -8,12 +8,35 @@
 # R neuve (Rscript --vanilla, sans le moteur), qui redonne les nombres du moteur pour chaque modèle,
 # et le document refait de là ; les empreintes du manifeste, recalculées ici par un SHA-256 écrit à
 # part (FIPS 180-4), vérifié d'abord sur ses exemples publiés, qui vérifie aussi que les textes des
-# licences sont ceux de creativecommons.org. Puis les réponses du dialogue refusées
-# (titre, auteurs, ORCID, licence), en français et en anglais, un modèle dont le script ne s'écrit
-# pas (les autres refaits sans lui), et les chemins qu'un document ne peut pas donner.
+# licences sont ceux de creativecommons.org ; les résultats clés déposés de chaque modèle (ceux de la
+# séance, dans la langue du paquet, avec les versions de Nuée, de R et des paquets) et, avec son DOI, le
+# code QR de son lien. Puis les réponses du dialogue refusées (titre, auteurs, ORCID, licence), en
+# français et en anglais, un modèle dont le script ne s'écrit pas (les autres refaits sans lui), et les
+# chemins qu'un document ne peut pas donner. Enfin le paquet rouvert par les demandes, comme
+# l'interface le rouvre (serveur.R : ouvrir, paquet_ouvrir ; interface/relancer.js) : son manifeste
+# vérifié, son projet ouvert sans fichier, chaque modèle ajusté de nouveau et comparé à ses résultats
+# déposés (comparer_resultats) : tous les mêmes ; puis altéré : un CSV changé, un fichier en moins et
+# un en plus, nommés par le manifeste ; une valeur changée dans les données du projet, qui fait une
+# différence ; une archive dont un chemin sortirait de son dossier, une qui n'est pas un paquet.
 #   Rscript moteur/tests/verifier_paquet.R
 
-source("moteur/charger.R", encoding = "UTF-8")
+# Le serveur sans son écoute (comme verifier_etapes.R) : chaque expression de serveur.R jusqu'à
+# l'interface HTTP, le moteur compris (charger.R), pour rouvrir le paquet par ses demandes.
+racine_nuee <- normalizePath(".", winslash = "/")
+local({
+  assign("racine", racine_nuee, globalenv())
+  for (e in parse(file.path(racine_nuee, "moteur", "serveur.R"), encoding = "UTF-8", keep.source = FALSE)) {
+    texte <- paste(deparse(e, width.cutoff = 500L), collapse = " ")
+    if (startsWith(texte, "appli <- list(")) break
+    if (startsWith(texte, "local(") && grepl("racine <<-", texte, fixed = TRUE)) next
+    if (startsWith(texte, "args <- commandArgs")) {
+      assign("args", c("8799", file.path(racine_nuee, "app", "interface")), globalenv())
+      next
+    }
+    eval(e, globalenv())
+  }
+})
+options(nuee.langue = "fr")
 echecs <- 0
 verifier <- function(nom, ok) {
   cat(if (isTRUE(ok)) "  ok      " else "  ÉCHEC   ", nom, "\n", sep = "")
@@ -184,6 +207,10 @@ lancer <- function(script, objets, ici) {
   if (file.exists(sortie)) readRDS(sortie) else structure(list(), messages = messages)
 }
 
+# (un code QR comme l'interface en donne un, interface/qr.js : le moteur l'écrit tel quel, sans le lire)
+qr_essai <- paste0("<?xml version=\"1.0\" encoding=\"UTF-8\" ?><svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"-4 -4 29 29\" width=\"232\" height=\"232\">",
+                   "<rect x=\"-4\" y=\"-4\" width=\"29\" height=\"29\" fill=\"#fff\"></rect><path d=\"M0 0L7 0L7 7L0 7Z\" fill=\"#000\"></path></svg>")
+zips <- list()
 for (langue in c("fr", "en")) {
   fr <- langue == "fr"
   tx <- function(a, b) if (fr) a else b
@@ -218,8 +245,11 @@ for (langue in c("fr", "en")) {
   }
   zip <- file.path(dossier, langue, tx("Mon paquet.zip", "My package.zip"))
   dir.create(dirname(zip), recursive = TRUE, showWarnings = FALSE)
-  # (en anglais, avec le DOI que Zenodo a réservé pour son brouillon, du préfixe de sandbox.zenodo.org ; en français sans)
-  r <- ecrire_paquet(p, c(x$modeles, list(x$perime)), zip, meta, documents, langue, "essai", session = "{\"version\":2}", doi = if (!fr) "https://doi.org/10.5072/zenodo.4242")
+  # (en anglais, avec le DOI que Zenodo a réservé pour son brouillon, du préfixe de sandbox.zenodo.org, et le code QR
+  # de son lien ; en français sans DOI : son code QR n'est pas écrit)
+  r <- ecrire_paquet(p, c(x$modeles, list(x$perime)), zip, meta, documents, langue, "essai", session = "{\"version\":2}", doi = if (!fr) "https://doi.org/10.5072/zenodo.4242",
+                     qr = qr_essai)
+  zips[[langue]] <- zip
   verifier("l'archive est écrite, et chaque modèle y a son nom, sauf celui qui ne peut pas être refait",
            file.exists(zip) && identical(vapply(r$modeles, function(i) i$objet %||% NA_character_, ""), c(paste0("M", 1:7), NA)) &&
              identical(r$modeles[[8]]$erreur, x$perime$erreur) && !length(r$ecarts))
@@ -231,6 +261,7 @@ for (langue in c("fr", "en")) {
   nom <- tx("vergers", "orchards")
   attendus <- sort(c(paste0(nom, ".nuee"), sprintf(tx("donnees/%s.csv", "data/%s.csv"), nom), sprintf(tx("donnees/%s - dictionnaire.csv", "data/%s - dictionary.csv"), nom),
                      tx("analyse.R", "analysis.R"), "README.md", "LICENSE", "CITATION.cff", "codemeta.json", "MANIFEST.sha256",
+                     tx("resultats/resultats_cles.json", "results/key_results.json"), if (!fr) "qr-code.svg",
                      if (fr) c("documents/Mon article.qmd", "documents/Mon article.bib", "documents/apa.csl", "documents/Mon article_figures/figure-1.png",
                                paste0("documents/", rep$relatifs))), method = "radix")
   verifier(sprintf("un seul dossier, « %s », et ses %d fichiers%s", base, length(attendus),
@@ -404,6 +435,33 @@ for (langue in c("fr", "en")) {
              identical(cm$softwareSuggestions[[1]]$identifier, "https://doi.org/10.5281/zenodo.24263014") && identical(cm$softwareSuggestions[[1]]$version, "essai") &&
              identical(cm$identifier, if (!fr) "https://doi.org/10.5072/zenodo.4242"))
 
+  # les résultats clés déposés : chaque modèle, ses entrées telles que la séance les a (resume_resultats, dans la
+  # langue du paquet), relues de leur JSON égales à elles (comparer_resultats : aucune ne change), avec les
+  # versions de Nuée, de R et des paquets ; le modèle qui ne peut pas être refait, avec pourquoi, sans entrées
+  depot <- jsonlite::fromJSON(file.path(racine, tx("resultats/resultats_cles.json", "results/key_results.json")), simplifyVector = FALSE)
+  session <- lapply(x$modeles, function(m) resume_resultats(p, m))
+  memes <- vapply(seq_along(session), function(k) {
+    d <- depot$modeles[[k]]
+    cm <- comparer_resultats(session[[k]], d$entrees, langue)
+    identical(d$nom, x$modeles[[k]]$definition$name) && cm$resume$changees == 0 && cm$resume$entrees == length(session[[k]]) &&
+      identical(vapply(d$entrees, `[[`, "", "libelle"), vapply(session[[k]], `[[`, "", "libelle"))
+  }, NA)
+  avec_a <- vapply(depot$modeles[1:7], function(d) as.numeric(d$A), 0)
+  verifier(sprintf("%s : les %d entrées de M1 à M7 telles que la séance les a, dans la langue du paquet, et M8 avec pourquoi il n'est pas refait ; Nuée, R %s et ses paquets (rpart %s)",
+                   tx("resultats/resultats_cles.json", "results/key_results.json"), sum(lengths(session)), depot$R, depot$paquets$rpart %||% "?"),
+           all(memes) && identical(depot$format, 1L) && identical(depot$nuee, "essai") && identical(depot$R, paste(R.version$major, R.version$minor, sep = ".")) &&
+             identical(depot$plateforme, R.version$platform) && identical(depot$paquets$rpart, utils::packageDescription("rpart")$Version) &&
+             identical(depot$date, format(Sys.Date())) && identical(depot$langue, langue) && identical(depot$doi, if (!fr) "10.5072/zenodo.4242") &&
+             length(depot$modeles) == 8 && identical(depot$modeles[[8]]$erreur, x$perime$erreur) && is.null(depot$modeles[[8]]$entrees) &&
+             all(avec_a[1:4] > 0) && all(avec_a[5:7] == 0) && identical(vapply(depot$modeles[1:4], `[[`, "", "type"), c("PCA", "PLS", "PLS-DA", "OPLS-DA")))
+  verifier(if (fr) "le README dit ce que sont les résultats déposés, et comment Nuée relance le paquet ; sans DOI, ni code QR ni son fichier"
+           else "le README dit ce que sont les résultats déposés et le code QR (qr-code.svg, tel que l'interface l'a donné), et comment Nuée relance le paquet",
+           any(grepl(tx("| `resultats/resultats_cles.json` | Les résultats clés de chaque modèle", "| `results/key_results.json` | Each model's key results"), readme, fixed = TRUE)) &&
+             any(grepl(tx("Fichier › Ouvrir un paquet de reproductibilité…", "File › Open a reproducibility package…"), readme, fixed = TRUE)) &&
+             if (fr) !file.exists(file.path(racine, "code-qr.svg")) && !any(grepl("QR", readme, fixed = TRUE))
+             else identical(readChar(file.path(racine, "qr-code.svg"), 1e5, useBytes = TRUE), qr_essai) && any(grepl("| `qr-code.svg` | The QR code of the link", readme, fixed = TRUE)) &&
+               any(grepl("its QR code is `qr-code.svg`", readme, fixed = TRUE)))
+
   # le manifeste : chaque fichier sauf lui, une fois, et son empreinte recalculée ici
   manifeste <- readLines(file.path(racine, "MANIFEST.sha256"), encoding = "UTF-8")
   chemins <- sub("^[0-9a-f]{64}  ", "", manifeste)
@@ -487,6 +545,186 @@ verifier("un document ne peut rien écrire hors du paquet (« .. », un chemin a
               refuse(list(nom = "a", qmd = "", fichiers = list(dehors), relatifs = list("a_R/dehors.txt")))) &&
            refuse(list(nom = "a", qmd = "", fichiers = list(file.path(R.home(), "COPYING")), relatifs = list("a_R/COPYING"))) &&
            !file.exists(file.path(dossier, "refus.zip")))
+refus_qr <- function(q) tryCatch({ ecrire_paquet(p, list(), file.path(dossier, "refus_qr.zip"), meta, list(), "fr", "essai", doi = "10.5072/zenodo.1", qr = q); "" }, error = conditionMessage)
+verifier("un code QR qui n'est pas une image SVG (du HTML, un script, un lien) est refusé, et rien n'est écrit",
+         all(grepl("pas une image SVG", c(refus_qr("<html><body>QR</body></html>"), refus_qr("<svg><script>alert(1)</script></svg>"),
+                                          refus_qr("<svg><a href=\"https://exemple.invalid\"><path d=\"M0 0\"/></a></svg>"), refus_qr("<svg onload=\"x()\"></svg>")), fixed = TRUE)) &&
+           !file.exists(file.path(dossier, "refus_qr.zip")))
+
+# ---------------------------------------------------------------- le paquet rouvert et relancé
+
+# Les demandes comme l'interface les fait (traiter_demande : la demande en JSON, la réponse lue de son JSON
+# comme l'interface la lit, ses tableaux des listes) ; une demande refusée rend son erreur et ce qu'elle porte.
+demande <- function(nom, q = list(), langue = "fr") {
+  corps <- charToRaw(enc2utf8(as.character(jsonlite::toJSON(q, auto_unbox = TRUE, null = "null", na = "null", digits = NA))))
+  r <- traiter_demande(nom, corps, langue)
+  x <- jsonlite::fromJSON(r$body, simplifyVector = FALSE)
+  if (r$status != 200L) return(structure(list(), erreur = x))
+  x
+}
+# Le paquet `zip` rouvert (paquet_ouvrir), puis chaque modèle déposé ajusté de nouveau dans son projet, par son
+# numéro, avec le nombre de composantes de son ajustement déposé, et ses résultats clés comparés aux déposés
+# (comparer_resultats), comme interface/relancer.js le fait ; `differe` : une valeur déposée qui n'est pas
+# redonnée (une entrée que seul le nouvel ajustement a n'en est pas une).
+relancer <- function(zip, langue) {
+  o <- demande("paquet_ouvrir", list(chemin = zip, version = "essai"), langue)
+  if (!length(o)) return(list(o = attr(o, "erreur"), comparaisons = list()))
+  comparaisons <- list()
+  for (dm in o$depose$modeles) {
+    if (is.null(dm$entrees)) next
+    d <- Find(function(m) identical(m$nom, dm$nom), o$projet$modeles)
+    a <- demande("ajuster", c(list(projet = o$projet$id, numero = d$numero), if (isTRUE(dm$A > 0)) list(A = dm$A)), langue)
+    k <- demande("resultats_cles", list(modele = a$id), langue)
+    comparaisons[[dm$nom]] <- demande("comparer_resultats", list(avant = list(entrees = dm$entrees), apres = list(entrees = k$entrees), langue = langue), langue)
+  }
+  list(o = o, comparaisons = comparaisons)
+}
+differe <- function(cm) any(vapply(cm$entrees, function(e) isTRUE(e$change) && !isTRUE(e$nouveau), NA))
+empreinte_zip <- function(f) unname(tools::md5sum(f))
+
+for (langue in c("fr", "en")) {
+  fr <- langue == "fr"
+  tx <- function(a, b) if (fr) a else b
+  cat(sprintf("Le paquet rouvert et relancé, en %s (serveur.R : ouvrir, paquet_ouvrir)\n", tx("français", "anglais")))
+  zip <- zips[[langue]]
+  avant <- empreinte_zip(zip)
+  o <- demande("ouvrir", list(chemin = zip), langue)
+  verifier("Fichier › Ouvrir sur le .zip : la réponse dit que c'est un paquet, à rouvrir par paquet_ouvrir, sans rien ouvrir",
+           identical(o$paquet_ouvrir$chemin, zip) && identical(o$paquet_ouvrir$nom, basename(zip)) && is.null(o$id))
+  r <- relancer(zip, langue)
+  p <- r$o$projet
+  m <- r$o$manifeste
+  base <- tx("Mon paquet", "My package")
+  et <- demande("etapes", list(projet = p$id), langue)
+  verifier(sprintf("rouvert : décompressé dans la séance, ses %d fichiers ceux de son manifeste ; son projet « %s » sans fichier, pas modifié, d'où il vient gardé ; sa source le CSV décompressé ; l'archive inchangée",
+                   m$fichiers, p$nom),
+           isTRUE(m$present) && isTRUE(m$intact) && m$fichiers >= 10 && !length(m$manquants) && !length(m$changes) && !length(m$ajoutes) &&
+             identical(p$nom, paste0(base, ".nuee")) && is.null(p$chemin) && is.null(p$chemin_enregistrement) && isFALSE(p$modifie) &&
+             identical(p$depuis_paquet$titre, tx(meta_fr$titre, meta_en$titre)) && identical(p$depuis_paquet$fichier, basename(zip)) &&
+             identical(r$o$doi, if (!fr) "10.5072/zenodo.4242") && identical(r$o$titre, tx(meta_fr$titre, meta_en$titre)) &&
+             startsWith(normalizePath(r$o$dossier, winslash = "/"), normalizePath(tempdir(), winslash = "/")) &&
+             isTRUE(et$source$existe) && isFALSE(et$source$modifie) && startsWith(normalizePath(et$source$chemin, winslash = "/"), normalizePath(r$o$dossier, winslash = "/")) &&
+             identical(r$o$ici$nuee, "essai") && identical(r$o$depose$nuee, "essai") && identical(r$o$ici$plateforme, R.version$platform) && !length(r$o$paquets_differents) &&
+             identical(empreinte_zip(zip), avant))
+  n_entrees <- sum(vapply(r$comparaisons, function(cm) cm$resume$entrees, 0))
+  verifier(sprintf("relancé : M1 à M7 ajustés de nouveau redonnent leurs %d résultats déposés (comparer_resultats : aucun ne change) ; M8, sans résultats déposés, n'est pas comparé",
+                   n_entrees),
+           identical(names(r$comparaisons), paste0("M", 1:7)) && !any(vapply(r$comparaisons, differe, NA)) &&
+             all(vapply(r$comparaisons, function(cm) cm$resume$changees == 0 && !length(cm$phrases), NA)) && n_entrees > 300)
+  demande("fermer_projet", list(projet = p$id), langue)
+}
+
+# altéré : décompressé, changé, compressé de nouveau (sans refaire son manifeste)
+cat("Le paquet altéré\n")
+alterer <- function(nom, f) {
+  ici <- file.path(dossier, "altere", nom)
+  dir.create(ici, recursive = TRUE)
+  zip::unzip(zips$en, exdir = ici)
+  f(file.path(ici, "My package"))
+  z <- file.path(dossier, "altere", paste0(nom, ".zip"))
+  suppressWarnings(zip::zip(z, files = list.files(ici), root = ici))
+  z
+}
+changer_csv <- function(racine) {
+  f <- file.path(racine, "data", "orchards.csv")
+  lu <- utils::read.csv(f, check.names = FALSE, na.strings = "", fileEncoding = "UTF-8", colClasses = "character")
+  lu$sugar[1] <- format(as.numeric(lu$sugar[1]) + 1, digits = 15)
+  ecrire_texte_paquet(f, lignes_csv(lu))
+}
+r <- relancer(alterer("csv", changer_csv), "en")
+m <- r$o$manifeste
+verifier("une valeur changée dans son CSV : le manifeste le nomme (data/orchards.csv changé), le projet s'ouvre et ses modèles, de ses propres données, redonnent les résultats déposés",
+         isTRUE(m$present) && isFALSE(m$intact) && identical(unlist(m$changes), "data/orchards.csv") && !length(m$manquants) && !length(m$ajoutes) &&
+           length(r$comparaisons) == 7 && !any(vapply(r$comparaisons, differe, NA)))
+r <- relancer(alterer("fichiers", function(racine) {
+  unlink(file.path(racine, "LICENSE"))
+  writeLines("ajouté", file.path(racine, "notes.txt"))
+}), "en")
+m <- r$o$manifeste
+verifier("un fichier en moins (LICENSE) et un en plus (notes.txt) : le manifeste nomme l'un manquant et l'autre ajouté",
+         isFALSE(m$intact) && identical(unlist(m$manquants), "LICENSE") && identical(unlist(m$ajoutes), "notes.txt") && !length(m$changes))
+r <- relancer(alterer("donnees", function(racine) {
+  f <- file.path(racine, "orchards.nuee")
+  q <- lire_projet(f)
+  k <- nom_numero(numeros(q, "sugar"))
+  q$donnees[1, k] <- q$donnees[1, k] + 1
+  enregistrer_projet(q, f, "essai", dossier = NULL)
+}), "en")
+m <- r$o$manifeste
+changes <- names(Filter(differe, r$comparaisons))
+coef_sucre <- Find(function(e) identical(e$cle, "coef.sugar"), r$comparaisons$M5$entrees)
+verifier(sprintf("une valeur changée dans les données du projet (le sucre de la première pomme) : le manifeste nomme orchards.nuee, et le relancer diffère (%s ; le coefficient du sucre de M5 de %s à %s)",
+                 paste(changes, collapse = ", "), format(coef_sucre$avant %||% NA, digits = 6), format(coef_sucre$apres %||% NA, digits = 6)),
+         identical(unlist(m$changes), "orchards.nuee") && length(changes) >= 5 && "M5" %in% changes && isTRUE(coef_sucre$change) &&
+           sum(vapply(r$comparaisons, function(cm) cm$resume$changees, 0)) > 20)
+# (le paquet et, à côté de son dossier, un fichier que l'archive nomme ../dehors.txt)
+glisse <- alterer("glisse", function(racine) NULL)
+writeLines("x", file.path(dossier, "altere", "dehors.txt"))
+unlink(glisse)
+suppressWarnings(zip::zip(glisse, files = c("My package", "../dehors.txt"), root = file.path(dossier, "altere", "glisse")))
+r <- relancer(glisse, "en")
+verifier("une archive dont un chemin sortirait de son dossier (../dehors.txt) est refusée, sans rien décompresser",
+         "../dehors.txt" %in% zip::zip_list(glisse)$filename && grepl("outside its folder: ../dehors.txt", r$o$erreur %||% "", fixed = TRUE) &&
+           !file.exists(file.path(tempdir(), "dehors.txt")))
+# des écarts aux derniers chiffres : les résultats déposés retouchés (le Q² de M2 de 1e-9 en relatif, une
+# valeur p de M5 de 4e-7, le R² de M7 de 1e-5 en relatif), le manifeste refait pour eux : M2 et M5 redonnent
+# les résultats déposés à 6 chiffres significatifs près, avec leur plus grand écart ; M7 diffère ; les
+# autres sont identiques
+retoucher <- function(racine) {
+  f <- file.path(racine, "results", "key_results.json")
+  d <- jsonlite::fromJSON(f, simplifyVector = FALSE)
+  noms <- vapply(d$modeles, `[[`, "", "nom")
+  entree <- function(m, test) which(vapply(d$modeles[[match(m, noms)]]$entrees, test, NA))[1]
+  k <- entree("M2", function(e) identical(e$cle, "Q2"))
+  d$modeles[[match("M2", noms)]]$entrees[[k]]$valeur <- d$modeles[[match("M2", noms)]]$entrees[[k]]$valeur * (1 + 1e-9)
+  k <- entree("M5", function(e) !is.null(e$p) && e$p < 0.5)
+  d$modeles[[match("M5", noms)]]$entrees[[k]]$p <- d$modeles[[match("M5", noms)]]$entrees[[k]]$p + 4e-7
+  k <- entree("M7", function(e) identical(e$cle, "R2"))
+  d$modeles[[match("M7", noms)]]$entrees[[k]]$valeur <- d$modeles[[match("M7", noms)]]$entrees[[k]]$valeur * (1 + 1e-5)
+  ecrire_texte_paquet(f, as.character(jsonlite::toJSON(d, auto_unbox = TRUE, pretty = TRUE, digits = NA, null = "null", na = "null")))
+  m <- lire_lignes_paquet(file.path(racine, "MANIFEST.sha256"))
+  m[endsWith(m, "  results/key_results.json")] <- paste0(empreintes_sha256(f), "  results/key_results.json")
+  ecrire_texte_paquet(file.path(racine, "MANIFEST.sha256"), m)
+}
+r <- relancer(alterer("ecarts", retoucher), "en")
+verdicts <- vapply(r$comparaisons, function(cm) cm$resume$verdict, "")
+ecart <- function(nom) r$comparaisons[[nom]]$resume
+verifier(sprintf("des écarts aux derniers chiffres : M2 et M5 à 6 chiffres significatifs près (leur plus grand écart : %s, %s ; %s, %s), M7 diffère (%s), les autres identiques ; le manifeste intact",
+                 format(ecart("M2")$ecart_max, digits = 3), ecart("M2")$cle_ecart_max, format(ecart("M5")$ecart_max, digits = 3), ecart("M5")$cle_ecart_max, format(ecart("M7")$ecart_max, digits = 3)),
+         isTRUE(r$o$manifeste$intact) && identical(unname(verdicts), c("identique", "six_chiffres", "identique", "identique", "six_chiffres", "identique", "differe")) &&
+           abs(ecart("M2")$ecart_max / 1e-9 - 1) < 0.01 && identical(ecart("M2")$cle_ecart_max, "Q2") && identical(ecart("M2")$partie_ecart_max, "valeur") &&
+           abs(ecart("M5")$ecart_max / 4e-7 - 1) < 1e-6 && identical(ecart("M5")$partie_ecart_max, "p") &&
+           abs(ecart("M7")$ecart_max / 1e-5 - 1) < 0.01 && identical(ecart("M7")$cle_ecart_max, "R2"))
+# le verdict, entrée par entrée (resultats_cles.R : verdict_comparaison) : en relatif, rapporté à 1e-10 près de
+# zéro ; une valeur p en absolu ; un intervalle ; une entrée disparue, une catégorie changée ; une nouvelle
+v <- function(a, b) comparer_resultats(a, b, "en")$resume
+e <- function(cle, valeur, ...) entree_resultat(cle, cle, "estimations", valeur, ...)
+base <- list(e("a", 2.5, ic = c(2, 3), p = 0.04), e("b", 1234.5))
+cas <- list(
+  identique = v(base, base),
+  relatif = v(base, list(e("a", 2.5 * (1 + 5e-7), ic = c(2, 3), p = 0.04), e("b", 1234.5))),
+  trop = v(base, list(e("a", 2.5 * (1 + 2e-6), ic = c(2, 3), p = 0.04), e("b", 1234.5))),
+  zero = v(list(e("c", 3e-17)), list(e("c", -2e-17))),
+  zero_trop = v(list(e("c", 3e-17)), list(e("c", 3e-15))),
+  p_queue = v(list(e("d", 6, p = 3e-9)), list(e("d", 6, p = 3.0002e-9))),
+  p_trop = v(list(e("d", 2, p = 0.04)), list(e("d", 2, p = 0.0401))),
+  ic = v(base, list(e("a", 2.5, ic = c(2 * (1 + 1e-8), 3), p = 0.04), e("b", 1234.5))),
+  disparue = v(base, base[1]),
+  nouvelle = v(base, c(base, list(e("n", 7)))),
+  categorie = v(list(entree_resultat("k", "k", "ajustement", 1, classe = "A")), list(entree_resultat("k", "k", "ajustement", 1, classe = "B"))))
+attendus_v <- c(identique = "identique", relatif = "six_chiffres", trop = "differe", zero = "six_chiffres", zero_trop = "differe", p_queue = "six_chiffres",
+                p_trop = "differe", ic = "six_chiffres", disparue = "differe", nouvelle = "identique", categorie = "differe")
+obtenus_v <- vapply(cas, `[[`, "", "verdict")
+verifier(sprintf("le verdict : à 1e-6 près en relatif (5e-7 oui, 2e-6 non), près de zéro en absolu à 1e-10 près (3e-17 et -2e-17 oui, 3e-15 non), une valeur p en absolu (3e-9 à 2e-13 près oui, 0,04 et 0,0401 non), un intervalle ; une entrée disparue ou une catégorie changée diffère, une nouvelle ne compte pas%s",
+                 if (!identical(obtenus_v, attendus_v)) sprintf(" ; OBTENUS : %s", paste(names(obtenus_v), obtenus_v, sep = "=", collapse = ", ")) else ""),
+         identical(obtenus_v, attendus_v) && abs(cas$relatif$ecart_max / 5e-7 - 1) < 1e-6 && identical(cas$relatif$cle_ecart_max, "a") && is.infinite(cas$disparue$ecart_max) &&
+           identical(c(cas$relatif$partie_ecart_max, cas$ic$partie_ecart_max, cas$p_queue$partie_ecart_max), c("valeur", "ic", "p")))
+tableau <- file.path(dossier, "altere", "tableau.zip")
+zip::zip(tableau, files = "orchards.csv", root = file.path(dossier, "altere", "csv", "My package", "data"))
+r <- relancer(tableau, "en")
+o <- demande("ouvrir", list(chemin = tableau), "en")
+verifier("une archive qui n'est pas un paquet : refusée par paquet_ouvrir (pas_un_paquet), et Fichier › Ouvrir ne la prend pas pour un paquet",
+         grepl("isn't a reproducibility package", r$o$erreur %||% "", fixed = TRUE) && isTRUE(r$o$pas_un_paquet) && is.null(o$paquet_ouvrir))
 
 unlink(dossier, recursive = TRUE)
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")

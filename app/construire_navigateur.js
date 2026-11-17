@@ -7,7 +7,8 @@
 // its browser build, webr.js, as webr.mjs; R.js, R.wasm, BLAS and LAPACK, and the base R library
 // in vfs/), or a folder with the same files, as on webr.r-wasm.org/v<version>/.
 // The site: the interface (its page saying window.NUEE_MOTEUR = 'webr', and a security policy
-// that lets webR compile R, fetch its packages from repo.r-wasm.org and start its worker), the
+// that lets webR compile R, fetch its packages from repo.r-wasm.org and start its worker, and the
+// page fetch a reproducibility package from zenodo.org's API, its link ?doi=: relancer.js), the
 // engine's files (moteur/, without its tests, exemple/, the user guide the help panel reads from
 // the engine, the application's package.json the protocol request reads its version from) with
 // their list (moteur-fichiers.json), webR in webr/, and _headers (the two headers, for hosts that
@@ -37,9 +38,9 @@ const page = path.join(sortie, 'index.html');
 let html = fs.readFileSync(page, 'utf8');
 const avant = html;
 html = html.replace("script-src 'self' 'unsafe-eval';", "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval';")
-  .replace('connect-src \'self\' data: blob:', 'connect-src \'self\' data: blob: https://repo.r-wasm.org')
+  .replace('connect-src \'self\' data: blob:', 'connect-src \'self\' data: blob: https://repo.r-wasm.org https://zenodo.org')
   .replace('<script type="module" src="app.js"></script>', '<script src="navigateur.js"></script>\n  <script type="module" src="app.js"></script>');
-if (html === avant || !html.includes('navigateur.js') || !html.includes('https://repo.r-wasm.org') || !html.includes('wasm-unsafe-eval') || !/worker-src 'self' blob:/.test(html)) {
+if (html === avant || !html.includes('navigateur.js') || !html.includes('https://repo.r-wasm.org https://zenodo.org') || !html.includes('wasm-unsafe-eval') || !/worker-src 'self' blob:/.test(html)) {
   console.error('index.html : la politique de sécurité ou le script de l’application a changé, à revoir ici');
   process.exit(1);
 }

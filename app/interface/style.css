@@ -481,6 +481,12 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-zenodo .zenodo-champ { width: 26em; font-family: Consolas, "Cascadia Mono", monospace; }
 .dialogue-zenodo details { margin: 4px 0; }
 .dialogue-zenodo a { color: var(--accent); }
+/* The deposited package's link and its QR code (paquet.js: sectionLien), black on white in either theme */
+.lien-paquet { display: flex; gap: 14px; align-items: flex-start; margin: 8px 0; max-width: 46em; }
+.lien-paquet .qr-lien { flex: none; image-rendering: pixelated; background: #fff; border: 1px solid var(--grille); border-radius: 4px; }
+.lien-paquet p { margin: 0 0 6px; }
+.lien-paquet .lien-zenodo { user-select: all; word-break: break-all; }
+.lien-paquet .ligne { display: flex; gap: 6px; flex-wrap: wrap; }
 /* Citations in documents: in the text, in the preview, and the dialogs to find them */
 .editeur-document .cm-cite { color: var(--ok); }
 .editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }
@@ -785,6 +791,14 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .badge.drapeau-change.nouveau { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .badge.drapeau-change.disparu, .badge.drapeau-change.retourne { background: var(--grille); color: var(--texte-doux); }
 .seul-cote p { margin: 3px 0; }
+/* A reproducibility package rerun (changements.js: sectionPaquet): how many give the deposited
+   results, what the manifest found, who made it; a model not fitted again here isn't an error */
+.modele-change.paquet-relance { border-left: 3px solid var(--accent); }
+.paquet-relance p { margin: 3px 0; }
+.paquet-relance .bilan-relance { font-weight: 600; color: var(--ok); }
+.paquet-relance .attention, .paquet-relance .bilan-relance.attention { color: var(--attention); }
+.modele-change.non_relance, .modele-change.sans_depot { border-style: dashed; }
+.modele-change.six-chiffres { border-left: 3px solid color-mix(in srgb, var(--ok) 55%, transparent); }
 
 /* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
    wait for the approval, the account's card, the other ways to sign in */
