@@ -75,6 +75,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `moteur/R/communautes_script.R` | Export to R of a PCoA, an NMDS, a PERMANOVA (and its dispersions), a Mantel test (partial, its correlogram, on the geographic distance) and indicator species: the script's functions are the engine's own, as they are written in `moteur/R` (`code_moteur_decrit`: the definition found in its file by `definition_moteur` of script_moteur.R, its comments removed, each `traduire("…", "…")` replaced by the text of the script's language; `deparse` if the files aren't there), each after a comment in the script's language (`DESCRIPTIONS_MOTEUR`); then the model, written for it: its rows (by its condition too), Y and X as the engine reads them, the transformation, the distance (`distance_tableau`) and its correction, the same permutations (`permuter`) and the NMDS's starts from the same seed (`avec_graine`, without giving the session's random numbers back), a Mantel test's X and Z scaled as `construire_bloc` does (`echelle_terme`, classement_script.R) or the coordinates of the project in its data (`distances_entre_points`); its results and base-R plots; the names translated for English (`NOMS_COMMUNAUTES_EN`, never the name of an R function or argument a script calls: `par`, `base`…); compared with the engine before it is written |
 | `moteur/R/comparaisons.R` | Statistical tests: by variable (t, Mann–Whitney, ANOVA, Kruskal–Wallis; two classes paired by a key: paired t or Wilcoxon signed-rank on the keys both have) with multiple-testing correction; between two variables (chi-square or Fisher, groups with Tukey, Games–Howell or Dunn, correlations), the test chosen from their conditions; paired tests (paired t, Wilcoxon signed-rank) between two levels, on the keys both have (`paires_cle()`, shared with the tests by variable), every pair of levels (or those within each group: the sectors of a site) with Holm's correction, after Friedman's omnibus test (`tests_friedman()`: on the keys where every level has a value, with Kendall's W; one per group, Holm over the groups), or two measurements of the same rows; before/after with a control (`baci()`: at each time the gap between the impact's and the controls' means, after against before by Welch's t, Student's t or Mann–Whitney; the time, the event and the end numbers or dates) and its mixed model (`modele_baci()`: the two 0/1 variables of the period and the impact, `variables_baci()`, reused when they exist with these values, refused when another variable has their name; `definition_baci()`, y ~ period × impact + (1 \| unit) with CAR1 within each unit if chosen, its settings kept in `d$baci_origine`; `effet_baci()`, the period × impact coefficient and its sentence); the correlation matrix |
 | `moteur/R/modeles_classe.R` | Class models (one PCA per class) and the distances behind the Coomans plot |
+| `moteur/R/travaux.R` | Long requests shared among several R (the browser version): `travail_morceau()` runs a piece of a request listed in `TRAVAUX` (`serveur.R`) from a file of tasks |
+| `moteur/R/navigateur.R` | The browser version's limits (see Browser version): `dans_navigateur()` (`options(nuee.navigateur)`), a refusal for a package the page lacks said as "needs the desktop application" (`erreur_navigateur`, from `repondre_erreur`; `nuee.paquets_absents`, `FONCTIONS_PAQUETS`), and what the page can't run at all (`refus_navigateur`: `.usp` files) |
 | `moteur/tests/verifier_references.R` | Refits every model of a folder of exported `.usp` projects and compares with the results stored in them; the models, validated like the files (their default: the full model's centres and weights) with the groups read in the files, are compared on Q2 and Q2(cum) and on their coefficients' jack-knife intervals too |
 | `moteur/tests/verifier_formats.R` | Every export format written and read back; text files as spreadsheets write them; jamovi files compared with `jmvReadWrite` when it is installed |
 | `moteur/tests/verifier_spectres.R` | Published Savitzky–Golay coefficients, exact derivatives of polynomials, SNV, MSC, detrend, baseline, Savitzky–Golay by range, and a PLS on made-up spectra; the same results as `prospectr` when it is installed; data with no variation left: a clear message, and automatic fitting stops without error |
@@ -130,8 +132,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/interface/vues_classement.js` | The views of a tree, an LDA and a k-means (tree, pruning, rules, importance, stability, scores, coefficients, probabilities, clusters, silhouettes, choice of k), their New model fields and report parts |
 | `app/interface/vues_par_reponse.js` | One model per response's view: for a chosen term, the forest plot of every response's coefficient and interval (or a curve's edf), coloured where the corrected p is at most 0.05, the small multiples of its effect (a panel per response, 36 at most), the table with each model's N, AIC, R² and Q²; the dialog is `app.unModeleParReponse` (app.js) |
 | `app/interface/vues_carte.js` | Plots › Map and Plots › Spatial autocorrelation: the coordinates' form (R: `coordonnees`), the points on a plane with equal scales or on tiles (OpenStreetMap, IGN's map and aerial photographs: MapLibre through Plotly's `scattermap`, only when chosen; `index.html`'s Content-Security-Policy allows those two hosts and blob workers), coloured and sized by a variable or a model's result column, a white halo under each point on a background, the zoom fitted to the points (512 px per world at zoom 0), the selection under the project's id; Moran's I, the correlogram, the semivariogram and the classes' table |
-| `app/interface/raster.js` | Edit › Add raster values (also on the Map view and in the explorer's Data menu): the files (`bureau.choisirFichiers`; in the browser a path prompt, the engine reading them where they are), a card per file from `raster_infos` (format, compression, tiles or strips, cells and their size, bands and their type, system, no data, observations inside; a refused file's reason), the method, the radius and a name per band ("added as name (2)" computed as `nom_libre`), files side by side of the same bands, type, system and cells proposed as tiles of one raster (one name per band, what their names share), then `ajouter_raster` and its sentences |
-| `app/interface/kobo.js` | Import from KoboToolbox or ODK (File menu, and File › Open or a dropped file when R answers `kobo`: `app.js`'s `choisirTable` hands it the dialog): the tables with their rows and parent, the parent columns to join (all ticked; unticked ones sent as `parents`), the metadata roles with their columns and those always dropped, the XLSForm (`bureau.choisirFichier`, or sent with `/api/deposer` in the browser) and its language, and R's sentences of what will be done, asked again at each change (`kobo_apercu`; a form R refuses is taken back); Import (`kobo_importer`), Open as is (`ouvrir` with `brut`, the sheet or the zip's CSV chosen); its strings (`kobo_…`). `formats.js` offers ODK's .zip in File › Open only |
+| `app/interface/raster.js` | Edit › Add raster values (also on the Map view and in the explorer's Data menu): the files (`bureau.choisirFichiers`; in the browser version, the files chosen, sent into R's file system in one folder, `deposerEnsemble`; in a browser on the local R server, a path prompt, the engine reading them where they are), a card per file from `raster_infos` (format, compression, tiles or strips, cells and their size, bands and their type, system, no data, observations inside; a refused file's reason), the method, the radius and a name per band ("added as name (2)" computed as `nom_libre`), files side by side of the same bands, type, system and cells proposed as tiles of one raster (one name per band, what their names share), then `ajouter_raster` and its sentences |
+| `app/interface/kobo.js` | Import from KoboToolbox or ODK (File menu, and File › Open or a dropped file when R answers `kobo`: `app.js`'s `choisirTable` hands it the dialog): the tables with their rows and parent, the parent columns to join (all ticked; unticked ones sent as `parents`), the metadata roles with their columns and those always dropped, the XLSForm (`bureau.choisirFichier`, or sent to the engine with `deposer` in the browser) and its language, and R's sentences of what will be done, asked again at each change (`kobo_apercu`; a form R refuses is taken back); Import (`kobo_importer`), Open as is (`ouvrir` with `brut`, the sheet or the zip's CSV chosen); its strings (`kobo_…`). `formats.js` offers ODK's .zip in File › Open only |
 | `app/interface/atelier.js` | The data workbench's dialogs (Edit › Find and replace, Ctrl+H; Categories; Units and descriptions; also in the Data view's toolbar and the right-click on a column's header, panneaux.js `rendreDonnees`, `tableau`'s `menuColonne`, `sousTitre` and `info`; and the right-click on a variable of Variable statistics, `tableau`'s `menuLigne`): the preview asked of R as the fields change, the categories with their counts (renamed, merged into the most frequent, moved, the reference moved last), each variable's unit and description; their strings (`atelier_…`). panneaux.js's `uniteAxe`, `avecUnite` and `transformeeDans` put a variable's unit in the axis titles (Effects, thresholds, Observed / predicted, Variable statistics, Series, statistical tests, adjusted means, the Map's colour bar, a forest's partial dependence and observed / predicted), not on an axis that shows it transformed; a qualitative variable's colour groups and bars follow its categories' order. The Data view's block paste (panneaux.js `collerCellules`): a click on a cell sets the anchor, Ctrl+V (app.js hands it to the view, instead of File › Paste a table) reads the clipboard and sends the rows and columns as shown, `tableau` keeping them in `_lignes` and `_colonnes` |
 | `app/interface/etapes.js` | The living reports' data side (Edit › Data steps…, Edit › Update the data…, also in the explorer's Data menu): the project's source and its steps (the `etapes` request), Remove, its preview first (`retirer_etape` with `apercu`; a file whose table is gone asks which one; refused with the engine's reason, and when the source changed since it was read, `source_modifiee`, which sends to Update the data), then run as an update; the update's dialog: the source or another file (`app.choisirTableau`), a file of several tables (`choisir`), the preview (`mettre_a_jour` with `apercu`) read by etapes_texte.js, a box per model that leaves out observations (`sans_nouvelles`), a version marked first when the project keeps them (`bureau.versions.etat(chemin).actif`, then `marquer` once saved, skipped without it); then (an update or a step removed: `executer`), under a progress dialog with Stop, the key results and cited values before (changements.js `resumerProjet`, documents.js `valeursCitees`), the update (`app.changerDonnees`, one Ctrl+Z), every model fitted again but those the report says can't be (`app.ajusterDeNouveau`: a fit of the session replaced in place, its page and views following it), the same after, What changed and the documents' marks; undone (app.js `annulerAction`, `app.apresAnnulation`: the undo's label one of this window's changes from the source), every model fitted again on the data back, under the same progress. The status bar's notice when a project's source changed since it was read (`app.avisDonnees`), asked of the projects made from a file (`a_source`) without the data's fingerprint (`etapes` with `conformes: false`), when a project opens, after an undo and when the window comes back to the front (at most every ten seconds), dismissed until the file changes again |
 | `app/interface/etapes_texte.js`, `app/tests/essai_etapes.mjs` | What etapes.js shows, pure: a source's state and its notice's key (`etatSource`), an update's report in sections (`lireRapport`: new, missing, changed, the steps replayed, skipped or failed with their reasons, the models that can't be fitted again, new categories and changed reference categories, how the file was read), the models to fit again (`modelesAReajuster`), the summary after an update with the models not fitted again given their reason (`resumeApres`), a cited value's sentence (`phraseAutour`) and the values an update changed (`valeursChangees`); checked on reports shaped as the engine sends them |
@@ -157,6 +159,12 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/comptes_ids.js` | The OAuth client ids of Nuée's applications on github.com and gitlab.com (see [Signing in to GitHub and GitLab](#signing-in-to-github-and-gitlab)); with a placeholder instead (a copy built without its own applications), signing in says it isn't set up for that server |
 | `app/tests/essai_comptes.js`, `app/tests/serveur_comptes.js` | comptes.js without Electron (`npx electron tests/essai_comptes.js`: the same through `net.fetch`), against `serveur_comptes.js`, a local stand-in of GitHub's and GitLab's device flow and REST API (the fetch it gives refuses any other host): approved, refused, expired (said, or the code's time over), `slow_down`, cancelled; not set up, an unknown application, the device flow off, a GitLab without it, a self-hosted GitLab's ID; the account and its picture, the server unreachable, a token refused, revoked, or given in Versions; a GitLab token renewed, at start-up too, then refused; repositories and invitations; `git credential fill` with a stand-in git first on the PATH (a shell script, or on Windows a `git.exe` compiled by the .NET Framework's `csc.exe`): what it is given, nothing, refused, too slow, cancelled, absent, asked again quietly; signing out; no token, refresh token or device code in a message, return value, log, address, page opened or file in clear |
 | `app/interface/connexion.js` | The sign-in and invitation dialogs over `window.bureau.comptes`, which History and Share call (versions.js): `ouvrirConnexion(app, { hote })` → `{ ok, compte }` (without `hote`, GitHub, GitLab or the institution's GitLab chosen first; the code big and copyable, Open the page, which copies it too, the wait, refused or expired with a new code, the account's card; this computer's git sign-in when git is found, a token under "Use a token instead"; a self-hosted GitLab without its application ID asks for it), `ouvrirInvitation(app, { hote, url })` → `{ ok, invites }`, and `carteCompte(hote, compte)`, the account's card. The accounts' refusals reach the page as an object with its `message` and `code` (preload.js: an Error crossing the context bridge keeps its message only) |
+| `app/interface/moteur_webr.js` | The engine in the page, for the browser version: webR started with the engine's files and packages (each on its own: those it lacks given to R), each request sent to `traiter_demande()`, files in and out of webR's file system, other webR instances for the requests in `TRAVAUX` |
+| `app/interface/paquets_webr.js` | The R packages of the browser version (`PAQUETS_WEBR`), and those it leaves out, with why (`SANS_WEBR`) |
+| `app/interface/secours_navigateur.js` | The browser version's recovery copies: OPFS, else IndexedDB; a tab's copies and index under its name, its lock while it is open; a closed tab's copies offered by the next one (see Browser version) |
+| `app/construire_navigateur.js`, `app/servir_navigateur.js` | Builds the browser version: a static site with the interface, the engine's files and webR; and serves it on 127.0.0.1 with the headers webR needs (see Browser version) |
+| `app/tests/essai_moteur_webr.mjs`, `app/tests/webr_rscript.mjs`, `app/tests/webr_chemins.mjs` | The engine's checks in webR's R, in Node, each as Rscript runs it (see Browser version) |
+| `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), and its speed against native R (see Browser version and Speed) |
 | `app/interface/references.js` | The `{{model.path[:format] [#label] [\| caption]}}` references, pure: reading them, their values in the document's language (`formeReference`: how a value is written, a number, a percentage, a p-value, a coefficient with its interval; `texteForme` writes it, and a reproducible `.qmd` the same in R), what each kind of model offers, the numbering of figures and tables |
 | `app/interface/rendu_document.js` | A document read by markdown-it (references as tokens; those alone on their line are blocks) and written as the preview's HTML, a PDF's page, a `.docx` (with `zip.js`) or a `.qmd` (results written in, `@fig-` cross-references; or reproducible, `versQmd(..., { reproductible })`: the engine's first chunk after the header, each value `` `r …` ``, a plot or table at the start of its line a chunk with its label and caption, what stays written in after an HTML comment; `referencesReproductibles` is what the request `document_reproductible` receives) |
 | `app/copier-vendor.js` | Copies the libraries the interface loads into `interface/vendor/`, and bundles the document editor (CodeMirror 6 and markdown-it) with esbuild into `vendor/editeur.min.js` (the licence of each package it holds at its end), loaded when a document is first opened |
@@ -763,6 +771,101 @@ the checks reaches github.com or gitlab.com.
    them to the release; the macOS jobs build and check the two `.dmg`, then
    `macos-version-publiee` adds them.
 
+## Browser version
+
+The same interface and engine run in a browser tab, R included, through webR 0.6.1 (R 4.6.0
+compiled to WebAssembly): nothing to install, and the data stay in the tab.
+
+**Build and serve.**
+- `node app/construire_navigateur.js [<folder>] [<webR folder>]` builds a static site, in
+  `dist/navigateur` unless given (59 MB):
+  - the interface, its page saying `window.NUEE_MOTEUR = 'webr'` (`navigateur.js`), its security
+    policy with `'wasm-unsafe-eval'` (R's WebAssembly) and `https://repo.r-wasm.org` (R's packages);
+  - the engine's files (`moteur/` without its tests, `exemple/`), listed in `moteur-fichiers.json`;
+  - webR, from the npm package `webr` (a devDependency, pinned: the engine's packages are built
+    for its R): its browser build `webr.js`, served as `webr/webr.mjs` (npm's own `webr.mjs`
+    imports Node's modules), `webr-worker.js`, `R.js`, `R.wasm`, BLAS, LAPACK and base R in
+    `vfs/`; or the files of a folder like `webr.r-wasm.org/v<version>/`;
+  - `_headers`, the two headers below, for hosts that read such a file.
+- Any web server will do, if it sends `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp` (webR then shares memory with its worker).
+  `node app/servir_navigateur.js [<folder>] [<port>]` serves it so on 127.0.0.1.
+
+**The engine in the page.**
+- `api.js` sends each request to `moteur_webr.js` instead of the local server. That module starts
+  webR, writes the engine's files into its file system, installs R's packages from webR's
+  repository, and loads `moteur/serveur.R` with `NUEE_NAVIGATEUR=1`: no HTTP server then. Each
+  request goes to `traiter_demande()`, which the HTTP server calls too: the same code, the same
+  numbers.
+- The packages: `paquets_webr.js` (`PAQUETS_WEBR`): jsonlite, nlme, mgcv, MASS, rpart, cluster,
+  foreign, openxlsx, readxl, haven and zip, with what they depend on (39 packages, 77 MB once
+  installed, 35 MB of them stringi's, which openxlsx needs). Every package the engine loads is on
+  repo.r-wasm.org for R 4.6, but two are left out (`SANS_WEBR`): RSQLite, whose webR build needs
+  OpenSSL (`X509_free`), which webR doesn't have, and ranger, whose webR build loads, then stops at
+  its first forest (`thread constructor failed: Not supported`: webR has no threads). A package
+  whose library fails to load leaves webR unable to load any library after it (Emscripten keeps
+  its missing symbol), so these are never installed. Each package is installed on its own: one
+  that fails leaves only its features out (`?sans=a,b` leaves those out, to see it).
+- R gets `options(nuee.navigateur = TRUE, nuee.paquets_absents = ...)`. A request refused for a
+  package the page lacks, by `loadNamespace()` or by the engine's own refusal that names it, says
+  that it needs the desktop application (`navigateur.R`: `erreur_navigateur`, called by
+  `repondre_erreur`): "Random forests: Nuée's desktop application is needed (the R package ranger
+  isn't in the browser version)." So do `.usp` files (`convertir_usp`: their converter is a
+  program, and the page starts none). The rest goes on.
+- Writing what webR's iconv can't (musl's: no `//TRANSLIT`, `*` for any letter outside ASCII):
+  dBase texts in Windows-1252 and variable names in ASCII take the base letter of an accented
+  one from a table of U+00C0 to U+024F (`formats.R`: `en_cp1252`, `en_ascii`, `sans_accents`);
+  only when iconv doesn't transliterate itself, so the desktop's files stay the same.
+- Files the user opens go into webR's file system (`deposer`; several in one folder,
+  `deposerEnsemble`: a raster beside its `.tfw`); those the engine writes are downloaded
+  (`telechargerFichier`) or read (`lireFichier`: a reproducible document's scripts, put in a
+  `.zip`). A linked BibTeX or CSL-JSON file has its references kept in the document, as pasted
+  ones. Recent files aren't kept, and views don't move to windows of their own (another window
+  would start an R of its own, without the projects). Zotero, Quarto and the native dialogs stay
+  the desktop's.
+- Each webR has one core. Other webR instances (the engine without the server or packages,
+  `?aides=N`, by default one per core left, 4 at most) take pieces of the requests listed in
+  `TRAVAUX` (`serveur.R`), so far the permutation test:
+  - `travail_preparer()` draws the shuffles and writes the tasks to a file;
+  - each instance runs `travail_morceau()` (`moteur/R/travaux.R`), computing the X side of the
+    model once for its piece, as one R does (`cote_x_modele`);
+  - `travail_finir()` assembles the pieces with the same functions as the request in one R.
+  - The answer is the one-R answer: `identical()` to 1.0's loop, in one piece and in three.
+
+**Keeping the work.** A project lives in the tab (one saved there was downloaded, which the next
+visit doesn't open by itself), so every open project has a recovery copy in the browser's storage:
+its origin private file system (OPFS), else IndexedDB (`secours_navigateur.js`, the desktop's
+calls `secoursDossier`, `secoursIndex` and `secoursListe`, and `garder` and `rendre` between webR's
+file system and the browser's). R writes it as it writes the desktop's (`sauvegarde_secours`); it
+is written again 3 s after a change of the project, at each minute when it has unsaved changes,
+when its session changes (views, models) and when the tab is hidden (`app.js`:
+`sauvegarderSecoursNavigateur`); closing or reloading the tab before a change is copied asks
+first. Each tab writes its own copies and index, under its name (`ONGLET`), and holds a lock (Web
+Locks) while it is open: the copies of a tab without its lock are those of a closed tab, which the
+next tab offers (`proposerRecuperationNavigateur`), holding that lock meanwhile, so that two tabs
+never offer the same ones. Recovered, a project opens with its name, its session and whether it
+had unsaved changes (`ouvrir`: `modifie`), and gets copies of its own before the old ones go;
+set aside, they go; the question closed without an answer keeps them for next time.
+
+**Checks.**
+- `node app/tests/essai_moteur_webr.mjs [verifier_x.R ...] [--rscript=<Rscript>]` runs the
+  engine's checks in webR's R, in Node, each as Rscript runs it (`webr_rscript.mjs`: the file read
+  by R's console, each expression at the top level; R's packages installed once into
+  `node_modules/.cache/nuee-webr`; R's session folder on this computer's disk, so that an
+  `Rscript` started by `system2()` is that script again, in a process of its own, started from
+  webR's worker; `webr_chemins.mjs`: webR's worker loads `R.js` by a path Node refuses on Windows).
+  `verifier_references.R` is left out (its exported projects aren't in the repository).
+- `node app/tests/essai_navigateur.mjs` builds the site, serves it and uses it in a headless
+  Chromium (`playwright-core`, its browser installed in `app/node_modules/.cache/ms-playwright`:
+  `PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell`):
+  R starts in the page, the example opens, a PLS, a mixed model and a PCoA are fitted with their
+  views, the data downloaded as CSV, a random forest says it needs the desktop application while
+  a PLS-DA still fits, and the recovery copies: a reload, then a closed tab, offer the project
+  again (its models, its unsaved changes), a second tab open meanwhile is offered nothing, and
+  in a browser without OPFS's `createWritable` the copies go to IndexedDB.
+- `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
+  R server (see Speed).
+
 ## How it matches the stored results
 
 Checked on 944 fitted models from 133 distinct `.usp` projects (file versions v10, v11 and
@@ -947,3 +1050,24 @@ own C code, a sixth the bag draws, and 8 s the console printing the whole model,
 TRIM's stepwise changepoints on 800 sites (33 s). The fits of mixed models, GAMs and NMDS are the
 libraries' own work: only fitting the cross-validation groups or the AIC candidates in parallel
 would shorten them.
+
+The browser version against native R, with the same requests (`app/tests/banc_navigateur.mjs`:
+each request as the interface sends it, timed from the page or from Node, a first round to load
+what each R loads once, then the median of three; one PC, Windows 11, Ryzen 7 5800X, headless
+Chromium 159, webR 0.6.1 and R 4.6.0 against R 4.6.2 and its reference BLAS through the local
+server; two runs, other programs running beside, so a range), in seconds:
+
+| | R 4.6.2 | the page, one R | the page, 4 other R |
+|---|---|---|---|
+| Open the example project | 0.04 | 0.07–0.08 | 0.07–0.12 |
+| Fit its PCA (M1) | 0.13–0.19 | 0.45–0.47 | 0.44–0.69 |
+| Fit its PLS (M2) | 0.07–0.10 | 0.24 | 0.23–0.34 |
+| Fit its PLS-DA (M3) | 0.13–0.18 | 0.47–0.48 | 0.45–0.71 |
+| Fit its OPLS-DA (M4) | 0.06–0.07 | 0.21–0.22 | 0.20–0.29 |
+| A mixed model (taste ~ sugar + firmness + acidity, orchard at random) | 0.07–0.09 | 0.14–0.15 | 0.17–0.21 |
+| A PCoA (Gower on 14 variables, 99 permutations) | 0.05–0.07 | 0.16–0.17 | 0.17–0.23 |
+| M2's permutation test (100 permutations) | 2.6–3.8 | 10.4–10.8 | 2.5–2.7 |
+
+A fit takes 1.5 to 3.9 times as long in the page; the permutation test, shared with 4 other R of
+the page (`TRAVAUX`), as long as natively. R is ready in the page 15 to 18 s after a first visit
+(R's packages downloaded from repo.r-wasm.org), 8.4 to 8.8 s at the next one.

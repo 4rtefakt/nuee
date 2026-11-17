@@ -657,6 +657,48 @@ lire_dbf <- function(chemin) {
   x
 }
 
+# Ce que fait la translittération d'iconv (« //TRANSLIT ») là où iconv ne la fait pas : celui de
+# webR (la version navigateur, la libc musl) refuse « CP1252//TRANSLIT » et rend « * » pour toute
+# lettre hors d'ASCII. Les lettres latines accentuées (U+00C0 à U+024F) y prennent leur lettre de
+# base, d'après leur décomposition Unicode, et les ligatures leurs deux lettres.
+LETTRES_ACCENTUEES <- "ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝàáâãäåçèéêëìíîïðñòóôõöøùúûüýÿĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſƀƁƑƒƗƠơƯưƵƶǍǎǏǐǑǒǓǔǕǖǗǘǙǚǛǜǞǟǠǡǤǥǦǧǨǩǪǫǬǭǰǴǵǸǹǺǻȀȁȂȃȄȅȆȇȈȉȊȋȌȍȎȏȐȑȒȓȔȕȖȗȘșȚțȞȟȦȧȨȩȪȫȬȭȮȯȰȱȲȳ"
+LETTRES_SANS_ACCENT <- "AAAAAACEEEEIIIIDNOOOOOOUUUUYaaaaaaceeeeiiiidnoooooouuuuyyAaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzsbBFfIOoUuZzAaIiOoUuUuUuUuUuAaAaGgGgKkOoOojGgNnAaAaAaEeEeIiIiOoOoRrRrUuUuSsTtHhAaEeOoOoOoOoYy"
+LIGATURES <- c("ß" = "ss", "ẞ" = "SS", "Æ" = "AE", "æ" = "ae", "Œ" = "OE", "œ" = "oe", "Ĳ" = "IJ", "ĳ" = "ij", "Þ" = "TH", "þ" = "th", "ŉ" = "n")
+sans_accents <- function(x) {
+  x <- chartr(LETTRES_ACCENTUEES, LETTRES_SANS_ACCENT, x)
+  for (l in names(LIGATURES)) x <- gsub(l, LIGATURES[[l]], x, fixed = TRUE)
+  x
+}
+iconv_translittere <- function(vers) {
+  r <- tryCatch(iconv("é", "UTF-8", vers), error = function(e) NA_character_)
+  !is.na(r) && !identical(r, "*")
+}
+
+# Des textes en octets de Windows-1252 (ASCII, Latin-1 de A0 à FF et 27 caractères de 80 à 9F),
+# un caractère qui n'y est pas translittéré, sinon « ? » ; sans iconv qui translittère, une
+# lettre accentuée qui n'y est pas y prend sa lettre de base.
+HORS_CP1252 <- paste0("[^\\x{00}-\\x{7F}\\x{A0}-\\x{FF}\\x{152}\\x{153}\\x{160}\\x{161}\\x{178}\\x{17D}\\x{17E}\\x{192}\\x{2C6}\\x{2DC}",
+                      "\\x{2013}\\x{2014}\\x{2018}-\\x{201A}\\x{201C}-\\x{201E}\\x{2020}-\\x{2022}\\x{2026}\\x{2030}\\x{2039}\\x{203A}\\x{20AC}\\x{2122}]")
+en_cp1252 <- function(x) {
+  if (iconv_translittere("CP1252//TRANSLIT")) return(iconv(x, "UTF-8", "CP1252//TRANSLIT", sub = "?", toRaw = TRUE))
+  # (les textes qui ne sont pas en ASCII seulement : PCRE ne lit \x{152} qu'en UTF-8, qu'il ne prend
+  # pas pour des textes tout en ASCII)
+  hors <- grepl("[^\001-\177]", x)
+  if (any(hors)) {
+    y <- x[hors]
+    m <- gregexpr(HORS_CP1252, y, perl = TRUE)
+    regmatches(y, m) <- lapply(regmatches(y, m), sans_accents)
+    x[hors] <- gsub(HORS_CP1252, "?", y, perl = TRUE)
+  }
+  iconv(x, "UTF-8", "CP1252", toRaw = TRUE)
+}
+
+# Des noms en ASCII : leurs lettres accentuées sans accent, les autres caractères hors d'ASCII retirés.
+en_ascii <- function(x) {
+  if (iconv_translittere("ASCII//TRANSLIT")) return(iconv(x, "UTF-8", "ASCII//TRANSLIT", sub = ""))
+  gsub("[^\001-\177]", "", sans_accents(x))
+}
+
 # dBase III : une colonne de texte (C) ou de nombres (N) par variable, chaque valeur écrite en
 # caractères sur une largeur fixe ; une valeur manquante reste en blanc. Les textes en
 # Windows-1252, déclaré dans l'en-tête (0x57, que lisent les SIG et LibreOffice), les noms de
@@ -689,7 +731,7 @@ ecrire_dbf <- function(df, chemin) {
       return(list(type = "N", largeur = largeur, dec = dec, valeurs = valeurs))
     }
     texte <- enc2utf8(as.character(x))
-    brut <- iconv(ifelse(is.na(texte), "", texte), "UTF-8", "CP1252//TRANSLIT", sub = "?", toRaw = TRUE)
+    brut <- en_cp1252(ifelse(is.na(texte), "", texte))
     largeur <- min(254, max(1, lengths(brut)))
     list(type = "C", largeur = largeur, dec = 0, valeurs = lapply(brut, octets, largeur))
   })
@@ -841,7 +883,7 @@ ecrire_omv <- function(df, chemin) {
 # par une lettre, `max` caractères au plus, tous différents. Le nom d'origine reste en
 # étiquette de la variable (SPSS, Stata, SAS).
 noms_pour_format <- function(noms, max) {
-  n <- iconv(enc2utf8(noms), "UTF-8", "ASCII//TRANSLIT", sub = "")
+  n <- en_ascii(enc2utf8(noms))
   n[is.na(n)] <- ""
   n <- gsub("^_+|_+$", "", gsub("[^A-Za-z0-9_]+", "_", n))
   sans_lettre <- !grepl("^[A-Za-z]", n)

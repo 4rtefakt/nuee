@@ -4271,6 +4271,9 @@ ecrire_renv <- function(paquets, chemin) {
   paquets <- intersect(paquets, rownames(installes))  # ceux qui ne sont pas installés ici n'ont pas de version à donner
   tous <- unique(c(paquets, unlist(tools::package_dependencies(paquets, db = installes, which = c("Depends", "Imports", "LinkingTo"), recursive = TRUE))))
   tous <- sort(setdiff(tous, c("R", rownames(utils::installed.packages(priority = "base")))))
+  # (ni ceux qu'on ne compile pas ici : un LinkingTo que les paquets déjà compilés n'ont pas fait
+  # installer, comme ceux de webR ou de Debian)
+  tous <- intersect(tous, rownames(installes))
   liste <- stats::setNames(lapply(tous, function(p) list(Package = p, Version = as.character(utils::packageVersion(p)),
                                                           Source = "Repository", Repository = "CRAN")), tous)
   lock <- list(R = list(Version = paste(R.version$major, R.version$minor, sep = "."),

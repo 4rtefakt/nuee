@@ -11,7 +11,7 @@
 // it, or pasted, and a copy of those cited from files).
 import { t, tDans, ajouterTextes, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
 import { el, icone, dialogue, ouvrirMenuSous, inscrireEditeur } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, lireFichier, MOTEUR_WEBR } from './api.js';
 import { VUES } from './panneaux.js';
 import { partiesModele, imageVue, LARGEUR, HAUTEUR } from './rapport.js';
 import { separerCible, formeReference, texteForme, offreModele, numeroter } from './references.js';
@@ -1152,8 +1152,23 @@ async function citerChoisies(app, s, choix, narratif) {
 }
 
 // A bibliography file named in the header (bibliography:), relative to the project's folder when it
-// is in it (Quarto reads it beside the document), its references then cited like the others.
+// is in it (Quarto reads it beside the document), its references then cited like the others. In
+// the browser version, where a file has no path R could read again, its references are kept in
+// the document, as pasted ones.
 async function lierFichier(app, s) {
+  if (MOTEUR_WEBR) {
+    const f = await new Promise((resolve) => {
+      const i = el('input', { type: 'file', accept: '.bib,.bibtex,.json', onchange: () => resolve(i.files[0]) });
+      i.click();
+    });
+    if (!f) return;
+    const r = lireBibliographie(await f.text(), f.name);
+    if (!r.entrees.length) { app.statut(t('citer_coller_rien'), true); return; }
+    ajouterAuDocument(s, r.entrees);
+    app.statut(t('citer_coller_fait', { n: r.entrees.length }) + (r.erreurs.length ? ` ${t('citer_coller_erreurs', { n: r.erreurs.length })}` : ''), r.erreurs.length > 0);
+    s.rafraichir();
+    return;
+  }
   const chemin = bureau ? await bureau.choisirFichier([{ name: 'BibTeX, CSL-JSON', extensions: ['bib', 'bibtex', 'json'] }]) : window.prompt(t('citer_chemin'));
   if (!chemin) return;
   const unix = (x) => String(x).replace(/\\/g, '/');
@@ -1408,7 +1423,7 @@ async function compiler(app, s, format, quarto = null, reproductible = false) {
       if (!bureau) {
         if (!rep) { telecharger(octets(q.texte), fichier); return; }
         // (one .zip: the .qmd, its references, the figures R doesn't draw, the scripts and their data)
-        const lus = await Promise.all([].concat(rep.fichiers).map(async (f) => new Uint8Array(await (await fetch(`/api/fichier?chemin=${encodeURIComponent(f)}`)).arrayBuffer())));
+        const lus = await Promise.all([].concat(rep.fichiers).map((f) => lireFichier(f)));
         telecharger(zip([[fichier, octets(q.texte)], ...(texteBib ? [[bib, octets(texteBib)]] : []), ...(texteCsl !== null ? [[csl, octets(texteCsl)]] : []),
           ...figures.map((x) => [`${dossier}/figure-${x.numero}.png`, png(x)]), ...[].concat(rep.relatifs).map((f, i) => [f, lus[i]])]), `${nom}.zip`);
         const note = noteReproductible(rep);
