@@ -487,6 +487,15 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         for (const type of ['rawKeyDown', 'keyUp']) await s.envoyer('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
       },
       fermer: () => s.fermer(),
+      // the window closed once the driver no longer listens to it (the requests its closing cuts, a
+      // document's last words sent with keepalive among them, are no errors of the page), and gone
+      // before the run goes on (a click meanwhile that closed another window lost its connection)
+      async fermerFenetre() {
+        await f.evaluer('setTimeout(() => window.close(), 50), true').catch(() => {});
+        s.fermer();
+        const fin = Date.now() + 5000;
+        while (Date.now() < fin && ((await lister(portPage)) || []).some((c) => c.id === cible.id)) await attente(100);
+      },
     };
     await f.attendre("document.readyState === 'complete'");
     await f.evaluer(`window.__essai || ${ESPION}`);

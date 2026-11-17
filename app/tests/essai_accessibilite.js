@@ -1,7 +1,7 @@
 // Accessibility check of the interface: axe-core (a devDependency) on its main screens, in the light
 // and dark themes, then the keyboard alone: the menu bar from Alt, a dialog keeping the focus and giving
 // it back, the explorer's tree, a table's grid, the plots' text. In Electron (the app's own Chromium,
-// from node_modules) on an engine started here, with a temporary profile, its window hidden.
+// from node_modules) on an engine started here, with a temporary profile, its window off the screen.
 //   node tests/essai_accessibilite.js [Rscript]
 // Needs Node 22 or later (fetch, WebSocket); on Linux, a display (xvfb-run, as essai_appli.js).
 // Exits with 1 when a check fails. This file is also the Electron side: Electron runs it as its main.
@@ -14,9 +14,17 @@ if (process.versions.electron) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3);
   app.setPath('userData', arg('profil'));
   Menu.setApplicationMenu(null);
+  // (shown, off the screen and without taking the keyboard from what is in front, and never counted as
+  // hidden: a window never shown kept, on GitHub's Windows machine, styles it didn't compute again, a menu
+  // still hidden once placed, the menu bar in the light theme's colour after the dark one was chosen)
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.whenReady().then(() => {
-    const w = new BrowserWindow({ width: 1400, height: 900, show: false, paintWhenInitiallyHidden: true,
+    const w = new BrowserWindow({ width: 1400, height: 900, show: false, skipTaskbar: true,
       webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+    w.setPosition(-32000, -32000);
+    w.showInactive();
     w.loadURL(arg('adresse'));
   });
   app.on('window-all-closed', () => app.quit());

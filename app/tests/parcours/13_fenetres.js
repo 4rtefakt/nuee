@@ -85,8 +85,7 @@ module.exports = {
     // (the second main window: its page of the PLS follows the new fit, its scores with the 130 fruits)
     const pageW2 = await w2.attendre(`${pagesDuModele} === 1 && __n.tous('.js-plotly-plot').some((g) => __n.points(g) >= 130)`).catch(() => false);
     verifier('secondeFenetreGardeLaPage', !!pageW2, await w2.evaluer(pagesDuModele).catch(() => null));
-    await w2.evaluer('window.close(), true').catch(() => {});
-    w2.fermer();
+    await w2.fermerFenetre();
 
     // ---- Move back to the main window: the scores of the new fit there
     await f.cliquer("[...document.querySelectorAll('#tete-seul button')].pop()");
@@ -107,8 +106,7 @@ module.exports = {
       const pages = await n.attendre(`(() => { const k = ${pagesDuModele}; return k === 1 ? k : null; })()`).catch(() => n.evaluer(pagesDuModele));
       verifier('pageDuModeleApresAnnulation', pages === 1, pages);
     }
-    await g.evaluer('window.close(), true').catch(() => {});
-    g.fermer();
+    await g.fermerFenetre();
 
     // ---- the project saved; a document moved to its own window, written there; History › Restore
     await n.menu('m_fichier', 'enregistrer');
@@ -180,11 +178,6 @@ module.exports = {
       const texte = await n.evaluer(texteDocument(pid3));
       verifier('versionRestaureeChangementsLaisses', typeof texte === 'string' && texte.includes(TAPE.trim()) && !texte.includes(APRES.trim()), texte);
     }
-    // (each window closed a moment after the driver stops listening to it: the requests its closing
-    // cuts, a document's last words sent with keepalive among them, are no errors of the page)
-    for (const x of [fh, fd]) {
-      await x.evaluer('setTimeout(() => window.close(), 100), true').catch(() => {});
-      x.fermer();
-    }
+    for (const x of [fh, fd]) await x.fermerFenetre();
   },
 };
