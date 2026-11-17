@@ -187,6 +187,7 @@ export async function demarrer() {
     // changed; an interruption from before, passed first: navigateur.R, passer_interruption)
     const morceau = (debut, fin, f, s) => `local({ passer_interruption(); tryCatch({ travail_morceau("${f}", ${debut}, ${fin}, "${s}"); "fait" }, interrupt = function(c) "arrete") })`;
     partage = tous.filter((r) => r !== webR);
+    arretPartage = false;
     const sorties = await Promise.all(tous.map(async (r, i) => {
       const [debut, fin] = morceaux[i];
       const ici = `/tmp/morceau-${i + 1}.rds`;
@@ -196,13 +197,15 @@ export async function demarrer() {
       await webR.FS.writeFile(ici, await r.FS.readFile('/tmp/morceau.rds'));
       return ici;
     })).finally(() => { partage = null; });
-    if (sorties.includes(null)) return { statut: 400, json: { erreur: langue === 'en' ? 'Computation stopped.' : 'Calcul arrêté.', arrete: true } };
+    // (also when Stop came between two of its steps, no R computing then)
+    if (arretPartage || sorties.includes(null)) return { statut: 400, json: { erreur: langue === 'en' ? 'Computation stopped.' : 'Calcul arrêté.', arrete: true } };
     return traiter(webR, 'travail_finir(nom, charToRaw(enc2utf8(corps)), langue, fichier, sorties)', { ...env, fichier, sorties });
   }
   let depot = 0;
   let file = Promise.resolve();  // (one shared request at a time: the other R hold one task each)
   let enCours = 0;  // (requests R is computing or about to: Stop interrupts it only then)
   let partage = null;  // (the other R of the shared request under way)
+  let arretPartage = false;  // (and whether Stop came meanwhile)
   return {
     // a request, as the local server answers it: { statut, json }
     async demander(nom, corps, langue) {
@@ -228,6 +231,7 @@ export async function demarrer() {
     arreter() {
       if (!enCours) return;
       webR.interrupt();
+      if (partage) arretPartage = true;
       for (const r of partage || []) r.interrupt();
     },
     // the packages the browser version doesn't have (SANS_WEBR, ?sans=, failed installs)
