@@ -60,7 +60,7 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
   quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open map radar layers signpost smartphone
   layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert user-round
-  log-in log-out user-plus key-round circle-user-round monitor puzzle`.split(/\s+/);
+  log-in log-out user-plus key-round circle-user-round monitor puzzle package`.split(/\s+/);
 // (Redo; a column treated as numbers; Stop, in the status bar)
 ICONES.push('redo-2', 'hash', 'circle-stop');
 const icones = {};

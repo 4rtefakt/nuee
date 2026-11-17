@@ -1,8 +1,9 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "versions": [
     { "version": "1.0", "changements": "The requests of Nuée 1.0.0, before the protocol had a version: an engine that answers protocole with \"Unknown request: protocole\" speaks 1.0." },
-    { "version": "2.0", "changements": "Nuée 1.1.0. New requests: protocole; retablir (Redo); the data steps, etapes, mettre_a_jour and retirer_etape; renommer_variable, supprimer_variable and type_variable; the versions of a project, fichier_change, fusionner and fusionner_finir; R-code models (the model type CODE) with empreinte_code, code_approuve and code_modeles; plugins (the model type PLUGIN) with greffons, greffon_lire, greffon_installer, greffon_retirer, greffon_projet and greffon_mettre_a_jour; resultats_cles and comparer_resultats; guide. New parameters: exemple's nom, ouvrir's lecture_seule and cache, enregistrer's auteur, reajuster's centrer, effets' echelle, ajouter_colonnes' colle, a model definition's meme_numero. New fields: Projet's retablissable, a_source and lecture_seule; ResumeModele's code_r and greffon; Modele's cles and an R-code or plugin model's own; annuler's documents, reajuster and a_reajuster, and retablir's; projets_modifies' ids; fusionner_finir's documents; RapportMiseAJour's changements_avant_etapes and its observations' distinguees; etat's code_interdit and greffons; error answers with fields of their own (arrete for a computation stopped, source_modifiee, code_non_approuve and empreinte, ligne, a plugin's refusal, a 409's fusion). Changed in a way a client of 1.0 notices: annuler keeps the model definitions added since the change (fitted models), which 1.0 took back with it; enregistrer without chemin no longer marks the project saved (it is a download); document_enregistrer and figure_enregistrer refuse an id the project doesn't have instead of making a new document or figure, and document_supprimer and figure_supprimer refuse it too; fermer_projet, rapports_vraisemblance, console and completer refuse an unknown project or model, which 1.0 ignored; exporter_prediction names its columns in the request's language; moyennes and puissance_tendance take only their own settings; an unknown model type or cross-validation is refused, not fitted as a PLS or validated by centres; an id is read as text (1 no longer names the first project); a missing projet or modele, an unknown observation and the choices the requests check get the engine's own messages instead of R's; most undo labels are in the request's language." }
+    { "version": "2.0", "changements": "Nuée 1.1.0. New requests: protocole; retablir (Redo); the data steps, etapes, mettre_a_jour and retirer_etape; renommer_variable, supprimer_variable and type_variable; the versions of a project, fichier_change, fusionner and fusionner_finir; R-code models (the model type CODE) with empreinte_code, code_approuve and code_modeles; plugins (the model type PLUGIN) with greffons, greffon_lire, greffon_installer, greffon_retirer, greffon_projet and greffon_mettre_a_jour; resultats_cles and comparer_resultats; guide. New parameters: exemple's nom, ouvrir's lecture_seule and cache, enregistrer's auteur, reajuster's centrer, effets' echelle, ajouter_colonnes' colle, a model definition's meme_numero. New fields: Projet's retablissable, a_source and lecture_seule; ResumeModele's code_r and greffon; Modele's cles and an R-code or plugin model's own; annuler's documents, reajuster and a_reajuster, and retablir's; projets_modifies' ids; fusionner_finir's documents; RapportMiseAJour's changements_avant_etapes and its observations' distinguees; etat's code_interdit and greffons; error answers with fields of their own (arrete for a computation stopped, source_modifiee, code_non_approuve and empreinte, ligne, a plugin's refusal, a 409's fusion). Changed in a way a client of 1.0 notices: annuler keeps the model definitions added since the change (fitted models), which 1.0 took back with it; enregistrer without chemin no longer marks the project saved (it is a download); document_enregistrer and figure_enregistrer refuse an id the project doesn't have instead of making a new document or figure, and document_supprimer and figure_supprimer refuse it too; fermer_projet, rapports_vraisemblance, console and completer refuse an unknown project or model, which 1.0 ignored; exporter_prediction names its columns in the request's language; moyennes and puissance_tendance take only their own settings; an unknown model type or cross-validation is refused, not fitted as a PLS or validated by centres; an id is read as text (1 no longer names the first project); a missing projet or modele, an unknown observation and the choices the requests check get the engine's own messages instead of R's; most undo labels are in the request's language." },
+    { "version": "2.1", "changements": "New request: paquet, the reproducibility package (a .zip of the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data, CITATION.cff, codemeta.json and the SHA-256 of every file), with the DOI Zenodo reserved for the draft it goes in. New field: Projet's paquet, the answers kept from the last one." }
   ],
   "groupes": [
     { "id": "seance", "titre": "Session and projects" },
@@ -123,6 +124,7 @@
         "coordonnees": { "type": "object|null", "description": "Its coordinates (spatial.R: coordonnees_projet): {x, y, the variables' numbers; systeme, an EPSG code or \"plan\"; nom_x, nom_y}; null when none are set or they no longer hold." },
         "documents": { "type": "object[]", "description": "Its documents, each {id, titre, langue}." },
         "figures": { "type": "object[]", "description": "Its figures, each {id, titre}." },
+        "paquet": { "type": "object|null", "description": "The answers of its last reproducibility package (paquet's meta), kept in the project and saved with it, as paquet cleans them: {titre, auteurs (each {prenom, nom, orcid}), description, mots_cles (always an array), licence}; null when it has none.", "depuis": "2.1" },
         "kobo": { "type": "object|null", "description": "The settings of the KoboToolbox or ODK import that made it, to make it again (kobo.R); null otherwise." },
         "a_source": { "type": "boolean", "description": "Whether its data came from a file it keeps as their source (a table opened, an export imported, an ODK archive's table opened as it is, the file of an update), which etapes describes and mettre_a_jour reads again.", "depuis": "2.0" },
         "lecture_seule": { "type": "object|null", "description": "An old version opened read-only (ouvrir's lecture_seule): {source, oid, date}, as ouvrir was given them; null otherwise.", "depuis": "2.0" },
@@ -534,7 +536,7 @@
       "resultat": {
         "type": "object",
         "champs": {
-          "version": { "type": "string", "description": "The protocol's version, MAJOR.MINOR (\"2.0\")." },
+          "version": { "type": "string", "description": "The protocol's version, MAJOR.MINOR (\"2.1\")." },
           "nuee": { "type": "string|null", "description": "Nuée's version (app/package.json); null when the engine runs without the application's files." },
           "demandes": { "type": "string[]", "description": "The names of the requests this engine answers, sorted (always an array)." },
           "description": { "type": "object", "description": "With complet: this description, as moteur/protocole.json holds it." }
@@ -4052,6 +4054,63 @@
       "effet": "aucun",
       "effet_detail": "Writes the script and the files beside it; the script carries a licence notice (it may be used, changed and shared on any terms, an exception to Nuée's GPL) and how to cite Nuée.",
       "depuis": "1.0"
+    },
+    "paquet": {
+      "groupe": "export",
+      "but": "Writes a project's reproducibility package: one .zip with the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data with its text, CITATION.cff, codemeta.json and the SHA-256 of every file.",
+      "parametres": {
+        "projet": { "type": "string", "requis": true, "description": "The project's id." },
+        "meta": { "type": "object", "requis": true, "description": "The package's description, cleaned and kept in the project (Projet's paquet): titre (required, one line), auteurs (at least one, an array of {prenom, nom, orcid}, a table for jsonlite; nom required, orcid optional: 16 digits checked by their last, written with its dashes, its https://orcid.org/ address taken), description (empty lines between paragraphs), mots_cles (an array, or one text with commas or semicolons), licence (the data's, by its SPDX id: CC-BY-4.0, the default, CC0-1.0, CC-BY-SA-4.0 or CC-BY-NC-4.0)." },
+        "modeles": { "type": "string[]", "requis": false, "description": "The fitted models' ids (M1…), all of this project, in the order of their numbers: the latest fit of each model. Those of components and the regressions make one session script, each other analysis follows with its own export to R in local(); a model whose categories changed since its fit, or whose script can't be written, is named with why, the others redone without it." },
+        "non_ajustes": { "type": "object[]", "requis": false, "description": "The project's models the client couldn't fit, each {nom, erreur}: named in the script and the README with why." },
+        "documents": { "type": "string", "requis": false, "defaut": "[]", "description": "JSON text: the documents as reproducible Quarto files, each {nom (the .qmd's name, without / or \\), titre, qmd (its text), bib (its .bib, or null), csl ({nom, texte}, or null), figures (each {chemin, png: base64}), fichiers and relatifs (the files document_reproductible wrote in the engine's temporary folder, and their paths beside the .qmd), note}; written in the package's documents/." },
+        "doi": { "type": "string", "requis": false, "description": "The package's own DOI, the one Zenodo reserved for the draft it will go in (10.5281/zenodo.123, its https://doi.org/ address or doi: taken): the README gives it, with the link https://nuee.io/app/?doi=<doi>, and so do CITATION.cff and codemeta.json; without it, none." },
+        "session": { "type": "string", "requis": false, "description": "The interface's session (its views and fitted models), JSON text only it reads, kept in the package's .nuee as enregistrer keeps it." },
+        "chemin": { "type": "string", "requis": false, "description": "The .zip to write (.zip added when missing); without it, one named after the title in a new folder of the engine's temporary folder, for a browser to fetch with /api/fichier." },
+        "version": { "type": "string", "requis": false, "defaut": "", "description": "Nuée's version, written in the files." },
+        "langue": {
+          "type": "string",
+          "requis": false,
+          "defaut": "fr",
+          "description": "The language of the README, the script's comments and names, the data dictionary and the files' names (data/ or donnees/, analysis.R or analyse.R); anything but \"en\" is French.",
+          "valeurs": { "fr": "French", "en": "English" }
+        }
+      },
+      "resultat": {
+        "type": "object",
+        "champs": {
+          "chemin": { "type": "string", "description": "The .zip written." },
+          "chemins": { "type": "string[]", "description": "The same, as an array." },
+          "dossier": { "type": "string", "description": "The folder the .zip holds, named after it." },
+          "fichiers": { "type": "string[]", "description": "Every file of that folder, relative to it, in the order of their bytes: <project>.nuee (format 3, its data's source its own CSV by its path in the package, without the project's steps nor any path of the computer it was written on), data/<project>.csv and its dictionary, analysis.R, documents/…, README.md, LICENSE, CITATION.cff, codemeta.json, MANIFEST.sha256." },
+          "modeles": { "type": "object[]", "description": "One per model, each {id, nom, objet (its name in the script), erreur (why it isn't redone)}, one of objet and erreur." },
+          "ecarts": { "type": "string[]", "description": "The models whose script doesn't give back Nuée's results exactly, and how (always an array)." },
+          "documents": { "type": "object[]", "description": "Each document written, {nom, titre, note}." },
+          "taille": { "type": "number", "description": "The .zip's size, in bytes." },
+          "projet": { "type": "Projet", "description": "The project, its paquet field the answers kept." }
+        }
+      },
+      "erreurs": [
+        "projet_manquant",
+        "projet_inconnu",
+        "modele_inconnu",
+        { "message": "The models must come from the same project.", "quand": "A model of modeles was fitted on another project." },
+        { "message": "The package has no title.", "quand": "meta's titre is empty." },
+        { "message": "The package has no author.", "quand": "meta's auteurs has no one." },
+        { "message": "An author without a family name: <given names>.", "quand": "An author has no nom." },
+        { "message": "This isn't an ORCID: <text> (16 digits, 0000-0002-1825-0097).", "quand": "An orcid isn't 16 digits (the last may be X) whose last checks the others (ISO 7064 11,2)." },
+        { "message": "Unknown licence: <licence>.", "quand": "meta's licence isn't one of the four." },
+        { "message": "This isn't a DOI: <doi>.", "quand": "doi isn't 10.<4 to 9 digits>/<suffix>." },
+        { "message": "Document name refused in the package: <name>", "quand": "A document's nom is empty or holds / or \\." },
+        { "message": "Two documents with the same name: <name>", "quand": "Two documents' nom are the same, in any case." },
+        { "message": "Path refused in the package: <path>", "quand": "A document's figure or file would go outside the package (.., an absolute path, a control character)." },
+        { "message": "File refused in the package: <file>", "quand": "A document's file isn't one the engine wrote in its temporary folder." },
+        { "message": "A document's files don't match their paths.", "quand": "A document's fichiers and relatifs differ in length." },
+        { "message": "<jsonlite's message>", "quand": "documents isn't JSON text." }
+      ],
+      "effet": "projet",
+      "effet_detail": "Writes the .zip, beside it first, then put in its place; meta, cleaned, is kept in the project (Projet's paquet) and saved with it, the project counting as changed when it differs from the answers it kept. Nothing else in the session changes: the project in the package is a copy, its data's source the package's CSV.",
+      "depuis": "2.1"
     },
     "document": {
       "groupe": "documents",

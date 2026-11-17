@@ -82,7 +82,8 @@ attacher_mgcv <- function(b) {
 # Toute la séance dans un script .R : les données une fois, puis chaque modèle (`definitions`,
 # et `modeles` ceux de l'application, dans le même ordre), ses résultats gardés dans une liste
 # à son nom (M1, M2...). Mêmes options qu'ecrire_script() ; `ecart` nomme les modèles qui ne
-# redonnent pas le leur.
+# redonnent pas le leur, `noms` donne le nom de la liste de chacun (le paquet de
+# reproductibilité les cite : paquet.R).
 ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, dossier_moteur, donnees = c("script", "csv"),
                                  renv = FALSE, rdata = FALSE, rproj = FALSE, version = "", langue = "fr") {
   donnees <- match.arg(donnees)
@@ -132,7 +133,7 @@ ecrire_script_seance <- function(projet, definitions, modeles, chemin_script, do
               titre_partie(2, langue), donnees_script(tab, fichiers, langue), "",
               sprintf("# 3. %s ----", tx("Modèles et résultats", "Models and results")), "", morceaux)
   ecrire_fichiers_script(lignes, fichiers, e, c(nom_script("donnees", langue), noms), paquets_script(b), langue = langue, version = version)
-  list(script = chemin_script, chemins = unname(fichiers), ecart = if (length(ecarts)) paste(ecarts, collapse = " ; "))
+  list(script = chemin_script, chemins = unname(fichiers), ecart = if (length(ecarts)) paste(ecarts, collapse = " ; "), noms = noms)
 }
 
 # L'environnement où le code du script est exécuté avant d'être écrit : ses données et ses

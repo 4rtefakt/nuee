@@ -460,6 +460,27 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-quarto .titre-choix { font-weight: 600; }
 .dialogue-quarto .choix-quarto .note { margin: 1px 0 0; }
 .dialogue-quarto .avertissement { color: var(--attention); }
+/* File › Export a reproducibility package…, Deposit on Zenodo… (paquet.js) */
+.dialogue-paquet > p { margin: 2px 0 6px; }
+.dialogue-paquet .grille-champs { grid-template-columns: max-content minmax(0, 660px); align-items: start; }
+.dialogue-paquet .grille-champs > label { padding-top: 4px; }
+.dialogue-paquet .paquet-titre, .dialogue-paquet .paquet-mots, .dialogue-paquet textarea { width: 100%; box-sizing: border-box; }
+.dialogue-paquet textarea { resize: vertical; font: inherit; }
+.paquet-auteurs th { text-align: left; font-weight: normal; color: var(--texte-doux); padding: 0 4px 2px 0; }
+.paquet-auteurs td { padding: 0 4px 3px 0; }
+.paquet-auteurs input { width: 13em; }
+.paquet-auteurs input.paquet-orcid { width: 12em; font-family: Consolas, "Cascadia Mono", monospace; }
+.paquet-licences { display: flex; flex-direction: column; gap: 5px; }
+.paquet-licences .choix-paquet { display: flex; align-items: flex-start; gap: 8px; color: var(--texte); }
+.paquet-licences .choix-paquet input { margin-top: 3px; flex: none; }
+.paquet-licences .choix-paquet > span { display: flex; flex-direction: column; }
+.paquet-licences .titre-choix { font-weight: 600; }
+.paquet-licences .note { margin: 1px 0 0; }
+.dialogue-zenodo { display: flex; flex-direction: column; gap: 6px; max-width: 38em; }
+.dialogue-zenodo p { margin: 0 0 2px; }
+.dialogue-zenodo .zenodo-champ { width: 26em; font-family: Consolas, "Cascadia Mono", monospace; }
+.dialogue-zenodo details { margin: 4px 0; }
+.dialogue-zenodo a { color: var(--accent); }
 /* Citations in documents: in the text, in the preview, and the dialogs to find them */
 .editeur-document .cm-cite { color: var(--ok); }
 .editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }

@@ -12,6 +12,7 @@ const { demanderZotero } = require('./zotero');
 const { creerVersions, magasinJetons } = require('./versions');
 const { creerComptes } = require('./comptes');
 const rInstalles = require('./r-installes');
+const { creerZenodo } = require('./zenodo');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -764,6 +765,19 @@ const comptes = creerComptes({
   ouvrirNavigateur: (url) => shell.openExternal(url),
   langue: () => langue,
 });
+// Deposit on Zenodo, for a reproducibility package (zenodo.js, interface/paquet.js): the token of
+// zenodo.org and of sandbox.zenodo.org, its test server, kept in the same store, under their names;
+// the draft created with its DOI reserved, then the package, which the engine wrote with that DOI,
+// deposited in it only from R's folder of this run; the draft's page opened in the browser, never
+// published. NUEE_ZENODO: another address answering like Zenodo, for the checks (a stand-in: every
+// host goes there, and no page opens).
+const zenodo = creerZenodo({
+  jetons,
+  fetch: (url, init) => reseau.fetch(url, init),
+  base: (hote) => process.env.NUEE_ZENODO || `https://${hote}`,
+  dossier: () => temporaireR,
+  ouvrir: (page) => { if (!process.env.NUEE_ZENODO) shell.openExternal(page); },
+});
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -844,6 +858,10 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
+  // Zenodo, for a reproducibility package (zenodo.js: creerZenodo): whether a token is kept for a
+  // host (never the token), keeping the one pasted, forgetting it, a draft with its DOI reserved,
+  // then the package deposited in it; each answers { erreur } rather than throwing
+  for (const [nom, f] of Object.entries(zenodo)) recevoir(`zenodo-${nom}`, (_, ...args) => f(...args));
   // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
   // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS
   // with its R folder as RHOME, without which the Rscript of Nuée.app starts another R: demarrerR)

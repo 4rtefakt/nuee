@@ -2,7 +2,7 @@
 
 <!-- Written by docs/ecrire_protocole.R from moteur/protocole.json: change the description there, then run Rscript docs/ecrire_protocole.R (moteur/tests/verifier_protocole.R checks that this page is up to date). -->
 
-Version **2.0** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 127 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
+Version **2.1** of the protocol by which the interface, and any other client (a plugin, a Python package, QGIS), talks to Nuée's R engine: requests in JSON over HTTP on 127.0.0.1, each carrying the session's token. This page says how to start the engine and reach it, then describes each of its 128 requests: its purpose, its parameters, its result, its errors, what it changes and the version it exists since.
 
 It is written from `moteur/protocole.json`, the description that the request [`protocole`](#protocole) also gives (with `complet`); `moteur/tests/verifier_protocole.R` checks that every request the engine answers is described there, and nothing else. `outils/exemple_client.py` is a client in Python, with nothing but its standard library: it starts the engine from the sources, opens the example project and fits one of its models.
 
@@ -28,6 +28,7 @@ The protocol's version is MAJOR.MINOR. MINOR grows when a request, a parameter o
 |---|---|
 | 1.0 | The requests of Nuée 1.0.0, before the protocol had a version: an engine that answers protocole with "Unknown request: protocole" speaks 1.0. |
 | 2.0 | Nuée 1.1.0. New requests: protocole; retablir (Redo); the data steps, etapes, mettre_a_jour and retirer_etape; renommer_variable, supprimer_variable and type_variable; the versions of a project, fichier_change, fusionner and fusionner_finir; R-code models (the model type CODE) with empreinte_code, code_approuve and code_modeles; plugins (the model type PLUGIN) with greffons, greffon_lire, greffon_installer, greffon_retirer, greffon_projet and greffon_mettre_a_jour; resultats_cles and comparer_resultats; guide. New parameters: exemple's nom, ouvrir's lecture_seule and cache, enregistrer's auteur, reajuster's centrer, effets' echelle, ajouter_colonnes' colle, a model definition's meme_numero. New fields: Projet's retablissable, a_source and lecture_seule; ResumeModele's code_r and greffon; Modele's cles and an R-code or plugin model's own; annuler's documents, reajuster and a_reajuster, and retablir's; projets_modifies' ids; fusionner_finir's documents; RapportMiseAJour's changements_avant_etapes and its observations' distinguees; etat's code_interdit and greffons; error answers with fields of their own (arrete for a computation stopped, source_modifiee, code_non_approuve and empreinte, ligne, a plugin's refusal, a 409's fusion). Changed in a way a client of 1.0 notices: annuler keeps the model definitions added since the change (fitted models), which 1.0 took back with it; enregistrer without chemin no longer marks the project saved (it is a download); document_enregistrer and figure_enregistrer refuse an id the project doesn't have instead of making a new document or figure, and document_supprimer and figure_supprimer refuse it too; fermer_projet, rapports_vraisemblance, console and completer refuse an unknown project or model, which 1.0 ignored; exporter_prediction names its columns in the request's language; moyennes and puissance_tendance take only their own settings; an unknown model type or cross-validation is refused, not fitted as a PLS or validated by centres; an id is read as text (1 no longer names the first project); a missing projet or modele, an unknown observation and the choices the requests check get the engine's own messages instead of R's; most undo labels are in the request's language. |
+| 2.1 | New request: paquet, the reproducibility package (a .zip of the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data, CITATION.cff, codemeta.json and the SHA-256 of every file), with the DOI Zenodo reserved for the draft it goes in. New field: Projet's paquet, the answers kept from the last one. |
 
 ## Starting the engine
 
@@ -218,6 +219,7 @@ A project's summary (serveur.R: resume_projet): what the interface shows of it, 
 | `coordonnees` | `object` \| `null` | Its coordinates (spatial.R: coordonnees_projet): {x, y, the variables' numbers; systeme, an EPSG code or "plan"; nom_x, nom_y}; null when none are set or they no longer hold. |
 | `documents` | `object[]` | Its documents, each {id, titre, langue}. |
 | `figures` | `object[]` | Its figures, each {id, titre}. |
+| `paquet` | `object` \| `null` | The answers of its last reproducibility package (paquet's meta), kept in the project and saved with it, as paquet cleans them: {titre, auteurs (each {prenom, nom, orcid}), description, mots_cles (always an array), licence}; null when it has none. Since 2.1. |
 | `kobo` | `object` \| `null` | The settings of the KoboToolbox or ODK import that made it, to make it again (kobo.R); null otherwise. |
 | `a_source` | `boolean` | Whether its data came from a file it keeps as their source (a table opened, an export imported, an ODK archive's table opened as it is, the file of an update), which etapes describes and mettre_a_jour reads again. Since 2.0. |
 | `lecture_seule` | `object` \| `null` | An old version opened read-only (ouvrir's lecture_seule): {source, oid, date}, as ouvrir was given them; null otherwise. Since 2.0. |
@@ -645,7 +647,7 @@ Since 2.0. Changes nothing.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `version` | `string` | The protocol's version, MAJOR.MINOR ("2.0"). |
+| `version` | `string` | The protocol's version, MAJOR.MINOR ("2.1"). |
 | `nuee` | `string` \| `null` | Nuée's version (app/package.json); null when the engine runs without the application's files. |
 | `demandes` | `string[]` | The names of the requests this engine answers, sorted (always an array). |
 | `description` | `object` | With complet: this description, as moteur/protocole.json holds it. |
@@ -4356,7 +4358,7 @@ Since 1.0. Changes nothing.
 
 ### Exports
 
-[`exporter`](#exporter) · [`exporter_donnees`](#exporter_donnees) · [`exporter_prediction`](#exporter_prediction) · [`exporter_coefficients`](#exporter_coefficients) · [`script_r`](#script_r)
+[`exporter`](#exporter) · [`exporter_donnees`](#exporter_donnees) · [`exporter_prediction`](#exporter_prediction) · [`exporter_coefficients`](#exporter_coefficients) · [`script_r`](#script_r) · [`paquet`](#paquet)
 
 #### `exporter`
 
@@ -4493,6 +4495,60 @@ Since 1.0. Changes nothing. Writes the script and the files beside it; the scrip
 | R-code models are turned off on this computer by your organisation's policy (DisableCustomCode). | The engine was started with NUEE_SANS_CODE=1 (etat's code_interdit) and the request defines, fits or exports an R-code model, or asks a code's fingerprint (code.R: refuser_si_interdit). ([`code_interdit`](#errors)) |
 | Model &lt;name&gt; has R code written elsewhere, not approved on this computer: it doesn't run until you have read and approved it (Show the code, Run it). | An R-code model's code isn't among the fingerprints approved on this computer (code_approuve), whoever wrote it (code.R: exiger_code_permis, before anything runs it). Besides erreur, the answer carries code_non_approuve: true and empreinte, the code's fingerprint, to approve before fitting again. ([`code_non_approuve`](#errors)) |
 | Model &lt;name&gt; is made with the plugin "&lt;plugin&gt;" &lt;version&gt;, which isn't installed or approved on this computer: it doesn't run until you have read and installed it (Show, Install, in the bar above the project). | A plugin's model is fitted, predicts or is exported to R, and its plugin's fingerprint isn't approved here (besides erreur: greffon_non_approuve: true, empreinte, id, version); under the DisableCustomCode policy, a plugin that isn't the organisation's gets “Model &lt;name&gt; is made with the plugin "&lt;plugin&gt;" &lt;version&gt;: on this computer, your organisation's policy (DisableCustomCode) only lets the plugins it provides run.” (greffon_interdit: true); a fit without the packages it needs “The plugin "&lt;plugin&gt;" needs packages that aren't installed for the R Nuée uses (R &lt;version&gt;): &lt;packages&gt;. Install them (File › Plugins…, or install.packages(…) in R), then fit again.” (paquets_manquants, always an array, and id) (greffons.R: exiger_greffon_permis, exiger_paquets_greffon). ([`greffon_refuse`](#errors)) |
+
+#### `paquet`
+
+Writes a project's reproducibility package: one .zip with the project, its data as CSV with a data dictionary, one R script that redoes every model, its documents as reproducible Quarto files, a README, the licence of the data with its text, CITATION.cff, codemeta.json and the SHA-256 of every file.
+
+Since 2.1. Changes the project, without an undo step. Writes the .zip, beside it first, then put in its place; meta, cleaned, is kept in the project (Projet's paquet) and saved with it, the project counting as changed when it differs from the answers it kept. Nothing else in the session changes: the project in the package is a copy, its data's source the package's CSV.
+
+| Parameter | Type | Required | Meaning |
+|---|---|---|---|
+| `projet` | `string` | yes | The project's id. |
+| `meta` | `object` | yes | The package's description, cleaned and kept in the project (Projet's paquet): titre (required, one line), auteurs (at least one, an array of {prenom, nom, orcid}, a table for jsonlite; nom required, orcid optional: 16 digits checked by their last, written with its dashes, its https://orcid.org/ address taken), description (empty lines between paragraphs), mots_cles (an array, or one text with commas or semicolons), licence (the data's, by its SPDX id: CC-BY-4.0, the default, CC0-1.0, CC-BY-SA-4.0 or CC-BY-NC-4.0). |
+| `modeles` | `string[]` | no | The fitted models' ids (M1…), all of this project, in the order of their numbers: the latest fit of each model. Those of components and the regressions make one session script, each other analysis follows with its own export to R in local(); a model whose categories changed since its fit, or whose script can't be written, is named with why, the others redone without it. |
+| `non_ajustes` | `object[]` | no | The project's models the client couldn't fit, each {nom, erreur}: named in the script and the README with why. |
+| `documents` | `string` | no | JSON text: the documents as reproducible Quarto files, each {nom (the .qmd's name, without / or \\), titre, qmd (its text), bib (its .bib, or null), csl ({nom, texte}, or null), figures (each {chemin, png: base64}), fichiers and relatifs (the files document_reproductible wrote in the engine's temporary folder, and their paths beside the .qmd), note}; written in the package's documents/. Default: `"[]"`. |
+| `doi` | `string` | no | The package's own DOI, the one Zenodo reserved for the draft it will go in (10.5281/zenodo.123, its https://doi.org/ address or doi: taken): the README gives it, with the link https://nuee.io/app/?doi=&lt;doi&gt;, and so do CITATION.cff and codemeta.json; without it, none. |
+| `session` | `string` | no | The interface's session (its views and fitted models), JSON text only it reads, kept in the package's .nuee as enregistrer keeps it. |
+| `chemin` | `string` | no | The .zip to write (.zip added when missing); without it, one named after the title in a new folder of the engine's temporary folder, for a browser to fetch with /api/fichier. |
+| `version` | `string` | no | Nuée's version, written in the files. Default: `""`. |
+| `langue` | `string` | no | The language of the README, the script's comments and names, the data dictionary and the files' names (data/ or donnees/, analysis.R or analyse.R); anything but "en" is French. Values: `fr` (French), `en` (English). Default: `"fr"`. |
+
+**Result:** `object`, with the fields below.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `chemin` | `string` | The .zip written. |
+| `chemins` | `string[]` | The same, as an array. |
+| `dossier` | `string` | The folder the .zip holds, named after it. |
+| `fichiers` | `string[]` | Every file of that folder, relative to it, in the order of their bytes: &lt;project&gt;.nuee (format 3, its data's source its own CSV by its path in the package, without the project's steps nor any path of the computer it was written on), data/&lt;project&gt;.csv and its dictionary, analysis.R, documents/…, README.md, LICENSE, CITATION.cff, codemeta.json, MANIFEST.sha256. |
+| `modeles` | `object[]` | One per model, each {id, nom, objet (its name in the script), erreur (why it isn't redone)}, one of objet and erreur. |
+| `ecarts` | `string[]` | The models whose script doesn't give back Nuée's results exactly, and how (always an array). |
+| `documents` | `object[]` | Each document written, {nom, titre, note}. |
+| `taille` | `number` | The .zip's size, in bytes. |
+| `projet` | [`Projet`](#type-projet) | The project, its paquet field the answers kept. |
+
+**Errors:**
+
+| Message (in English) | When |
+|---|---|
+| Which project? The request names none (projet). | projet is left out, null or "" (serveur.R: projet). ([`projet_manquant`](#errors)) |
+| Unknown project: &lt;id&gt; | projet isn't the id of a project open in the session. ([`projet_inconnu`](#errors)) |
+| Unknown model: &lt;id&gt; | modele isn't the id of a model fitted in the session. ([`modele_inconnu`](#errors)) |
+| The models must come from the same project. | A model of modeles was fitted on another project. |
+| The package has no title. | meta's titre is empty. |
+| The package has no author. | meta's auteurs has no one. |
+| An author without a family name: &lt;given names&gt;. | An author has no nom. |
+| This isn't an ORCID: &lt;text&gt; (16 digits, 0000-0002-1825-0097). | An orcid isn't 16 digits (the last may be X) whose last checks the others (ISO 7064 11,2). |
+| Unknown licence: &lt;licence&gt;. | meta's licence isn't one of the four. |
+| This isn't a DOI: &lt;doi&gt;. | doi isn't 10.&lt;4 to 9 digits&gt;/&lt;suffix&gt;. |
+| Document name refused in the package: &lt;name&gt; | A document's nom is empty or holds / or \\. |
+| Two documents with the same name: &lt;name&gt; | Two documents' nom are the same, in any case. |
+| Path refused in the package: &lt;path&gt; | A document's figure or file would go outside the package (.., an absolute path, a control character). |
+| File refused in the package: &lt;file&gt; | A document's file isn't one the engine wrote in its temporary folder. |
+| A document's files don't match their paths. | A document's fichiers and relatifs differ in length. |
+| &lt;jsonlite's message&gt; | documents isn't JSON text. |
 
 ### Documents and figures
 

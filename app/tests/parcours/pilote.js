@@ -18,6 +18,7 @@
 //   n.bouton('ajuster')                  a button of the dialog in front, by its label's key
 //   n.attendre(expression)               until the expression is true in the page (60 s at most)
 //   n.fichierAOuvrir(chemin)             the answer of the next Open dialog (n.fichierAEnregistrer: Save)
+//   n.variablePrincipal(nom, valeur)     a variable of the main process's environment (NUEE_ZENODO)
 //   n.nouveauModele({ type, y, sans })   Model › New model filled in, then fitted
 //   n.api('etat')                        a request to the engine, as the interface makes it
 //   n.fenetre('vue=scores')              a view's own window, by a piece of its address
@@ -747,6 +748,10 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
     fichierAEnregistrer: (chemin) => evaluerPrincipal(`(__essai.enregistrer.push(${JSON.stringify(chemin)}), true)`),
     reponseMessage: (i) => evaluerPrincipal(`(__essai.messages.push(${Number(i)}), true)`),
     principal: () => evaluerPrincipal('JSON.parse(JSON.stringify(__essai))'),
+    // a variable of the main process's environment, for what follows (an address standing in for a
+    // service: NUEE_ZENODO, tests/parcours/15_paquet.js); undefined takes it away
+    variablePrincipal: (nom, valeur) => evaluerPrincipal(valeur === undefined ? `(delete process.env[${JSON.stringify(nom)}], true)`
+      : `(process.env[${JSON.stringify(nom)}] = ${JSON.stringify(String(valeur))}, true)`),
     // every dialog asked for was answered as the scenario planned
     async dialoguesRepondus() {
       const e = await n.principal();

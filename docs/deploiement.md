@@ -278,7 +278,7 @@ dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
 | Projects | Wherever users save them (`.nuee`) |
 | Projects' versions (1.1) | A hidden folder beside the projects, `.nuee-versions`: see [The versions folder](#the-versions-folder) |
 | Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
-| Sign-ins and tokens for GitHub and GitLab, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
+| Sign-ins and tokens for GitHub and GitLab, and the Zenodo token of *File › Deposit on Zenodo…*, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
 | The R a user chose in *File › Settings…* (1.1) | `%APPDATA%\Nuee\reglages.json` |
 | The plugins a user installed (1.1) | `%APPDATA%\Nuee\greffons`, one folder per plugin (its `plugin.json` and R files); approving them, their fingerprints in `reglages.json` |
 | Packages installed for that R, or for a plugin, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |
