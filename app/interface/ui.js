@@ -100,7 +100,8 @@ export function fermerMenus(rendre = true) {
 // Enter or Space to run one, right to open a submenu (in a menu of the menu bar, else the next
 // menu), left or Escape to go back, Tab to leave. (A disabled item can be reached, not run.)
 export function construireMenu(items, surFermeture, parent = null) {
-  const m = el('div', { class: 'menu', role: 'menu', tabindex: -1 });
+  // (out of sight, and out of the pointer's reach, until placer() has put it in its place)
+  const m = el('div', { class: 'menu', role: 'menu', tabindex: -1, style: { visibility: 'hidden' } });
   m._parent = parent;
   m._fermerSous = () => {
     if (!m._sous) return;
@@ -140,8 +141,13 @@ export function construireMenu(items, surFermeture, parent = null) {
       if (surFermeture) surFermeture();
       it.action();
     };
-    ligne.addEventListener('mouseenter', () => {
-      ligne.focus({ preventScroll: true });  // (the keyboard goes on from the item under the mouse)
+    // (when the pointer moves over the item, not when the item comes under a pointer at rest: on
+    // GitHub's Windows and macOS machines a menu opened from the menu bar was, for some tens of
+    // milliseconds, at the window's top left corner, its first item under the pointer still on
+    // the menu's title; a submenu there opened by itself, placed by that item, then covered its
+    // menu once the menu was under its title)
+    ligne.addEventListener('mousemove', () => {
+      if (document.activeElement !== ligne) ligne.focus({ preventScroll: true });  // (the keyboard goes on from the item under the mouse)
       if (it.sous) ouvrirSous(false); else m._fermerSous();
     });
     ligne.addEventListener('click', (e) => { e.stopPropagation(); ligne._activer(auClavier); });
@@ -195,6 +201,7 @@ function placer(m, x, y, xAlternatif) {
   if (gx + r.width > vw) gx = xAlternatif !== undefined ? xAlternatif - r.width : vw - r.width - 4;
   m.style.left = Math.max(2, gx) + 'px';
   m.style.top = Math.max(2, Math.min(y, vh - r.height - 4)) + 'px';
+  m.style.visibility = '';
 }
 
 // The element in focus, where the keyboard goes back after a menu (not the page itself, nor a menu)
