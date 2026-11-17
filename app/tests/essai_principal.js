@@ -389,10 +389,10 @@ async function jetonsZenodo(dossier) {
   const etat = await demander('zenodo-etat', 'zenodo.org');
   const principal = magasins.find((x) => path.basename(x.fichier) === 'jetons.json');
   verifier(magasins.length === 2 && !!principal && recus.versions === principal && recus.comptes === principal && principal.jetons.get('zenodo.org') === JETON
-    && magasins.every((x) => x === principal || !x.jetons.size) && egal(etat, { jeton: true, persistant: true, connexion: false }) && !JSON.stringify([garde, etat]).includes(JETON),
+    && magasins.every((x) => x === principal || !x.jetons.size) && egal(etat, { jeton: true, persistant: true, connexion: true }) && !JSON.stringify([garde, etat]).includes(JETON),
   'le jeton de zenodo.org dans jetons.json, le magasin des versions et des connexions ; jamais rendu à la fenêtre', { fichiers: magasins.map((x) => x.fichier), garde, etat });
   await demander('zenodo-oublier', 'zenodo.org');
-  verifier(!principal.jetons.size && egal(await demander('zenodo-etat', 'sandbox.zenodo.org'), { jeton: false, persistant: true, connexion: false }), 'oublié de ce magasin', [...principal.jetons.keys()]);
+  verifier(!principal.jetons.size && egal(await demander('zenodo-etat', 'sandbox.zenodo.org'), { jeton: false, persistant: true, connexion: true }), 'oublié de ce magasin', [...principal.jetons.keys()]);
   // Signing in with Zenodo, NUEE_ZENODO given (a stand-in: its application nuee-essai): its page
   // opened in the browser (shell.openExternal); the window closed while it waits ends the sign-in,
   // Nuée no longer listening for Zenodo's answer

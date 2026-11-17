@@ -16,7 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { creerZenodo, creerBrouillon, remplirBrouillon, metadonneesZenodo, DOI_NUEE, PORTS_RETOUR } = require('../zenodo');
+const { creerZenodo, creerBrouillon, remplirBrouillon, metadonneesZenodo, DOI_NUEE, IDS, PORTS_RETOUR } = require('../zenodo');
 const { magasinJetons } = require('../versions');
 
 let echecs = 0;
@@ -251,15 +251,18 @@ const requetes = (s) => s.recues.map((x) => `${x.method} ${x.url}`).join(' | ');
   fs.mkdirSync(session);
   const ouverts = [];
   const z = creerZenodo({ jetons: magasin(), base: () => base, dossier: () => session, ouvrir: (page) => ouverts.push(page) });
-  verifier('no token kept yet, one kept would outlive the session, and no application registered in this copy of Nuée (IDS: a placeholder)',
-    JSON.stringify(await z.etat('zenodo.org')) === '{"jeton":false,"persistant":true,"connexion":false}' && (await z.connexion('zenodo.org')).erreur === 'non_regle');
+  const sansApplication = creerZenodo({ jetons: magasin(), dossier: () => session, idClient: () => '<to fill>' });
+  verifier('no token kept yet, one kept would outlive the session; Nuée’s application registered on both hosts (IDS: Zenodo’s 40-character ids), a copy built with a placeholder offering no sign-in',
+    JSON.stringify(await z.etat('zenodo.org')) === '{"jeton":false,"persistant":true,"connexion":true}' && (await z.etat('sandbox.zenodo.org')).connexion === true
+      && Object.keys(IDS).sort().join() === 'sandbox.zenodo.org,zenodo.org' && Object.values(IDS).every((id) => /^[A-Za-z0-9]{40}$/.test(id)) && IDS['zenodo.org'] !== IDS['sandbox.zenodo.org']
+      && (await sansApplication.etat('zenodo.org')).connexion === false && (await sansApplication.connexion('zenodo.org')).erreur === 'non_regle');
   const garde = await z.jeton('zenodo.org', `  ${JETON}\n`);
   const texte = fs.readFileSync(f, 'utf8');
   verifier('kept under zenodo.org, encrypted, in the same file as github.com’s, which stays', garde.persistant === true && !texte.includes(JETON)
     && Object.keys(JSON.parse(texte)).sort().join() === 'github.com,zenodo.org' && await magasin().lire('github.com') === GITHUB, texte);
   const etat = await z.etat('zenodo.org');
   verifier('the interface learns that a token is kept, never the token; the next session reads it; one host at a time',
-    JSON.stringify(etat) === '{"jeton":true,"persistant":true,"connexion":false}' && await magasin().lire('zenodo.org') === JETON
+    JSON.stringify(etat) === '{"jeton":true,"persistant":true,"connexion":true}' && await magasin().lire('zenodo.org') === JETON
       && (await creerZenodo({ jetons: magasin(), dossier: () => session }).etat('zenodo.org')).jeton === true && (await z.etat('sandbox.zenodo.org')).jeton === false);
   verifier('another host, or what isn’t a token, refused: nothing kept',
     (await z.jeton('github.com', JETON)).erreur === 'demande' && (await z.etat('evil.example')).erreur === 'demande' && (await z.oublier('github.com')).erreur === 'demande'

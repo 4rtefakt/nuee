@@ -33,9 +33,10 @@ const { idValide } = require('./comptes');
 const DOI_NUEE = '10.5281/zenodo.24263014';
 // Zenodo and its test server, whose deposits don't count (it has accounts and tokens of its own)
 const HOTES = ['zenodo.org', 'sandbox.zenodo.org'];
-// The client id of Nuée's application on each host (public: no secret). A placeholder ("<to fill>")
-// says signing in isn't set up for that host in this copy of Nuée: a token can still be pasted.
-const IDS = { 'zenodo.org': '<to fill>', 'sandbox.zenodo.org': '<to fill>' };
+// The client id of Nuée's application on each host (public: no secret), registered by Clément
+// (docs/developpement.md, "Signing in to Zenodo"). A copy of Nuée built with a placeholder instead
+// (such as "<to fill>") offers no sign-in for that host: a token can still be pasted.
+const IDS = { 'zenodo.org': 'z5OGCi1tX5mOD4Ci1sfJBXtqEOfsqwWCekncd3pj', 'sandbox.zenodo.org': 'XSu3VcZQEM5caOKugUnChrJc7cM8isiXsmOzwSaI' };
 // Where Zenodo sends the browser back: http://127.0.0.1:<port>/zenodo, for each of these ports (the
 // second when another program has the first), every one registered with the applications
 const PORTS_RETOUR = [47864, 47865];

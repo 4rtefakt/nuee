@@ -780,8 +780,9 @@ Nuée forgets, offering to sign in again. Zenodo's `/oauth/token` sends no CORS 
 couldn't exchange a code (the browser version doesn't deposit).
 
 Each server needs one OAuth application, registered once, whose public client id goes in `IDS`
-at the top of `app/zenodo.js`. No client secret is used: never put one in Nuée. Until an id is
-filled in, the deposit dialog offers the personal access token alone.
+at the top of `app/zenodo.js`; Clément registered both (2026-11-18). No client secret is used:
+never put one in Nuée. A copy built with a placeholder instead of an id offers the personal access
+token alone in the deposit dialog.
 
 - **zenodo.org**: signed in with the account that will own the application, Account ›
   Applications › Developer applications › New application
