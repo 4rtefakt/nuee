@@ -6,14 +6,16 @@
 #   donnees/<projet>.csv             (data/ en anglais) ses données, et leur dictionnaire : chaque
 #   donnees/<projet> - dictionnaire.csv   colonne, son type, son unité, sa description, ses catégories ;
 #   analyse.R                        (analysis.R) un seul script R qui refait chaque modèle, fait des
-#                                    exports vers R de script.R et des *_script.R (script_paquet) ;
+#                                    exports vers R de script.R et des *_script.R, avec leur avis de
+#                                    licence une fois, en tête (script_paquet) ;
 #   documents/                       les documents du projet en fichiers Quarto reproductibles
 #                                    (document_reproductible.R ; le .qmd vient de l'interface) ;
 #   README.md                        ce qu'il contient, comment le relancer avec R (les paquets et leurs
-#                                    versions) et l'ouvrir dans Nuée, dans la langue de l'interface ;
+#                                    versions) et l'ouvrir dans Nuée, dans la langue de l'interface ; son
+#                                    DOI, quand Zenodo en a réservé un pour lui (doi_paquet) ;
 #   LICENSE                          la licence des données choisie, et son texte (moteur/licences) ;
-#   CITATION.cff, codemeta.json      titre, description, auteurs (ORCID), mots-clés, licence, la
-#                                    version et le DOI de Nuée, les versions de R et des paquets ;
+#   CITATION.cff, codemeta.json      titre, son DOI, description, auteurs (ORCID), mots-clés, licence,
+#                                    la version et le DOI de Nuée, les versions de R et des paquets ;
 #   MANIFEST.sha256                  l'empreinte SHA-256 de chaque fichier (sha256sum -c la vérifie).
 # Les réponses du dialogue (titre, auteurs, description, mots-clés, licence) sont gardées dans le
 # projet (p$paquet) : l'export suivant repart d'elles.

@@ -133,7 +133,9 @@ module.exports = {
       verifier('zenodoJetonGarde', !texte.includes(JETON) && (!texte || Object.keys(JSON.parse(texte)).includes('zenodo.org')), texte.slice(0, 80));
       await n.touche('Escape');
     } finally {
-      await n.variablePrincipal('NUEE_ZENODO', undefined);
+      // (an address that answers nothing, rather than none: a deposit still under way after a
+      // failure must not go on to zenodo.org)
+      await n.variablePrincipal('NUEE_ZENODO', 'http://127.0.0.1:9');
       s.serveur.closeAllConnections();
       await new Promise((ok) => s.serveur.close(ok));
     }

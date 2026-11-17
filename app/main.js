@@ -769,8 +769,8 @@ const comptes = creerComptes({
 // zenodo.org and of sandbox.zenodo.org, its test server, kept in the same store, under their names;
 // the draft created with its DOI reserved, then the package, which the engine wrote with that DOI,
 // deposited in it only from R's folder of this run; the draft's page opened in the browser, never
-// published. NUEE_ZENODO: another address answering like Zenodo, for
-// the checks (a stand-in: every host goes there, and no page opens).
+// published. NUEE_ZENODO: another address answering like Zenodo, for the checks (a stand-in: every
+// host goes there, and no page opens).
 const zenodo = creerZenodo({
   jetons,
   fetch: (url, init) => reseau.fetch(url, init),
