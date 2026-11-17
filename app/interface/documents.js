@@ -1317,7 +1317,8 @@ function menuCompiler(app, s) {
     { libelle: t('document_qmd'), icone: 'file-output', action: () => dialogueQuarto(app, s, null) },
     quarto ? { libelle: t('document_quarto'), icone: 'file-output',
       sous: Object.entries(SORTIES_QUARTO).map(([f, n]) => ({ libelle: n, action: () => dialogueQuarto(app, s, f) })) }
-      : { libelle: t('document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
+      // (the browser version: Quarto is a program of the computer, the desktop application's)
+      : { libelle: t(MOTEUR_WEBR ? 'document_quarto_bureau' : 'document_quarto_absent'), icone: 'file-output', actif: false, action: () => {} },
   ];
 }
 const SORTIES_QUARTO = { docx: 'Word (.docx)', typst: 'PDF (Typst)', html: 'HTML' };
@@ -1652,6 +1653,7 @@ ajouterTextes({
   document_inserer_renvoi: 'Renvoi à une figure ou un tableau ({{ref:…}})', document_non_calcule: 'pas encore calculé : il le sera',
   document_seul: 'Un graphique, un tableau ou le texte des méthodes se met seul sur sa ligne.',
   document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compiler avec Quarto', document_quarto_absent: 'Compiler avec Quarto (Quarto n’est pas installé)',
+  document_quarto_bureau: 'Compiler avec Quarto (dans l’application de bureau)',
   reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'Les résultats du document :',
   reproductible_non: 'Écrits en dur', reproductible_non_aide: 'Les valeurs, les graphiques et les tableaux tels que Nuée les montre.',
   reproductible_oui: 'Reproductibles',
@@ -1735,6 +1737,7 @@ ajouterTextes({
   document_inserer_renvoi: 'Cross-reference to a figure or table ({{ref:…}})', document_non_calcule: 'not computed yet: it will be',
   document_seul: 'A plot, a table or the Methods text goes alone on its line.',
   document_qmd: 'Quarto (.qmd)…', document_quarto: 'Compile with Quarto', document_quarto_absent: 'Compile with Quarto (Quarto isn’t installed)',
+  document_quarto_bureau: 'Compile with Quarto (in the desktop application)',
   reproductible_titre: 'Quarto (.qmd)', reproductible_question: 'The document’s results:',
   reproductible_non: 'Written in', reproductible_non_aide: 'The values, plots and tables as Nuée shows them.',
   reproductible_oui: 'Reproducible',

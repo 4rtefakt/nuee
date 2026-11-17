@@ -92,6 +92,8 @@ const garder_ = (res) => garder(res);
 
 const app = {
   bureau,
+  // (the browser version: what only the desktop application does, said so in the status bar)
+  bureauRequis: (cle) => statut(t('bureau_requis', { quoi: t(cle).replace(/…$/, '') }), true),
   projets: () => Object.values(etat.projets),
   projet: (id) => etat.projets[id],
   modele: (id) => etat.modeles[id],
@@ -334,7 +336,9 @@ const app = {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
-    let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
+    // (the browser version: never into R's file system in the tab, where a project opened there was
+    // put; always a copy downloaded)
+    let chemin = !sous && !MOTEUR_WEBR && p.chemin_enregistrement ? p.chemin_enregistrement : null;
     if (bureau && !chemin) {
       // (an old version's name has its date, whose dot and colon a file's name can't take as they are)
       const nom = p.lecture_seule ? nomFichier(p.nom) : p.nom.replace(/\.[^.]+$/, '');
@@ -815,7 +819,7 @@ const app = {
       ? 'couldn’t be read (neither reg.exe nor PowerShell could): R-code models are off, and so are plugins other than the organisation’s'
       : `read by ${pol.par === 'powershell' ? 'PowerShell (reg.exe couldn’t)' : 'reg.exe'}, ${Object.keys(pol.valeurs).length
         ? Object.entries(pol.valeurs).map(([k, x]) => (x === 'set' ? `${k} set` : `${k} = ${x}`)).join(', ') : 'none set'}`);
-    const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
+    const texte = [`Nuée ${VERSION}${MOTEUR_WEBR ? ' (browser version, webR)' : !bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
       `System: ${d.systeme}`,
       d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
       `${v.R}, ${v.plateforme}, ${v.systeme}`,

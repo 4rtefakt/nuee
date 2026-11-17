@@ -24,7 +24,7 @@
 //     met by Save (app.js): their changes merged into the open project, with the same choices.
 import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, MOTEUR_WEBR } from './api.js';
 import { VUES } from './panneaux.js';
 import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, titreVersion, nomDeChemin, memeFichier, nomHote, hoteAdresse, liensConnexion,
   placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension,
@@ -93,6 +93,14 @@ export function installerVersions(app) {
     // (the name a saved file says it was written by: app.js, enregistrer)
     auteurVersions: () => nomAuteur(),
   });
+  // (the browser version: the versions and the sharing are the desktop application's, said so)
+  if (MOTEUR_WEBR) {
+    Object.assign(app, {
+      versions: () => app.bureauRequis('versions'),
+      partagerProjet: () => app.bureauRequis('versions_partager'),
+      ouvrirDepuisDistant: () => app.bureauRequis('versions_ouvrir_distant'),
+    });
+  }
   const c = couche();
   if (!c || VUE_SEULE) return;
   if (typeof c.surVersions === 'function') c.surVersions((e) => { evenement(app, e).catch(() => {}); });
