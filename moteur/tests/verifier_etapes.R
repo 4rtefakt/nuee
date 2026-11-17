@@ -39,6 +39,27 @@
 #     une étape (l'ancien nom et le nouveau), rejouées sur le même fichier puis sur celui de l'année
 #     suivante ; un modèle et les références d'un document qui suivent le nom, Annuler et Rétablir qui
 #     les remettent, même dans un document écrit depuis ; un ajustement fait avec l'ancien nom, à refaire.
+#   - un tableau en long (le site en première colonne, l'année à côté) : les observations d'un même nom
+#     retrouvées par l'année, une ligne retirée au milieu ne déplaçant ni une modification ni une
+#     observation laissée de côté ; sans rien qui les distingue, par leur rang, et dit ; une étape d'avant,
+#     par son rang ;
+#   - une case vide dans la colonne des noms : un nom vide, jamais manquant, enregistré et rouvert (aussi
+#     écrit null, d'avant), lu par la 1.0 ; la modification de sa ligne refaite ;
+#   - une colonne renommée par le fichier suivant (T) qu'une formule lisait : l'étape sautée, la variable
+#     absente nommée ; un TRIM pondéré, ses poids une de ses variables (suppression refusée, la mise à jour
+#     dit qu'il ne se réajuste plus sans eux) ; le numéro d'une variable partie ne revient jamais à une
+#     nouvelle (le TRIM la prendrait pour ses poids), même enregistré et rouvert, même après Annuler ;
+#   - Annuler et Rétablir, et les modèles ajustés depuis : un modèle ajusté après un changement reste quand
+#     on l'annule (sauf s'il lit une variable que l'annulation retire : il part avec elle, Rétablir les
+#     rend) ; un modèle ajusté après Annuler ne laisse plus Rétablir ; les modèles réajustés par leur
+#     numéro, si ;
+#   - une étape retirée défait ce qu'elle avait fait : des coordonnées, des catégories renommées et rangées
+#     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
+#     modèle l'y utilise) ;
+#   - un projet de la 1.0 (une valeur corrigée alors) : dit d'avant la 1.1 après sa première étape aussi,
+#     enregistré et rouvert, et par l'aperçu de la mise à jour, qui remplace cette valeur ;
+#   - des groupes de k-moyennes rejoués sur des données où l'ordre de leurs tailles change : chacun garde
+#     son numéro.
 #   Rscript moteur/tests/verifier_etapes.R
 
 options(warn = 1, stringsAsFactors = FALSE)
@@ -460,6 +481,16 @@ verifier("son aperçu : le rapport d'une mise à jour, la ligne nouvelle du fich
 writeLines(utils::head(readLines(source_csv), -1), source_csv)
 verifier("le fichier rendu tel qu'il était (une autre date, le même contenu) : la source n'a pas changé, le retrait se ferait",
          isFALSE(demande("etapes", list(projet = id))$source$modifie) && demande("retirer_etape", list(projet = id, n = k, apercu = TRUE))$observations$ajoutees == 0)
+# (le fichier d'une étape qui reste, des colonnes jointes, changé depuis sa lecture : le retrait le relirait aussi)
+e_sites <- Find(function(e) identical(e$demande, "ajouter_colonnes") && length(e$fichiers), projet(id)$etapes)
+f_sites <- fichier_retrouve(e_sites$fichiers[[1]], dossier_projet(projet(id)))
+octets_sites <- readBin(f_sites, "raw", file.size(f_sites))
+utils::write.csv(data.frame(site = sites$site, altitude = c(121, 85, 140, 310), sol = c("argile", "sable", "argile", "limon")), f_sites, row.names = FALSE)
+avant_retrait <- projet(id)
+refus_fichier <- tryCatch({ demande("retirer_etape", list(projet = id, n = k)); NULL }, error = function(e) e)
+verifier("le fichier d'une étape changé depuis sa lecture : le retrait refusé de même (source_modifiee), le fichier nommé",
+         inherits(refus_fichier, "source_modifiee") && grepl("sites.csv", conditionMessage(refus_fichier), fixed = TRUE) && identical(projet(id), avant_retrait))
+writeBin(octets_sites, f_sites)
 # (un classeur dont la feuille de la source a changé de nom : retirer_etape demande laquelle lire, et la prend)
 classeur <- fichier("releves.xlsx")
 openxlsx::write.xlsx(list(releves = utils::head(df, 12), notes = data.frame(note = "relevés de printemps")), classeur)
@@ -867,6 +898,276 @@ verifier("un document écrit depuis : Annuler remet ses références à l'ancien
          identical(texte_doc(), paste(avant_v$documents[[1]]$texte, "Ajouté : {{R1.p.mesure}}.")))
 demande("retablir", list(projet = vid))
 verifier("et Rétablir les remet au nouveau", grepl("Ajouté : {{R1.p.mesure (cm)}}.", texte_doc(), fixed = TRUE) && grepl("{{R1.coef.mesure (cm)}}", texte_doc(), fixed = TRUE))
+
+cat("Un tableau en long : des observations d'un même nom\n")
+# (un fichier trié par site, l'année à côté : la première colonne, le site, nomme les observations, et
+# revient ; l'année les distingue. Celui de l'année suivante a perdu la ligne S1 2017, corrigée, et a
+# celles de 2021 : par leur rang parmi celles du même nom, la modification de S1 2019 serait allée à
+# S1 2020, et l'observation de S1 2018 laissée de côté à S1 2019)
+releves_long <- function(annees) do.call(rbind, lapply(names(annees), function(s) {
+  a <- annees[[s]]
+  data.frame(site = s, annee = a, x = a - 2000 + (s == "S2") * 100, y = round(sin(a + (s == "S2")), 3))
+}))
+long_csv <- fichier("releves long.csv")
+utils::write.csv(releves_long(list(S1 = 2016:2020, S2 = 2016:2020)), long_csv, row.names = FALSE)
+lid <- demande("ouvrir", list(chemin = long_csv))$id
+an <- function(p) unname(valeurs(p, "annee"))
+ligne_de <- function(p, site, annee) numeros_observations(p)[names(valeurs(p, "annee")) == site & an(p) == annee]
+demande("modifier_valeur", list(projet = lid, observation = ligne_de(projet(lid), "S1", 2019), variable = uid_de(projet(lid), "x"), valeur = "999"))
+ml <- demande("ajuster", list(projet = lid, type = "LM", x = list(uid_de(projet(lid), "annee")), y = uid_de(projet(lid), "y"), nom = "L1"))
+demande("reajuster", list(modele = ml$id, exclues = list(ligne_de(projet(lid), "S1", 2018))))
+pl <- projet(lid)
+verifier("les observations d'un même nom distinguées par l'année : l'étape les nomme ainsi, et garde la colonne",
+         identical(parametres(pl, 1)$observation, "S1\u001e2019") && identical(as.character(pl$etapes[[1]]$colonnes_cle), "var:annee") &&
+           identical(cle_lisible("S1\u001e2019"), "S1 (2019)") && !anyDuplicated(cles_observations(pl)))
+long_2021 <- fichier("releves long 2021.csv")
+utils::write.csv(releves_long(list(S1 = c(2016, 2018:2021), S2 = 2016:2021)), long_2021, row.names = FALSE)
+al <- demande("mettre_a_jour", list(projet = lid, chemin = long_2021, apercu = TRUE))
+verifier("l'aperçu : 2 observations de plus, 1 de moins (S1 2017), aucune cellule changée, retrouvées par l'année",
+         al$observations$ajoutees == 2 && al$observations$retirees == 1 && al$observations$cellules == 0 &&
+           identical(as.character(al$observations$distinguees), "annee") && al$observations$repetees == 0 && all(statuts(al) == "ok"))
+demande("mettre_a_jour", list(projet = lid, chemin = long_2021))
+pl <- projet(lid)
+x_de <- function(site, annee) unname(valeurs(pl, "x"))[ligne_de(pl, site, annee) == numeros_observations(pl)]
+dl <- definition(pl, "L1 (1)")
+verifier("mis à jour : la modification reste sur S1 2019, S1 2020 garde sa valeur",
+         x_de("S1", 2019) == 999 && x_de("S1", 2020) == 20 && sum(unname(valeurs(pl, "x")) == 999, na.rm = TRUE) == 1)
+verifier("l'observation laissée de côté reste S1 2018, et le modèle prend les autres",
+         identical(as.numeric(dl$exclues), as.numeric(ligne_de(pl, "S1", 2018))) && !ligne_de(pl, "S1", 2018) %in% dl$observations &&
+           ligne_de(pl, "S1", 2019) %in% dl$observations && length(dl$observations) == 10)
+# (rien ne distingue des observations d'un même nom, que des mesures : retrouvées par leur rang, ce que
+# l'aperçu dit en avertissement)
+mesures_csv <- fichier("mesures.csv")
+utils::write.csv(data.frame(espece = rep(c("chêne", "hêtre"), each = 3), hauteur = c(12.5, 14.25, 9.75, 20.5, 18.25, 22.75)), mesures_csv, row.names = FALSE)
+mid <- demande("ouvrir", list(chemin = mesures_csv))$id
+am <- demande("mettre_a_jour", list(projet = mid, apercu = TRUE))
+verifier("des observations d'un même nom que rien ne distingue : retrouvées par leur rang, toutes numérotées, et dit",
+         am$observations$repetees == 6 && !length(am$observations$distinguees) &&
+           identical(cles_observations(projet(mid)), paste0(rep(c("chêne", "hêtre"), each = 3), "\u001f", rep(1:3, 2))))
+# (une étape notée avant que les étapes gardent leurs colonnes : ses observations d'un même nom se
+# retrouvent par leur rang, comme elles ont été notées, la première sous son nom seul)
+pv <- projet(lid)
+e1 <- pv$etapes[[1]]
+e1$colonnes_cle <- NULL
+e1$parametres <- sub("S1\\\\u001e2019", "S1", e1$parametres)
+pv$etapes <- list(e1)
+r_v <- mise_a_jour(pv, long_2021)
+verifier("une étape d'avant, sans ses colonnes : son observation par son rang, la première du nom S1 (2016)",
+         identical(jsonlite::fromJSON(e1$parametres)$observation, "S1") && all(vapply(r_v$rapport$etapes, `[[`, "", "statut") == "ok") &&
+           unname(valeurs(r_v$projet, "x"))[match(ligne_de(r_v$projet, "S1", 2016), numeros_observations(r_v$projet))] == 999)
+
+cat("Une case vide dans la colonne des noms\n")
+vides_csv <- fichier("noms vides.csv")
+writeLines(c("nom,x,y", "a,1,3", ",4,6", ",7,9", "d,1,1"), vides_csv)
+vid_n <- demande("ouvrir", list(chemin = vides_csv))$id
+pn <- projet(vid_n)
+verifier("un nom vide, pas manquant ; un identifiant jamais vide pour les étapes",
+         identical(vapply(pn$observations, function(o) o$ids[1], ""), c("a", "", "", "d")) && all(nzchar(cles_observations(pn))) && !anyDuplicated(cles_observations(pn)))
+demande("modifier_valeur", list(projet = vid_n, observation = numeros_observations(pn)[2], variable = uid_de(pn, "y"), valeur = "60"))
+rn <- demande("mettre_a_jour", list(projet = vid_n))
+verifier("la modification de la première ligne sans nom se refait à la mise à jour",
+         all(statuts(rn) == "ok") && identical(unname(valeurs(projet(vid_n), "y")), c(3, 60, 9, 1)))
+f_vides <- fichier("noms vides.nuee")
+demande("enregistrer", list(projet = vid_n, chemin = f_vides))
+texte_vides <- paste(readLines(f_vides, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+rv_n <- tryCatch(demande("ouvrir", list(chemin = f_vides)), error = function(e) NULL)
+verifier("enregistré sans nom manquant, puis rouvert", !grepl('"ids":null', texte_vides, fixed = TRUE) && !is.null(rv_n) &&
+           identical(unname(projet(rv_n$id)$noms_obs), c("a", "", "", "d")))
+# (un projet enregistré avant, ses noms vides écrits null, qui ne se rouvrait plus)
+f_null <- fichier("noms null.nuee")
+writeLines(gsub('"ids":""', '"ids":null', texte_vides, fixed = TRUE), f_null, useBytes = TRUE)
+rnul <- tryCatch(demande("ouvrir", list(chemin = f_null)), error = function(e) conditionMessage(e))
+verifier("un projet aux noms vides écrits null (d'avant) s'ouvre : ses noms vides",
+         grepl('"ids":null', paste(readLines(f_null, warn = FALSE), collapse = ""), fixed = TRUE) && is.list(rnul) &&
+           identical(unname(projet(rnul$id)$noms_obs), c("a", "", "", "d")) && identical(projet(rnul$id)$observations[[2]]$ids, ""))
+if (exists("v10", inherits = FALSE)) {
+  verifier("lu par le lire_projet de la 1.0 : ses noms vides",
+           isTRUE(tryCatch(identical(unname(v10$lire_projet(f_vides)$noms_obs), c("a", "", "", "d")), error = function(e) FALSE)))
+}
+
+cat("Une colonne renommée qu'une formule lisait ; les numéros des variables, jamais deux fois\n")
+# (la colonne T du fichier, Temp dans celui de l'année suivante : une formule qui la lisait n'a plus de T
+# à lire, et non TRUE)
+meteo <- fichier("meteo.csv")
+utils::write.csv(data.frame(station = paste0("S", 1:5), T = c(12.1, 13.4, 9.8, 15.2, 11.0), pluie = c(80, 75, 90, 60, 85)), meteo, row.names = FALSE)
+tid <- demande("ouvrir", list(chemin = meteo))$id
+demande("variable_calculee", list(projet = tid, nom = "T_K", formule = "T + 273.15"))
+meteo26 <- fichier("meteo 2026.csv")
+utils::write.csv(data.frame(station = paste0("S", 1:6), Temp = c(12.5, 13.0, 10.1, 15.9, 11.3, 14.0), pluie = c(82, 70, 95, 61, 80, 77)), meteo26, row.names = FALSE)
+at <- demande("mettre_a_jour", list(projet = tid, chemin = meteo26, apercu = TRUE))
+verifier("une formule qui lit une colonne absente (T, qu'R lirait TRUE) : sautée, la variable absente nommée",
+         identical(statuts(at), "sautee") && grepl("1 variable(s) absente(s) des données : T", at$etapes[[1]]$raison, fixed = TRUE) &&
+           identical(noms_absents_formule(projet(tid), "T + pi + F"), "F"))
+# (un TRIM pondéré : ses poids sont une de ses variables, que la suppression refuse, et que la mise à jour
+# dit manquer quand le fichier ne les a plus ; leur numéro ne revient pas à une nouvelle variable, que
+# le TRIM prendrait pour ses poids)
+set.seed(5)
+gt <- expand.grid(annee = 2000:2007, site = sprintf("S%02d", 1:8), stringsAsFactors = FALSE)
+comptages <- data.frame(nom = sprintf("r%03d", seq_len(nrow(gt))), site = gt$site, annee = gt$annee, compte = rpois(nrow(gt), 20),
+                        poids = c(1, 2.5, 4)[as.integer(factor(gt$site)) %% 3 + 1])
+f_compt <- fichier("comptages.csv")
+utils::write.csv(comptages, f_compt, row.names = FALSE)
+cid <- demande("ouvrir", list(chemin = f_compt))$id
+uc <- function(nom) uid_de(projet(cid), nom)
+poids_uid <- uc("poids")
+demande("ajuster", list(projet = cid, type = "TRIM", y = list(uc("compte")), x = list(), nom = "T1", echelle = "none",
+                        options = list(site = list(by = "variable", variable = uc("site")), temps = list(by = "variable", variable = uc("annee")), modele = 2, poids = poids_uid)))
+verifier("un TRIM pondéré : ses poids sont une de ses variables, et leur suppression est refusée, le modèle nommé",
+         poids_uid %in% variables_definition(definition(projet(cid), "T1")) && grepl("T1", refus("supprimer_variable", list(projet = cid, variable = poids_uid))))
+f_sans_poids <- fichier("comptages sans poids.csv")
+utils::write.csv(comptages[setdiff(names(comptages), "poids")], f_sans_poids, row.names = FALSE)
+ap_t <- demande("mettre_a_jour", list(projet = cid, chemin = f_sans_poids, apercu = TRUE))
+verifier("un fichier sans les poids : l'aperçu dit que T1 ne se réajuste plus, faute d'eux",
+         any(vapply(ap_t$modeles$variables_absentes, function(m) identical(m$nom, "T1") && "poids" %in% as.character(m$variables), TRUE)))
+demande("mettre_a_jour", list(projet = cid, chemin = f_sans_poids))
+demande("variable_calculee", list(projet = cid, nom = "surface", formule = "compte * 0 + 100"))
+verifier("puis une nouvelle variable : elle ne prend pas leur numéro, et T1 ne se réajuste pas pondéré par elle",
+         uc("surface") != poids_uid && nzchar(refus("ajuster", list(projet = cid, numero = definition(projet(cid), "T1")$number))))
+# (une variable supprimée, celle du plus grand numéro : une nouvelle ne le reprend pas, ni une après que le
+# projet a été enregistré et rouvert ; ni après Annuler d'une nouvelle variable)
+nid <- demande("ouvrir", list(chemin = meteo))$id
+un <- function(id, nom) uid_de(projet(id), nom)
+pluie_uid <- un(nid, "pluie")
+demande("supprimer_variable", list(projet = nid, variable = pluie_uid))
+f_numeros <- fichier("numeros.nuee")
+demande("enregistrer", list(projet = nid, chemin = f_numeros))
+rid <- demande("ouvrir", list(chemin = f_numeros))$id
+demande("variable_calculee", list(projet = rid, nom = "a", formule = "T * 2"))
+demande("variable_calculee", list(projet = rid, nom = "b", formule = "T * 3"))
+b_uid <- un(rid, "b")
+demande("annuler", list(projet = rid))
+demande("variable_calculee", list(projet = rid, nom = "c", formule = "T * 4"))
+verifier("une variable supprimée, le projet enregistré et rouvert : une nouvelle ne prend pas son numéro ; ni après Annuler de la dernière",
+         !un(rid, "a") %in% pluie_uid && !un(rid, "c") %in% c(pluie_uid, b_uid, un(rid, "a")))
+
+cat("Annuler, Rétablir, et les modèles ajustés depuis\n")
+# (Ajuster ne passe pas par Annuler : un modèle ajusté après un changement reste quand on l'annule, et un
+# modèle ajusté après Annuler ne laisse plus Rétablir remettre les définitions d'avant)
+und_csv <- fichier("annuler.csv")
+set.seed(1)
+utils::write.csv(data.frame(nom = paste0("O", 1:20), x = round(rnorm(20), 3), z = round(rnorm(20), 3), y = round(rnorm(20), 3)), und_csv, row.names = FALSE)
+aid <- demande("ouvrir", list(chemin = und_csv))$id
+ua <- function(nom) uid_de(projet(aid), nom)
+noms_modeles <- function() vapply(projet(aid)$models, function(d) d$name, "")
+dans_seance <- function(nom) any(vapply(etat$modeles, function(e) identical(e$projet, aid) && identical(e$definition$name, nom), TRUE))
+demande("ajuster", list(projet = aid, type = "PCA", x = list(ua("x"), ua("z"), ua("y")), A = 1, nom = "P1"))
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O1"), variable = ua("x"), valeur = "5"))
+demande("annuler", list(projet = aid))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("z")), y = ua("y"), nom = "M1"))
+verifier("un modèle ajusté après Annuler : Rétablir n'est plus proposé (il retirerait sa définition du projet)",
+         setequal(noms_modeles(), c("P1", "M1")) && is.null(resume_projet(projet(aid))$retablissable) && grepl("Rien à rétablir", refus("retablir", list(projet = aid))))
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O2"), variable = ua("x"), valeur = "6"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x")), y = ua("y"), nom = "M2"))
+demande("annuler", list(projet = aid))
+verifier("un changement, un modèle ajusté, Annuler : le changement défait, le modèle reste dans le projet comme dans la séance",
+         setequal(noms_modeles(), c("P1", "M1", "M2")) && dans_seance("M2") && unname(valeurs(projet(aid), "x")["O2"]) != 6)
+demande("retablir", list(projet = aid))
+verifier("puis Rétablir : le changement refait, les modèles gardés", setequal(noms_modeles(), c("P1", "M1", "M2")) && unname(valeurs(projet(aid), "x")["O2"]) == 6)
+# (l'interface réajuste chaque modèle par son numéro après Annuler une mise à jour, avec les composantes de
+# son dernier ajustement, celui des données d'après : Rétablir reste proposé)
+demande("annuler", list(projet = aid))
+for (d in projet(aid)$models) demande("ajuster", list(projet = aid, numero = d$number, A = if (identical(d$name, "P1")) 2))
+verifier("Annuler, puis chaque modèle réajusté par son numéro (une ACP à 2 composantes au lieu d'une) : Rétablir reste proposé",
+         identical(resume_projet(projet(aid))$retablissable, "modification de x") && definition(projet(aid), "P1")$A == 2)
+demande("retablir", list(projet = aid))
+demande("variable_calculee", list(projet = aid, nom = "w", formule = "x * 2"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("w")), y = ua("y"), nom = "M3"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("z")), y = ua("y"), nom = "M4"))
+demande("annuler", list(projet = aid))
+verifier("Annuler une variable sur laquelle un modèle a été ajusté depuis : il part avec elle, un autre ajusté depuis reste",
+         !"w" %in% projet(aid)$noms_var && !"M3" %in% noms_modeles() && "M4" %in% noms_modeles())
+demande("retablir", list(projet = aid))
+verifier("Rétablir : la variable et ce modèle reviennent", "w" %in% projet(aid)$noms_var && all(c("M3", "M4") %in% noms_modeles()))
+
+cat("Une étape retirée : les variables telles que la source et les autres étapes les donnent\n")
+# (une variable en catégories, une unité, des catégories renommées et rangées, des coordonnées : chaque
+# étape retirée défait ce qu'elle avait fait, et non plus rien ; un modèle suit ses catégories, et sa
+# condition les nomme de nouveau)
+ret_csv <- fichier("retrait.csv")
+set.seed(3)
+utils::write.csv(data.frame(nom = paste0("O", 1:12), annee = rep(2016:2019, 3), habitat = rep(c("foret", "lande", "prairie"), each = 4),
+                            X = 1:12, Y = 12:1, y = round(rnorm(12), 3)), ret_csv, row.names = FALSE)
+rid2 <- demande("ouvrir", list(chemin = ret_csv))$id
+ur <- function(n) uid_de(projet(rid2), n)
+demande("type_variable", list(projet = rid2, variable = ur("annee"), type = "qualitative"))
+demande("decrire_variables", list(projet = rid2, descriptions = list(list(variable = ur("y"), unite = "kg"))))
+demande("categories", list(projet = rid2, variable = ur("habitat"), noms = c("forêt", "lande", "prairie"), ordre = c("prairie", "lande", "forêt")))
+demande("coordonnees", list(projet = rid2, regler = TRUE, x = ur("X"), y = ur("Y"), systeme = "2154"))
+demande("ajuster", list(projet = rid2, type = "LM", x = list(ur("habitat")), y = ur("y"), nom = "H", condition = 'habitat != "forêt"'))
+ma <- demande("ajuster", list(projet = rid2, type = "LM", x = list(ur("annee")), y = ur("y"), nom = "A"))
+etape_n <- function(quoi) which(vapply(projet(rid2)$etapes, function(e) e$demande, "") == quoi)
+retirer <- function(quoi) demande("retirer_etape", list(projet = rid2, n = etape_n(quoi)))
+retirer("coordonnees")
+verifier("les coordonnées retirées : le projet n'en a plus", is.null(projet(rid2)$coordonnees))
+retirer("categories")
+dh <- definition(projet(rid2), "H")
+verifier("les catégories : leurs noms et leur ordre d'avant ; le modèle suit, sa condition aussi",
+         identical(categories_de(projet(rid2), "habitat"), c("foret", "lande", "prairie")) &&
+           setequal(vapply(dh$x, function(t) t$name, ""), paste0("habitat(", c("foret", "lande", "prairie"), ")")) &&
+           identical(texte_condition(dh$condition), 'habitat != "foret"') && demande("ajuster", list(projet = rid2, numero = dh$number))$N == 8)
+retirer("decrire_variables")
+verifier("l'unité retirée", !nzchar(variable_du_projet(projet(rid2), ur("y"))$unite %||% ""))
+avant_type <- projet(rid2)
+refus_type <- refus("retirer_etape", list(projet = rid2, n = etape_n("type_variable")))
+verifier("annee de nouveau en nombres, qu'un modèle utilise en catégories : refusé, le modèle nommé, rien de changé",
+         grepl("de nouveau en nombres", refus_type) && grepl("A", refus_type, fixed = TRUE) && identical(projet(rid2), avant_type))
+demande("supprimer_modele", list(modele = ma$id, definition = TRUE))
+if (length(etape_n("type_variable"))) retirer("type_variable")
+verifier("sans le modèle : annee de nouveau en nombres, plus d'étape, les données d'accord",
+         !length(variable_du_projet(projet(rid2), ur("annee"))$categories) && !length(projet(rid2)$etapes) && isTRUE(donnees_conformes(projet(rid2))))
+
+cat("Un projet de la 1.0, puis sa première étape de la 1.1\n")
+# (une valeur corrigée dans la 1.0, qui n'est pas une étape : dit avant la première étape faite dans la 1.1
+# comme après, et par l'aperçu de la mise à jour, qui la remplacera par celle du fichier)
+csv10 <- fichier("releves 1.0.csv")
+utils::write.csv(data.frame(nom = paste0("O", 1:6), x = c(1, 2, 3, 4, 5, 6), y = c(10, 20, 30, 40, 50, 60)), csv10, row.names = FALSE)
+p10 <- importer_tableau(csv10)
+attr(p10, "reglages") <- NULL
+p10$donnees["3", "1"] <- 30
+f_10 <- fichier("projet 1.0.nuee")
+enregistrer_projet(p10, f_10)
+j10 <- jsonlite::fromJSON(f_10, simplifyVector = FALSE)
+j10$nuee$format <- 2L
+j10$etapes <- j10$empreinte_donnees <- j10$source_donnees <- NULL
+writeLines(as.character(jsonlite::toJSON(j10, auto_unbox = TRUE, null = "null", digits = NA)), f_10)
+id10 <- demande("ouvrir", list(chemin = f_10))$id
+e10 <- demande("etapes", list(projet = id10))
+demande("variable_calculee", list(projet = id10, nom = "z", formule = "x * 2"))
+f_11 <- fichier("projet 1.0 puis 1.1.nuee")
+demande("enregistrer", list(projet = id10, chemin = f_11))
+id11 <- demande("ouvrir", list(chemin = f_11))$id
+e11 <- demande("etapes", list(projet = id11))
+a11 <- demande("mettre_a_jour", list(projet = id11, chemin = csv10, apercu = TRUE))
+verifier("un projet de la 1.0 : dit après sa première étape de la 1.1 comme avant, enregistré et rouvert ; l'aperçu de la mise à jour le dit",
+         is.na(e10$conformes) && grepl("avant la 1.1", e10$raison) && is.na(e11$conformes) && identical(e11$raison, e10$raison) &&
+           isTRUE(a11$changements_avant_etapes) && a11$observations$cellules >= 1)
+demande("mettre_a_jour", list(projet = id11, chemin = csv10))
+verifier("mis à jour : sa valeur de la 1.0 remplacée par celle du fichier, comme l'aperçu le disait ; ses données sont alors celles de ses étapes",
+         unname(valeurs(projet(id11), "x")["O3"]) == 3 && isTRUE(demande("etapes", list(projet = id11))$conformes) &&
+           !isTRUE(demande("mettre_a_jour", list(projet = id11, chemin = csv10, apercu = TRUE))$changements_avant_etapes))
+
+cat("Des groupes de k-moyennes rejoués\n")
+# (deux nuages, A plus nombreux que B : A est le groupe 1 ; l'année suivante, B a plus de points, et ses
+# groupes refaits, rangés par taille, prendraient les numéros l'un de l'autre)
+set.seed(6)
+nuages <- function(na, nb) data.frame(nom = c(sprintf("A%02d", seq_len(na)), sprintf("B%02d", seq_len(nb))),
+                                      x = c(rnorm(na, 0, 0.3), rnorm(nb, 5, 0.3)), z = c(rnorm(na, 0, 0.3), rnorm(nb, 5, 0.3)))
+d_k <- nuages(12, 10)
+k_csv <- fichier("points.csv")
+utils::write.csv(d_k, k_csv, row.names = FALSE)
+kid <- demande("ouvrir", list(chemin = k_csv))$id
+rk <- demande("ajuster", list(projet = kid, type = "KMEANS", x = list(uid_de(projet(kid), "x"), uid_de(projet(kid), "z")), options = list(k = 2), nom = "K1"))
+demande("kmeans_variable", list(modele = rk$id, nom = "groupe"))
+groupes_ab <- function() {
+  v <- valeurs(projet(kid), "groupe")
+  list(A = unique(unname(v[startsWith(names(v), "A")])), B = unique(unname(v[startsWith(names(v), "B")])))
+}
+avant_k <- groupes_ab()
+k_csv2 <- fichier("points 2.csv")
+utils::write.csv(rbind(d_k, data.frame(nom = sprintf("B%02d", 11:16), x = rnorm(6, 5, 0.3), z = rnorm(6, 5, 0.3))), k_csv2, row.names = FALSE)
+ak <- demande("mettre_a_jour", list(projet = kid, chemin = k_csv2))
+verifier("des k-moyennes refaites sur des données où l'ordre des tailles de leurs groupes change : chacun garde son numéro, aucune cellule changée",
+         identical(avant_k, list(A = "1", B = "2")) && identical(groupes_ab(), avant_k) && all(statuts(ak) == "ok") && ak$observations$cellules == 0)
 
 cat("En anglais\n")
 options(nuee.langue = "en")

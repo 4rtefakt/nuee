@@ -253,7 +253,7 @@ lier_objets <- function() {
     makeActiveBinding(k, function(v) {
       if (missing(v)) return(etat$projets[[k]])
       if (!inherits(v, "projet_nuee")) stop(sprintf(traduire("%s est un projet de l'application : lui donner un autre nom", "%s is one of the application's projects: give it another name"), k))
-      memoriser(etat$projets[[k]], "changement depuis la console")
+      memoriser(etat$projets[[k]], "changement depuis la console", modeles = modeles_ajoutes(etat$projets[[k]], v))
       v$id <- k
       v$modifie <- TRUE
       etat$projets[[k]] <- v

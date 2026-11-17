@@ -22,7 +22,7 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
       projet$variables[[i]]$categories <- categories
     }
   } else {
-    uid <- max(c(0, vapply(projet$variables, function(v) as.numeric(v$uid), 0))) + 1
+    uid <- numeros_variables_libres(projet)
     projet$variables <- c(projet$variables, list(list(uid = uid, ids = nom, categories = categories,
                                                       formula = "ajoutée par l'application")))
     projet$noms_var[nom_numero(uid)] <- nom
@@ -42,6 +42,28 @@ ajouter_colonne <- function(projet, nom, observations, valeurs, categories = NUL
   if (effacer) projet$donnees[, k] <- NA
   projet$donnees[nom_numero(observations), k] <- valeurs
   projet
+}
+
+# Les numéros internes de `n` nouvelles variables du projet : jamais celui d'une variable qu'il a eue,
+# supprimée depuis (un modèle qui la nommait, les poids d'un TRIM, prendraient sinon la nouvelle sans
+# rien dire) ; au-delà de ses numéros et du plus grand qu'il a donné (dernier_numero_variable).
+numeros_variables_libres <- function(projet, n = 1) dernier_numero_variable(projet) + seq_len(n)
+
+# Le plus grand numéro interne que le projet a donné à une variable : celui de ses variables, ou celui
+# qu'il garde (p$dernier_numero_variable) depuis qu'il a perdu sa variable du plus grand numéro
+# (supprimée, absente du fichier d'une mise à jour, retirée par une fusion, défaite par Annuler :
+# numero_variable_garde). Un projet d'avant ne le garde pas, ses numéros le disent.
+dernier_numero_variable <- function(projet) {
+  max(c(0, suppressWarnings(as.numeric(unlist(projet$dernier_numero_variable))),
+        vapply(projet$variables %||% list(), function(v) as.numeric(v$uid), 0)), na.rm = TRUE)
+}
+
+# Le projet `p` qui garde le plus grand numéro de variable qu'il a donné, `dernier` (dernier_numero_variable
+# de lui-même avant qu'il perde des variables), quand ses variables ne le disent plus.
+numero_variable_garde <- function(p, dernier) {
+  dernier <- max(dernier, dernier_numero_variable(p))
+  if (dernier > max(c(0, vapply(p$variables %||% list(), function(v) as.numeric(v$uid), 0)))) p$dernier_numero_variable <- dernier
+  p
 }
 
 # Range des observations dans une classe : la variable qualitative `variable` (créée si

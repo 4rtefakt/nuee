@@ -149,8 +149,9 @@ pseudo_fusion <- function(ctx, genre, cle) {
 
 # ---------------------------------------------------------------- les données sous leurs noms
 
-# Des noms en clés uniques : un nom qui revient prend son rang (« x », puis « x␟2 »), comme les
-# identifiants des observations (etapes.R : cles_observations).
+# Des noms en clés uniques : un nom qui revient prend son rang (« x », puis « x␟2 ») : les clés des
+# variables, et celles des observations d'une étape notée avant que les étapes gardent les colonnes
+# qui distinguent les observations d'un même nom (etapes.R : par_numeros, cles_observations).
 cles_rangs <- function(noms) {
   if (!anyDuplicated(noms)) return(noms)
   o <- order(noms, method = "radix")
@@ -167,12 +168,13 @@ ID_FUSION <- "\u001did:"
 
 # Les données d'un projet sous leurs noms, pour les comparer d'une version à l'autre : ses variables qui
 # ont des données (`cles_v` : leur nom, avec son rang s'il revient ; `uid_v` : leur numéro par clé), ses
-# observations (`cles_o` : cles_observations ; `uid_o`), les noms de ses identifiants (`noms_id`) et les
-# clés de ses identifiants secondaires (`cles_id`).
-tableau_fusion <- function(p) {
+# observations (`cles_o` : cles_observations, celles d'un même nom distinguées par les colonnes
+# `colonnes`, les mêmes pour les trois versions d'une fusion : fusionner_projets ; `uid_o`), les noms
+# de ses identifiants (`noms_id`) et les clés de ses identifiants secondaires (`cles_id`).
+tableau_fusion <- function(p, colonnes = colonnes_cle(p)) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
   cles_v <- cles_rangs(vapply(vars, function(v) premier_texte(v$ids), ""))
-  cles_o <- cles_observations(p)
+  cles_o <- cles_observations(p, colonnes)
   noms_id <- as.character(unlist(p$observation_id_names %||% "Observation"))
   list(p = p, vars = stats::setNames(vars, cles_v), cles_v = cles_v,
        uid_v = stats::setNames(numeros_entiers(vapply(vars, function(v) as.numeric(v$uid), 0)), cles_v),
@@ -200,7 +202,7 @@ valeurs_fusion <- function(t, k, cles) {
   }
   v <- t$vars[[k]]
   if (is.null(v)) return(rep(NA_real_, n))
-  i <- match(as.character(t$uid_o[cles]), rownames(t$p$donnees))
+  i <- match(as.character(t$uid_o[match(cles, t$cles_o)]), rownames(t$p$donnees))
   x <- unname(t$p$donnees[i, as.character(t$uid_v[[k]])])
   cats <- as.character(unlist(v$categories))
   if (length(cats)) cats[x] else as.numeric(x)
@@ -310,6 +312,61 @@ renommages_categories <- function(tB, tX, k) {
     if (length(n) == 1 && !is.na(n) && !n %in% cb) r[[o]] <- n
   }
   r
+}
+
+# Les variables qu'un côté `tX` a renommées depuis la base `tB` (tableau_fusion) : une variable de la base
+# qu'il n'a plus sous ce nom, et une des siennes, nouvelle, au même numéro et du même type, qui a ses
+# valeurs sur leurs observations communes, ou que ses étapes ont renommée ainsi (renommer_variable). La clé
+# de la base de chacune, nommée par la sienne. Sans elles, une variable renommée des deux côtés serait
+# gardée sous ses deux noms, et ses modèles la prendraient deux fois.
+renommages_variables <- function(tB, tX) {
+  r <- character(0)
+  nouvelles <- setdiff(tX$cles_v, tB$cles_v)
+  parties <- setdiff(tB$cles_v, tX$cles_v)
+  if (!length(nouvelles) || !length(parties)) return(r)
+  oc <- intersect(tB$cles_o, tX$cles_o)
+  # (les renommages de ses étapes que la base n'a pas, dans leur ordre : le nom qu'ils donnent à `nom`)
+  eb <- cles_etapes(tB$p)
+  etapes <- Filter(function(e) identical(premier_texte(e$demande), "renommer_variable") && !cle_etape(e, TRUE) %in% eb, tX$p$etapes %||% list())
+  suivre <- function(nom) {
+    for (e in etapes) {
+      q <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}")), error = function(err) NULL)
+      if (identical(premier_texte(q$variable), nom)) nom <- premier_texte(q$nom)
+    }
+    nom
+  }
+  for (k in nouvelles) {
+    j <- parties[unname(tB$uid_v[parties]) == tX$uid_v[[k]]]
+    if (length(j) != 1 || !identical(type_fusion(tB, j), type_fusion(tX, k))) next
+    if (identical(suivre(premier_texte(tB$vars[[j]]$ids)), premier_texte(tX$vars[[k]]$ids)) ||
+        all(egales_fusion(valeurs_fusion(tB, j, oc), valeurs_fusion(tX, k, oc)))) r[[k]] <- j
+  }
+  r
+}
+
+# Le tableau `t` (tableau_fusion) dont les variables de `renommees` (la clé de la base de chacune, nommée par
+# la leur dans `t`) prennent la clé de la base : un côté se compare à la base sous les mêmes clés, sa
+# variable renommée étant celle de la base, dont le nom (ids) a changé.
+avec_renommages <- function(t, renommees) {
+  i <- match(names(renommees), t$cles_v)
+  if (!length(renommees) || anyNA(i)) return(t)
+  t$cles_v[i] <- unname(renommees)
+  names(t$vars)[i] <- unname(renommees)
+  names(t$uid_v)[i] <- unname(renommees)
+  t
+}
+
+# Le tableau de données fusionnées (rejouées par les étapes, ou fusionnées) sous les clés de la base pour
+# les variables qu'un côté a renommées (ctx$renommees) : la sienne y porte le nom qu'un côté lui a donné.
+tableau_fusionne <- function(p, ctx) {
+  t <- tableau_fusion(p, ctx$colonnes_cle)
+  r <- character(0)
+  for (k in unique(c(ctx$renommees$mien, ctx$renommees$leur))) {
+    if (k %in% t$cles_v) next
+    j <- intersect(c(names(ctx$renommees$mien)[ctx$renommees$mien == k], names(ctx$renommees$leur)[ctx$renommees$leur == k]), t$cles_v)
+    if (length(j) == 1) r[[j]] <- k
+  }
+  avec_renommages(t, r)
 }
 
 # Les catégories d'une variable qualitative après fusion. `cb`, `cm`, `cl` : celles de la base, la mienne
@@ -478,6 +535,9 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
   vars_k <- garder_v[!startsWith(garder_v, ID_FUSION)]
   ids_k <- garder_v[startsWith(garder_v, ID_FUSION)]
   pris <- numeros_entiers(vapply(M$variables, function(v) as.numeric(v$uid), 0))
+  # (une variable nouvelle de leur côté ne prend pas un numéro que le mien ou la base a donné, même à une
+  # variable supprimée depuis : variables.R, numeros_variables_libres)
+  limite <- max(dernier_numero_variable(M), dernier_numero_variable(tB$p))
   uid_v <- stats::setNames(numeric(length(vars_k)), vars_k)
   for (k in vars_k) {
     if (k %in% tM$cles_v) {
@@ -485,7 +545,7 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
       next
     }
     u <- if (k %in% tL$cles_v) tL$uid_v[[k]] else tB$uid_v[[k]]
-    if (u %in% pris) u <- max(c(0, pris)) + 1
+    if (u %in% pris || (!k %in% tB$cles_v && u <= limite)) u <- max(c(0, pris, limite)) + 1
     pris <- c(pris, u)
     uid_v[[k]] <- u
   }
@@ -617,8 +677,13 @@ fusion_cellules <- function(tB, tM, tL, dM, dL, ctx) {
 # donnent devient une étape de plus, un collage des cellules, et les données restent celles que leurs
 # étapes donnent. NULL quand ce n'est pas possible (une source absente de cet ordinateur, une étape de
 # l'autre côté qui ne s'applique plus après les miennes…), et ctx$raison dit pourquoi quand c'est utile
-# à savoir : la fusion se fait alors cellule par cellule.
-fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
+# à savoir : la fusion se fait alors cellule par cellule. Les fichiers relus (la source, ceux des
+# étapes) doivent être ceux qui ont été lus : changés depuis, la fusion prendrait aussi ce que personne
+# n'a mis à jour. Chaque étape rejouée doit se refaire (une erreur, un fichier d'une étape qui n'est que
+# sur l'ordinateur de l'autre, laisseraient de côté ce qu'elle donne), et chaque variable des deux côtés
+# être dans les données rejouées, sauf celle qu'un côté a retirée et que l'autre n'a pas changée
+# (`dM`, `dL` : changements_fusion) : autrement, cellule par cellule.
+fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier, dM, dL) {
   rien <- function(raison) {
     ctx$raison <- raison
     NULL
@@ -650,6 +715,21 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   if (is.null(fichier_retrouve(S$source_donnees, dossier))) {
     return(rien(phrase_fusion("la source %s est introuvable sur cet ordinateur", "the source %s isn't found on this computer", basename(premier_texte(S$source_donnees$chemin)))))
   }
+  # (la source, son formulaire et les fichiers des étapes, tels qu'ils ont été lus : comme le retrait d'une
+  # étape, serveur.R)
+  change <- function(f) isTRUE(etat_fiche(f, dossier)$modifie)
+  if (change(S$source_donnees)) {
+    return(rien(phrase_fusion("la source %s a changé depuis qu'elle a été lue", "the source %s changed since it was read", basename(premier_texte(S$source_donnees$chemin)))))
+  }
+  if (is.list(S$source_donnees$formulaire) && change(S$source_donnees$formulaire)) {
+    return(rien(phrase_fusion("le formulaire %s a changé depuis qu'il a été lu", "the form %s changed since it was read", basename(premier_texte(S$source_donnees$formulaire$chemin)))))
+  }
+  for (e in etapes) for (f in e$fichiers %||% list()) {
+    if (change(f)) {
+      return(rien(phrase_fusion("le fichier %s de l'étape %s a changé depuis qu'il a été lu", "the file %s of the step %s changed since it was read",
+                                basename(premier_texte(f$chemin)), guillemets_fusion(etiquette_etape(e)))))
+    }
+  }
   cible <- M
   cible$source_donnees <- S$source_donnees
   cible$models <- list()
@@ -657,6 +737,12 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   r <- tryCatch(mise_a_jour(cible, dossier = dossier, etapes = etapes), error = function(e) e)
   if (inherits(r, "error")) return(rien(conditionMessage(r)))
   if (!is.null(r$choisir)) return(rien(traduire("la source a plusieurs tableaux", "the source has several tables")))
+  # (chaque étape rejouée ; celles de l'autre côté, faites après les miennes, sans être sautées non plus)
+  for (e in r$rapport$etapes) {
+    if (identical(e$statut, "erreur")) {
+      return(rien(phrase_fusion("l'étape %s ne se refait pas (%s)", "the step %s can't be redone (%s)", guillemets_fusion(premier_texte(e$etiquette)), premier_texte(e$raison))))
+    }
+  }
   for (e in utils::tail(r$rapport$etapes, length(etapes) - length(S$etapes))) {
     if (!identical(e$statut, "ok")) {
       return(rien(phrase_fusion("l'étape %s ne s'applique plus après les autres (%s)", "the step %s no longer applies after the others (%s)",
@@ -664,7 +750,21 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     }
   }
   D <- r$projet
-  tD <- tableau_fusion(D)
+  tD <- tableau_fusionne(D, ctx)
+  # (chaque variable de chaque côté, dans les données rejouées, sauf retirée d'un côté et inchangée de l'autre)
+  inchangee <- function(d, k) is.null(d$cellules[[k]]) && is.null(d$champs[[k]]) && !k %in% d$listes
+  for (k in setdiff(c(tM$cles_v, setdiff(tL$cles_v, tM$cles_v)), tD$cles_v)) {
+    retiree <- k %in% tB$cles_v && (!k %in% tM$cles_v || !k %in% tL$cles_v) &&
+      (!k %in% tM$cles_v || inchangee(dM, k)) && (!k %in% tL$cles_v || inchangee(dL, k))
+    if (!retiree) {
+      return(rien(phrase_fusion("les étapes rejouées ne donnent pas la variable %s", "the replayed steps don't give the variable %s", guillemets_fusion(nom_cle_fusion(k)))))
+    }
+  }
+  # (ni une variable qu'aucun côté n'a)
+  autres <- setdiff(tD$cles_v, c(tM$cles_v, tL$cles_v))
+  if (length(autres)) {
+    return(rien(phrase_fusion("les étapes rejouées donnent une variable qu'aucun côté n'a : %s", "the replayed steps give a variable neither side has: %s", guillemets_fusion(nom_cle_fusion(autres[1])))))
+  }
   for (k in tD$cles_v) {
     v <- tD$vars[[k]]
     cats <- as.character(unlist(v$categories))
@@ -681,7 +781,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
   D$empreinte_donnees <- empreinte_donnees(D)
   # (les cellules changées autrement des deux côtés)
   oc <- intersect(tM$cles_o, tL$cles_o)
-  tD <- tableau_fusion(D)
+  tD <- tableau_fusionne(D, ctx)
   for (k in intersect(tM$cles_v, tL$cles_v)) {
     vb <- valeurs_fusion(tB, k, oc)
     vm <- valeurs_fusion(tM, k, oc)
@@ -702,7 +802,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
               valeurs = matrix(ifelse(is.na(voulu[a_faire]), "", voulu[a_faire]), ncol = 1), fusion_avec = ctx$qui)
     D <- noter_etape(D, sans_attributs(appliquer_etape("coller_cellules", D, q)), "coller_cellules", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("valeurs de %s", "values of %s", nom_cle_fusion(k))))
-    tD <- tableau_fusion(D)
+    tD <- tableau_fusionne(D, ctx)
   }
   # (l'unité et la description d'une variable changées autrement des deux côtés, de même ; une étape qui
   # les décrit, quand le choix n'est pas ce que les étapes rejouées donnent)
@@ -716,7 +816,7 @@ fusion_etapes <- function(B, M, L, tB, tM, tL, ctx, dossier) {
     q <- list(descriptions = list(stats::setNames(list(tD$uid_v[[k]], voulu), c("variable", f))), fusion_avec = ctx$qui)
     D <- noter_etape(D, appliquer_etape("decrire_variables", D, q), "decrire_variables", q,
                      etiquette_fusion(ctx, choix, phrase_fusion("%s de %s", "%s of %s", nom_champ_variable(f), nom_cle_fusion(k))))
-    tD <- tableau_fusion(D)
+    tD <- tableau_fusionne(D, ctx)
   }
   # (les coordonnées réglées autrement des deux côtés, de même)
   cm <- coordonnees_canon(tM)
@@ -743,7 +843,7 @@ etiquette_fusion <- function(ctx, choix, quoi) {
 # Le nom d'un champ d'une variable dans une phrase.
 nom_champ_variable <- function(f) {
   switch(f, unite = traduire("unité", "unit"), description = traduire("description", "description"), formula = traduire("formule", "formula"),
-         origine = traduire("origine", "origin"), ids = traduire("identifiants", "identifiers"), f)
+         origine = traduire("origine", "origin"), ids = traduire("nom", "name"), f)
 }
 
 # Le conflit d'un champ d'une variable (son unité, sa description, sa formule) changé autrement des
@@ -942,6 +1042,36 @@ renumeroter_definition <- function(d, carte) {
   d
 }
 
+# Les définitions `ds` d'un côté (dans la numérotation de la fusion ; `tX` : le tableau de ce côté) qui
+# nomment une variable renommée (ctx$renommees) sous le nom qu'elle a dans la fusion (`p`, `tF`) : le nom
+# de leurs termes (écrit comme Nouveau modèle l'écrit, atelier.R : nom_terme ; un terme aux décalages
+# garde le sien), et leur condition (atelier.R : renommer_symbole). Les trois côtés nomment alors la
+# variable de même : un nom changé n'est pas un changement de leurs termes, et le modèle fusionné la
+# nomme comme les données.
+suivre_renommages_fusion <- function(ds, p, tF, tX, ctx) {
+  for (k in unique(c(ctx$renommees$mien, ctx$renommees$leur))) {
+    if (!k %in% tF$cles_v || !k %in% tX$cles_v) next
+    u <- as.numeric(tF$uid_v[[k]])
+    final <- premier_texte(tF$vars[[k]]$ids)
+    ici <- premier_texte(tX$vars[[k]]$ids)
+    ds <- lapply(ds, function(d) {
+      for (champ in c("x", "y", "termes_complets")) if (length(d[[champ]])) d[[champ]] <- lapply(d[[champ]], function(t) {
+        vs <- as.numeric(unlist(t$variables))
+        if (!u %in% vs || length(t$lags) || any(vs <= 0)) return(t)
+        nom <- tryCatch(nom_terme(p, vs, vapply(seq_along(vs), function(j) as.numeric(categorie(t, j)), 0)), error = function(e) NULL)
+        if (!is.null(nom)) t$name <- nom
+        t
+      })
+      if (avec_condition(d) && !identical(ici, final)) {
+        condition <- renommer_symbole(d$condition, ici, final)
+        if (!is.null(condition)) d$condition <- condition
+      }
+      d
+    })
+  }
+  ds
+}
+
 # ---------------------------------------------------------------- les modèles
 
 # Une définition comparée à une autre : sans son nom, son numéro, ni la demande de l'interface qui l'a
@@ -1038,7 +1168,8 @@ termes_fusion <- function(b, m, l) {
     apres <- if (!is.na(f) && any(familles %in% f)) max(which(familles %in% f)) else length(sortie)
     sortie <- append(sortie, list(l[[j]]), after = apres)
   }
-  list(termes = sortie, conflit = conflit)
+  # (jamais deux fois le même terme : celui d'une variable renommée, venu des deux côtés)
+  list(termes = sortie[!duplicated(vapply(sortie, cle_terme, ""))], conflit = conflit)
 }
 
 # Une définition fusionnée champ par champ (dans la numérotation de la fusion) : chaque champ du côté
@@ -1693,7 +1824,7 @@ fusion_predictions <- function(tB, tM, tL, cartes, ctx) {
 # l'historique d'un fichier .usp, les réglages d'un import de KoboToolbox…) se fusionnent champ par champ.
 CHAMPS_FUSIONNES <- c("observations", "variables", "datasets", "observation_id_names", "donnees", "noms_obs", "noms_var", "models",
                       "documents", "figures", "source_donnees", "etapes", "empreinte_donnees", "session", "nuee", "coordonnees",
-                      "prediction_sets", CHAMPS_SEANCE_FUSION)
+                      "prediction_sets", "dernier_numero_variable", CHAMPS_SEANCE_FUSION)
 
 # ---------------------------------------------------------------- la fusion
 
@@ -1701,6 +1832,11 @@ CHAMPS_FUSIONNES <- c("observations", "variables", "datasets", "observation_id_n
 # base) : la mise à jour depuis un fichier, les étapes ajoutées, les variables et les observations
 # ajoutées ou retirées, les cellules changées, les nouvelles catégories, les unités et descriptions.
 apports_donnees <- function(B, X, d, ctx, cote) {
+  # (une variable renommée : son ancien nom et le nouveau, plutôt qu'un champ changé)
+  renommees <- ctx$renommees[[cote]]
+  if (length(renommees)) apport_fusion(ctx, cote, phrase_fusion("variable(s) renommée(s) : %s", "variable(s) renamed: %s",
+                                                                noms_fusion(sprintf("%s → %s", vapply(unname(renommees), nom_cle_fusion, ""), names(renommees)), 3)))
+  d$champs <- Filter(length, lapply(d$champs, function(f) setdiff(f, "ids")))
   if (is.list(X$source_donnees) && !meme_source(B$source_donnees, X$source_donnees)) {
     apport_fusion(ctx, cote, phrase_fusion("données mises à jour de %s", "data updated from %s", basename(premier_texte(X$source_donnees$chemin))))
   }
@@ -1749,10 +1885,18 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   ctx$qui <- premier_texte(qui, traduire("l'autre version", "the other version"))
   ctx$mode <- "cellules"
   ctx$raison <- ""
+  # (les colonnes qui distinguent les observations d'un même nom : les mêmes pour les trois versions, et
+  # pour ce que la fusion en fait)
+  ctx$colonnes_cle <- colonnes_cle(list(base, mien, leur))
   notes <- character(0)
-  tB <- tableau_fusion(base)
-  tM <- tableau_fusion(mien)
-  tL <- tableau_fusion(leur)
+  tB <- tableau_fusion(base, ctx$colonnes_cle)
+  tM <- tableau_fusion(mien, ctx$colonnes_cle)
+  tL <- tableau_fusion(leur, ctx$colonnes_cle)
+  # (une variable renommée d'un côté : celle de la base sous sa clé, son nom changé comme un autre champ ;
+  # renommée autrement des deux côtés, un conflit de son nom)
+  ctx$renommees <- list(mien = renommages_variables(tB, tM), leur = renommages_variables(tB, tL))
+  tM <- avec_renommages(tM, ctx$renommees$mien)
+  tL <- avec_renommages(tL, ctx$renommees$leur)
   dM <- changements_fusion(tB, tM)
   dL <- changements_fusion(tB, tL)
   # (les données : inchangées des deux côtés, par les étapes si c'est possible, sinon cellule par cellule)
@@ -1762,7 +1906,7 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
     ctx$mode <- "inchangees"
   } else {
     n0 <- length(ctx$conflits)
-    D <- fusion_etapes(base, mien, leur, tB, tM, tL, ctx, dossier)
+    D <- fusion_etapes(base, mien, leur, tB, tM, tL, ctx, dossier, dM, dL)
     if (!is.null(D)) {
       for (f in c("variables", "observations", "observation_id_names", "datasets", "donnees", "noms_obs", "noms_var", "source_donnees",
                   "etapes", "empreinte_donnees", "coordonnees", "collecte")) p <- avec_champ(p, f, D[[f]])
@@ -1774,7 +1918,7 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
       notes <- x$notes
     }
   }
-  tF <- tableau_fusion(p)
+  tF <- tableau_fusionne(p, ctx)
   cartes <- list(base = carte_fusion(tB, tF, ctx), mien = carte_fusion(tM, tF, ctx), leur = carte_fusion(tL, tF, ctx))
   if (!identical(ctx$mode, "etapes")) p <- avec_champ(p, "coordonnees", fusion_coordonnees(tB, tM, tL, tF, ctx))
   if (!is.null(base$prediction_sets) || !is.null(mien$prediction_sets) || !is.null(leur$prediction_sets)) p$prediction_sets <- fusion_predictions(tB, tM, tL, cartes, ctx)
@@ -1783,9 +1927,9 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
     ds <- lapply(X$models %||% list(), renumeroter_definition, carte = carte)
     stats::setNames(ds, cles_rangs(vapply(X$models %||% list(), function(d) premier_texte(d$name), "")))
   }
-  dB <- definitions(base, cartes$base)
-  dMm <- definitions(mien, cartes$mien)
-  dLl <- definitions(leur, cartes$leur)
+  dB <- suivre_renommages_fusion(definitions(base, cartes$base), p, tF, tB, ctx)
+  dMm <- suivre_renommages_fusion(definitions(mien, cartes$mien), p, tF, tM, ctx)
+  dLl <- suivre_renommages_fusion(definitions(leur, cartes$leur), p, tF, tL, ctx)
   modeles <- fusion_modeles(base, mien, leur, dB, dMm, dLl, ctx)
   p$models <- lapply(modeles$modeles, function(d) {
     for (f in c("observations", "cochees", "test", "exclues")) if (length(d[[f]])) {
@@ -1828,6 +1972,9 @@ fusionner_projets <- function(base, mien, leur, choix = list(), dossier = NULL, 
   }
   # (la séance est la mienne ; ce qui a écrit le fichier, ce qui l'enregistrera ; un côté fusionné avec
   # lui-même ou avec la base, tel quel)
+  # (le plus grand numéro de variable que l'une des trois versions a donné : aucun ne reviendra)
+  p$dernier_numero_variable <- NULL
+  p <- numero_variable_garde(p, max(vapply(list(base, mien, leur), dernier_numero_variable, 0)))
   p <- avec_champ(p, "session", mien$session)
   p$nuee <- NULL
   cb <- contenu_fusion(base)

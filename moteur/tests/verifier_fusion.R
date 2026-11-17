@@ -11,13 +11,20 @@
 #     des deux côtés, une fois ; les deux côtés ajoutent une variable calculée (numéros qui se croisent), un
 #     modèle de la leur la suit ; un seul côté met les données à jour, l'étape de l'autre rejouée après ;
 #   - cellule par cellule quand les étapes ne se rejouent pas : la source introuvable sur cet ordinateur,
-#     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ;
+#     des données changées hors des étapes, une étape de l'autre côté qui ne s'applique plus ; la source
+#     changée depuis sa lecture, une étape qui ne se refait pas ici (son fichier n'est que chez l'autre), une
+#     variable supprimée d'un côté et changée de l'autre ; une variable nouvelle de leur côté, qui ne prend
+#     pas le numéro d'une que j'ai supprimée ;
+#   - une variable renommée autrement des deux côtés (un conflit de son nom, une seule variable, une fois
+#     dans le modèle, sa condition qui suit), ou d'un côté quand l'autre change une de ses valeurs ou une
+#     autre variable ;
 #   - les données cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux
 #     côtés par deux mises à jour, une cellule changée autrement des deux côtés, les catégories nouvelles
 #     de chaque côté mises avant la dernière (une régression garde sa référence, contre lm()), les termes
 #     de ces catégories ajoutés des deux côtés au même modèle, un modèle nouveau d'un côté qui prend les
 #     lignes de l'autre ; une variable et des observations retirées d'un côté, inchangées (retirées) ou
-#     changées (un conflit) de l'autre ; une unité ; un jeu de prédiction ;
+#     changées (un conflit) de l'autre ; une unité ; un jeu de prédiction ; des lignes sans nom, chaque
+#     côté relu, ses cellules à leur place ;
 #   - chaque sorte de conflit (modèle, document, figure, source des données, variable, champ : l'unité
 #     d'une variable, les coordonnées, l'ordre des catégories) et ses deux choix, par les étapes (le choix
 #     que les étapes rejouées ne donnent pas devient une étape, les données restent conformes) et cellule
@@ -30,7 +37,8 @@
 #     puis fusionner_finir (un seul Ctrl+Z, l'enregistrement qui passe ensuite sans question), les refus
 #     (des choix qui manquent, un projet changé depuis, une ancienne version, sans base), fichier_change
 #     demandé pendant une fusion préparée ; une fusion de trois fichiers écrite dans un fichier ; annuler une
-#     fusion ; les copies effacées à la fermeture ;
+#     fusion (le modèle qu'elle a apporté part avec elle, celui ajusté depuis reste) ; les copies effacées à
+#     la fermeture ;
 #   - un projet que personne ne fusionne : le même fichier écrit, le même projet lu, aussi quand sa copie
 #     dans la séance ne s'écrit pas ;
 #   - les phrases en anglais.
@@ -401,6 +409,143 @@ pl <- fusion(base, mien_e, leur_e, list(`variable:v` = "leur"))$projet
 verifier("le leur : leurs valeurs ; les étapes des deux côtés gardées, l'empreinte rompue (les données ne sont plus ce qu'elles donnent)",
          isTRUE(all.equal(unname(valeurs(pl, "v")), unname(valeurs(lire_projet(leur_e), "v")))) && length(pl$etapes) == 2 && identical(pl$empreinte_donnees, ""))
 
+cat("Par les étapes, seulement sur les fichiers tels qu'ils ont été lus, chaque étape refaite et chaque variable là\n")
+# (une étude à part : six observations, chaque côté corrige une valeur de x)
+etude2 <- file.path(dossier, "etude2")
+dir.create(file.path(etude2, "donnees"), recursive = TRUE)
+csv2 <- file.path(etude2, "donnees", "releves.csv")
+df2 <- data.frame(nom = paste0("O", 1:6), x = c(1, 2, 3, 4, 5, 6), z = c(7, 3, 8, 1, 9, 2), y = c(10, 21, 29, 42, 50, 61))
+utils::write.csv(df2, csv2, row.names = FALSE)
+id2 <- demande("ouvrir", list(chemin = csv2))$id
+demande("ajuster", list(projet = id2, type = "LM", x = uid(id2, "x"), y = uid(id2, "y"), nom = "M1"))
+base2 <- file.path(etude2, "base.nuee")
+demande("enregistrer", list(projet = id2, chemin = base2))
+demande("fermer_projet", list(projet = id2))
+cote2 <- function(nom, f) {
+  id <- demande("ouvrir", list(chemin = base2))$id
+  f(id)
+  chemin <- file.path(etude2, nom)
+  demande("enregistrer", list(projet = id, chemin = chemin))
+  demande("fermer_projet", list(projet = id))
+  chemin
+}
+corriger <- function(id, o, v, x) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), o), variable = uid(id, v), valeur = x))
+fusion2 <- function(m, l, choix = list()) fusionner_projets(lire_projet(base2), lire_projet(m), lire_projet(l), choix, dossier = etude2, qui = "Bob")
+mien2 <- cote2("mien.nuee", function(id) corriger(id, "O1", "x", "100"))
+leur2 <- cote2("leur.nuee", function(id) corriger(id, "O2", "x", "200"))
+# (le fichier source changé depuis qu'il a été lu, sans que personne ne mette les données à jour : x de O3
+# corrigé, une ligne O7 de plus)
+utils::write.csv(rbind(transform(df2, x = replace(x, 3, 33)), data.frame(nom = "O7", x = 7, z = 5, y = 70)), csv2, row.names = FALSE)
+r <- fusion2(mien2, leur2)
+verifier("la source changée depuis sa lecture : cellule par cellule, la raison dite ; ni sa valeur corrigée ni sa ligne nouvelle, la source d'avant",
+         identical(r$donnees$mode, "cellules") && grepl("a changé depuis qu'elle a été lue", r$donnees$raison) &&
+           identical(unname(valeurs(r$projet, "x")), c(100, 200, 3, 4, 5, 6)) && identical(r$projet$source_donnees$sha256, lire_projet(base2)$source_donnees$sha256))
+utils::write.csv(df2, csv2, row.names = FALSE)
+verifier("le fichier rendu tel qu'il était : de nouveau par les étapes", identical(fusion2(mien2, leur2)$donnees$mode, "etapes"))
+# (leur côté a mis les données à jour du fichier de l'année suivante, et ajouté des colonnes d'un fichier
+# qui n'est que sur son ordinateur : leur étape ne se refait pas ici)
+csv26 <- file.path(etude2, "donnees", "releves_2026.csv")
+utils::write.csv(rbind(df2, data.frame(nom = "O7", x = 7, z = 5, y = 70)), csv26, row.names = FALSE)
+ailleurs <- file.path(dossier, "chez_bob")
+dir.create(ailleurs)
+sites2 <- file.path(ailleurs, "sites.csv")
+utils::write.csv(data.frame(nom = paste0("O", 1:7), altitude = c(110, 120, 130, 140, 150, 160, 170)), sites2, row.names = FALSE)
+leur26 <- cote2("leur26.nuee", function(id) {
+  demande("mettre_a_jour", list(projet = id, chemin = csv26))
+  demande("ajouter_colonnes", list(projet = id, chemin = sites2, nom = "sites.csv", cles_projet = list("id:1"), cles_table = list("nom"), colonnes = list("altitude")))
+})
+unlink(sites2)
+r <- fusion2(mien2, leur26)
+verifier("une étape de leur côté qui ne se refait pas ici : cellule par cellule, la raison dite, leur colonne altitude gardée",
+         identical(r$donnees$mode, "cellules") && grepl("ne se refait pas", r$donnees$raison) && grepl("sites.csv", r$donnees$raison, fixed = TRUE) &&
+           "altitude" %in% r$projet$noms_var && unname(valeurs(r$projet, "altitude")["O7"]) == 170 && unname(valeurs(r$projet, "x")["O1"]) == 100)
+# (leur côté a mis les données à jour, et corrigé z ; le mien a supprimé z : rejouées, mes étapes après
+# les leurs ôteraient z et leur correction sans rien dire)
+leur_z <- cote2("leur_z.nuee", function(id) {
+  demande("mettre_a_jour", list(projet = id, chemin = csv26))
+  corriger(id, "O2", "z", "30")
+})
+mien_z <- cote2("mien_z.nuee", function(id) demande("supprimer_variable", list(projet = id, variable = uid(id, "z"))))
+r <- fusion2(mien_z, leur_z)
+verifier("une variable supprimée de mon côté, changée du leur, que les étapes rejouées n'ont plus : cellule par cellule, un conflit",
+         identical(r$donnees$mode, "cellules") && grepl("variable « z »", r$donnees$raison, fixed = TRUE) && "variable:z" %in% ids_conflits(r))
+verifier("le leur : z et leur correction", isTRUE(tryCatch(unname(valeurs(fusion2(mien_z, leur_z, list(`variable:z` = "leur"))$projet, "z")["O2"]) == 30, error = function(e) FALSE)))
+# (supprimée d'un côté, inchangée de l'autre : par les étapes)
+r <- fusion2(mien_z, leur26 <- cote2("leur_o7.nuee", function(id) demande("mettre_a_jour", list(projet = id, chemin = csv26))))
+verifier("une variable supprimée d'un côté, inchangée de l'autre : par les étapes, sans elle", identical(r$donnees$mode, "etapes") && !"z" %in% r$projet$noms_var &&
+           "O7" %in% names(valeurs(r$projet, "x")))
+
+# (j'ai fait puis supprimé une variable, eux en ont fait une : la leur ne prend pas le numéro de la mienne,
+# par les étapes comme cellule par cellule, et la fusion garde le plus grand numéro donné)
+mien_w <- cote2("mien_w.nuee", function(id) {
+  demande("variable_calculee", list(projet = id, nom = "w", formule = "x * 2"))
+  demande("supprimer_variable", list(projet = id, variable = uid(id, "w")))
+})
+leur_v <- cote2("leur_v.nuee", function(id) demande("variable_calculee", list(projet = id, nom = "v", formule = "x * 3")))
+w_uid <- max(vapply(lire_projet(base2)$variables, function(v) as.numeric(v$uid), 0)) + 1
+# (le numéro qu'une nouvelle variable prend dans le projet fusionné)
+neuve <- function(p) uid_p(ajouter_colonne(p, "neuve", numeros_observations(p), rep(1, length(p$observations))), "neuve")
+sans_etapes2 <- function(f) {
+  j <- jsonlite::fromJSON(f, simplifyVector = FALSE)
+  j$source_donnees <- j$etapes <- j$empreinte_donnees <- NULL
+  g <- sub("\\.nuee$", " sans etapes.nuee", f)
+  writeLines(enc2utf8(as.character(jsonlite::toJSON(j, auto_unbox = TRUE, null = "null", na = "null", digits = NA))), g, useBytes = TRUE)
+  g
+}
+r_e <- fusion2(mien_w, leur_v)
+r_c <- fusionner_projets(lire_projet(sans_etapes2(base2)), lire_projet(sans_etapes2(mien_w)), lire_projet(sans_etapes2(leur_v)), list(), dossier = etude2, qui = "Bob")
+verifier("leur variable nouvelle ne prend pas le numéro d'une variable que j'ai supprimée, par les étapes comme cellule par cellule ; le plus grand numéro gardé",
+         identical(c(r_e$donnees$mode, r_c$donnees$mode), c("etapes", "cellules")) && !uid_p(r_e$projet, "v") %in% w_uid && !uid_p(r_c$projet, "v") %in% w_uid &&
+           !neuve(r_e$projet) %in% c(w_uid, uid_p(r_e$projet, "v")) && !neuve(r_c$projet) %in% c(w_uid, uid_p(r_c$projet, "v")))
+
+cat("Une variable renommée : d'un côté, ou autrement des deux côtés\n")
+# (V3, que M1 utilise et nomme dans sa condition : renommée hauteur de mon côté, height du leur, c'est la
+# même variable, et un conflit de son nom ; autrement, ses deux noms gardés, M1 la prendrait deux fois)
+etude3 <- file.path(dossier, "etude3")
+dir.create(file.path(etude3, "donnees"), recursive = TRUE)
+csv3 <- file.path(etude3, "donnees", "releves.csv")
+set.seed(4)
+utils::write.csv(data.frame(nom = paste0("O", 1:15), V3 = round(rnorm(15, 10), 2), x2 = round(rnorm(15), 2), y = round(rnorm(15), 2)), csv3, row.names = FALSE)
+id3 <- demande("ouvrir", list(chemin = csv3))$id
+demande("ajuster", list(projet = id3, type = "LM", x = list(uid(id3, "V3"), uid(id3, "x2")), y = uid(id3, "y"), nom = "M1", condition = "V3 > 9"))
+base3 <- file.path(etude3, "base.nuee")
+demande("enregistrer", list(projet = id3, chemin = base3))
+demande("fermer_projet", list(projet = id3))
+cote3 <- function(nom, f) {
+  id <- demande("ouvrir", list(chemin = base3))$id
+  f(id)
+  chemin <- file.path(etude3, nom)
+  demande("enregistrer", list(projet = id, chemin = chemin))
+  demande("fermer_projet", list(projet = id))
+  chemin
+}
+renommer <- function(id, ancien, nouveau) demande("renommer_variable", list(projet = id, variable = uid(id, ancien), nom = nouveau))
+fusion3 <- function(m, l, choix = list()) fusionner_projets(lire_projet(base3), lire_projet(m), lire_projet(l), choix, dossier = etude3, qui = "Bob")
+termes_m1 <- function(p) vapply(definition(p, "M1")$x, function(t) t$name, "")
+condition_m1 <- function(p) texte_condition(definition(p, "M1")$condition)
+mien_h <- cote3("mien_h.nuee", function(id) renommer(id, "V3", "hauteur"))
+leur_h <- cote3("leur_h.nuee", function(id) renommer(id, "V3", "height"))
+r <- fusion3(mien_h, leur_h)
+cn <- conflit(r, "champ:variable:V3:ids")
+verifier("renommée autrement des deux côtés : un conflit de son nom ; une seule variable, une fois dans le modèle, sa condition suit",
+         identical(ids_conflits(r), "champ:variable:V3:ids") && identical(c(cn$mien, cn$leur), c("hauteur", "height")) &&
+           identical(unname(r$projet$noms_var), c("hauteur", "x2", "y")) && identical(termes_m1(r$projet), c("hauteur", "x2")) &&
+           identical(condition_m1(r$projet), "hauteur > 9"))
+rl <- fusion3(mien_h, leur_h, list(`champ:variable:V3:ids` = "leur"))
+verifier("le leur : height, dans les données, les termes et la condition du modèle, qui se réajuste",
+         identical(unname(rl$projet$noms_var), c("height", "x2", "y")) && identical(termes_m1(rl$projet), c("height", "x2")) &&
+           identical(condition_m1(rl$projet), "height > 9") && reajuste(rl$projet, "renommee"))
+leur_v <- cote3("leur_v.nuee", function(id) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "O1"), variable = uid(id, "V3"), valeur = "99")))
+r2 <- fusion3(mien_h, leur_v)
+verifier("renommée de mon côté, une de ses valeurs changée du leur : sans conflit, la variable renommée avec leur valeur",
+         !length(r2$conflits) && identical(unname(r2$projet$noms_var), c("hauteur", "x2", "y")) && unname(valeurs(r2$projet, "hauteur")["O1"]) == 99 &&
+           identical(termes_m1(r2$projet), c("hauteur", "x2")) && any(grepl("V3 → hauteur", r2$apports$mien, fixed = TRUE)))
+leur_x <- cote3("leur_x.nuee", function(id) demande("modifier_valeur", list(projet = id, observation = numeros_observations(projet(id), "O2"), variable = uid(id, "x2"), valeur = "5")))
+r3 <- fusion3(mien_h, leur_x)
+verifier("renommée de mon côté, une autre variable changée du leur : par les étapes, sans conflit, le modèle sur la variable renommée",
+         identical(r3$donnees$mode, "etapes") && !length(r3$conflits) && identical(termes_m1(r3$projet), c("hauteur", "x2")) &&
+           identical(condition_m1(r3$projet), "hauteur > 9") && unname(valeurs(r3$projet, "x2")["O2"]) == 5)
+
 # ---------------------------------------------------------------- cellule par cellule
 
 cat("Cellule par cellule (des projets de la 1.0, sans étapes) : des lignes ajoutées des deux côtés, une cellule en conflit, des catégories\n")
@@ -532,6 +677,22 @@ verifier("« lande » renommée de mon côté, l'ordre changé du leur : sans co
 
 # ---------------------------------------------------------------- sans rien changer
 
+cat("Une case vide dans la colonne des noms : chaque côté relu, ses cellules à leur place\n")
+# (deux lignes sans nom ; chaque côté change une cellule, de l'une d'elles aussi. Leurs noms manquants,
+# écrits null, ne se relisaient pas ; la première, d'identifiant vide, ne se retrouvait pas)
+vides_csv <- fichier("donnees", "noms vides.csv")
+writeLines(c("nom,x,y", "a,1,3", ",4,6", ",7,9", "d,1,1"), vides_csv)
+pv0 <- importer_tableau(vides_csv)
+attr(pv0, "reglages") <- NULL
+mv <- lv <- pv0
+mv$donnees["1", "2"] <- 30
+mv$donnees["2", "2"] <- 60
+lv$donnees["4", "2"] <- 10
+rv <- tryCatch(fusionner_projets(pv0, mv, lv, list(), dossier = etude, qui = "Bob"), error = function(e) NULL)
+verifier("des projets aux noms vides se relisent et se fusionnent : chaque cellule changée à sa place, celle de la première ligne sans nom comprise",
+         !is.null(rv) && !length(rv$conflits) && identical(unname(rv$projet$donnees[, "2"]), c(30, 60, 9, 10)) &&
+           identical(unname(rv$projet$noms_obs), c("a", "", "", "d")))
+
 cat("Un côté fusionné avec lui-même, ou avec la base : rien ne change\n")
 texte <- function(f) contenu_fusion(lire_projet(f))
 r1 <- fusion(base, mien_c, mien_c)
@@ -635,6 +796,21 @@ invisible(demande("fichier_change", list(projet = a)))  # (l'interface le demand
 verifier("fichier_change pendant une fusion préparée ne l'empêche pas de finir",
          identical(erreur(demande("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))), "") &&
            identical(figure(projet(a), "F1")$titre, "Figure de Bob, 2"))
+# (Bob ajoute un modèle, que la fusion apporte ; un modèle que j'ajuste après la fusion : Annuler emporte le
+# sien avec elle, et garde le mien)
+b <- demande("ouvrir", list(chemin = partage))$id
+demande("ajuster", list(projet = b, type = "PCA", x = uid(b, c("x1", "y")), A = 1, nom = "De Bob"))
+Sys.sleep(1.1)
+demande("enregistrer", list(projet = b, chemin = partage, auteur = "Bob"))
+demande("fermer_projet", list(projet = b))
+fu <- demande("fusionner", list(projet = a))
+demande("fusionner_finir", list(fusion = fu$fusion, choix = stats::setNames(list(), character(0))))
+demande("ajuster", list(projet = a, type = "PCA", x = uid(a, c("x2", "y")), A = 1, nom = "Le mien"))
+modeles_a <- function() vapply(projet(a)$models, function(d) d$name, "")
+avant_annuler <- modeles_a()
+demande("annuler", list(projet = a))
+verifier("une fusion annulée : le modèle qu'elle a apporté part avec elle, celui ajusté depuis reste",
+         all(c("De Bob", "Le mien") %in% avant_annuler) && !"De Bob" %in% modeles_a() && "Le mien" %in% modeles_a())
 fc <- fusion(base, mien_c, leur_c)
 ft <- demande("fusionner", list(base = base, mien = mien_c, leur = leur_c, dossier = etude))
 verifier("trois fichiers : les mêmes conflits que fusionner_projets", setequal(vapply(ft$conflits, function(x) x$id, ""), ids_conflits(fc)) && isFALSE(ft$auto))

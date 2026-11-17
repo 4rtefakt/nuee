@@ -286,20 +286,146 @@ donnees_conformes <- function(p) {
 
 # ---------------------------------------------------------------- les noms au lieu des numéros
 
-# L'identifiant de chaque observation pour les étapes et la mise à jour : son nom, et le rang de ce nom
-# quand il revient (« S1 », puis « S1␟2 »… : un tableau en long dont la première colonne est le site),
-# les observations du même nom se retrouvant dans l'ordre où elles viennent. Un tableau sans colonne
-# qui les nomme a pour noms les numéros de ses lignes : ses observations se retrouvent par leur place.
-cles_observations <- function(p) {
+# L'identifiant de chaque observation pour les étapes, la mise à jour et la fusion : son nom quand les
+# noms ne reviennent pas. Quand ils reviennent (un tableau en long dont la première colonne est le site),
+# son nom et ses valeurs des colonnes `colonnes` qui distinguent les observations d'un même nom
+# (colonnes_cle : l'année, la date, le relevé ; « S1␞2019 »), et non son rang parmi elles : une ligne
+# retirée ou ajoutée au milieu ne décale pas les autres. Celles que rien ne distingue (ni `colonnes`, ni
+# leur nom) prennent leur rang parmi elles, toutes (« S1␟1 », « S1␟2 »…), dans l'ordre où elles
+# viennent, comme une observation sans nom, dont l'identifiant n'est jamais vide ; elles se retrouvent
+# par ce rang, ce que la mise à jour dit (aligner_projet : repetees). Un tableau sans colonne qui les
+# nomme a pour noms les numéros de ses lignes : ses observations se retrouvent par leur place.
+cles_observations <- function(p, colonnes = colonnes_cle(p)) {
   noms <- premiers_noms(p)
-  if (!anyDuplicated(noms)) return(noms)
-  # (le rang de chaque nom parmi ceux qui le portent, dans leur ordre : un tri stable)
-  o <- order(noms, method = "radix")
-  tries <- noms[o]
+  base <- noms
+  if (length(colonnes)) {
+    lignes <- lignes_observations(p)
+    base <- do.call(paste, c(list(noms), lapply(colonnes, function(x) {
+      v <- valeurs_colonne_cle(p, x, lignes)
+      v[is.na(v)] <- ""
+      v
+    }), sep = "\u001e"))
+  }
+  numerotees <- !nzchar(base) | duplicated(base) | duplicated(base, fromLast = TRUE)
+  if (!any(numerotees)) return(base)
+  # (le rang de chaque identifiant parmi ceux qui le portent, dans leur ordre : un tri stable)
+  o <- order(base, method = "radix")
+  tries <- base[o]
   debut <- cummax(ifelse(!duplicated(tries), seq_along(tries), 0L))
-  rang <- integer(length(noms))
+  rang <- integer(length(base))
   rang[o] <- seq_along(tries) - debut + 1L
-  ifelse(rang > 1, paste0(noms, "\u001f", rang), noms)
+  base[numerotees] <- paste0(base[numerotees], "\u001f", rang[numerotees])
+  base
+}
+
+# Les colonnes qui distinguent les observations d'un même nom (cles_observations), quand des noms
+# reviennent dans l'un des projets `projets` (un projet, ou ceux qu'une mise à jour ou une fusion
+# compare, qui les prennent tous) : parmi les identifiants secondaires et les variables qualitatives ou
+# de nombres entiers (l'année, un numéro de relevé ; pas une mesure, qu'une correction changerait)
+# qu'ils ont tous, une à une celle qui distingue le plus d'observations encore confondues (à égalité, un
+# identifiant d'abord, puis celle qui a le moins de valeurs : l'année plutôt qu'un comptage, puis la
+# première), tant qu'il en reste et qu'une colonne en distingue. Des « id:nom » et des « var:nom » ;
+# character(0) quand les noms ne reviennent pas, ou que rien ne distingue leurs observations.
+colonnes_cle <- function(projets) {
+  if (inherits(projets, "projet_nuee")) projets <- list(projets)
+  # (le groupe de chaque observation : celles d'un même nom, puis d'un même nom et de mêmes valeurs)
+  groupes <- lapply(projets, function(p) { n <- premiers_noms(p); match(n, unique(n)) })
+  confondues <- function(gs) sum(vapply(gs, function(g) sum(duplicated(g)), 0))
+  reste <- confondues(groupes)
+  if (!reste) return(character(0))
+  # (50 au plus : un tableau large a des milliers de colonnes, et la clé est d'ordinaire parmi les premières)
+  candidates <- utils::head(Reduce(intersect, lapply(projets, candidates_cle)), 50)
+  if (!length(candidates)) return(character(0))
+  # (les valeurs de chaque candidate en codes, projet par projet ; une valeur manquante en est un)
+  lignes <- lapply(projets, lignes_observations)
+  codes <- lapply(candidates, function(x) lapply(seq_along(projets), function(i) {
+    v <- valeurs_colonne_cle(projets[[i]], x, lignes[[i]], texte = FALSE)
+    match(v, unique(v))
+  }))
+  nombre_valeurs <- vapply(codes, function(cx) length(unique(cx[[1]])), 0)
+  identifiant <- startsWith(candidates, "id:")
+  combiner <- function(g, x) {
+    if (!length(x)) return(g)
+    k <- (g - 1) * (max(x) + 1) + x
+    match(k, unique(k))
+  }
+  choisies <- character(0)
+  libres <- seq_along(candidates)
+  while (reste > 0 && length(libres)) {
+    essais <- lapply(libres, function(j) lapply(seq_along(projets), function(i) combiner(groupes[[i]], codes[[j]][[i]])))
+    restes <- vapply(essais, confondues, 0)
+    k <- order(restes, !identifiant[libres], nombre_valeurs[libres], libres)[1]
+    if (restes[k] >= reste) break
+    choisies <- c(choisies, candidates[libres[k]])
+    groupes <- essais[[k]]
+    reste <- restes[k]
+    libres <- libres[-k]
+  }
+  choisies
+}
+
+# Les colonnes d'un projet qui peuvent distinguer ses observations d'un même nom (colonnes_cle) : ses
+# identifiants secondaires (sauf les identifiants internes des fichiers .usp, $ClassID…), et ses
+# variables qualitatives ou dont toutes les valeurs sont des nombres entiers (sauf les scores d'un
+# modèle, $M1.t1, et les noms que deux variables portent).
+candidates_cle <- function(p) {
+  ids <- as.character(unlist(p$observation_id_names %||% character(0)))[-1]
+  ids <- unique(ids[!is.na(ids) & nzchar(ids) & !startsWith(ids, "$")])
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(p$donnees), p$variables)
+  noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
+  ok <- vapply(seq_along(vars), function(i) {
+    if (startsWith(noms[i], "$") || sum(noms == noms[i]) > 1) return(FALSE)
+    if (length(vars[[i]]$categories)) return(TRUE)
+    x <- p$donnees[, nom_numero(vars[[i]]$uid)]
+    x <- x[is.finite(x)]
+    length(x) > 0 && all(x == round(x))
+  }, NA)
+  c(if (length(ids)) paste0("id:", ids), if (any(ok)) paste0("var:", noms[ok]))
+}
+
+# Les valeurs d'une colonne de clé (colonnes_cle : « id:nom », « var:nom ») pour chaque observation
+# du projet, dans leur ordre (`lignes` : lignes_observations), en texte : le nom de la catégorie d'une
+# variable qualitative, un nombre écrit à 15 chiffres significatifs, le texte d'un identifiant ("" quand
+# il est vide) ; NA pour une valeur manquante, ou une colonne que le projet n'a pas. Sans `texte`, telles
+# qu'elles se comparent dans le projet (les numéros des catégories, les nombres), pour colonnes_cle.
+valeurs_colonne_cle <- function(p, x, lignes = lignes_observations(p), texte = TRUE) {
+  n <- length(p$observations)
+  if (startsWith(x, "id:")) {
+    k <- match(substring(x, 4), as.character(unlist(p$observation_id_names %||% character(0))))
+    if (is.na(k) || k < 2) return(rep(NA_character_, n))
+    return(vapply(p$observations, function(o) {
+      ids <- as.character(unlist(o$ids))
+      if (length(ids) >= k && !is.na(ids[k])) ids[k] else ""
+    }, ""))
+  }
+  nom <- substring(x, 5)
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(p$donnees) && identical(as.character(v$ids[1]), nom), p$variables)
+  if (!length(vars)) return(rep(NA_character_, n))
+  v <- vars[[length(vars)]]
+  j <- match(nom_numero(v$uid), colnames(p$donnees))
+  valeurs <- unname(if (is.null(lignes)) p$donnees[, j] else p$donnees[lignes, j])
+  if (!texte) return(valeurs)
+  cats <- as.character(unlist(v$categories))
+  if (length(cats)) return(cats[valeurs])
+  # (chaque valeur distincte écrite une fois : des milliers de lignes, quelques années)
+  u <- unique(valeurs)
+  ifelse(is.na(u), NA_character_, sprintf("%.15g", u + 0))[match(valeurs, u)]
+}
+
+# Les lignes des données (p$donnees) des observations d'un projet, dans leur ordre ; NULL quand ce sont
+# toutes ses lignes dans l'ordre (d'ordinaire : le tableau des données sert tel quel).
+lignes_observations <- function(p) {
+  uids <- as.character(numeros_entiers(vapply(p$observations, `[[`, 0, "uid")))
+  if (identical(rownames(p$donnees), uids)) NULL else match(uids, rownames(p$donnees))
+}
+
+# Celles des colonnes de clé `colonnes` (colonnes_cle) que le projet n'a pas : ni une variable de ce
+# nom qui a des données, ni un identifiant secondaire.
+colonnes_absentes <- function(p, colonnes) {
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(p$donnees), p$variables)
+  noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
+  ids <- as.character(unlist(p$observation_id_names %||% character(0)))[-1]
+  Filter(function(x) if (startsWith(x, "id:")) !substring(x, 4) %in% ids else !substring(x, 5) %in% noms, as.character(colonnes))
 }
 
 # Le nom de chaque observation (son premier identifiant), "" sans lui ; sans fonction appelée pour
@@ -311,8 +437,23 @@ premiers_noms <- function(p) {
   noms
 }
 
-# Un identifiant d'observation pour une phrase : « S1 (2) » pour la deuxième du nom.
-cle_lisible <- function(k) sub("\u001f(\\d+)$", " (\\1)", k)
+# Un identifiant d'observation pour une phrase (cles_observations) : « S1 (2019) » pour celle de 2019
+# des observations nommées S1, « S1 (2) » pour la deuxième de celles que rien ne distingue, « (sans
+# nom) (1) » pour la première sans nom. (Les clés des variables d'une fusion s'écrivent de même :
+# fusion.R, cles_rangs.)
+cle_lisible <- function(k) {
+  k <- as.character(k)
+  rang <- ifelse(grepl("\u001f\\d+$", k), sub("^.*\u001f(\\d+)$", "\\1", k), "")
+  morceaux <- strsplit(sub("\u001f\\d+$", "", k), "\u001e", fixed = TRUE)
+  vapply(seq_along(k), function(i) {
+    if (is.na(k[i])) return(NA_character_)
+    m <- morceaux[[i]]
+    nom <- if (length(m) && nzchar(m[1])) m[1] else traduire("(sans nom)", "(no name)")
+    valeurs <- m[-1][nzchar(m[-1])]
+    x <- if (length(valeurs)) sprintf("%s (%s)", nom, paste(valeurs, collapse = ", ")) else nom
+    if (nzchar(rang[i])) sprintf("%s (%s)", x, rang[i]) else x
+  }, "")
+}
 
 # Les valeurs de `q` (les paramètres d'une demande) au chemin `chemin` : « variable », ou
 # « descriptions$variable » (dans chaque élément d'une liste, ou la colonne d'un data.frame : le
@@ -342,17 +483,21 @@ convertir_valeurs <- function(x, f) if (is.list(x)) lapply(x, f) else f(x)
 
 # Les paramètres `q` d'une demande écrits sans numéros internes, d'après le projet `p` d'avant le
 # changement et ce que `def` (ETAPES_DONNEES) dit de ses paramètres : les variables (`variables`)
-# par leur nom, les observations (`observations`) par leur identifiant (cles_observations), une
+# par leur nom, les observations (`observations`) par leur identifiant (cles_observations ; `colonnes`,
+# celles qui y distinguent les observations d'un même nom, que l'étape garde pour le refaire), une
 # colonne qui est une variable ou un identifiant des observations (`colonnes` : un numéro, ou "id:k")
 # en « var:nom » ou « id:nom ».
-par_noms <- function(p, def, q) {
+par_noms <- function(p, def, q, colonnes = if (length(def$observations)) colonnes_cle(p)) {
   noms <- stats::setNames(vapply(p$variables, function(v) as.character(v$ids[1]), ""), as.character(numeros_entiers(vapply(p$variables, `[[`, 0, "uid"))))
   # (les identifiants des observations, seulement pour une étape qui en nomme : il y en a des milliers)
-  cles <- if (length(def$observations)) stats::setNames(cles_observations(p), as.character(numeros_entiers(vapply(p$observations, `[[`, 0, "uid"))))
+  if (length(def$observations)) {
+    cles <- cles_observations(p, colonnes)
+    uids <- as.character(numeros_entiers(vapply(p$observations, `[[`, 0, "uid")))
+  }
   ids <- as.character(unlist(p$observation_id_names %||% "Observation"))
   vers <- list(
     variables = function(x) unname(noms[as.character(numeros_entiers(x))]),
-    observations = function(x) unname(cles[as.character(numeros_entiers(x))]),
+    observations = function(x) cles[match(as.character(numeros_entiers(x)), uids)],
     colonnes = function(x) {
       x <- as.character(x)
       id <- startsWith(x, "id:")
@@ -368,20 +513,37 @@ par_noms <- function(p, def, q) {
 }
 
 # Les paramètres d'une étape rapportés aux numéros du projet `p` où elle est rejouée (par_noms, à
-# l'envers) : list(q, notes). Une variable, une observation ou une colonne qu'elle nomme et que les
-# données n'ont pas la fait sauter (etape_sautee), qui dit lesquelles ; sauf pour les paramètres que
-# l'étape fait sans elles (`partielles` : les observations d'un collage, d'une classe), que `notes`
-# nomme alors.
-par_numeros <- function(p, def, q) {
+# l'envers) : list(q, notes). `colonnes` : celles que l'étape a gardées, qui distinguaient les
+# observations d'un même nom (NULL pour une étape notée avant qu'elle les garde, dont les observations
+# d'un même nom se retrouvent par leur rang, comme elles ont été notées : cles_rangs). Une variable,
+# une observation ou une colonne qu'elle nomme et que les données n'ont pas la fait sauter
+# (etape_sautee), qui dit lesquelles ; sauf pour les paramètres que l'étape fait sans elles
+# (`partielles` : les observations d'un collage, d'une classe), que `notes` nomme alors. Une colonne
+# qui distinguait ses observations et que les données n'ont plus la fait sauter.
+par_numeros <- function(p, def, q, colonnes = NULL) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
   noms <- vapply(vars, function(v) as.character(v$ids[1]), "")
   garde <- !duplicated(noms, fromLast = TRUE)  # (la dernière de deux variables du même nom, comme une formule la lit)
   uid_nom <- stats::setNames(numeros_entiers(vapply(vars[garde], `[[`, 0, "uid")), noms[garde])
-  uid_cle <- if (length(def$observations)) stats::setNames(numeros_entiers(vapply(p$observations, `[[`, 0, "uid")), cles_observations(p))
+  if (length(def$observations)) {
+    uids <- numeros_entiers(vapply(p$observations, `[[`, 0, "uid"))
+    if (is.null(colonnes)) {
+      cles <- cles_rangs(premiers_noms(p))
+    } else {
+      colonnes <- as.character(unlist(colonnes))
+      manque <- colonnes_absentes(p, colonnes)
+      if (length(manque)) {
+        etape_sautee(sprintf(traduire("La colonne %s, qui distinguait ses observations d'un même nom, n'est plus dans les données.",
+                                      "The column %s, which told its observations of the same name apart, is no longer in the data."),
+                             guillemets_texte(sub("^(var|id):", "", manque[1]), !identical(getOption("nuee.langue"), "en"))))
+      }
+      cles <- cles_observations(p, colonnes)
+    }
+  }
   ids <- as.character(unlist(p$observation_id_names %||% "Observation"))
   vers <- list(
     variables = function(x) unname(uid_nom[as.character(x)]),
-    observations = function(x) unname(uid_cle[as.character(x)]),
+    observations = function(x) uids[match(as.character(x), cles)],
     colonnes = function(x) {
       x <- as.character(x)
       id <- startsWith(x, "id:")
@@ -392,7 +554,10 @@ par_numeros <- function(p, def, q) {
     })
   quoi <- list(variables = traduire("variable(s) absente(s) des données", "variable(s) missing from the data"),
                observations = traduire("observation(s) absente(s) des données", "observation(s) missing from the data"),
+               confondues = traduire("observation(s) qui ne se distingue(nt) plus d'autres du même nom", "observation(s) no longer told apart from others of the same name"),
                colonnes = traduire("colonne(s) absente(s) des données", "column(s) missing from the data"))
+  dire <- function(genre, x, lisibles) sprintf(traduire("%d %s : %s", "%d %s: %s"), length(x), quoi[[genre]],
+                                              paste0(paste(utils::head(lisibles, 5), collapse = ", "), if (length(lisibles) > 5) "…" else ""))
   notes <- character(0)
   for (genre in names(vers)) for (ch in def[[genre]]) {
     v <- valeur_chemin(q, ch)
@@ -400,10 +565,14 @@ par_numeros <- function(p, def, q) {
     t <- convertir_valeurs(v, vers[[genre]])
     manquent <- unique(as.character(unlist(v))[is.na(unlist(t))])
     if (length(manquent)) {
-      lisibles <- if (genre == "observations") cle_lisible(manquent) else sub("^(var|id):", "", manquent)
-      phrase <- sprintf(traduire("%d %s : %s", "%d %s: %s"), length(lisibles), quoi[[genre]],
-                        paste0(paste(utils::head(lisibles, 5), collapse = ", "), if (length(lisibles) > 5) "…" else ""))
-      if (ch %in% def$partielles) notes <- c(notes, phrase) else etape_sautee(phrase)
+      phrase <- if (genre == "observations") {
+        # (une observation que plusieurs lignes portent maintenant, sans rien qui les distingue : sa
+        # clé, à leur rang près ; elle n'est prise pour aucune d'elles)
+        confondues <- manquent %in% sub("\u001f\\d+$", "", cles)
+        c(if (any(!confondues)) dire("observations", manquent[!confondues], cle_lisible(manquent[!confondues])),
+          if (any(confondues)) dire("confondues", manquent[confondues], cle_lisible(manquent[confondues])))
+      } else dire(genre, manquent, sub("^(var|id):", "", manquent))
+      if (ch %in% def$partielles) notes <- c(notes, phrase) else etape_sautee(paste(phrase, collapse = traduire(" ; ", "; ")))
     }
     q <- changer_chemin(q, ch, t)
   }
@@ -415,13 +584,15 @@ par_numeros <- function(p, def, q) {
 etape_sautee <- function(raison) stop(structure(class = c("etape_sautee", "error", "condition"), list(message = raison, call = NULL)))
 
 # Les noms qu'une formule de Nouvelle variable lit et que le projet n'a pas : ni ses variables, ni ses
-# identifiants, ni un objet de R (pi, une fonction du moteur) ; une formule qui ne se lit pas n'en a
-# pas, son erreur viendra du calcul.
+# identifiants, ni une constante qu'une formule lit (pi, LETTERS : variables.R, CONSTANTES_FORMULE ;
+# ni T ni F, une colonne T renommée par le fichier suivant serait lue TRUE) : comme
+# lire_formule_variable les refuse, et non un objet quelconque de la séance de R. Une formule qui ne se
+# lit pas n'en a pas, son erreur viendra du calcul.
 noms_absents_formule <- function(p, formule) {
   e <- tryCatch(parse(text = formule, keep.source = FALSE), error = function(err) NULL)
   if (is.null(e)) return(character(0))
   n <- noms_condition(p)
-  Filter(function(x) !exists(x, envir = globalenv()), setdiff(all.vars(e), c(names(n$variables), n$ids)))
+  setdiff(all.vars(e), c(names(n$variables), n$ids, CONSTANTES_FORMULE))
 }
 
 # ---------------------------------------------------------------- les étapes
@@ -572,15 +743,29 @@ ETAPES_DONNEES <- list(
     preparer = function(avant, q, contexte) q[intersect(c("temps", "unite", "impact", "temoins", "evenement"), names(q))],
     appliquer = function(p, q, rejeu = NULL) variables_baci(p, q$temps, q$unite, as.character(unlist(q$impact)), as.character(unlist(q$temoins)), q$evenement)$projet),
   # (les scores d'un modèle, les groupes de k-moyennes : rejoués, le modèle est ajusté à nouveau sur
-  # les données rejouées jusque-là, modele_rejoue)
+  # les données rejouées jusque-là, modele_rejoue. Les groupes d'avant vont avec l'étape (`groupes` : les
+  # observations et leur groupe, en JSON) : refaits, ils prennent leurs numéros par leurs observations
+  # communes, kmoyennes.R : renumeroter_groupes ; sinon des données qui changent l'ordre de leurs tailles
+  # échangeraient les groupes, sous les mêmes noms)
   scores_en_variables = list(
     preparer = function(avant, q, contexte) etape_modele(avant, contexte$definition),
     appliquer = function(p, q, rejeu = NULL) scores_en_variables(p, modele_rejoue(p, q, rejeu))$projet),
   kmeans_variable = list(
-    preparer = function(avant, q, contexte) c(list(nom = premier_texte(q$nom)), etape_modele(avant, contexte$definition)),
+    preparer = function(avant, q, contexte) {
+      m <- contexte$modele
+      c(list(nom = premier_texte(q$nom)), etape_modele(avant, contexte$definition),
+        if (!is.null(m)) list(groupes = as.character(jsonlite::toJSON(list(observations = numeros_entiers(m$observations), groupe = as.integer(m$groupe)), digits = NA))))
+    },
     appliquer = function(p, q, rejeu = NULL) {
       m <- modele_rejoue(p, q, rejeu)
-      ajouter_colonne(p, premier_texte(q$nom), m$observations, m$groupe, categories = as.character(seq_len(m$k)))
+      groupe <- m$groupe
+      if (!is.null(q$groupes)) {
+        g <- jsonlite::fromJSON(as.character(q$groupes))
+        vers <- attr(m, "vers_nouveau")
+        anciens <- stats::setNames(as.numeric(g$groupe), as.character(numeros_entiers(unname(vers[as.character(numeros_entiers(g$observations))]))))
+        groupe <- renumeroter_groupes(m$groupe, unname(anciens[as.character(numeros_entiers(m$observations))]), m$k)
+      }
+      ajouter_colonne(p, premier_texte(q$nom), m$observations, groupe, categories = as.character(seq_len(m$k)))
     })
 )
 
@@ -652,15 +837,22 @@ etape_modele <- function(avant, d) {
 }
 
 # Ce qu'il faut d'un projet pour y rapporter des données rejouées (aligner_projet) : ses variables
-# (numéro, nom, catégories), ses observations (numéro, nom) et les noms de ses identifiants.
+# (numéro, nom, catégories), ses observations (numéro, nom, identifiant : cles_observations), les
+# colonnes qui distinguent celles d'un même nom (colonnes_cle) et les noms de ses identifiants.
 squelette_projet <- function(p) {
   vars <- Filter(function(v) as.character(v$uid) %in% colnames(p$donnees), p$variables)
+  colonnes <- colonnes_cle(p)
   list(variables = lapply(vars, function(v) list(uid = as.numeric(v$uid), nom = as.character(v$ids[1]), categories = I(as.character(unlist(v$categories))))),
-       observations = list(uid = I(vapply(p$observations, function(o) as.numeric(o$uid), 0)), nom = I(vapply(p$observations, function(o) premier_texte(o$ids), ""))),
+       observations = list(uid = I(vapply(p$observations, function(o) as.numeric(o$uid), 0)), nom = I(vapply(p$observations, function(o) premier_texte(o$ids), "")),
+                           cle = I(cles_observations(p, colonnes))),
+       colonnes_cle = I(colonnes),
        identifiants = I(as.character(unlist(p$observation_id_names %||% "Observation"))))
 }
 
-# Le projet d'un squelette (squelette_projet, relu du JSON), sans données, avec le modèle `d`.
+# Le projet d'un squelette (squelette_projet, relu du JSON), sans données, avec le modèle `d` ; les
+# identifiants de ses observations et leurs colonnes, gardés (`cles_squelette` : aligner_projet les
+# reprend), ou `ancien` pour le squelette d'une étape notée avant qu'il les garde (ses observations
+# d'un même nom se retrouvent par leur rang, comme elles ont été notées).
 projet_squelette <- function(s, d) {
   vars <- lapply(s$variables, function(v) list(uid = as.numeric(v$uid), ids = as.character(v$nom),
                                                categories = if (length(v$categories)) as.character(unlist(v$categories))))
@@ -670,6 +862,9 @@ projet_squelette <- function(s, d) {
             observation_id_names = as.character(unlist(s$identifiants)), datasets = list(), models = list(d),
             donnees = matrix(numeric(0), 0, length(vars), dimnames = list(NULL, vapply(vars, function(v) as.character(v$uid), ""))),
             noms_obs = stats::setNames(nom, as.character(uid)), noms_var = stats::setNames(vapply(vars, `[[`, "", "ids"), vapply(vars, function(v) as.character(v$uid), "")))
+  p$cles_squelette <- if (length(s$observations$cle) == length(uid) && !is.null(s$colonnes_cle)) {
+    list(cles = as.character(unlist(s$observations$cle)), colonnes = as.character(unlist(s$colonnes_cle)))
+  } else list(ancien = TRUE)
   class(p) <- "projet_nuee"
   p
 }
@@ -684,6 +879,11 @@ modele_rejoue <- function(p, q, rejeu = NULL) {
   d <- jsonlite::fromJSON(as.character(q$definition), simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = TRUE)
   s <- jsonlite::fromJSON(as.character(q$squelette), simplifyVector = FALSE)
   a <- aligner_projet(projet_squelette(s, d), p, rejeu$sans_nouvelles)
+  if (length(a$colonnes_absentes)) {
+    etape_sautee(sprintf(traduire("La colonne %s, qui distinguait les observations d'un même nom du modèle %s, n'est plus dans les données.",
+                                  "The column %s, which told the observations of the same name of the model %s apart, is no longer in the data."),
+                         guillemets_texte(sub("^(var|id):", "", a$colonnes_absentes[1]), !identical(getOption("nuee.langue"), "en")), premier_texte(d$name)))
+  }
   manquent <- intersect(variables_definition(d), a$absentes)
   if (length(manquent)) {
     noms <- vapply(s$variables, function(v) if (as.numeric(v$uid) %in% manquent) as.character(v$nom) else NA_character_, "")
@@ -694,27 +894,35 @@ modele_rejoue <- function(p, q, rejeu = NULL) {
   if (!isTRUE(as.numeric(d$A) > 0) && !sans_composantes(d)) d$A <- max(1, autoajuster(a$projet, d))
   m <- ajuster(a$projet, d)
   m$observations <- unname(a$vers_nouveau[as.character(m$observations)])
+  attr(m, "vers_nouveau") <- a$vers_nouveau  # (le numéro dans `p` de chaque observation du projet qu'il avait vu)
   m
 }
 
 # Le projet `apres` (le changement d'une demande fait sur `avant`) avec l'étape qui le refait : la
 # demande `demande` (un nom de ETAPES_DONNEES), ses paramètres `q` sans numéros internes (par_noms,
 # sans `projet` ni `apercu`), les fichiers qu'elle a lus, son étiquette (celle d'Annuler) et sa date.
-# `contexte` : ce que la demande sait de plus (la définition d'un modèle ajusté). L'empreinte des
+# `contexte` : ce que la demande sait de plus (la définition d'un modèle ajusté). Une étape qui nomme
+# des observations garde les colonnes qui distinguaient celles d'un même nom (`colonnes_cle` :
+# colonnes_cle, aucune quand les noms ne revenaient pas), pour les retrouver par elles. L'empreinte des
 # données devient celle d'après l'étape, sauf quand elles avaient changé autrement depuis la
-# précédente (donnees_conformes) : rompue, elle le reste.
+# précédente (donnees_conformes) : rompue, elle le reste. La première étape d'un projet d'avant la 1.1
+# (sans empreinte) le marque (`changements_avant_etapes`) : ses changements d'alors ne sont pas des
+# étapes, et le restent ; la demande etapes et la mise à jour continuent de le dire.
 noter_etape <- function(avant, apres, demande, q, etiquette, contexte = NULL) {
   def <- ETAPES_DONNEES[[demande]] %||% stop(sprintf("Étape inconnue : %s", demande), call. = FALSE)
   q <- q[setdiff(names(q), c("projet", "apercu"))]
   if (!is.null(def$preparer)) q <- def$preparer(avant, q, contexte)
   fiches <- list()
   for (ch in def$fichiers) for (f in as.character(unlist(valeur_chemin(q, ch)))) fiches[[length(fiches) + 1]] <- fiche_fichier(f)
-  q <- par_noms(avant, def, q)
+  colonnes <- if (length(def$observations)) colonnes_cle(avant)
+  q <- par_noms(avant, def, q, colonnes)
   e <- list(demande = demande, etiquette = premier_texte(etiquette), date = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
             langue = getOption("nuee.langue") %||% "fr",
             parametres = as.character(jsonlite::toJSON(q, auto_unbox = TRUE, null = "null", na = "null", digits = NA)))
+  if (length(def$observations)) e$colonnes_cle <- I(as.character(colonnes))
   if (length(fiches)) e$fichiers <- fiches
   apres$etapes <- c(avant$etapes %||% list(), list(e))
+  if (is.na(donnees_conformes(avant))) apres$changements_avant_etapes <- TRUE
   apres$empreinte_donnees <- if (isFALSE(donnees_conformes(avant))) "" else empreinte_donnees(apres)
   apres
 }
@@ -770,7 +978,7 @@ rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL
       def <- ETAPES_DONNEES[[r$demande]]
       if (is.null(def)) stop(sprintf(traduire("Étape inconnue de cette version de Nuée : %s", "Step unknown to this version of Nuée: %s"), r$demande), call. = FALSE)
       q <- jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = TRUE)
-      t <- par_numeros(projet, def, q)
+      t <- par_numeros(projet, def, q, e$colonnes_cle)
       q <- fichiers_rejoues(e, def, t$q, dossier)
       ancienne <- if (isTRUE(def$langue) && nzchar(premier_texte(e$langue))) options(nuee.langue = premier_texte(e$langue))
       n <- tryCatch(def$appliquer(projet, q, list(sans_nouvelles = sans_nouvelles)), finally = if (!is.null(ancienne)) options(ancienne))
@@ -792,14 +1000,16 @@ rejouer_etapes <- function(projet, etapes, dossier = NULL, sans_nouvelles = NULL
 
 # Les variables (leurs numéros) qu'utilise une définition de modèle : celles de ses termes X et Y (et
 # du modèle complet d'une sélection par l'AIC), sa classe, ses courbes, son décalage, son lissage
-# spatial, celle de son groupe de modèles de classe, ses covariables (options$z), la réponse, le
-# temps et l'unité d'un modèle BACI, et celles des groupements de sa validation croisée, de ses
-# effets aléatoires, de son autocorrélation et des réglages d'une autre analyse
-# (list(by = "variable", variable = …)).
+# spatial, celle de son groupe de modèles de classe, ses covariables (options$z), les poids de TRIM,
+# l'effort, l'aire et la taille des groupes de l'échantillonnage par distances (comme fusion.R les
+# suit : renumeroter_definition), la réponse, le temps et l'unité d'un modèle BACI, et celles des
+# groupements de sa validation croisée, de ses effets aléatoires, de son autocorrélation et des
+# réglages d'une autre analyse (list(by = "variable", variable = …)).
 variables_definition <- function(d) {
   groupements <- function(x) if (is.list(x)) c(if (identical(premier_texte(x$by), "variable")) x$variable, x$pentes, unlist(lapply(x, groupements)))
+  reglees <- if (is.list(d$options)) d$options[intersect(switch(premier_texte(d$type), TRIM = "poids", DISTANCE = c("effort", "aire", "taille"), character(0)), names(d$options))]
   u <- c(unlist(lapply(c(d$x, d$y, d$termes_complets), function(t) t$variables)), d$classe, d$lisses, d$decalage, d$lisse_spatial$variables,
-         d$groupe_classes$variable, names(d$k_courbes), names(d$par_courbes), unlist(d$par_courbes), d$options$z,
+         d$groupe_classes$variable, names(d$k_courbes), names(d$par_courbes), unlist(d$par_courbes), d$options$z, unlist(reglees),
          unlist(lapply(d[intersect(c("groupes_vc", "aleatoires", "correlation", "options"), names(d))], groupements)))
   b <- as.character(unlist(d$baci_origine[c("y", "temps", "unite")]))
   u <- suppressWarnings(as.numeric(c(as.character(unlist(u)), b[!startsWith(b, "id:")])))
@@ -1011,7 +1221,8 @@ renumeroter_variable <- function(p, de, vers) {
 #     dernière (categories_alignees : la dernière catégorie observée est la référence d'une
 #     régression, et elle le reste), et une variable qui a changé de type dans le fichier reprend le
 #     sien (des nombres lus en catégories, ou l'inverse) ;
-#   - une observation du même identifiant (cles_observations) garde son numéro ; une nouvelle en prend
+#   - une observation du même identifiant (cles_alignement : celles d'un même nom distinguées par les
+#     mêmes colonnes des deux côtés) garde son numéro ; une nouvelle en prend
 #     un ; une absente part ; les identifiants des observations gardent leurs rangs, ceux du fichier
 #     qui sont nouveaux venant après ;
 #   - une variable du projet que les données n'ont plus : celle d'une formule de Nouvelle variable
@@ -1022,10 +1233,16 @@ renumeroter_variable <- function(p, de, vers) {
 #     (definition_suivie : les nouvelles y entrent, sauf pour les modèles de `sans_nouvelles`, leurs
 #     noms ou leurs numéros) ; le rapport nomme les modèles qui ont pris une catégorie, et les
 #     régressions dont la référence change quand même, sa catégorie n'ayant plus de lignes.
-# Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Rend
-# list(projet, rapport : ce qui a changé ; vers_nouveau : le numéro dans `nouveau` de chaque
-# observation, nommé par le sien ; absentes : les numéros des variables parties).
-aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
+# Le reste du projet (ses modèles, documents, figures, réglages) est celui d'`actuel`. Avec
+# `selon_rejeu` (une étape retirée : serveur.R, retirer_etape_demande ; la source n'a pas changé), les
+# variables sont telles que la source et les autres étapes les donnent, et non telles que le projet les
+# avait : leur type (une variable qu'un modèle utilise et qui changerait de type : refusé), leurs
+# catégories dans leur ordre (les modèles les suivent par leur nom, ou par leurs lignes quand l'étape
+# retirée les avait renommées), leur unité et leur description, les coordonnées ; une variable d'une
+# formule qu'elles n'ont plus part. Rend list(projet, rapport : ce qui a changé ; vers_nouveau : le
+# numéro dans `nouveau` de chaque observation, nommé par le sien ; absentes : les numéros des variables
+# parties).
+aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu = FALSE) {
   nom <- function(v) as.character(v$ids[1])
   uid <- function(x) numeros_entiers(x$uid)
   uids <- function(l) numeros_entiers(vapply(l, `[[`, 0, "uid"))
@@ -1049,12 +1266,13 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     }
   }
   uid_v <- uids(va)[k]
-  uid_v[is.na(k)] <- max(c(0L, uids(actuel$variables))) + seq_len(sum(is.na(k)))
+  uid_v[is.na(k)] <- numeros_variables_libres(actuel, sum(is.na(k)))  # (jamais celui d'une variable qu'il a eue : variables.R)
   uid_v <- numeros_entiers(uid_v)
   # (les observations)
   uo_a <- uids(actuel$observations)
   uo_n <- uids(nouveau$observations)
-  m <- match(cles_observations(nouveau), cles_observations(actuel))
+  cles <- cles_alignement(actuel, nouveau)
+  m <- match(cles$nouveau, cles$actuel)
   uid_o <- uo_a[m]
   uid_o[is.na(m)] <- max(c(0L, uo_a)) + seq_len(sum(is.na(m)))
   uid_o <- numeros_entiers(uid_o)
@@ -1068,9 +1286,32 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   # (les variables dont les catégories ont changé de numéros, nommées par le leur : celles d'avant et
   # les nouvelles, pour les définitions des modèles)
   cartes <- list()
+  retypees <- numeric(0)
+  communes <- which(!is.na(m))
   for (i in seq_along(vn)) {
     v <- vn[[i]]
-    if (!is.na(k[i])) {
+    if (!is.na(k[i]) && selon_rejeu) {
+      # (une étape retirée : la variable telle que la source et les autres étapes la donnent)
+      a <- va[[k[i]]]
+      ca <- as.character(unlist(a$categories))
+      cn <- as.character(unlist(v$categories))
+      if (xor(length(ca) > 0, length(cn) > 0)) {
+        retypees <- c(retypees, uid_v[i])
+      } else if (length(ca) && !identical(ca, cn)) {
+        # (chaque catégorie d'avant : celle du même nom, ou celle que toutes ses lignes ont maintenant)
+        xa <- unname(actuel$donnees[as.character(uo_a[m[communes]]), as.character(uid(a))])
+        xn <- unname(X[communes, i])
+        carte <- match(ca, cn)
+        for (j in which(is.na(carte))) {
+          vues <- unique(xn[!is.na(xa) & xa == j & !is.na(xn)])
+          if (length(vues) == 1 && !cn[vues] %in% ca) carte[j] <- vues
+        }
+        neuves <- setdiff(cn, cn[carte[!is.na(carte)]])
+        cartes[[as.character(uid_v[i])]] <- list(anciennes = ca, carte = carte, neuves = neuves)
+        if (length(neuves)) categories[[length(categories) + 1]] <- list(variable = nom(a), nouvelles = I(neuves))
+      }
+      v$ids[1] <- nom(a)
+    } else if (!is.na(k[i])) {
       a <- va[[k[i]]]
       ca <- as.character(unlist(a$categories))
       cn <- as.character(unlist(v$categories))
@@ -1137,7 +1378,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   co <- if (is.list(co) && length(co$x) && length(co$y)) list(x = unname(mv[as.character(numeros_entiers(co$x))]), y = unname(mv[as.character(numeros_entiers(co$y))]),
                                                                 systeme = co$systeme)
   p["coordonnees"] <- list(if (!is.null(co) && !anyNA(c(co$x, co$y))) co
-                           else if (is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
+                           else if (!selon_rejeu && is.list(actuel$coordonnees) && all(as.numeric(c(actuel$coordonnees$x, actuel$coordonnees$y)) %in% uid_v)) actuel$coordonnees)
   if (!is.null(nouveau$collecte)) p$collecte <- nouveau$collecte
   # (les variables qui manquent : celles d'une formule sont calculées de nouveau, sous leur numéro)
   absentes <- va[setdiff(seq_along(va), k)]
@@ -1145,7 +1386,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
   parties <- list()
   for (a in absentes) {
     formule <- if (identical(premier_texte(a$origine$type), "formule")) premier_texte(a$formula) else ""
-    essai <- if (nzchar(formule)) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
+    essai <- if (nzchar(formule) && !selon_rejeu) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
     if (is.null(essai)) {
       parties[[length(parties) + 1]] <- a
       next
@@ -1170,16 +1411,30 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     recalculees <- c(recalculees, nom(a))
   }
   absentes_uid <- vapply(parties, uid, 0)
+  p <- numero_variable_garde(p, max(dernier_numero_variable(actuel), uid_v))  # (les numéros des variables parties ne reviendront pas)
   # (les modèles : les numéros des catégories suivent leur nouvel ordre, comme quand l'atelier les range
   # (atelier.R : suivre_categories), chaque famille de termes d'une variable prend ceux de ses nouvelles
   # catégories (sauf les classes d'une PLS-DA : ses observations d'une classe nouvelle n'y entrent
   # pas, nouvelles_admises), puis les observations suivent)
   p$models <- actuel$models
+  # (une étape retirée qui rend une variable à son autre type : refusé quand un modèle l'utilise, dont
+  # les termes ne seraient plus les siens)
+  for (u in retypees) {
+    v <- variable_du_projet(p, u)
+    qui <- modeles_variable(actuel, u, nom(v))$definitions
+    if (length(qui)) {
+      fr <- !identical(getOption("nuee.langue"), "en")
+      stop(sprintf(traduire("Sans cette étape, %s serait de nouveau en %s, et %s l'utilise : modifiez ou supprimez d'abord ce modèle (Modèle › Modifier le modèle), ou gardez l'étape.",
+                            "Without this step, %s would be %s again, and %s uses it: modify or delete that model first (Model › Modify model), or keep the step."),
+                   guillemets_texte(nom(v), fr), if (length(v$categories)) traduire("catégories", "categories") else traduire("nombres", "numbers"),
+                   liste_mots(qui, fr)), call. = FALSE)
+    }
+  }
   gagnees <- list()
   for (u in names(cartes)) {
     uu <- as.numeric(u)
     finales <- as.character(unlist(variable_du_projet(p, uu)$categories))
-    p <- suivre_categories(p, uu, match(cartes[[u]]$anciennes, finales), cartes[[u]]$anciennes)
+    p <- suivre_categories(p, uu, cartes[[u]]$carte %||% match(cartes[[u]]$anciennes, finales), cartes[[u]]$anciennes)
     codes <- match(cartes[[u]]$neuves, finales)
     for (i in seq_along(p$models)) {
       d <- p$models[[i]]
@@ -1274,18 +1529,43 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
     if (length(nouvelles)) list(nom = premier_texte(d$name), numero = d$number, observations = length(prises), admises = length(possibles), nouvelles = length(nouvelles))
   }))
   sans <- vapply(Filter(function(d) !prend(d) || identical(premier_texte(d$groupes_vc$by), "groups"), actuel$models), function(d) premier_texte(d$name), "")
+  # (les observations d'un même nom que rien ne distingue, retrouvées par leur rang : du côté qui en a
+  # le plus ; les colonnes qui distinguent les autres)
+  par_rang <- function(k) {
+    b <- sub("\u001f\\d+$", "", k[grepl("\u001f\\d+$", k)])
+    sum(b %in% b[duplicated(b)])
+  }
   rapport <- list(
     observations = list(ajoutees = length(ajoutees), retirees = length(retirees),
                         premieres_ajoutees = I(utils::head(unname(p$noms_obs[as.character(ajoutees)]), 10)),
                         premieres_retirees = I(utils::head(unname(noms_obs_a[as.character(retirees)]), 10)),
                         cellules = cellules, cellules_par_variable = changees, par_position = positions(actuel) && positions(nouveau),
-                        repetees = sum(duplicated(noms_obs_a))),
+                        repetees = max(par_rang(cles$actuel), par_rang(cles$nouveau)),
+                        distinguees = I(sub("^(var|id):", "", cles$colonnes))),
     variables = list(nouvelles = I(noms_n[is.na(k)]), absentes = I(vapply(parties, nom, "")), recalculees = I(recalculees),
                      categories = categories, types = types),
     identifiants = list(nouveaux = I(setdiff(noms_id_n[-1], noms_id_a)), absents = I(id_absents)),
     modeles = list(variables_absentes = touches, observations_choisies = choisies, sans_nouvelles = I(sans),
                    nouvelles_categories = gagnees, references_changees = references))
-  list(projet = p, rapport = rapport, vers_nouveau = stats::setNames(uo_n, as.character(uid_o)), absentes = absentes_uid)
+  list(projet = p, rapport = rapport, vers_nouveau = stats::setNames(uo_n, as.character(uid_o)), absentes = absentes_uid,
+       colonnes_absentes = cles$absentes)
+}
+
+# Les identifiants des observations de deux projets qu'une mise à jour rapporte l'un à l'autre
+# (aligner_projet) : ceux de cles_observations, les mêmes colonnes distinguant de chaque côté les
+# observations d'un même nom (colonnes_cle, parmi celles que les deux ont) ; ceux que le projet qu'un
+# modèle d'une étape avait vu (projet_squelette) a gardés, ses colonnes donnant ceux de `nouveau`
+# (`absentes` : celles que `nouveau` n'a plus), ou leur rang pour une étape notée avant qu'il les
+# garde. list(actuel, nouveau, colonnes, absentes).
+cles_alignement <- function(actuel, nouveau) {
+  s <- actuel$cles_squelette
+  if (isTRUE(s$ancien)) return(list(actuel = cles_rangs(premiers_noms(actuel)), nouveau = cles_rangs(premiers_noms(nouveau)), colonnes = character(0), absentes = character(0)))
+  if (!is.null(s)) {
+    absentes <- colonnes_absentes(nouveau, s$colonnes)
+    return(list(actuel = s$cles, nouveau = cles_observations(nouveau, s$colonnes), colonnes = s$colonnes, absentes = absentes))
+  }
+  colonnes <- colonnes_cle(list(actuel, nouveau))
+  list(actuel = cles_observations(actuel, colonnes), nouveau = cles_observations(nouveau, colonnes), colonnes = colonnes, absentes = character(0))
 }
 
 # ---------------------------------------------------------------- la mise à jour
@@ -1299,7 +1579,10 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL) {
 # changé, avec ce qu'a donné chaque étape (`etapes`), le fichier lu (`fichier`), ce qu'il faut savoir
 # de sa lecture (`notes`) et si ses observations se retrouvent par leur place, sans colonne qui les
 # nomme (`par_position`)). Un fichier de plusieurs tableaux sans table choisie : list(choisir, chemin).
-mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NULL, dossier = dossier_projet(actuel), etapes = actuel$etapes %||% list()) {
+# `selon_rejeu` : une étape retirée, les variables telles que la source et les autres étapes les donnent
+# (aligner_projet).
+mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NULL, dossier = dossier_projet(actuel), etapes = actuel$etapes %||% list(),
+                        selon_rejeu = FALSE) {
   s <- actuel$source_donnees
   chemin <- premier_texte(chemin)
   if (!nzchar(chemin)) {
@@ -1330,15 +1613,20 @@ mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NU
   if (lecteur == "collecte") collecte <- brut$import_collecte %||% collecte
   brut$note <- brut$import_collecte <- NULL
   r <- rejouer_etapes(sans_attributs(brut), etapes, dossier, sans_nouvelles)
-  a <- aligner_projet(actuel, r$projet, sans_nouvelles)
+  a <- aligner_projet(actuel, r$projet, sans_nouvelles, selon_rejeu)
   n <- a$projet
   n$etapes <- etapes
   n$source_donnees <- source_fichier(chemin, lecteur, table, reglages, collecte)
   n$empreinte_donnees <- empreinte_donnees(n)
+  # (les changements faits avant les étapes, dans une version d'avant la 1.1 : la mise à jour les remplace
+  # par ce que donnent le fichier et les étapes, et le dit ; ils n'y sont plus après elle)
+  avant_etapes <- isTRUE(actuel$changements_avant_etapes) || is.null(actuel$empreinte_donnees)
+  n$changements_avant_etapes <- NULL
   rapport <- a$rapport
   rapport$observations$par_position <- isTRUE(rapport$observations$par_position) || identical(premier_texte(reglages$identifiant, NA_character_), "")
   rapport$etapes <- r$etapes
   rapport$fichier <- list(chemin = normalizePath(chemin, winslash = "/"), table = table, lecteur = lecteur)
   rapport$notes <- I(notes)
+  rapport$changements_avant_etapes <- avant_etapes
   list(projet = n, rapport = rapport)
 }

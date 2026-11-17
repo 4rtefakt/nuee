@@ -131,8 +131,13 @@ export function lireRapport(r, n = null) {
   if (liste(m.sans_nouvelles).length) lignesModeles.push(ligne(t('etapes_r_sans_nouvelles', { noms: noms(m.sans_nouvelles) })));
 
   const lecture = [];
+  // (a project from before 1.1: what was changed in it then isn't a step, and the update replaces it)
+  if (r.changements_avant_etapes) lecture.push(ligne(t('etapes_r_avant_etapes'), 'attention'));
   if (o.par_position) lecture.push(ligne(t('etapes_r_par_position'), 'attention'));
-  if (Number(o.repetees)) lecture.push(ligne(t('etapes_r_repetees', { n: o.repetees })));
+  // (observations of the same name: told apart by other columns (the year), or, nothing telling
+  // them apart, matched in their order, which a row added or removed among them shifts)
+  if (liste(o.distinguees).length) lecture.push(ligne(t('etapes_r_distinguees', { noms: noms(liste(o.distinguees).map(entre)) })));
+  if (Number(o.repetees)) lecture.push(ligne(t('etapes_r_repetees', { n: o.repetees }), 'attention'));
   for (const x of liste(r.notes)) lecture.push(ligne(x));
 
   const sections = [

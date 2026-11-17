@@ -96,9 +96,10 @@ egal('the steps: how many, then each skipped or failed with its reason, a note',
     '3. pasted cells: 1 observation(s) missing from the data: S9'], ['', 'attention', 'erreur', '']]);
 egal('a model that can’t be fitted again, and one without the new observations', [textes(lu2, 'modeles'), classes(lu2, 'modeles')],
   [['C1 can’t be fitted again: x2 missing', 'Without the new observations: M3'], ['erreur', '']]);
-egal('how the file was read: by row numbers, names that repeat, the reader’s notes', textes(lu2, 'lecture'),
-  ['No column names the observations: they are matched by their row number, and a row added or removed in the middle shifts all those after it.',
-    '2 observation(s) share their name with another: those of the same name are matched in their order.', '2 cell(s) read as missing']);
+egal('how the file was read: by row numbers, names that repeat and nothing tells apart (a warning), the reader’s notes', [textes(lu2, 'lecture'), classes(lu2, 'lecture')],
+  [['No column names the observations: they are matched by their row number, and a row added or removed in the middle shifts all those after it.',
+    '2 observation(s) share their name with another, and nothing tells them apart: they are matched in their order, and a row added or removed among them shifts those after it. A column that tells them apart (the year, the date, a record code) would match them.',
+    '2 cell(s) read as missing'], ['attention', 'attention', '']]);
 egal('the models that can’t be fitted again', lu2.bloques, [{ nom: 'C1', numero: 5, variables: ['x2'] }]);
 egal('one line, without the counts of observations when none is given', lireRapport(manque).resume, 'variables: 0 new, 2 gone · 2 step(s) not replayed');
 
@@ -109,6 +110,12 @@ const meme = { observations: { ajoutees: 0, retirees: 0, premieres_ajoutees: [],
   etapes: [{ n: 1, demande: 'remplacer', etiquette: 'remplacement', statut: 'ok', raison: '', notes: [] }], fichier: { chemin: 'C:/etude/releves.csv' }, notes: [] };
 const lu3 = lireRapport(meme, 40);
 egal('nothing changes: said, and only the steps listed', [lu3.rien, lu3.resume, lu3.sections.map((s) => s.cle)], [true, 'Nothing changes: the file gives the same data.', ['etapes']]);
+const enLong = lireRapport({ ...meme, observations: { ...meme.observations, distinguees: ['annee'] } }, 40);
+egal('a long table: observations of the same name told apart by a column, said', [textes(enLong, 'lecture'), classes(enLong, 'lecture')],
+  [['Observations of the same name are matched by “annee”.'], ['']]);
+const avant11 = lireRapport({ ...meme, changements_avant_etapes: true }, 40);
+egal('a project from before 1.1: its changes from then replaced, a warning that leaves “nothing changes” as it is', [textes(avant11, 'lecture'), classes(avant11, 'lecture'), avant11.rien],
+  [['This project comes from a version of Nuée before 1.1: what was changed in it then isn’t a step, and the update replaces it with what the file and the steps give.'], ['attention'], true]);
 
 console.log('The models fitted again');
 const projet = { modeles: [{ numero: 3, nom: 'M3', type: 'PLS', ajuste: true }, { numero: 1, nom: 'Tous', type: 'LM', ajuste: true },
