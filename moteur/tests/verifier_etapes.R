@@ -784,6 +784,13 @@ ordre_modeles <- list(
   lda = list(type = "LDA", x = x3, classe = uo("sol"), echelle = "UV"),
   foret_classes = list(type = "FOREST", x = x3[1:2], classe = uo("sol"), options = list(arbres = 100)),
   base = list(type = "PCA", x = x3, A = 2))
+# (sans ranger, comme le R de la version navigateur : les forêts laissées de côté, les arbres boostés
+# vérifiés à leur place)
+avec_ranger <- requireNamespace("ranger", quietly = TRUE)
+if (!avec_ranger) {
+  cat("  (ranger absent : les forêts aléatoires laissées de côté)\n")
+  ordre_modeles <- ordre_modeles[!startsWith(names(ordre_modeles), "foret")]
+}
 ids_o <- vapply(names(ordre_modeles), function(k) demande("ajuster", c(list(projet = io, nom = k), ordre_modeles[[k]]))$id, "")
 demande("scores_en_variables", list(modele = ids_o[["base"]]))
 ids_o[["haut"]] <- demande("ajuster", list(projet = io, type = "PLS", x = list(uo("$base.t1"), uo("$base.t2"), uo("altitude")), y = list(uo("densite")), A = 1, nom = "haut"))$id
@@ -802,12 +809,13 @@ verifier(sprintf("le nouvel ordre fait (%s ; %s), et les mêmes prédictions qu'
 cl_o <- apres_o$lda$obs
 verifier("les classes d'une LDA et d'une forêt de classement sous leurs noms, leurs probabilités nommées par elles",
          all(cl_o[["classe prédite"]] %in% c("argile", "limon", "sable")) && identical(cl_o[["classe observée"]], unname(valeurs(projet(io), "sol"))) &&
-           all(paste("probabilité", c("argile", "limon", "sable")) %in% names(cl_o)) && all(apres_o$foret_classes$fichier[["classe prédite"]] %in% c("argile", "limon", "sable")))
+           all(paste("probabilité", c("argile", "limon", "sable")) %in% names(cl_o)) && (!avec_ranger || all(apres_o$foret_classes$fichier[["classe prédite"]] %in% c("argile", "limon", "sable"))))
 # (un nom changé : la forêt n'est plus à jour, et le modèle de base du modèle hiérarchique non plus)
 demande("categories", list(projet = io, variable = uo("habitat"), noms = sub("forêt", "bois", cats_o("habitat")), ordre = sub("forêt", "bois", cats_o("habitat"))))
+perime_o <- if (avec_ranger) "foret" else "boost"
 verifier("un nom changé depuis : prédire refusé, d'un fichier aussi, et par le modèle de base d'un modèle hiérarchique",
-         grepl("ont changé depuis l'ajustement de foret", refus("predire", list(modele = ids_o[["foret"]]))) &&
-           grepl("ont changé depuis l'ajustement de foret", refus("predire_fichier", list(modele = ids_o[["foret"]], chemin = f_pred))) &&
+         grepl(paste("ont changé depuis l'ajustement de", perime_o), refus("predire", list(modele = ids_o[[perime_o]]))) &&
+           grepl(paste("ont changé depuis l'ajustement de", perime_o), refus("predire_fichier", list(modele = ids_o[[perime_o]], chemin = f_pred))) &&
            grepl("ont changé depuis l'ajustement de base", refus("predire_fichier", list(modele = ids_o[["haut"]], chemin = f_pred))))
 
 cat("Une variable renommée, supprimée, en catégories : des étapes qui se rejouent\n")

@@ -12,11 +12,12 @@
 // - R's working folder is the folder Node starts in, which R sees at /depot; its packages, the
 //   library essai_moteur_webr.mjs installs (node_modules/.cache/nuee-webr), at /paquets, first in
 //   .libPaths().
-// - R's session folder (tempdir()) is a folder of this computer's temporary folder, so that
-//   another R started by system2(file.path(R.home("bin"), "Rscript"), ...) sees the files this
-//   one wrote. webR can't start a program: that R is this script again, in a Node process of its
-//   own, started from webR's worker (spawnSync), with the same folders at the same places
-//   (NUEE_WEBR_MONTAGES) and the same working folder (NUEE_WEBR_DOSSIER).
+// - R's temporary folder (/tmp: its session folder, tempdir(), and the folders the checks make
+//   beside it) is a folder of this computer's temporary folder, so that another R started by
+//   system2(file.path(R.home("bin"), "Rscript"), ...) sees the files this one wrote. webR can't
+//   start a program: that R is this script again, in a Node process of its own, started from
+//   webR's worker (spawnSync), with the same folders at the same places (NUEE_WEBR_MONTAGES) and
+//   the same working folder (NUEE_WEBR_DOSSIER).
 // - quit(status = n) ends it with that status; an error, with 1.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -94,11 +95,18 @@ for (const [hote, r] of montages) {
   await creerDossiers(r);
   await webR.FS.mount('NODEFS', { root: hote }, r);
 }
-// R's session folder, on this computer's disk (removed at the end, as R removes it)
+// R's temporary folder, on this computer's disk (removed at the end, as R removes its session
+// folder): this R's own, or that of the R that started it, already mounted above; R's session
+// folder, hidden by the mount, made again there
 const tmpR = await webR.evalRString('tempdir()');
-const tmpHote = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-webr-'));
-await webR.FS.mount('NODEFS', { root: tmpHote }, tmpR);
-montages.push([tmpHote, tmpR]);
+const tmpParent = path.posix.dirname(tmpR);
+const herite = montages.find(([, r]) => r === tmpParent);
+const tmpHote = herite ? herite[0] : fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-webr-'));
+if (!herite) {
+  await webR.FS.mount('NODEFS', { root: tmpHote }, tmpParent);
+  montages.push([tmpHote, tmpParent]);
+}
+fs.mkdirSync(path.join(tmpHote, path.posix.basename(tmpR)), { recursive: true });
 const dossier = process.env.NUEE_WEBR_DOSSIER || '/depot';
 // the file, as R sees it: relative to its working folder, or a file of this computer (under the
 // folder Node starts in, or in a folder mounted at /script), or already one of R's
@@ -199,5 +207,5 @@ for (const ligne of `${texte.replace(/\r\n/g, '\n').replace(/\n$/, '')}\ncat("\\
 const statut = await fin;
 try { webR.close(); } catch { /* already stopped */ }
 await Promise.race([lecture, new Promise((r) => setTimeout(r, 500))]);
-fs.rmSync(tmpHote, { recursive: true, force: true });
+fs.rmSync(herite ? path.join(tmpHote, path.posix.basename(tmpR)) : tmpHote, { recursive: true, force: true });
 process.exit(statut);

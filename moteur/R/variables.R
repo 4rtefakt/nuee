@@ -444,7 +444,7 @@ variable_calculee <- function(projet, nom, formule) {
     stop(sprintf(traduire("La formule doit donner une valeur par observation (%d) ; elle en donne %d", "The formula must give one value per observation (%d); it gives %d"), length(obs), length(r)))
   }
   if (is.character(r)) {
-    cats <- sort(unique(stats::na.omit(r)))
+    cats <- trier_textes(unique(stats::na.omit(r)))
     projet <- ajouter_colonne(projet, nom, obs, match(r, cats), categories = cats)
   } else {
     if (!is.numeric(r)) stop(traduire("La formule doit donner des nombres ou du texte", "The formula must give numbers or text"))
@@ -934,7 +934,7 @@ ajouter_colonnes_table <- function(projet, tableau, cles_projet, cles_table, col
     } else {
       x <- trimws(as.character(x))
       x[x %in% c("", "NA")] <- NA
-      cats <- sort(unique(stats::na.omit(x)))
+      cats <- trier_textes(unique(stats::na.omit(x)))
     }
     projet <- ajouter_colonne(projet, nom, obs, match(x, cats), categories = cats)
   }

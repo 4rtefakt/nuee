@@ -2567,9 +2567,12 @@ appli <- list(
   },
   # (l'interface relue à chaque chargement : no-cache, et 304 quand rien n'a changé. Sans
   # Cache-Control, Chromium la tenait pour fraîche un dixième de son âge, et une nouvelle version
-  # montrait celle d'avant : app/main.js, demarrer)
-  staticPaths = list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
-                     "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  # montrait celle d'avant : app/main.js, demarrer). Sans httpuv, aucune : le R de la version
+  # navigateur, où les vérifications du moteur appellent appli$call elles aussi.
+  staticPaths = if (requireNamespace("httpuv", quietly = TRUE)) {
+    list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
+         "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  }
 )
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)

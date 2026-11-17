@@ -822,7 +822,7 @@ ecrire_omv <- function(df, chemin) {
     x <- df[[k]]
     nom <- names(df)[k]
     if (is.logical(x)) x <- factor(ifelse(x, "TRUE", "FALSE"), levels = c("FALSE", "TRUE"))
-    if (is.character(x) && anyDuplicated(x[!is.na(x)])) x <- factor(x, levels = sort(unique(x[!is.na(x)])))
+    if (is.character(x) && anyDuplicated(x[!is.na(x)])) x <- factor(x, levels = trier_textes(unique(x[!is.na(x)])))
     champ <- list(name = nom, id = k, columnType = "Data", dataType = "Decimal", measureType = "Continuous",
                   formula = "", formulaMessage = "", parentId = 0, width = 100, type = "number",
                   importName = "", description = if (nom %in% names(descriptions)) enc2utf8(unname(descriptions[[nom]])) else "",
