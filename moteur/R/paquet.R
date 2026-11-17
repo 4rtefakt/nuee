@@ -134,19 +134,15 @@ chemin_relatif_paquet <- function(x) {
   x
 }
 
-# Les empreintes SHA-256 de fichiers : tools::sha256sum (R 4.5 et après), sinon sha256sum du système
-# (coreutils, sous Linux, où le R d'une distribution peut être plus ancien) ou shasum.
+# Les empreintes SHA-256 de fichiers, quel que soit le R, comme le moteur les calcule : celle
+# d'empreinte_sha (etapes.R : tools::sha256sum, de R 4.5) ; un R plus ancien (celui d'une distribution
+# Linux : R 4.2 de Debian 12, R 4.1 d'Ubuntu 22.04), où empreinte_sha prend un MD5, la calcule en R
+# seul, comme l'empreinte d'un code (code.R : sha256_r ; 30 Ko par seconde environ).
 empreintes_sha256 <- function(fichiers) {
-  if (!length(fichiers)) return(character(0))
-  sha <- get0("sha256sum", envir = asNamespace("tools"), mode = "function", inherits = FALSE)
-  if (!is.null(sha)) return(unname(tolower(sha(fichiers))))
-  for (outil in list(c("sha256sum"), c("shasum", "-a", "256"))) {
-    if (!nzchar(Sys.which(outil[1]))) next
-    sortie <- suppressWarnings(system2(outil[1], c(outil[-1], shQuote(fichiers)), stdout = TRUE, stderr = FALSE))
-    h <- tolower(sub("^\\\\?([0-9a-fA-F]{64}).*$", "\\1", sortie))
-    if (length(h) == length(fichiers) && all(grepl("^[0-9a-f]{64}$", h))) return(h)
-  }
-  stop(traduire("Pas de quoi calculer les empreintes SHA-256 (R 4.5 ou sha256sum).", "Nothing to compute SHA-256 hashes with (R 4.5 or sha256sum)."), call. = FALSE)
+  vapply(fichiers, function(f) {
+    h <- empreinte_sha(f)
+    if (startsWith(h, "md5:")) sha256_r(readBin(f, "raw", file.size(f))) else h
+  }, "", USE.NAMES = FALSE)
 }
 
 # Le dictionnaire des données (tableau_projet, formats.R) : une ligne par colonne, son type

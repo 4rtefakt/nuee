@@ -380,6 +380,19 @@ casse[[2]]$modele <- list()
 r <- ecrire_paquet(p, casse, file.path(dossier, "casse.zip"), meta, list(), "fr", "essai")
 verifier("un modèle dont le script ne s'écrit pas : nommé avec son erreur, l'autre toujours refait",
          identical(r$modeles[[1]]$objet, "M1") && is.null(r$modeles[[2]]$objet) && is.character(r$modeles[[2]]$erreur) && nzchar(r$modeles[[2]]$erreur))
+# un R d'avant 4.5, sans tools::sha256sum (R 4.2 de Debian 12, R 4.1 d'Ubuntu 22.04) : empreinte_sha y prend
+# un MD5 ; le manifeste reste en SHA-256 (sha256_r), que l'implémentation de cette vérification retrouve
+empreinte_r45 <- empreinte_sha
+empreinte_sha <- function(chemin = NULL, octets = NULL, md5 = FALSE) empreinte_r45(chemin, octets, md5 = TRUE)
+r <- ecrire_paquet(p, x$modeles[1:2], file.path(dossier, "R 4.1.zip"), meta, list(), "fr", "essai")
+empreinte_sha <- empreinte_r45
+ici <- file.path(dossier, "R 4.1")
+utils::unzip(r$chemin, exdir = ici)
+manifeste <- readLines(file.path(ici, "R 4.1", "MANIFEST.sha256"), encoding = "UTF-8")
+chemins <- sub("^[0-9a-f]{64}  ", "", manifeste)
+verifier(sprintf("sans tools::sha256sum (un R d'avant 4.5) : le manifeste en SHA-256 encore, ses %d empreintes celles de chaque fichier", length(manifeste)),
+         length(manifeste) == length(r$fichiers) - 1 && all(grepl("^[0-9a-f]{64}  ", manifeste)) &&
+           identical(sha256_fichiers(file.path(ici, "R 4.1", chemins)), sub("  .*$", "", manifeste)))
 refuse <- function(doc) tryCatch({ ecrire_paquet(p, list(), file.path(dossier, "refus.zip"), meta, list(doc), "fr", "essai"); FALSE }, error = function(e) TRUE)
 dehors <- file.path(dossier, "dehors.txt")
 writeLines("x", dehors)
