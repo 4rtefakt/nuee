@@ -1,7 +1,8 @@
 # Le paquet de reproductibilité d'un projet (Fichier › Exporter un paquet de reproductibilité… :
 # interface/paquet.js) : une archive .zip que quiconque a R, ou Nuée, peut relancer. Dans un dossier
 # au nom de l'archive :
-#   <projet>.nuee                    le projet (ses données, ses modèles, ses documents) ;
+#   <projet>.nuee                    le projet (ses données, ses modèles, ses documents), comme
+#                                    Enregistrer l'écrit, ses données venant du CSV (source_paquet) ;
 #   donnees/<projet>.csv             (data/ en anglais) ses données, et leur dictionnaire : chaque
 #   donnees/<projet> - dictionnaire.csv   colonne, son type, son unité, sa description, ses catégories ;
 #   analyse.R                        (analysis.R) un seul script R qui refait chaque modèle, fait des
@@ -533,9 +534,9 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
               code("quarto render documents/<document>.qmd")), "",
       vapply(ct$documents, function(d) paste0("- ", code(paste0("documents/", d$nom, ".qmd")), if (nzchar(d$note)) paste0(" — ", texte_sur(d$note)) else ""), ""), ""),
     paste("##", tx("L'ouvrir dans Nuée", "Open it in Nuée")), "",
-    sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient. Il faut Nuée %s ou plus récent.",
-               "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were. It takes Nuée %s or later."),
-            "https://nuee.io", sprintf("[%s](https://doi.org/%s)", DOI_NUEE, DOI_NUEE), code(ct$nuee), "1.0"),
+    sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient ; Édition › Mettre à jour les données relit les données du CSV du paquet, changé ou non. Il faut Nuée %s ou plus récent.",
+               "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were; Edit › Update the data reads the data again from the package's CSV, changed or not. It takes Nuée %s or later."),
+            "https://nuee.io", sprintf("[%s](https://doi.org/%s)", DOI_NUEE, DOI_NUEE), code(ct$nuee), "1.1"),
     if (!is.null(doi)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI.",
                                         "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI."),
                                      sprintf("[%s](%s)", dans_navigateur, dans_navigateur))),
@@ -549,6 +550,31 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
     paste0(citation, sprintf(tx("Analysé avec Nuée %s (Boutin, %s, https://doi.org/%s) et R %s (R Core Team).", "Analysed with Nuée %s (Boutin, %s, https://doi.org/%s) and R %s (R Core Team)."),
                              version, annee, DOI_NUEE, r_version)),
     "", sprintf(tx("Les métadonnées de citation sont dans %s et %s.", "The citation metadata are in %s and %s."), code("CITATION.cff"), code("codemeta.json")))
+}
+
+# Le projet tel que le paquet le garde : la source de ses données est son propre CSV, donnees/<projet>.csv
+# (data/ en anglais), par son chemin depuis le dossier du paquet, celui du .nuee, et rien d'autre : ni
+# le fichier d'où venaient les données, ni aucun chemin de l'ordinateur où le paquet s'écrit. Édition ›
+# Mettre à jour les données relit ainsi ce CSV, du paquet décompressé où qu'il soit (etapes.R :
+# fichier_retrouve, par le chemin relatif d'abord) ; un CSV changé y entre. Ses étapes n'y sont plus :
+# le CSV est ce qu'elles ont donné, les rejouer dessus les referait, et leurs fichiers (une table jointe,
+# un raster) restent chez l'auteur. L'import de ce CSV décide de ses colonnes comme le projet les a : la
+# première nomme les observations, les identifiants secondaires en restent, les variables quantitatives
+# se lisent en nombres (nouveau.R : projet_depuis_tableau). `fichier` : le CSV écrit ; `relatif` : son
+# chemin dans le paquet ; `tab` : ce qu'il contient (tableau_projet).
+source_paquet <- function(p, fichier, relatif, tab) {
+  vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(p$donnees), p$variables)
+  n_id <- ncol(tab) - length(vars)
+  variables <- names(tab)[-seq_len(n_id)]
+  s <- source_fichier(fichier, "tableau", reglages = list(identifiant = names(tab)[1], secondaires = names(tab)[seq_len(n_id)[-1]],
+                                                          quantitatives = variables[vapply(tab[-seq_len(n_id)], is.numeric, TRUE)]))
+  s$chemin <- relatif
+  s$relatif <- relatif
+  p$source_donnees <- s
+  p$etapes <- list()
+  p$changements_avant_etapes <- NULL
+  p$empreinte_donnees <- empreinte_donnees(p)
+  p
 }
 
 # Le paquet de reproductibilité du projet `projet`, écrit dans l'archive `chemin` (.zip), qui contient
@@ -577,12 +603,6 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   # (le nom du projet, sans son extension, pour ses fichiers : lettres, chiffres, espaces, _ ( ) -)
   nom <- trimws(gsub("[^[:alnum:]_ ()-]", "_", tools::file_path_sans_ext(as.character(projet$nom %||% projet$source %||% "")[1])))
   if (is.na(nom) || !nzchar(nom)) nom <- tx("projet", "project")
-  # le projet, avec les réponses du dialogue et la disposition de l'interface
-  p <- projet
-  p$paquet <- meta
-  if (!is.null(session)) p$session <- session
-  fichier_nuee <- paste0(nom, ".nuee")
-  enregistrer_projet(p, file.path(racine, fichier_nuee), version)
   # les données et leur dictionnaire
   donnees <- tx("donnees", "data")
   csv <- paste0(donnees, "/", nom, ".csv")
@@ -590,6 +610,14 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   tab <- tableau_projet(projet)
   ecrire_texte_paquet(file.path(racine, csv), lignes_csv(tab))
   ecrire_texte_paquet(file.path(racine, dictionnaire), lignes_csv(dictionnaire_donnees(projet, langue)))
+  # le projet, comme Enregistrer l'écrit (format 3), ses données venant de ce CSV, avec les réponses du
+  # dialogue et la disposition de l'interface ; ses chemins tels quels (dossier = NULL : chemins_relatifs
+  # les ferait partir du dossier temporaire où le paquet s'écrit)
+  p <- source_paquet(projet, file.path(racine, csv), csv, tab)
+  p$paquet <- meta
+  if (!is.null(session)) p$session <- session
+  fichier_nuee <- paste0(nom, ".nuee")
+  enregistrer_projet(p, file.path(racine, fichier_nuee), version, dossier = NULL)
   # le script de tous les modèles
   script <- tx("analyse.R", "analysis.R")
   s <- script_paquet(projet, modeles, file.path(racine, script), meta, langue, version)

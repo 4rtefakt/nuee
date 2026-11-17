@@ -150,6 +150,14 @@ ecrire <- function(langue) {
   d_arbre <- definir_modele(p, "TREE", x = x4, y = u(note), echelle = "none", nom = "M6")
   d_km <- definir_modele(p, "KMEANS", x = x4, echelle = "UV", options = list(k = 3), nom = "M7")
   for (d in list(d_lm, d_arbre, d_km)) { d$app <- TRUE; d$number <- length(p$models) + 1; p$models <- c(p$models, list(d)) }
+  # (comme un projet de la 1.1 : la source de ses données et une étape, sur l'ordinateur de l'auteur, dont le paquet ne garde rien)
+  chez_auteur <- file.path(dossier, "chez l'auteur")
+  dir.create(chez_auteur, showWarnings = FALSE)
+  origine <- file.path(chez_auteur, paste0(tools::file_path_sans_ext(p$nom), ".csv"))
+  ecrire_texte_paquet(origine, lignes_csv(tableau_projet(p)))
+  p$source_donnees <- source_fichier(origine, "tableau")
+  p$etapes <- list(list(demande = "decrire_variables", parametres = "{}", etiquette = "unités", langue = langue, date = format(Sys.time()), fichiers = list(fiche_fichier(origine))))
+  p$empreinte_donnees <- empreinte_donnees(p)
   modeles <- lapply(seq_along(p$models), function(i) list(id = sprintf("m%d", i), definition = p$models[[i]], modele = ajuster(p, p$models[[i]]), erreur = NULL))
   # (un modèle qui ne peut pas être refait : une catégorie qu'il a vue a changé)
   perime <- list(id = "m8", definition = list(name = "M8", type = "PLS"), modele = NULL, erreur = if (fr) "les catégories de variete ont changé" else "the categories of variety changed")
@@ -234,6 +242,38 @@ for (langue in c("fr", "en")) {
   verifier("le projet relu : les mêmes données, les mêmes modèles, les unités, les réponses du dialogue, la disposition de l'interface",
            identical(q$donnees, p$donnees) && identical(vapply(q$models, `[[`, "", "name"), paste0("M", 1:7)) &&
              identical(unite_variable(q, tx("sucre", "sugar")), "°Brix") && identical(metadonnees_gardees(q$paquet), meta) && identical(q$session, "{\"version\":2}"))
+  # au format 3 de la 1.1, ses données venant du CSV du paquet, par son chemin dans le paquet : rien de
+  # l'ordinateur de l'auteur (ni la source d'origine, ni ses étapes, ni le dossier temporaire où le paquet s'écrit)
+  texte_nuee <- paste(readLines(file.path(racine, paste0(nom, ".nuee")), encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  ici_r <- normalizePath(tempdir(), winslash = "/")
+  csv_rel <- sprintf(tx("donnees/%s.csv", "data/%s.csv"), nom)
+  verifier("le projet au format 3 : ses données venant de son CSV, par son chemin dans le paquet ; sans les étapes de l'auteur, ni aucun chemin de cet ordinateur",
+           identical(as.integer(q$nuee$format), 3L) && identical(q$source_donnees$chemin, csv_rel) && identical(q$source_donnees$relatif, csv_rel) &&
+             identical(q$source_donnees$lecteur, "tableau") && identical(q$source_donnees$reglages$identifiant, names(tableau_projet(p))[1]) &&
+             !length(q$etapes) && isTRUE(donnees_conformes(q)) && !grepl(ici_r, texte_nuee, fixed = TRUE) &&
+             !grepl(gsub("/", "\\\\\\\\", ici_r), texte_nuee, fixed = TRUE) && !grepl("chez l'auteur", texte_nuee, fixed = TRUE))
+  # Édition › Mettre à jour les données, du paquet décompressé : son CSV relu, rien de changé ; décompressé
+  # ailleurs, une valeur changée dans son CSV : c'est ce CSV-là qui est lu, et la valeur entre
+  q$chemin <- file.path(racine, paste0(nom, ".nuee"))
+  m <- mise_a_jour(q)
+  o <- m$rapport$observations
+  verifier("Mettre à jour les données, du paquet décompressé : son CSV relu, les mêmes observations et variables, aucune cellule changée",
+           identical(normalizePath(m$projet$source_donnees$chemin, winslash = "/"), normalizePath(file.path(racine, csv_rel), winslash = "/")) &&
+             o$ajoutees == 0 && o$retirees == 0 && o$cellules == 0 && !length(m$rapport$variables$nouvelles) && !length(m$rapport$variables$absentes))
+  ailleurs <- file.path(dossier, langue, "ailleurs")
+  dir.create(ailleurs)
+  file.copy(racine, ailleurs, recursive = TRUE)
+  copie <- file.path(ailleurs, basename(racine))
+  f_csv <- file.path(copie, csv_rel)
+  lu_copie <- utils::read.csv(f_csv, check.names = FALSE, na.strings = "", fileEncoding = "UTF-8", colClasses = "character")
+  k <- match(tx("sucre", "sugar"), names(lu_copie))
+  lu_copie[[k]][1] <- format(as.numeric(lu_copie[[k]][1]) + 1, digits = 15)
+  ecrire_texte_paquet(f_csv, lignes_csv(lu_copie))
+  q2 <- lire_projet(file.path(copie, paste0(nom, ".nuee")))
+  q2$chemin <- file.path(copie, paste0(nom, ".nuee"))
+  m2 <- mise_a_jour(q2)
+  verifier("décompressé ailleurs, une valeur changée dans son CSV : la mise à jour lit ce CSV-là, une cellule changée",
+           identical(normalizePath(m2$projet$source_donnees$chemin, winslash = "/"), normalizePath(f_csv, winslash = "/")) && m2$rapport$observations$cellules == 1)
   # les données et leur dictionnaire
   tab <- tableau_projet(p)
   lu <- utils::read.csv(file.path(racine, tx("donnees", "data"), paste0(nom, ".csv")), check.names = FALSE, na.strings = "", fileEncoding = "UTF-8", stringsAsFactors = FALSE)

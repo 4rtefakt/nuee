@@ -2013,6 +2013,20 @@ async function principal() {
       const manifeste = zip.get('Apples package/MANIFEST.sha256').toString('utf8').trim().split('\n');
       const faux = manifeste.filter((l) => { const [h, f] = [l.slice(0, 64), l.slice(66)]; return !zip.has(`Apples package/${f}`) || require('crypto').createHash('sha256').update(zip.get(`Apples package/${f}`)).digest('hex') !== h; });
       verifier(manifeste.length === zip.size - 1 && !faux.length, `le manifeste et les SHA-256 de Node : ${faux.join(' | ') || `${manifeste.length} fichiers`}`);
+      // unzipped and opened as Nuée 1.1 opens it: format 3, its data from its own CSV; Update the data reads it, nothing changed
+      const decompresse = path.join(dossier, 'paquet décompressé');
+      for (const [f, o] of zip) {
+        fs.mkdirSync(path.dirname(path.join(decompresse, f)), { recursive: true });
+        fs.writeFileSync(path.join(decompresse, f), o);
+      }
+      const ouvert = await api('ouvrir', { chemin: path.join(decompresse, 'Apples package', 'orchards.nuee') }, 'en');
+      const et = await api('etapes', { projet: ouvert.id }, 'en');
+      const maj = await api('mettre_a_jour', { projet: ouvert.id, apercu: true }, 'en');
+      verifier(ouvert.a_source === true && JSON.parse(zip.get('Apples package/orchards.nuee').toString('utf8')).nuee.format === 3 && et.source.existe && et.source.modifie === false
+        && et.source.relatif === 'data/orchards.csv' && !et.etapes.length && et.conformes === true && maj.apercu && maj.observations.cellules === 0
+        && !maj.observations.ajoutees && !maj.observations.retirees && fs.realpathSync(maj.fichier.chemin) === fs.realpathSync(path.join(decompresse, 'Apples package', 'data', 'orchards.csv')),
+      `le projet du paquet ouvert : ${JSON.stringify({ et, maj: maj.fichier })}`);
+      await api('fermer_projet', { projet: ouvert.id });
       // (in a browser: written in the engine's session folder, then downloaded)
       const t = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en');
       const telecharge = await brute(`/api/fichier?chemin=${encodeURIComponent(t.chemin)}`, { Cookie: cookie });
