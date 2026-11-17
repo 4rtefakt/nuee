@@ -662,7 +662,9 @@ if (!requireNamespace("terra", quietly = TRUE)) {
   verifier("une palette écrite par GDAL : les numéros des classes, en LAEA Europe", isTRUE(gpal$palette) && identical(gpal$systeme$code, 3035L) && ecart_gdal(f("palette.tif")) == 0)
   terra::writeRaster(fabriquer("INT1U"), f("gdal_jpeg.tif"), datatype = "INT1U", gdal = "COMPRESS=JPEG", overwrite = TRUE)
   verifier("JPEG écrit par GDAL : refusé", grepl("JPEG", refus(ouvrir_raster(f("gdal_jpeg.tif")))))
-  terra::writeRaster(terra::project(fabriquer("FLT4S"), "EPSG:27561"), f("gdal_27561.tif"), overwrite = TRUE)
+  # (dans ce système d'emblée, sans reprojeter : passer de RGF93 à la NTF demande une grille de PROJ,
+  # qui manque parfois, et terra::project échoue alors sur tous les points, macOS Intel le 17/11/2026)
+  terra::writeRaster(fabriquer("FLT4S", crs = "EPSG:27561", etendue = c(600000, 600000 + Wg * 25, 200000, 200000 + Hg * 25)), f("gdal_27561.tif"), overwrite = TRUE)
   verifier("un système que Nuée ne convertit pas, écrit par GDAL : refusé avec son code", grepl("27561", ouvrir_raster(f("gdal_27561.tif"))$systeme$erreur))
   # les GeoTIFF écrits ici, lus par GDAL : les mêmes valeurs et la même transformation
   ici <- c(sprintf("ici_%d.tif", seq_along(cas)), "point.tif", "meta.tif")
