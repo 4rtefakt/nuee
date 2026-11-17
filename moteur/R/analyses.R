@@ -45,8 +45,15 @@ est_autre_analyse <- function(d) isTRUE(as.character(d$type %||% "") %in% AUTRES
 # Un modèle sans composantes NIPALS : une régression ou une autre analyse.
 sans_composantes <- function(d) est_regression(d) || est_autre_analyse(d)
 
-# La fonction <prefixe><type> d'une analyse, ou NULL.
-fonction_analyse <- function(prefixe, type) get0(paste0(prefixe, tolower(as.character(type)[1])), mode = "function")
+# La fonction <prefixe><type> d'une analyse, ou NULL : une du moteur, que ses fichiers définissent
+# (charger.R : nuee.noms_moteur), pas une fonction du même nom que l'utilisateur a écrite dans
+# l'environnement global (un definir_trim de son script n'est pas la définition de TRIM).
+fonction_analyse <- function(prefixe, type) {
+  nom <- paste0(prefixe, tolower(as.character(type)[1]))
+  noms <- getOption("nuee.noms_moteur")
+  if (is.environment(noms) && !exists(nom, envir = noms, inherits = FALSE)) return(NULL)
+  get0(nom, mode = "function")
+}
 
 ajuster_analyse <- function(projet, d) {
   f <- fonction_analyse("ajuster_", d$type)

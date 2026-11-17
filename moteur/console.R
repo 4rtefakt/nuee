@@ -286,7 +286,8 @@ local({
     row.names = NULL), c("objet", "nom", "type", "A", "projet"), c("object", "name", "type", "A", "project")))
   en_deux("engine_folder", "dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"))
   en_deux("reload_engine", "recharger_moteur", function() {
-    for (f in sort(list.files(file.path(racine, "moteur", "R"), "\\.R$", full.names = TRUE))) sys.source(f, envir = globalenv(), keep.source = FALSE)
+    # (comme au démarrage, charger.R : ses fichiers relus, et les noms qu'ils définissent tenus à jour)
+    source(file.path(racine, "moteur", "charger.R"), encoding = "UTF-8")
     message(traduire("Moteur rechargé depuis ", "Engine reloaded from "), normalizePath(file.path(racine, "moteur", "R"), winslash = "/"),
             traduire(" : réajuster les modèles pour l'utiliser.", ": refit the models to use it."))
   })
