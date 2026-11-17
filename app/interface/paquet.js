@@ -5,24 +5,32 @@
 // the project not fitted yet is fitted (app.calculerDiscret, as for a document that cites it), each
 // document becomes a reproducible Quarto file (documents.js: documentPourPaquet), and the engine
 // writes the package (request `paquet`): the project (.nuee), its data as CSV with a data
-// dictionary, one R script that redoes every model, the documents, a README in the interface's
-// language, the licence with its text, CITATION.cff, codemeta.json and the SHA-256 of every file,
-// in one .zip (where the user says on the desktop; downloaded in a browser).
+// dictionary, one R script that redoes every model, the documents, each model's key results (what a
+// rerun compares with: relancer.js), a README in the interface's language, the licence with its
+// text, CITATION.cff, codemeta.json and the SHA-256 of every file, in one .zip (where the user says on
+// the desktop; downloaded in a browser).
 // Deposit on Zenodo (desktop only, main.js and zenodo.js: bureau.zenodo): a draft created on Zenodo
 // with its DOI reserved, then the same package written with that DOI (its README, CITATION.cff and
-// codemeta.json name it) in the engine's session folder, then deposited in the draft with its
-// description; with the user's personal access token, which the main process keeps with the tokens
-// of the versions and the sign-ins and never gives back here. Nuée never publishes: the user checks
-// the draft on Zenodo, whose page opens, and publishes it there, which registers its DOI.
-// sandbox.zenodo.org, Zenodo's test server, is under Advanced.
+// codemeta.json name it, with the link https://nuee.io/app/?doi=<doi> that opens it in the browser
+// version, and the link's QR code as an SVG file: qr.js) in the engine's session folder, then
+// deposited in the draft with its description; with the user's personal access token, which the main
+// process keeps with the tokens of the versions and the sign-ins and never gives back here. Nuée never
+// publishes: the user checks the draft on Zenodo, whose page opens, and publishes it there, which
+// registers its DOI. The last dialog shows the link and its QR code, Copy link and Save the QR code
+// (SVG or PNG). sandbox.zenodo.org, Zenodo's test server, is under Advanced.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau, telechargerFichier } from './api.js';
 import { VERSION } from './nouveautes.js';
 import { documentPourPaquet } from './documents.js';
+import { codeQR } from './qr.js';
 
 const LICENCES = { 'CC-BY-4.0': 'cc_by', 'CC0-1.0': 'cc0', 'CC-BY-SA-4.0': 'cc_by_sa', 'CC-BY-NC-4.0': 'cc_by_nc' };
 const HOTES = ['zenodo.org', 'sandbox.zenodo.org'];
+
+// The link that opens a package in Nuée's browser version, by its DOI (relancer.js: ouvrirLien), as
+// its README gives it (moteur/R/paquet.R: lignes_readme)
+export const lienPaquet = (doi) => `https://nuee.io/app/?doi=${doi}`;
 
 // An ORCID as the engine keeps it (0000-0002-1825-0097), from its address or without dashes, checked
 // by its last digit (ISO 7064 11,2, as paquet.R: orcid_paquet); '' for none, null for one that isn't.
@@ -131,9 +139,10 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
 // Every model of the project fitted (the latest fit of each, in the order of their numbers), each
 // document made a reproducible Quarto file, then the package written by the engine; `chemin`:
 // where (null: in the engine's session folder); `doi`: the package's own, reserved on Zenodo for
-// its draft. Returns the engine's answer, with what could not be done (`notes`) and the documents
-// whose references don't all resolve.
-async function ecrirePaquet(app, pid, meta, chemin, doi = null) {
+// its draft; `qr`: with it, the QR code of its link as SVG, which the package holds too. Returns the
+// engine's answer, with what could not be done (`notes`) and the documents whose references don't
+// all resolve.
+async function ecrirePaquet(app, pid, meta, chemin, doi = null, qr = null) {
   return app.occupe(async () => {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (what is being typed in a document first)
     if (app.viderFigures) await app.viderFigures(pid);
@@ -162,7 +171,7 @@ async function ecrirePaquet(app, pid, meta, chemin, doi = null) {
     }
     app.statut(t('paquet_ecriture'));
     const r = await demander('paquet', { projet: pid, meta, modeles: app.modelesSeance(pid).map((m) => m.id), non_ajustes: nonAjustes,
-      documents: JSON.stringify(documents), session: app.sessionProjet(pid), chemin, doi, version: VERSION, langue: langueActuelle() });
+      documents: JSON.stringify(documents), session: app.sessionProjet(pid), chemin, doi, ...(qr ? { qr } : {}), version: VERSION, langue: langueActuelle() });
     app.majProjet(r.projet);
     app.diffuser('modeles');
     return { ...r, notes };
@@ -231,10 +240,13 @@ async function dialogueZenodo(app, p, meta) {
         if (b.erreur) { await montrer(b); return; }
         brouillon = { ...b, hote };
       }
-      // 2. the package, with that DOI
+      // 2. the package, with that DOI, the link that opens it in a browser and its QR code
+      const lien = lienPaquet(brouillon.doi);
       let r;
+      let qr;
       try {
-        r = await ecrirePaquet(app, p.id, meta, null, brouillon.doi);
+        qr = await codeQR(lien);
+        r = await ecrirePaquet(app, p.id, meta, null, brouillon.doi, qr.svg);
       } catch (e) {
         await montrer({ erreur: 'paquet', detail: e.message, page: brouillon.page });
         return;
@@ -245,7 +257,8 @@ async function dialogueZenodo(app, p, meta) {
       if (z.erreur) { await montrer({ ...z, page: z.page || brouillon.page }); return; }
       d.fermer();
       app.statut(t('zenodo_fait_statut', { page: z.page }));
-      dialogue({ titre: t('zenodo_fait_titre'), contenu: el('div', {}, el('p', {}, t('zenodo_fait', { doi: z.doi })), el('p', { class: 'note' }, z.page), remarques(r)),
+      dialogue({ titre: t('zenodo_fait_titre'), large: true,
+        contenu: el('div', {}, el('p', {}, t('zenodo_fait', { doi: z.doi })), el('p', { class: 'note' }, z.page), sectionLien(app, lien, qr, meta), remarques(r)),
         boutons: [{ libelle: t('zenodo_ouvrir'), action: () => { window.open(z.page); return false; } }, { libelle: t('fermer'), principal: true, action: () => true }] });
     } catch (e) {
       erreur.textContent = e.message;
@@ -260,6 +273,26 @@ async function dialogueZenodo(app, p, meta) {
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('zenodo_creer'), principal: true, action: () => { creer(); return false; } }] });
   await dessiner();
   if (!etat.jeton) champ.focus();
+}
+
+// The deposited package's link and its QR code (qr.js: codeQR), once its draft has its DOI: the link
+// copied; the QR code saved as SVG, or PNG when the name chosen ends so (16 pixels a module).
+function sectionLien(app, lien, qr, meta) {
+  const copier = () => navigator.clipboard.writeText(lien).then(() => app.statut(t('zenodo_lien_copie', { lien })), (e) => app.statut(e.message, true));
+  const enregistrer = async () => {
+    const chemin = await bureau.enregistrerSous(`${nomFichier(meta.titre)} QR.svg`, [{ name: 'SVG', extensions: ['svg'] }, { name: 'PNG', extensions: ['png'] }]);
+    if (!chemin) return;
+    await bureau.ecrireFichier(chemin, /\.png$/i.test(chemin) ? qr.png(16) : new TextEncoder().encode(qr.svg));
+    app.statut(t('zenodo_qr_enregistre', { chemin }));
+  };
+  return el('div', { class: 'lien-paquet' },
+    el('img', { class: 'qr-lien', src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr.svg)}`, width: 4 * (qr.taille + 8), height: 4 * (qr.taille + 8),
+      alt: t('zenodo_qr_alt', { lien }) }),
+    el('div', {}, el('p', {}, t('zenodo_lien_texte')), el('p', {}, el('code', { class: 'lien-zenodo' }, lien)),
+      el('div', { class: 'ligne' },
+        el('button', { class: 'copier-lien', onclick: copier }, icone('copy'), ` ${t('zenodo_copier_lien')}`),
+        el('button', { class: 'enregistrer-qr', onclick: () => { enregistrer().catch((e) => app.statut(`${t('erreur')} : ${e.message}`, true)); } },
+          icone('image-down'), ` ${t('zenodo_enregistrer_qr')}`))));
 }
 
 const messageZenodo = (z, hote) => {
@@ -306,6 +339,9 @@ ajouterTextes({
   zenodo_fait_titre: 'Brouillon créé sur Zenodo', zenodo_fait_statut: 'Brouillon créé sur Zenodo : {page}',
   zenodo_fait: 'Le brouillon a le paquet et sa description, et Nuée comme logiciel qui l’a fait. Son DOI, {doi}, est écrit dans le paquet (son README, CITATION.cff et codemeta.json) ; il mène au paquet une fois le brouillon publié. Vérifiez-le sur Zenodo, complétez-le au besoin, puis publiez-le là : rien n’est public avant, et Nuée ne publie jamais.',
   zenodo_ouvrir: 'Ouvrir le brouillon',
+  zenodo_lien_texte: 'Une fois le brouillon publié, ce lien ouvre le paquet dans Nuée, dans un navigateur, et le relance ; son code QR aussi (pour une affiche, une diapositive ou un article). Le paquet a les deux.',
+  zenodo_copier_lien: 'Copier le lien', zenodo_enregistrer_qr: 'Enregistrer le code QR…', zenodo_lien_copie: 'Lien copié : {lien}',
+  zenodo_qr_enregistre: 'Code QR enregistré : {chemin}', zenodo_qr_alt: 'Code QR de {lien}',
   zenodo_erreur_jeton: 'Zenodo refuse le jeton (HTTP 401) : vérifiez-le, ou oubliez-le et collez-en un autre.',
   zenodo_erreur_droits: 'Le jeton n’a pas les droits qu’il faut (HTTP 403) : deposit:write et deposit:actions.',
   zenodo_erreur_refus: 'Zenodo n’a pas pris le dépôt : {detail}', zenodo_erreur_taille: 'Le paquet est trop gros pour Zenodo (HTTP 413).',
@@ -350,6 +386,9 @@ ajouterTextes({
   zenodo_fait_titre: 'Draft created on Zenodo', zenodo_fait_statut: 'Draft created on Zenodo: {page}',
   zenodo_fait: 'The draft has the package and its description, and Nuée as the software that made it. Its DOI, {doi}, is written in the package (its README, CITATION.cff and codemeta.json); it leads to the package once the draft is published. Check it on Zenodo, complete it if needed, then publish it there: nothing is public before, and Nuée never publishes.',
   zenodo_ouvrir: 'Open the draft',
+  zenodo_lien_texte: 'Once the draft is published, this link opens the package in Nuée, in a browser, and reruns it; so does its QR code (for a poster, a slide or a paper). The package holds both.',
+  zenodo_copier_lien: 'Copy link', zenodo_enregistrer_qr: 'Save the QR code…', zenodo_lien_copie: 'Link copied: {lien}',
+  zenodo_qr_enregistre: 'QR code saved: {chemin}', zenodo_qr_alt: 'QR code of {lien}',
   zenodo_erreur_jeton: 'Zenodo refuses the token (HTTP 401): check it, or forget it and paste another one.',
   zenodo_erreur_droits: 'The token doesn’t have the scopes it needs (HTTP 403): deposit:write and deposit:actions.',
   zenodo_erreur_refus: 'Zenodo didn’t take the deposit: {detail}', zenodo_erreur_taille: 'The package is too big for Zenodo (HTTP 413).',

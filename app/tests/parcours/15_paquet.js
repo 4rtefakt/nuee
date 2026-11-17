@@ -6,11 +6,17 @@
 // file's SHA-256. Then File › Deposit on Zenodo… against a stand-in for Zenodo's deposit API on
 // 127.0.0.1 (the main process's NUEE_ZENODO; nothing reaches zenodo.org): the token pasted once and
 // kept encrypted in the profile's jetons.json, the draft created with its DOI reserved, the package
-// written with that DOI, then deposited in it with its description; never published.
+// written with that DOI, then deposited in it with its description; never published. Its last dialog
+// shows the link that opens the package in the browser version and its QR code, which jsQR reads back
+// (as drawn in the window, saved as PNG, and the package's qr-code.svg): the README's link. Then the
+// package deposited, File › Open on its .zip, and the package exported first, File › Open a
+// reproducibility package…: each opened again as a new project, its files those of its manifest,
+// every model fitted again giving its deposited results.
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const jsQR = require('jsqr');
 
 const JETON = 'zx9TOKENfake0123456789abcdefABCDEF0123456789abcdefABCDEF0123';
 const DOI = '10.5072/zenodo.4242';
@@ -45,6 +51,45 @@ function zenodo() {
     });
   });
   return new Promise((ok) => s.serveur.listen(0, '127.0.0.1', () => ok(s)));
+}
+
+// A QR code drawn in the window (an image's address: the expression `adresse`), its pixels read here
+// by jsQR: its text, or null.
+async function lireQR(n, adresse) {
+  const p = await n.evaluer(`(async () => {
+    const img = new Image();
+    img.src = ${adresse};
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let s = '';
+    for (let i = 0; i < d.length; i += 8192) s += String.fromCharCode(...d.subarray(i, i + 8192));
+    return { largeur: c.width, hauteur: c.height, pixels: btoa(s) };
+  })()`);
+  const lu = jsQR(new Uint8ClampedArray(Buffer.from(p.pixels, 'base64')), p.largeur, p.hauteur);
+  return lu ? lu.data : null;
+}
+
+// The report of the k-th comparison made in the window (changements.js: C<k>-…), a package rerun
+// (its section paquet-relance), once compared: its sentence, what it says of the manifest, the
+// models it shows, and the sentence of 4 models that all give their deposited results, in the
+// window's language.
+async function rapportRelance(n, k) {
+  return n.attendre(`(async () => {
+    const p = document.querySelector('[data-comparaison^="C${k}-"]');
+    const c = p && p.querySelector('.changements');
+    if (!c || !c.querySelector('.paquet-relance')) return null;
+    const { phraseBilan } = await import('./changements.js');
+    return { bilan: __n.norm(c.querySelector('.bilan-relance').textContent), manifeste: __n.norm(c.querySelector('.manifeste-relance').textContent),
+      intact: !c.querySelector('.manifeste-relance').classList.contains('attention'), modeles: [...c.querySelectorAll('.modele-change h3')].map((h) => __n.norm(h.textContent)),
+      attendu: phraseBilan({ relances: 4, identiques: 4, differents: [] }), doi: __n.norm((c.querySelector('.paquet-relance h3 .compte-change') || {}).textContent || '') };
+  })()`, 300000);
 }
 
 // every file of the package's folder has the SHA-256 its manifest gives
@@ -127,6 +172,20 @@ module.exports = {
       verifier('zenodoDescription', s.metadonnees && s.metadonnees.title === 'Apples' && s.metadonnees.prereserve_doi === true
         && s.metadonnees.creators[0].name === 'Exemple, Alice', s.metadonnees);
       verifier('zenodoFait', fait.includes(DOI) && fait.includes(`${base}/deposit/4242`), fait);
+      // the link and its QR code: drawn in the dialog, saved as PNG (Save the QR code…), and in the
+      // package (qr-code.svg), each read back by jsQR as the README's link
+      const lien = `https://nuee.io/app/?doi=${DOI}`;
+      const qrDialogue = await lireQR(n, "__n.boite().querySelector('img.qr-lien').src");
+      const png = path.join(dossier, 'Apples QR.png');
+      await n.fichierAEnregistrer(png);
+      await n.cliquer("__n.boite().querySelector('button.enregistrer-qr')");
+      await n.attendre(`__n.statut().startsWith(__n.t('zenodo_qr_enregistre').split('{')[0].trim())`);
+      const qrPng = fs.existsSync(png) ? await lireQR(n, JSON.stringify(`data:image/png;base64,${fs.readFileSync(png).toString('base64')}`)) : null;
+      const svg = [...zz.entries()].filter(([k]) => k.endsWith('/qr-code.svg')).map(([, v]) => v.toString('utf8'))[0] || '';
+      const qrPaquet = svg ? await lireQR(n, JSON.stringify(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)) : null;
+      verifier('zenodoLienQR', fait.includes(lien) && readme.includes(`[${lien}](${lien})`) && qrDialogue === lien && qrPng === lien && qrPaquet === lien
+        && fs.readFileSync(png).subarray(1, 4).toString() === 'PNG', { qrDialogue, qrPng, qrPaquet });
+      fs.writeFileSync(path.join(dossier, 'Apples deposited.zip'), depose || Buffer.alloc(0));
       // the token in the profile, encrypted, under zenodo.org: the store of the versions and the sign-ins
       const jetons = path.join(path.dirname(dossier), 'profil', 'jetons.json');
       const texte = fs.existsSync(jetons) ? fs.readFileSync(jetons, 'utf8') : '';
@@ -139,5 +198,24 @@ module.exports = {
       s.serveur.closeAllConnections();
       await new Promise((ok) => s.serveur.close(ok));
     }
+
+    // ---- the package deposited, File › Open on its .zip; the one exported first, File › Open a
+    // reproducibility package…: each opened again as a new project, its files those of its manifest,
+    // every model fitted again giving its deposited results
+    const avant = (await n.etat()).projets.length;
+    const ouvrirPaquet = async (fichier, commande, k) => {
+      await n.fichierAOuvrir(fichier);
+      await n.menu('m_fichier', commande);
+      const r = await rapportRelance(n, k);
+      const p = (await n.etat()).projets;
+      return { ...r, projets: p.map((x) => x.nom), nouveau: p.length === avant + k };
+    };
+    const rouvert = await ouvrirPaquet(path.join(dossier, 'Apples deposited.zip'), 'ouvrir', 1);
+    verifier('paquetRouvertOuvrir', rouvert.bilan === rouvert.attendu && rouvert.intact && rouvert.doi === `DOI ${DOI}` && rouvert.nouveau
+      && rouvert.projets.includes('Apples.nuee') && ['M1', 'M2', 'M3', 'M4'].every((m) => rouvert.modeles.some((h) => h.startsWith(m))), rouvert);
+    const exporte = await ouvrirPaquet(zip, 'paquet_ouvrir', 2);
+    verifier('paquetRouvertCommande', exporte.bilan === exporte.attendu && exporte.intact && !exporte.doi && exporte.nouveau && exporte.projets.includes('Apples package.nuee'), exporte);
+    // (nothing written into the package: the .zip as it was written)
+    verifier('paquetIntact', n.lireZip(fs.readFileSync(zip)).size === z.size && manifesteJuste(n.lireZip(fs.readFileSync(zip)), 'Apples package'));
   },
 };

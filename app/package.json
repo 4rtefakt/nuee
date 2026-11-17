@@ -26,6 +26,8 @@
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
+    "jsqr": "^1.4.0",
+    "lean-qr": "^2.7.4",
     "lucide-static": "^1.66.0",
     "markdown-it": "^15.0.3",
     "playwright-core": "1.65.1",
