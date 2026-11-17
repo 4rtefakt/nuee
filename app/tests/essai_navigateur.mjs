@@ -16,7 +16,8 @@
 // Also the site as served: the page's headers (webR's two, no security policy but its own), where
 // R's packages came from (the site's copy of webR's repository when it has one, miroir_webr.mjs:
 // then nothing from another site until R is ready, and Kendall alone from repo.r-wasm.org), and,
-// under a path, /app redirected to /app/.
+// under a path, /app redirected to /app/. Last, ?langue=fr: a new profile in French, until a
+// language is chosen.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible]
 // --adresse: the site as another server serves it, neither built nor served here (nuee.io's
 // browser version: `wrangler dev` in vitrine/, then --adresse=http://127.0.0.1:8787/app/).
@@ -587,6 +588,27 @@ try {
   verifier('rechargé : le greffon encore installé et approuvé, le code R encore approuvé',
     apresRechargement.greffons.some((x) => x.id === 'mann-kendall' && x.permis) && apresRechargement.codes.length >= 1 && apresRechargement.codes.some((c) => c.approuve),
     JSON.stringify(apresRechargement));
+
+  // ?langue=fr (nuee.io's French page links there): a new profile, no language kept yet, gets the
+  // interface in French; a choice made since (View › Language) wins over the address at the next visit
+  fs.rmSync(path.join(sortie, 'profil-fr'), { recursive: true, force: true });
+  const contexteFr = await chromium.launchPersistentContext(path.join(sortie, 'profil-fr'), { headless: !options.visible });
+  try {
+    const p = await contexteFr.newPage();
+    p.on('dialog', (d) => d.accept());
+    const langueEtMenus = async () => {
+      await p.waitForFunction(() => document.querySelectorAll('.menu-haut').length > 3, null, { timeout: 60000 });
+      return p.evaluate(() => import('./i18n.js').then((m) => `${m.langueActuelle()} : ${[...document.querySelectorAll('.menu-haut')].slice(0, 3).map((b) => b.textContent).join(', ')}`));
+    };
+    await p.goto(`${adresse}?langue=fr`);
+    const neuf = await langueEtMenus();
+    await p.evaluate(() => import('./app.js').then((m) => m.app.changerLangue('en')));
+    await p.goto(`${adresse}?langue=fr`);
+    const apresChoix = await langueEtMenus();
+    verifier('?langue=fr : un profil neuf en français ; un choix fait ensuite (Affichage › Langue) l’emporte sur l’adresse', /^fr : Fichier/.test(neuf) && /^en : File/.test(apresChoix), `${neuf} | ${apresChoix}`);
+  } finally {
+    await contexteFr.close().catch(() => {});
+  }
 
   // (but the refusal of the random forest, which the interface writes to the console as any refusal)
   const autres = erreurs.filter((e) => !/desktop application is needed|application de bureau/.test(e));

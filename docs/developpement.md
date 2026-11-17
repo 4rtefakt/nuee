@@ -814,6 +814,9 @@ compiled to WebAssembly): nothing to install, and the data stay in the tab.
   headers above and takes the landing page's security policy off it (the app's page has its own),
   and `/app` redirects to `/app/` (see `vitrine/README.md`). Without a copy of webR's repository,
   as `servir_navigateur.js` serves a site by default, R's packages come from repo.r-wasm.org.
+  nuee.io's French page links to `/app/?langue=fr`: when the browser keeps no language yet, the
+  address's (`fr` or `en`) is the interface's and is kept as View › Language keeps it, so that a
+  choice made since wins over it (`i18n.js`).
 
 **The engine in the page.**
 - `api.js` sends each request to `moteur_webr.js` instead of the local server. That module starts
@@ -957,9 +960,10 @@ go; the question closed without an answer keeps them for next time.
   headers (the two above, no security policy but its own), where R's packages came from (with a
   copy of webR's repository, every one from the site and nothing from another site until R is
   ready; Kendall from repo.r-wasm.org either way), and, for a site under a path, that path
-  without its last slash redirected to it. `--adresse=<url>` uses a site another server serves,
-  neither built nor served by the check: nuee.io's, with `npx wrangler dev` in `vitrine/`,
-  `--adresse=http://localhost:8787/app/`.
+  without its last slash redirected to it; last, `?langue=fr` in a new profile: the interface in
+  French, then English after View › Language, the address unchanged. `--adresse=<url>` uses a
+  site another server serves, neither built nor served by the check: nuee.io's, with
+  `npx wrangler dev` in `vitrine/`, `--adresse=http://localhost:8787/app/`.
 - `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
   R server (see Speed).
 

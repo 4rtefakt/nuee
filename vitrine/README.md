@@ -74,7 +74,9 @@ more line in `FICHIERS` (`src/worker.js`) and its button in the page.
 
 `construire.mjs` builds it into `dist/app/` with `app/construire_navigateur.js`, the same site as
 its checks use (see *Browser version* in `docs/developpement.md`): the interface, the engine's
-files and webR, R compiled to WebAssembly. The page's card *In your browser* links to it.
+files and webR, R compiled to WebAssembly. The page's card *In your browser* links to it, the
+French page's to `/app/?langue=fr`: the application opens in French when that browser keeps no
+language yet (*View › Language*, which wins from then on).
 
 **R's packages come from the site too.** `app/miroir_webr.mjs` copies the webR binaries of the
 packages the page installs (`app/interface/paquets_webr.js`, with what they depend on: 39
