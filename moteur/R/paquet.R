@@ -148,15 +148,32 @@ chemin_relatif_paquet <- function(x) {
   x
 }
 
-# Les empreintes SHA-256 de fichiers, quel que soit le R, comme le moteur les calcule : celle
-# d'empreinte_sha (etapes.R : tools::sha256sum, de R 4.5) ; un R plus ancien (celui d'une distribution
-# Linux : R 4.2 de Debian 12, R 4.1 d'Ubuntu 22.04), où empreinte_sha prend un MD5, la calcule en R
-# seul, comme l'empreinte d'un code (code.R : sha256_r ; 30 Ko par seconde environ).
+# Les empreintes SHA-256 de fichiers, quel que soit le R : celle d'empreinte_sha (etapes.R :
+# tools::sha256sum, de R 4.5). Un R plus ancien (celui d'une distribution Linux, où Nuée tourne : R 4.2
+# de Debian 12, R 4.1 d'Ubuntu 22.04), où empreinte_sha prend un MD5, demande d'abord l'outil du système
+# (sha256_systeme) ; sans lui, il la calcule en R seul, comme l'empreinte d'un code (code.R : sha256_r,
+# 30 Ko par seconde environ : une minute pour un paquet de 2 Mo).
 empreintes_sha256 <- function(fichiers) {
   vapply(fichiers, function(f) {
     h <- empreinte_sha(f)
-    if (startsWith(h, "md5:")) sha256_r(readBin(f, "raw", file.size(f))) else h
+    if (!startsWith(h, "md5:")) return(h)
+    sha256_systeme(f) %||% sha256_r(readBin(f, "raw", file.size(f)))
   }, "", USE.NAMES = FALSE)
+}
+
+# Le SHA-256 d'un fichier par l'outil du système : sha256sum quand Sys.which le trouve (Linux), sinon
+# shasum -a 256 (macOS), le premier champ de sa réponse vérifié (64 chiffres hexadécimaux ; la barre
+# oblique inverse que sha256sum met devant un nom qu'il échappe, ôtée). NULL quand aucun des deux
+# n'est là, ou que sa réponse n'est pas une empreinte.
+sha256_systeme <- function(f) {
+  for (outil in list(c("sha256sum"), c("shasum", "-a", "256"))) {
+    programme <- Sys.which(outil[1])
+    if (!nzchar(programme)) next
+    sortie <- tryCatch(suppressWarnings(system2(programme, c(outil[-1], shQuote(f)), stdout = TRUE, stderr = FALSE)), error = function(e) character(0))
+    champ <- tolower(sub("^\\\\", "", strsplit(trimws(sortie[1] %||% ""), "\\s+")[[1]][1] %||% ""))
+    if (grepl("^[0-9a-f]{64}$", champ)) return(champ)
+  }
+  NULL
 }
 
 # Le dictionnaire des données (tableau_projet, formats.R) : une ligne par colonne, son type

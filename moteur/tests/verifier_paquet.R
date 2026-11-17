@@ -445,18 +445,37 @@ r <- ecrire_paquet(p, casse, file.path(dossier, "casse.zip"), meta, list(), "fr"
 verifier("un modèle dont le script ne s'écrit pas : nommé avec son erreur, l'autre toujours refait",
          identical(r$modeles[[1]]$objet, "M1") && is.null(r$modeles[[2]]$objet) && is.character(r$modeles[[2]]$erreur) && nzchar(r$modeles[[2]]$erreur))
 # un R d'avant 4.5, sans tools::sha256sum (R 4.2 de Debian 12, R 4.1 d'Ubuntu 22.04) : empreinte_sha y prend
-# un MD5 ; le manifeste reste en SHA-256 (sha256_r), que l'implémentation de cette vérification retrouve
+# un MD5 ; le manifeste reste en SHA-256, par l'outil du système (sha256sum, sinon shasum -a 256) quand
+# Sys.which le trouve, puis, ces outils cachés à Sys.which, par sha256_r ; chaque fois retrouvé par
+# l'implémentation de cette vérification. (sha256_r compte ses appels : aucun quand l'outil a servi.)
 empreinte_r45 <- empreinte_sha
+sha256_r_moteur <- sha256_r
+appels_r <- 0
 empreinte_sha <- function(chemin = NULL, octets = NULL, md5 = FALSE) empreinte_r45(chemin, octets, md5 = TRUE)
-r <- ecrire_paquet(p, x$modeles[1:2], file.path(dossier, "R 4.1.zip"), meta, list(), "fr", "essai")
+sha256_r <- function(octets) { appels_r <<- appels_r + 1; sha256_r_moteur(octets) }
+outil <- Filter(nzchar, Sys.which(c("sha256sum", "shasum")))
+manifeste_r41 <- function(nom) {
+  appels_r <<- 0
+  r <- ecrire_paquet(p, x$modeles[1:2], file.path(dossier, paste0(nom, ".zip")), meta, list(), "fr", "essai")
+  ici <- file.path(dossier, nom)
+  utils::unzip(r$chemin, exdir = ici)
+  manifeste <- readLines(file.path(ici, nom, "MANIFEST.sha256"), encoding = "UTF-8")
+  chemins <- sub("^[0-9a-f]{64}  ", "", manifeste)
+  list(n = length(manifeste), appels = appels_r,
+       ok = length(manifeste) == length(r$fichiers) - 1 && all(grepl("^[0-9a-f]{64}  ", manifeste)) &&
+         identical(sha256_fichiers(file.path(ici, nom, chemins)), sub("  .*$", "", manifeste)))
+}
+par_outil <- manifeste_r41("R 4.1")
+Sys.which <- function(names) { x <- base::Sys.which(names); x[names %in% c("sha256sum", "shasum")] <- ""; x }
+sans_outil <- manifeste_r41("R 4.1 sans outil")
+rm(Sys.which)
 empreinte_sha <- empreinte_r45
-ici <- file.path(dossier, "R 4.1")
-utils::unzip(r$chemin, exdir = ici)
-manifeste <- readLines(file.path(ici, "R 4.1", "MANIFEST.sha256"), encoding = "UTF-8")
-chemins <- sub("^[0-9a-f]{64}  ", "", manifeste)
-verifier(sprintf("sans tools::sha256sum (un R d'avant 4.5) : le manifeste en SHA-256 encore, ses %d empreintes celles de chaque fichier", length(manifeste)),
-         length(manifeste) == length(r$fichiers) - 1 && all(grepl("^[0-9a-f]{64}  ", manifeste)) &&
-           identical(sha256_fichiers(file.path(ici, "R 4.1", chemins)), sub("  .*$", "", manifeste)))
+sha256_r <- sha256_r_moteur
+verifier(sprintf("sans tools::sha256sum (un R d'avant 4.5), par %s : le manifeste en SHA-256, ses %d empreintes celles de chaque fichier",
+                 if (length(outil)) sprintf("l'outil du système (%s), sans sha256_r", names(outil)[1]) else "sha256_r (aucun outil ici)", par_outil$n),
+         par_outil$ok && (!length(outil) || par_outil$appels == 0))
+verifier(sprintf("… et sans outil du système (caché à Sys.which) : par sha256_r, en R seul, une fois par fichier, les mêmes %d empreintes justes", sans_outil$n),
+         sans_outil$ok && sans_outil$appels == sans_outil$n)
 refuse <- function(doc) tryCatch({ ecrire_paquet(p, list(), file.path(dossier, "refus.zip"), meta, list(doc), "fr", "essai"); FALSE }, error = function(e) TRUE)
 dehors <- file.path(dossier, "dehors.txt")
 writeLines("x", dehors)
