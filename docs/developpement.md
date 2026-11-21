@@ -176,8 +176,8 @@ pop-out windows and Plotly plots, talking to a local R server.
 | `app/interface/fichiers_navigateur.js` | The browser's storage as the promise-based file system isomorphic-git and versions.js take (readFile, writeFile and its `wx`, unlink, readdir with file types, mkdir, rmdir, stat, lstat, readlink, symlink, chmod; rename, mkdtemp, copyFile, utimes), with Node's error codes: OPFS (folder `nuee-versions`), else IndexedDB (database `nuee-versions`: an entry per path, its parent indexed, the bytes in a store of their own); `navigator.storage.persist()` asked |
 | `app/construire_navigateur.js`, `app/servir_navigateur.js` | Builds the browser version: a static site with the interface, the engine's files (with the user guide and `app/package.json`), the desktop's `app/versions.js` as an ES module for History in the page, and webR, its security policy letting the page fetch R's packages from repo.r-wasm.org and a package from zenodo.org; and serves it on 127.0.0.1 with the headers webR needs (see Browser version) |
 | `app/miroir_webr.mjs` | The browser version's own copy of webR's repository, for a site that serves R's packages itself (nuee.io/app/): the webR binaries of the packages the page installs, checked against repo.r-wasm.org's index, and their own index (see Browser version) |
-| `app/tests/essai_moteur_webr.mjs`, `app/tests/webr_rscript.mjs`, `app/tests/webr_chemins.mjs` | The engine's checks in webR's R, in Node, each as Rscript runs it (see Browser version) |
-| `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), 1.1's features in the page included and 1.2's History, and its speed against native R (see Browser version and Speed) |
+| `app/tests/essai_moteur_webr.mjs`, `app/tests/webr_rscript.mjs`, `app/tests/webr_chemins.mjs` | The engine's checks in webR's R, in Node, each as Rscript runs it (see Browser version); on GitHub, the job `navigateur` (see Checks on GitHub) |
+| `app/tests/essai_navigateur.mjs`, `app/tests/banc_navigateur.mjs` | The browser version used in a headless Chromium (Playwright), 1.1's features in the page included and 1.2's History, and its speed against native R (see Browser version and Speed); `essai_navigateur.mjs` on GitHub too, in the job `navigateur` |
 | `app/interface/references.js` | The `{{model.path[:format] [#label] [\| caption]}}` references, pure: reading them, their values in the document's language (`formeReference`: how a value is written, a number, a percentage, a p-value, a coefficient with its interval; `texteForme` writes it, and a reproducible `.qmd` the same in R), what each kind of model offers, the numbering of figures and tables |
 | `app/interface/rendu_document.js` | A document read by markdown-it (references as tokens; those alone on their line are blocks) and written as the preview's HTML, a PDF's page, a `.docx` (with `zip.js`) or a `.qmd` (results written in, `@fig-` cross-references; or reproducible, `versQmd(..., { reproductible })`: the engine's first chunk after the header, each value `` `r …` ``, a plot or table at the start of its line a chunk with its label and caption, what stays written in after an HTML comment; `referencesReproductibles` is what the request `document_reproductible` receives) |
 | `app/copier-vendor.js` | Copies the libraries the interface loads into `interface/vendor/`, and bundles the document editor (CodeMirror 6 and markdown-it) with esbuild into `vendor/editeur.min.js` (the licence of each package it holds at its end), loaded when a document is first opened, lean-qr with its SVG output into `vendor/qr.js`, an ES module qr.js imports when it first draws a QR code, and isomorphic-git with the `buffer` package's Buffer, which its code reads as a global, into `vendor/git.js`, an ES module History in the browser version imports at its first use |
@@ -808,7 +808,20 @@ except `verifier_references.R`, whose exported projects aren't in the repository
   whose arithmetic differs in the last bit (no 80-bit sums), is where three results that hung on
   that bit showed: exported scripts now write their numbers so that R reads them back exactly,
   the Procrustes error comes from the residuals, and a fit of distance sampling under the
-  monotonicity constraint ends with Newton on its KKT conditions.
+  monotonicity constraint ends with Newton on its KKT conditions;
+- on Ubuntu (`ubuntu-latest`, job `navigateur`), the browser version, with Node alone: the
+  engine's checks in webR's R (`app/tests/essai_moteur_webr.mjs`), all but `verifier_forets.R`
+  and `verifier_arriere_plan.R` (see Browser version), two at a time, the longest first, each
+  one's output in a group of the log; then the site built as nuee.io serves it, with its own copy
+  of webR's repository (`construire_navigateur.js`, then `miroir_webr.mjs`), used by
+  `app/tests/essai_navigateur.mjs` (`--site=`) in Chromium's headless shell, which
+  playwright-core's own installer fetches with the libraries and fonts it needs from Ubuntu
+  (`install --with-deps chromium-headless-shell`). Its screenshots are kept with the run
+  (`capture-navigateur`). R's packages come from repo.r-wasm.org and Chromium from Playwright's
+  servers, both kept between runs in `app/node_modules/.cache` (`nuee-webr`, `ms-playwright`,
+  restored after `npm ci`, which empties `node_modules`); nothing reaches zenodo.org. Expect
+  about an hour, most of it the engine's checks, which webR's R runs about half as fast as R:
+  `verifier_regression.R` takes 88 s there on a Ryzen 7 5800X (76 s in Node 24), 44 s in R.
 
 Electron's and electron-builder's downloaders fetch GitHub release files anonymously, which
 GitHub throttles at times (HTTP 504 for hours on 2026-11-09). The Windows, Linux and macOS jobs have them fetched
@@ -1206,10 +1219,16 @@ which isomorphic-git brings, as the global `Buffer` its code reads), and `os`, `
   computer's disk, so that an `Rscript` started by `system2()` is that script again, in a process
   of its own, started from webR's worker, and finds the files the checks write beside
   `tempdir()`; `webr_chemins.mjs`: webR's worker loads `R.js` by a path Node refuses on Windows).
+  Of this computer's environment variables, R sees `CI` and `NUEE_LIMITE`, which
+  `verifier_robustesse.R` reads for its time limits: in webR its slowest request took 114 to
+  162 s on a Ryzen 7 5800X running six checks at once, its limit being 120 s, so
+  `NUEE_LIMITE=2` there (GitHub sets `CI`, which triples them).
   `verifier_references.R` is left out (its exported projects aren't in the repository).
-  `verifier_forets.R` fails there, as random forests need ranger; `verifier_etapes.R` and
-  `verifier_resultats_cles.R` leave their forests out without ranger; `appli`'s static paths are
-  left out without httpuv, so that the checks calling `appli$call` run there.
+  `verifier_forets.R` fails there, as random forests need ranger, and so does
+  `verifier_arriere_plan.R`, as computing in the background is the desktop's (a second R,
+  httpuv); `verifier_etapes.R` and `verifier_resultats_cles.R` leave their forests out without
+  ranger; `appli`'s static paths are left out without httpuv, so that the checks calling
+  `appli$call` run there.
 - `node app/tests/essai_navigateur.mjs` builds the site, serves it and uses it in a headless
   Chromium (`playwright-core`, its browser installed in `app/node_modules/.cache/ms-playwright`:
   `PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell`):
@@ -1269,6 +1288,8 @@ which isomorphic-git brings, as the global `Buffer` its code reads), and `os`, `
   Edge (`CHROME=…` to say which; `playwright-core` from `app/node_modules`), a page of another
   origin and one of the relay's own make isomorphic-git's requests and the device flow's, and a
   page of a third origin is refused. It needs git on the PATH.
+- On GitHub, the job `navigateur` runs the first two at each push and pull request (see Checks on
+  GitHub).
 
 ## How it matches the stored results
 

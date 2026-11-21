@@ -18,6 +18,9 @@
 //   start a program: that R is this script again, in a Node process of its own, started from
 //   webR's worker (spawnSync), with the same folders at the same places (NUEE_WEBR_MONTAGES) and
 //   the same working folder (NUEE_WEBR_DOSSIER).
+// - Of this computer's environment variables, R sees CI and NUEE_LIMITE, which
+//   verifier_robustesse.R reads for its time limits; the others the checks read name this
+//   computer's files and programs, which webR's R doesn't have.
 // - quit(status = n) ends it with that status; an error, with 1.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -54,7 +57,8 @@ if (!fichier && !expressions.length) {
 const argumentsR = argv;
 
 const { WebR } = await import(pathToFileURL(path.join(ICI, '..', 'node_modules', 'webr', 'dist', 'webr.mjs')).href);
-const webR = new WebR({ interactive: true });  // (its console reads line after line only so: see above)
+const REnv = Object.fromEntries(['CI', 'NUEE_LIMITE'].filter((v) => process.env[v]).map((v) => [v, process.env[v]]));
+const webR = new WebR({ interactive: true, REnv });  // (its console reads line after line only so: see above)
 await webR.init();
 
 // what R prints, from the file on (not webR's banner); the end: the status R gives
@@ -69,9 +73,14 @@ const lecture = (async () => {
     try { m = await webR.read(); } catch { finir(1); return; }
     if (m.type === 'closed') { finir(1); return; }
     if (m.type !== 'stdout' && m.type !== 'stderr') continue;
-    // (after what a line printed without its end: a package's escape codes, say)
+    // (after what a line printed without its end: a package's escape codes, say, or the file's last
+    // cat() without "\n", which Rscript prints as it is)
     const k = m.type === 'stdout' ? m.data.indexOf(MARQUE) : -1;
-    if (k >= 0) { finir(Number(m.data.slice(k + MARQUE.length)) || 0); continue; }
+    if (k >= 0) {
+      if (affiche) process.stdout.write(m.data.slice(0, k).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''));
+      finir(Number(m.data.slice(k + MARQUE.length)) || 0);
+      continue;
+    }
     if (!affiche) continue;
     // (without a terminal's escape codes: cli shows the cursor again after each top-level call when R is interactive)
     (m.type === 'stdout' ? process.stdout : process.stderr).write(`${m.data.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')}\n`);
