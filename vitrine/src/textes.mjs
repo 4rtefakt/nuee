@@ -162,7 +162,7 @@ export const en = {
   conf_note: 'Where Nuée differs on purpose, it says so: <i>Help › Results and known differences</i>.',
   conf_checks: 'Watch the checks run',
   prive_titre: 'Your data stay on your computer.',
-  prive_p: 'Nuée sends nothing on its own: no account, no licence key, no usage statistics. It goes online to ask GitHub at start-up about a newer version (which you can turn off), to fetch the area on screen from OpenStreetMap or IGN when you choose a background map, and to download the spell checker’s dictionaries once (Windows and Linux). And only when you ask: a project you share, to your GitHub or GitLab repository; R packages, from CRAN.',
+  prive_p: 'Nuée sends nothing on its own: no account, no licence key, no usage statistics. It goes online to ask GitHub at start-up about a newer version (which you can turn off), to fetch the area on screen from OpenStreetMap or IGN when you choose a background map, and to download the spell checker’s dictionaries once (Windows and Linux). And only when you ask: a project you share, to your GitHub or GitLab repository; R packages, from CRAN. In the browser version, a project you share and your sign-in to GitHub or GitLab go through nuee.io’s relay, since a web page can’t send them there itself: the relay sees them pass, and keeps nothing.',
 
   // ---- 8. download
   dl_surtitre: 'Download',
@@ -347,7 +347,7 @@ export const fr = {
   conf_note: 'Là où Nuée s’écarte exprès, elle le dit : <i>Aide › Résultats et écarts connus</i>.',
   conf_checks: 'Regarder les vérifications tourner',
   prive_titre: 'Vos données restent sur votre ordinateur.',
-  prive_p: 'Nuée n’envoie rien d’elle-même : ni compte, ni clé de licence, ni statistiques d’usage. Elle va en ligne pour demander à GitHub au démarrage s’il existe une nouvelle version (ce que vous pouvez couper), pour chercher chez OpenStreetMap ou l’IGN la zone affichée quand vous choisissez un fond de carte, et pour télécharger une fois les dictionnaires du correcteur (Windows et Linux). Et seulement à votre demande : un projet que vous partagez, vers votre dépôt GitHub ou GitLab ; des paquets R, depuis le CRAN.',
+  prive_p: 'Nuée n’envoie rien d’elle-même : ni compte, ni clé de licence, ni statistiques d’usage. Elle va en ligne pour demander à GitHub au démarrage s’il existe une nouvelle version (ce que vous pouvez couper), pour chercher chez OpenStreetMap ou l’IGN la zone affichée quand vous choisissez un fond de carte, et pour télécharger une fois les dictionnaires du correcteur (Windows et Linux). Et seulement à votre demande : un projet que vous partagez, vers votre dépôt GitHub ou GitLab ; des paquets R, depuis le CRAN. Dans la version navigateur, un projet que vous partagez et votre connexion à GitHub ou GitLab passent par le relais de nuee.io, car une page web ne peut pas les y envoyer elle-même : le relais les voit passer, et n’en garde rien.',
 
   dl_surtitre: 'Télécharger',
   dl_titre: 'Emportez-la <em>chez vous</em>.',
