@@ -33,6 +33,10 @@ avec_vegan <- requireNamespace("vegan", quietly = TRUE)
 # comparés)
 vegan_27 <- avec_vegan && utils::packageVersion("vegan") >= "2.7"
 if (avec_vegan && !vegan_27) cat("(vegan avant 2.7 : tests par axe, tests d'une RDA partielle et sélection pas à pas non comparés)\n")
+# (le F des axes après le premier : celui de vegan 2.7-8, qui a cessé de le gonfler des degrés de
+# liberté résiduels du modèle sans les axes précédents ; avant, seuls leurs p sont comparés)
+vegan_278 <- avec_vegan && utils::packageVersion("vegan") >= "2.7.8"
+f_axes <- function(a, va) !vegan_278 || proche(a$F, va$F)
 cat(if (avec_vegan) sprintf("(vegan %s installé : comparaisons avec lui)\n", utils::packageVersion("vegan")) else "(vegan absent : calculs directs seulement)\n")
 
 # ---------------------------------------------------------------- les données
@@ -89,6 +93,13 @@ verifier("flèches nulles sur les axes résiduels ; échelle 1 = échelle 2 × r
 verifier("centroïdes = moyennes des scores lc par habitat",
          proche(s2$centroides[, 1:4], apply(s2$lc[, 1:4], 2, function(x) tapply(x, env$habitat[garde], mean))))
 verifier("échelle 2 : scores lc × scores des réponses, sur tous les axes, redonnent les réponses centrées", proche(s2$lc %*% t(s2$reponses), Yc, 1e-7))
+# (le F d'un axe : sa valeur propre sur l'inertie résiduelle par degré de liberté du modèle entier,
+# pas celui du modèle sans les axes précédents, qui a plus de degrés de liberté résiduels)
+ta0 <- tests_axes_rda(m, P)
+r0 <- nrow(ta0)
+verifier(sprintf("tests par axe : F = λ / (inertie résiduelle / %d ddl résiduels) sur chacun des %d axes ; p ne décroît pas", ta0$ddl[r0], r0 - 1),
+         proche(ta0$F[-r0], ta0$inertie[-r0] / (ta0$inertie[r0] / ta0$ddl[r0])) && ta0$ddl[r0] == 39 - q - 1 &&
+           all(diff(ta0$p[!is.na(ta0$p)]) >= 0) && sum(!is.na(ta0$p)) >= 2)
 
 cat("RDA partielle, permutations par site\n")
 dz <- definir_modele(p, "RDA", x = u("temp", "habitat"), y = u(especes), echelle = "none",
@@ -174,7 +185,7 @@ if (avec_vegan) {
   verifier("test global : F et p = anova.cca avec les mêmes permutations", proche(m$test$F, av$F[1]) && identical(m$test$p, av[["Pr(>F)"]][1]))
   ta <- tests_axes_rda(m, P)
   vax <- vegan::anova.cca(rv, by = "axis", permutations = pv(P))
-  if (vegan_27) verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, vax$F) && isTRUE(all.equal(ta$p, vax[["Pr(>F)"]])) && proche(ta$ddl, vax$Df))
+  if (vegan_27) verifier("tests par axe = anova.cca(by = \"axis\")", f_axes(ta, vax) && isTRUE(all.equal(ta$p, vax[["Pr(>F)"]])) && proche(ta$ddl, vax$Df))
   tt <- tests_termes_rda(m, P)
   vma <- vegan::anova.cca(rv, by = "margin", permutations = pv(P))
   verifier("tests par terme (marginaux) = anova.cca(by = \"margin\")", proche(tt$F, vma$F) && isTRUE(all.equal(tt$p, vma[["Pr(>F)"]])) &&
@@ -188,7 +199,7 @@ if (avec_vegan) {
   if (vegan_27) verifier("RDA partielle : tests par axe et par terme = anova.cca", {
     a <- tests_axes_rda(mz, Pz); va <- vegan::anova.cca(rzv, by = "axis", permutations = pv(Pz))
     t <- tests_termes_rda(mz, Pz); vt <- vegan::anova.cca(rzv, by = "margin", permutations = pv(Pz))
-    proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
+    f_axes(a, va) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
   })
   ss <- vegan::scores(rzv, choices = seq_along(c(rzv$CCA$eig, rzv$CA$eig)), display = c("sites", "lc", "species", "bp"), scaling = 2)
   sz <- scores_rda(mz, 2)
@@ -338,7 +349,7 @@ if (avec_vegan) {
     })
     ta <- tests_axes_rda(mcca, Pc)
     va <- vegan::anova.cca(cv, by = "axis", permutations = pv(Pc))
-    verifier("tests par axe = anova.cca(by = \"axis\")", proche(ta$F, va$F) && isTRUE(all.equal(ta$p, va[["Pr(>F)"]])) && proche(ta$ddl, va$Df) && proche(ta$inertie, va$ChiSquare))
+    verifier("tests par axe = anova.cca(by = \"axis\")", f_axes(ta, va) && isTRUE(all.equal(ta$p, va[["Pr(>F)"]])) && proche(ta$ddl, va$Df) && proche(ta$inertie, va$ChiSquare))
     vs <- vegan::anova.cca(cv, by = "terms", permutations = pv(Pc))
     verifier("tests séquentiels = anova.cca(by = \"terms\")", proche(tseq$F, vs$F) && isTRUE(all.equal(tseq$p, vs[["Pr(>F)"]])) && proche(tseq$ddl, vs$Df) &&
                proche(tseq$inertie, vs$ChiSquare))
@@ -367,7 +378,7 @@ if (avec_vegan) {
     a <- tests_axes_rda(mccz, Pcz); va <- vegan::anova.cca(czv, by = "axis", permutations = pv(Pcz))
     s <- tests_sequentiels(mccz, Pcz); vs <- vegan::anova.cca(czv, by = "terms", permutations = pv(Pcz))
     t <- tests_termes_rda(mccz, Pcz); vt <- vegan::anova.cca(czv, by = "margin", permutations = pv(Pcz))
-    proche(a$F, va$F) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(s$F, vs$F) && isTRUE(all.equal(s$p, vs[["Pr(>F)"]])) &&
+    f_axes(a, va) && isTRUE(all.equal(a$p, va[["Pr(>F)"]])) && proche(s$F, vs$F) && isTRUE(all.equal(s$p, vs[["Pr(>F)"]])) &&
       proche(t$F, vt$F) && isTRUE(all.equal(t$p, vt[["Pr(>F)"]]))
   })
   # les lichens des landes à pins : une CCA et sa sélection pas à pas (ordiR2step, R² ajustés et tests par les mêmes permutations)

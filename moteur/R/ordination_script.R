@@ -304,9 +304,11 @@ contenu_dans <- function(a, b) {
 
 CODE_TESTS <- r"---(
 #fr Les axes contraints l'un après l'autre (vegan::anova(by = "axis")) : l'axe k, premier axe du modèle
-#fr où les k - 1 précédents sont retirés des réponses ; p ne décroît pas d'un axe au suivant.
+#fr où les k - 1 précédents sont retirés des réponses ; p ne décroît pas d'un axe au suivant. Le F de
+#fr l'axe k > 1, ramené aux degrés de liberté résiduels du modèle entier : × ddl / (ddl + k - 1) (vegan 2.7-8).
 #en The constrained axes one after another (vegan::anova(by = "axis")): axis k, first axis of the model
 #en where the k - 1 previous ones are removed from the responses; p doesn't decrease from one axis to the next.
+#en The F of axis k > 1, brought back to the whole model's residual degrees of freedom: × df / (df + k - 1) (vegan 2.7-8).
 tests_axes_rda <- function(m, Ybar, Z, P, residu) {
   lambda <- m$contraint$valeurs_propres
   u <- m$contraint$u
@@ -316,7 +318,7 @@ tests_axes_rda <- function(m, Ybar, Z, P, residu) {
   for (i in seq_along(lambda)) {
     mi <- if (i == 1) m else analyse_redondance(qr.resid(qr(u[, seq_len(i - 1), drop = FALSE]), Ybar), u[, -seq_len(i - 1), drop = FALSE], Z, m$poids, m$poids_colonnes)
     tst <- test_rda(mi, P, premier = i < length(lambda))
-    Fs[i] <- tst[["F"]]
+    Fs[i] <- if (i > 1) tst[["F"]] * ddl / (ddl + i - 1) else tst[["F"]]
     ps[i] <- if (i > 1) max(tst[["p"]], ps[i - 1]) else tst[["p"]]
     if (ps[i] >= 1) break
   }

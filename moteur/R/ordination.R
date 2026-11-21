@@ -329,13 +329,18 @@ permutations_rda <- function(m) permutations_lignes(m$N, m$options$permutations,
 
 # Les axes contraints testés l'un après l'autre (vegan : anova.cca(by = "axis") ; Legendre et al.
 # 2011) : l'axe k est le premier axe du modèle où les k - 1 précédents sont retirés des réponses ;
-# les valeurs p ne décroissent pas d'un axe au suivant. La dernière ligne : les résidus.
+# les valeurs p ne décroissent pas d'un axe au suivant. Le F de l'axe k > 1 : celui de ce modèle,
+# ramené aux degrés de liberté résiduels du modèle entier (× ddl / (ddl + k - 1)), comme vegan depuis
+# 2.7-8 ; jusqu'à 2.7-7, vegan le donnait tel quel, gonflé des k - 1 degrés de liberté résiduels en
+# plus du modèle sans les axes précédents (le F permuté aussi, si bien que p est le même). Dans une
+# RDA, c'est la valeur propre de l'axe sur l'inertie résiduelle par degré de liberté du modèle
+# entier. La dernière ligne : les résidus.
 tests_axes_rda <- function(m, P = permutations_rda(m)) {
   k <- m$noyau
   cc <- k$contraint
   eig <- cc$eig
   ddl_residus <- k$n - length(eig) - k$rang_z - 1
-  Fs <- unname(eig) / k$residuel$inertie * ddl_residus  # (vegan : celui des axes qui ne seront pas testés)
+  Fs <- unname(eig) / k$residuel$inertie * ddl_residus
   ps <- rep(NA_real_, length(eig))
   # (une CCA : comme vegan, les scores u ramenés aux masses, et les mêmes masses)
   for (i in seq_along(eig)) {
@@ -343,7 +348,7 @@ tests_axes_rda <- function(m, P = permutations_rda(m)) {
                                        m$donnees$poids, m$donnees$poids_colonnes)
     tst <- test_rda(ki, P, premier = i < length(eig))
     if (is.null(tst)) break
-    Fs[i] <- tst$F
+    Fs[i] <- if (i > 1) tst$F * ddl_residus / (ddl_residus + i - 1) else tst$F
     ps[i] <- if (i > 1) max(tst$p, ps[i - 1]) else tst$p
     if (!isTRUE(ps[i] < 1)) break  # (vegan : après un axe à p = 1, les suivants ne sont pas testés)
   }
