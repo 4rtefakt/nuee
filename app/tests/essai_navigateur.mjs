@@ -5,30 +5,34 @@
 // forests, whose package the browser version lacks, say they need the desktop app while the rest
 // goes on; the recovery copies: a reload, then a closed tab, offer the projects again, with their
 // models and their unsaved changes, and a second tab open meanwhile is offered nothing, and
-// without OPFS's createWritable they go to IndexedDB. Then 1.1 in a tab of its own: Share says it
-// needs the desktop app, History of a table never saved says so; a table opened (File › Open), a
-// data step (New variable), Data steps, Update the data with next year's file chosen in the page,
-// What changed; a project saved, opened, saved again, downloaded each time; an R-code model, its
-// package (Kendall) installed from webR's repository, and one needing ranger refused; a plugin
-// installed from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the
-// shared permutation test, a PCoA's permutations in one R), the next request as usual; reloaded,
-// the plugin and the approvals still there. Then 1.2's link of a reproducibility package, ?doi=,
-// against a stand-in for Zenodo's API (Playwright's routes; zenodo.org never resolves in this
-// browser): the package written in the page opened from its record and rerun, every model giving
-// its deposited results, then chosen in the page (File › Open, File › Open a reproducibility
-// package…); a concept DOI, a record, an unknown DOI, another one, not a DOI, no network; the link
-// of an unknown DOI and of a record without a package said plainly; nothing asked of another site.
-// Then 1.2's History in the page, in a tab of its own: the example saved (downloaded, kept at its
-// place in the browser's storage, its first version), Save a version…, Name…, Compare, Open,
-// Restore…; a table saved, its history apart; Share from History still the desktop app's;
-// reloaded, the projects recovered at their places with their histories; the first download opened
-// again under another name, its history found by its content; Save as…, a new place with the
-// history; without OPFS's createWritable, the versions in IndexedDB. Also the site as served: the
-// page's headers (webR's two, no security policy but its own), where R's packages came from (the
-// site's copy of webR's repository when it has one, miroir_webr.mjs: then nothing from another
-// site until R is ready, and Kendall alone from repo.r-wasm.org), and, under a path, /app
-// redirected to /app/. Last, ?langue=fr: a new profile in French, until a language is chosen. The
-// time of each request goes to <folder>/demandes.json.
+// without OPFS's createWritable they go to IndexedDB. Then 1.1 in a tab of its own: History of a
+// table never saved says so (Share leads there); a table opened (File › Open), a data step (New
+// variable), Data steps, Update the data with next year's file chosen in the page, What changed; a
+// project saved, opened, saved again, downloaded each time; an R-code model, its package (Kendall)
+// installed from webR's repository, and one needing ranger refused; a plugin installed from its
+// file and fitted; the help panel's guide; Stop, R in the page interrupted (the shared permutation
+// test, a PCoA's permutations in one R), the next request as usual; reloaded, the plugin and the
+// approvals still there. Then 1.2's link of a reproducibility package, ?doi=, against a stand-in
+// for Zenodo's API (Playwright's routes; zenodo.org never resolves in this browser): the package
+// written in the page opened from its record and rerun, every model giving its deposited results,
+// then chosen in the page (File › Open, File › Open a reproducibility package…); a concept DOI, a
+// record, an unknown DOI, another one, not a DOI, no network; the link of an unknown DOI and of a
+// record without a package said plainly; nothing asked of another site. Then 1.2's History in the
+// page, in a tab of its own: the example saved (downloaded, kept at its place in the browser's
+// storage, its first version), Save a version…, Name…, Compare, Open, Restore…; a table saved, its
+// history apart; reloaded, the projects recovered at their places with their histories; the first
+// download opened again under another name, its history found by its content; Save as…, a new
+// place with the history; without OPFS's createWritable, the versions in IndexedDB. Then 1.2's
+// sharing through nuee.io's relay, in a tab of its own: the relay's own handler for the page's
+// /relais/, against stand-ins (GitHub's device flow, git's http-backend; GitHub's API as routes):
+// signed in from Share, the project sent, a colleague's change received with Get now, a change
+// sent with Send now, the project opened from the repository at a new place, signed out, the token
+// gone; a push too large for the relay said in words; nothing reaches github.com or gitlab.com, no
+// token in an address. Also the site as served: the page's headers (webR's two, no security policy
+// but its own), where R's packages came from (the site's copy of webR's repository when it has
+// one, miroir_webr.mjs: then nothing from another site until R is ready, and Kendall alone from
+// repo.r-wasm.org), and, under a path, /app redirected to /app/. Last, ?langue=fr: a new profile
+// in French, until a language is chosen. The time of each request goes to <folder>/demandes.json.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible]
 // --adresse: the site as another server serves it, neither built nor served here (nuee.io's
 // browser version: `wrangler dev` in vitrine/, then --adresse=http://127.0.0.1:8787/app/).
@@ -397,7 +401,6 @@ try {
   // from its file; then, the tab reloaded, the plugin and the approvals still there
   page = await ouvrirPage();
   await page.waitForFunction(() => window.nueeDemandes.length > 0 && !document.querySelector('.voile-webr'), null, { timeout: 600000 });
-  const statutTexte = () => page.evaluate(() => document.getElementById('statut').textContent);
   const pidActif = () => page.evaluate(() => import('./app.js').then((m) => m.app.projetActif()));
   const projetActif = () => page.evaluate(async () => {
     const { app } = await import('./app.js');
@@ -427,16 +430,12 @@ try {
   const tableau = await projetActif();
   verifier('un tableau ouvert dans la page (File › Open)', !!ouvert && ouvert.ok && !!tableau && tableau.n === 120, JSON.stringify(tableau && { nom: tableau.nom, n: tableau.n }));
 
-  // what only the desktop application does: Share, said in the status bar (History: in the page since
-  // 1.2, below); History of a table never saved: it says so, with Save
+  // Share on a table never saved: History (the way to Share for a project without a file, as on the
+  // desktop) says it was never saved here, with Save (History and sharing in the page: 1.2, below)
   await commande(page, 'versions_partager');
-  await page.waitForTimeout(400);
-  const desktop = await statutTexte();
-  await commande(page, 'versions');
   const jamaisSauve = await libelle(page, 'versions_jamais_enregistre_navigateur');
   const historiqueTableau = await attendre(page, (x) => [...document.querySelectorAll('.versions')].some((v) => v.offsetParent !== null && v.textContent.includes(x)), jamaisSauve, 30000).catch(() => false);
-  verifier('Partager : « il faut l’application de bureau » ; l’Historique d’un tableau jamais enregistré le dit',
-    /desktop application is needed|application de bureau/.test(desktop) && historiqueTableau, desktop);
+  verifier('Partager un tableau jamais enregistré : l’Historique dit qu’il ne l’a jamais été ici, avec Enregistrer', historiqueTableau);
 
   // a model, then a data step: a new variable (its dialog)
   const lmCsv = await nouveauModele(page, { type: 'LM', x: ['sugar'], y: ['taste_score'], echelle: 'none' });
@@ -904,13 +903,6 @@ try {
   verifier('un second projet : sa place et son historique à lui, ceux du premier inchangés',
     !!deuxieme && deuxieme.chemin.split('/')[2] !== h1.chemin.split('/')[2] && h5.versions.length === 3, `${deuxieme && deuxieme.chemin} ; ${h1.chemin} : ${h5.versions.length} versions`);
 
-  // Share: still the desktop application's, from History too
-  await montrerHistorique(hp, h4.id);
-  await boutonHistorique(hp, 'versions_partager');
-  await hp.waitForTimeout(400);
-  const partage = await hp.evaluate(() => document.getElementById('statut').textContent);
-  verifier('Partager sur GitHub ou GitLab, depuis l’Historique : « il faut l’application de bureau »', /desktop application is needed|application de bureau/.test(partage), partage);
-
   // reloaded: the projects recovered at their places, with their histories and names
   await copiesAJour(hp);
   await hp.waitForTimeout(1000);
@@ -1078,6 +1070,8 @@ try {
       await contexte.route(`${origine}/relais/**`, async (route) => {
         const q = route.request();
         const url = new URL(q.url());
+        // (a body over 100 MB: Cloudflare's 413, before the Worker runs; trop-gros.git stands for it)
+        if (q.method() === 'POST' && /\/trop-gros\.git\//.test(url.pathname)) return route.fulfill({ status: 413, headers: { 'Content-Type': 'text/html' }, body: '<html>413</html>' });
         const h = new Headers();
         for (const [k, v] of Object.entries(await q.allHeaders())) if (!['host', 'connection', 'content-length'].includes(k)) h.set(k, v);
         const r = await relayer(new Request(url, { method: q.method(), headers: h, body: q.method() === 'POST' ? q.postDataBuffer() : undefined, duplex: 'half' }), { RELAIS_ESSAI }, url);
@@ -1115,12 +1109,12 @@ try {
         return versionsDuDepot();
       };
       const debutPartage = requetes.length;
-      // (its errors noted, but the relay's planned 401s: isomorphic-git asks first without the token,
-      // and gives it when the server asks, and Chrome writes that 401 to the console)
+      // (its errors noted, but the relay's planned 401s, isomorphic-git asking first without the token
+      // and giving it when the server asks, and the 413 below, which Chrome writes to the console)
       const sp = await contexte.newPage();
       sp.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
       sp.on('console', (m) => {
-        if (m.type() === 'error' && !(/status of 401/.test(m.text()) && (m.location().url || '').startsWith(`${origine}/relais/`))) erreurs.push(`console : ${m.text()}`);
+        if (m.type() === 'error' && !(/status of (401|413)/.test(m.text()) && (m.location().url || '').startsWith(`${origine}/relais/`))) erreurs.push(`console : ${m.text()}`);
       });
       sp.on('dialog', (d) => d.accept());
       await sp.addInitScript(() => {
@@ -1230,6 +1224,9 @@ try {
       await sp.evaluate((x) => [...document.querySelectorAll('.versions .compte-partage button')].find((b) => b.textContent.trim() === x).click(), deconnecter);
       await sp.waitForSelector('.fond-dialogue .pied-dialogue button.principal', { timeout: 10000 });
       await sp.click('.fond-dialogue .pied-dialogue button.principal');
+      // (History in front again: the project opened from the repository may have brought its views since)
+      await sp.waitForTimeout(1000);
+      await montrerHistorique(sp, (await projetA(sp, premier.chemin)).id);
       const jetonsGardes = async () => sp.evaluate(() => new Promise((ok) => {
         const r = indexedDB.open('nuee-jetons');
         r.onerror = () => ok(-1);
@@ -1242,9 +1239,14 @@ try {
       const gardes = await jetonsGardes();
       const adresses = requetes.slice(debutPartage);
       const directs = adresses.filter((u) => /^https?:\/\/([^/]*\.)?(github\.com|gitlab\.com|githubusercontent\.com|gravatar\.com)\//.test(u) && !/^https:\/\/(api\.github\.com|avatars\.githubusercontent\.com)\//.test(u));
+      const parRelais = adresses.filter((u) => u.startsWith(`${origine}/relais/github.com/`)).length;
       verifier('Se déconnecter : le jeton n’est plus dans ce navigateur ; rien n’a joint github.com ni gitlab.com que par le relais, aucun jeton dans une adresse',
-        apresDeconnexion && gardes === 0 && !directs.length && !adresses.some((u) => u.includes(JETON)) && adresses.some((u) => u.startsWith(`${origine}/relais/github.com/`)),
-        `${gardes} jeton(s) gardé(s) ; ${directs.slice(0, 3).join(', ') || 'rien en direct'}`);
+        apresDeconnexion && gardes === 0 && !directs.length && !adresses.some((u) => u.includes(JETON)) && parRelais > 0,
+        `${apresDeconnexion ? 'Se connecter… proposé' : 'pas de Se connecter…'} ; ${gardes} jeton(s) gardé(s) ; ${parRelais} demandes par le relais ; ${directs.slice(0, 3).join(', ') || 'rien en direct'}`);
+      // a push the relay refuses for its size (413): said in words
+      const tropGros = await sp.evaluate(() => import('./comptes_navigateur.js').then((m) => m.fetchGit('https://github.com/alice-exemple/trop-gros.git/git-receive-pack',
+        { method: 'POST', body: new Uint8Array(8) })).then(() => null, (e) => e.message));
+      verifier('des versions de plus de 100 Mo, que le relais refuse (413) : dit en mots', tropGros === (await libelle(sp, 'versions_relais_trop_gros')), tropGros);
       if (options.capture !== false) await sp.screenshot({ path: path.join(sortie, 'partage.png') });
       verifier('le partage sans violation de la politique de sécurité', (await sp.evaluate(() => window.__violations)).length === 0, await sp.evaluate(() => window.__violations));
       await copiesAJour(sp);

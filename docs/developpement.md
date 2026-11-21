@@ -1203,7 +1203,8 @@ relay, `<the page's origin>/relais/<host>/<path>`, as isomorphic-git's `corsProx
 (`adresseRelayee`; `window.NUEE_RELAIS`, which only the site's `navigateur.js` or a check sets,
 gives another relay), and their APIs straight (`api.github.com` and `gitlab.com/api/v4`, with the
 accounts' pictures from `avatars.githubusercontent.com` and `secure.gravatar.com`, which comptes.js
-makes `data:` addresses: the page's `connect-src` names them). versions.js gets the same for git
+makes `data:` addresses: the page's `connect-src` names them; a picture elsewhere, as GitLab's own
+uploads, which send neither CORS nor CORP, isn't asked for). versions.js gets the same for git
 (`fetchGit`: the relay's 413, versions over 100 MB at once, and its 429 said in words; the
 network's failure as Node's fetch says it, which versions.js puts in words; the answer's body read
 as isomorphic-git reads one), and sha.js's SHA-1 for its `createHash` (`vendor/git.js`).
@@ -1246,14 +1247,14 @@ as isomorphic-git reads one), and sha.js's SHA-1 for its `createHash` (`vendor/g
   PLS-DA still fits, and the recovery copies: a reload, then a closed tab, offer the project again
   (its models, its unsaved changes), a second tab open meanwhile is offered nothing, and in a
   browser without OPFS's `createWritable` the copies go to IndexedDB. Then 1.1, in a tab of its
-  own: Share says it needs the desktop application, History of a table never saved says so; the CSV
-  opened (File › Open), a data step (New variable), Data steps, Update the data with next year's
-  file chosen in the page (130 observations, the step replayed, What changed); a project saved,
-  opened, saved again, downloaded each time; an R-code model whose package (Kendall) comes from
-  webR's repository, one needing ranger refused; a plugin installed from its file and fitted; Stop
-  in the shared permutation test and in a PCoA's permutations, the next request as usual; the help
-  panel's guide; reloaded, the plugin and the approvals still there. Then 1.2's link, against a
-  stand-in for Zenodo's API (Playwright's routes; Chromium started with
+  own: History of a table never saved says so (Share leads there); the CSV opened (File › Open), a
+  data step (New variable), Data steps, Update the data with next year's file chosen in the page
+  (130 observations, the step replayed, What changed); a project saved, opened, saved again,
+  downloaded each time; an R-code model whose package (Kendall) comes from webR's repository, one
+  needing ranger refused; a plugin installed from its file and fitted; Stop in the shared
+  permutation test and in a PCoA's permutations, the next request as usual; the help panel's guide;
+  reloaded, the plugin and the approvals still there. Then 1.2's link, against a stand-in for
+  Zenodo's API (Playwright's routes; Chromium started with
   `--host-resolver-rules=MAP zenodo.org ~NOTFOUND`, so that no request reaches zenodo.org, even one
   past the routes: a redirect's follow-up isn't routed, so the stand-in answers a concept's id with
   its latest version, as `fetch` sees it after Zenodo's redirect): a package written in the page
@@ -1267,28 +1268,28 @@ as isomorphic-git reads one), and sha.js's SHA-1 for its `createHash` (`vendor/g
   History (downloaded, at its place in the browser's storage, its first version), a model added and
   Save a version… (saved first, downloaded), Name…, Compare (What changed, the model added), Open
   (read-only), Restore… (the first version's models, a version saying so), each from History's
-  buttons; a table saved, its place and history apart; Share from History said to need the desktop
-  application; reloaded, both recovered at their places with their histories and names; the first
-  download opened again under another name, its history found by its content; Save as…, a new place
-  with the history, the former kept; in a browser without OPFS's `createWritable`, the versions in
-  IndexedDB, there after a reload. Then 1.2's sharing, in a tab of its own, through the relay's own
-  handler (`vitrine/src/relais.js`), which Playwright's routes give the page's `/relais/`, against
-  stand-ins on this computer (`RELAIS_ESSAI`: GitHub's device flow, and git, the system git's
-  http-backend, every repository private; skipped without git), GitHub's API and the account's
-  picture as routes too: signed in from Share with the device flow (its code, the relay's note in
-  the dialog, the institution's GitLab said to need the desktop application), a private repository
-  made and the project sent; a colleague's change (a document, sent with git) received with Get
-  now; a change sent with Send now, saved first; the project opened from the repository at a new
-  place, its versions with it, no folder asked; signed out, the token no longer in IndexedDB;
-  github.com and gitlab.com never resolve in this browser, nothing went to them but through the
-  relay, and no token was in an address. Also the site as served: the page's headers (the two
-  above, no security policy but its own), where R's packages came from (with a copy of webR's
-  repository, every one from the site and nothing from another site until R is ready; Kendall from
-  repo.r-wasm.org either way), and, for a site under a path, that path without its last slash
-  redirected to it; last, `?langue=fr` in a new profile: the interface in French, then English
-  after View › Language, the address unchanged. `--adresse=<url>` uses a site another server
-  serves, neither built nor served by the check: nuee.io's, with `npx wrangler dev` in `vitrine/`,
-  `--adresse=http://localhost:8787/app/`.
+  buttons; a table saved, its place and history apart; reloaded, both recovered at their places
+  with their histories and names; the first download opened again under another name, its history
+  found by its content; Save as…, a new place with the history, the former kept; in a browser
+  without OPFS's `createWritable`, the versions in IndexedDB, there after a reload. Then 1.2's
+  sharing, in a tab of its own, through the relay's own handler (`vitrine/src/relais.js`), which
+  Playwright's routes give the page's `/relais/`, against stand-ins on this computer
+  (`RELAIS_ESSAI`: GitHub's device flow, and git, the system git's http-backend, every repository
+  private; skipped without git), GitHub's API and the account's picture as routes too: signed in
+  from Share with the device flow (its code, the relay's note in the dialog, the institution's
+  GitLab said to need the desktop application), a private repository made and the project sent; a
+  colleague's change (a document, sent with git) received with Get now; a change sent with Send
+  now, saved first; the project opened from the repository at a new place, its versions with it, no
+  folder asked; signed out, the token no longer in IndexedDB; a push the relay refuses for its size
+  (413, as Cloudflare answers it) said in words; github.com and gitlab.com never resolve in this
+  browser, nothing went to them but through the relay, and no token was in an address. Also the
+  site as served: the page's headers (the two above, no security policy but its own), where R's
+  packages came from (with a copy of webR's repository, every one from the site and nothing from
+  another site until R is ready; Kendall from repo.r-wasm.org either way), and, for a site under a
+  path, that path without its last slash redirected to it; last, `?langue=fr` in a new profile: the
+  interface in French, then English after View › Language, the address unchanged. `--adresse=<url>`
+  uses a site another server serves, neither built nor served by the check: nuee.io's, with
+  `npx wrangler dev` in `vitrine/`, `--adresse=http://localhost:8787/app/`.
 - `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
   R server (see Speed).
 - `node vitrine/tests/essai_relais.mjs` checks nuee.io's relay through the Worker's own handler in
