@@ -37,8 +37,10 @@ module.exports = {
     await codeR('Sys.sleep(60)\nlm(taste_score ~ sugar, data = donnees)');
     await n.attendre('!__n.dialogue()', 10000);
     const aCote = (Date.now() - debut) / 1000;
-    // (slow CI machines: the fit waits 60 s, the dialog sets itself aside after 1.5 s)
-    verifier('dialogueDeCote', aCote < 30 && await modeles() === avant && await n.evaluer("!!document.getElementById('arret-calcul') && !document.getElementById('arret-calcul').hidden"), `${aCote} s`);
+    // (slow CI machines: the fit waits 60 s, the dialog sets itself aside after 1.5 s; Stop comes on a
+    // timer of its own, so a moment after the dialog left, on Ubuntu's runner)
+    const arretVu = await n.attendre("!!document.getElementById('arret-calcul') && !document.getElementById('arret-calcul').hidden", 10000).then(() => true, () => false);
+    verifier('dialogueDeCote', aCote < 30 && await modeles() === avant && arretVu, `${aCote} s`);
     const curseur = await n.evaluer("getComputedStyle(document.querySelector('.arbre') || document.body).cursor");
     verifier('pasDeCurseurOccupe', curseur !== 'progress', curseur);
     // (code that doesn't count its rounds: a bar going across, and the time since it began)

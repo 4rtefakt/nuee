@@ -13,7 +13,8 @@
 // (as drawn in the window, saved as PNG, and the package's qr-code.svg): the README's link. Then the
 // package deposited, File › Open on its .zip, and the package exported first, File › Open a
 // reproducibility package…: each opened again as a new project, its files those of its manifest,
-// every model fitted again giving its deposited results.
+// every model fitted again giving its deposited results. With `captures`, a screenshot of the deposit
+// dialog offering Sign in with Zenodo, and of its last one with the link and its QR code.
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
@@ -122,7 +123,8 @@ const manifesteJuste = (zip, dossier) => {
 };
 
 module.exports = {
-  async executer(n, verifier, { dossier }) {
+  async executer(n, verifier, { dossier, captures }) {
+    const capture = async (nom) => { if (captures) await n.capture(`${captures}-paquet-${nom}.png`); };
     await n.sousMenu('m_aide', 'projet_exemple', 'exemple_pommes');
     await n.attendre(n.ligneModele('M1', true), 120000);
     const pid = (await n.etat()).projets[0].id;
@@ -182,7 +184,10 @@ module.exports = {
       await n.dialogue('zenodo_titre');
       // Sign in with Zenodo (a token still possible, under "Or use a personal access token"): Zenodo's
       // page opened in the browser, here a fetch following its redirect back to Nuée
-      const offert = await n.evaluer("!!__n.boite().querySelector('button.zenodo-connexion') && !!__n.boite().querySelector('details.zenodo-par-jeton .zenodo-champ')");
+      // (the dialog draws them once it knows the sign-in state: a moment after its title, on macOS)
+      const offert = await n.attendre("!!__n.boite().querySelector('button.zenodo-connexion') && !!__n.boite().querySelector('details.zenodo-par-jeton .zenodo-champ')", 10000)
+        .then(() => true, () => false);
+      await capture('1-connexion');
       await n.cliquer("__n.boite().querySelector('button.zenodo-connexion')");
       await n.attendre("!!__n.boite().querySelector('.zenodo-attente')");
       const page = (await n.principal()).liens.filter((l) => l.startsWith(`${base}/oauth/authorize?`)).pop() || '';
@@ -197,6 +202,8 @@ module.exports = {
         && !Object.keys(echange.champs).some((k) => /secret/.test(k)), { offert, q, statut: navigateur && navigateur.status, vu: vu.slice(0, 200), echange });
       await n.bouton('zenodo_creer');
       const fait = await n.attendre("__n.titreDialogue() === __n.t('zenodo_fait_titre') && __n.norm(__n.boite().textContent)", 300000);
+      await n.attendre("(() => { const i = __n.boite().querySelector('img.qr-lien'); return !!i && i.complete && i.naturalWidth > 0; })()");
+      await capture('2-qr');
       const ordre = s.recues.map((x) => `${x.method} ${x.url.startsWith('/api/files/b0c1d2e3/') ? '/api/files/b0c1d2e3/…' : x.url}`).join(' | ');
       verifier('zenodoOrdre', ordre === 'POST /api/deposit/depositions | PUT /api/files/b0c1d2e3/… | PUT /api/deposit/depositions/4242'
         && s.creation && s.creation.metadata && s.creation.metadata.prereserve_doi === true && s.recues.every((x) => x.auth === `Bearer ${JETON}`), ordre);
