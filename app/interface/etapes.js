@@ -469,6 +469,8 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
     change = true;
+    // (a removed step that had renamed a variable: the documents whose references followed its name back)
+    if (liste(r.documents).length) app.relireDocuments(pid, liste(r.documents));
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
     const refaits = await reajusterTout(app, pid, pr, modeles);

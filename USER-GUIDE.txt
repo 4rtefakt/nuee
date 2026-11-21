@@ -2312,9 +2312,11 @@ Edit › Data steps (or right-click on the project's data): the source (found, c
 was read, or not found) and the steps, each with its date and the files it read. Remove shows
 first what removing a step would do (the source read again, the other steps replayed on it),
 then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
-and shows What changed; when the source changed since it was read, update the data first. When
-the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
-dialog says so: updating them would bring back what the source and the steps give.
+and shows What changed; when the source changed since it was read, update the data first.
+Removing the step that renamed a variable gives it its name back: the steps after it, the models
+(their terms, their conditions) and the documents' references name it so. When the data changed
+outside the steps (in the R console, or with a version of Nuée before 1.1), the dialog says so:
+updating them would bring back what the source and the steps give.
 Edit › Update the data: the source read again, or another file, next year's, whose columns may
 come in another order or with new ones. The steps are replayed on it, then its rows are matched
 to the project's observations by their identifiers and its columns to the variables by their

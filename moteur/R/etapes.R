@@ -1257,9 +1257,14 @@ renumeroter_variable <- function(p, de, vers) {
 # catégories dans leur ordre (les modèles les suivent par leur nom, ou par leurs lignes quand l'étape
 # retirée les avait renommées), leur unité et leur description, les coordonnées ; une variable d'une
 # formule d'une étape qu'elles n'ont plus part. Le reste (ce qu'un projet d'avant la 1.1 avait avant ses
-# étapes) reste tel que le projet l'a, comme dans une mise à jour. Rend list(projet, rapport : ce qui a changé ; vers_nouveau : le
-# numéro dans `nouveau` de chaque observation, nommé par le sien ; absentes : les numéros des variables
-# parties).
+# étapes) reste tel que le projet l'a, comme dans une mise à jour. Une étape qui avait renommé une variable,
+# retirée (`selon_rejeu$renommees` : le nom d'avant, nommant celui que l'étape avait donné) : la variable
+# que le rejeu rend sous son nom d'avant est celle du projet sous l'autre (quand le rejeu n'a pas celui-là) ;
+# elle garde son numéro, prend le nom du rejeu, et les définitions des modèles la suivent, comme quand on la
+# renomme (atelier.R : suivre_renommage), une variable calculée d'avant la 1.1 aussi. Rend list(projet,
+# rapport : ce qui a changé ; vers_nouveau : le numéro dans `nouveau` de chaque observation, nommé par le
+# sien ; absentes : les numéros des variables parties ; renommees : chaque nom rendu, avec les modèles qui
+# l'ont suivi et les noms de leurs termes, pour les références des documents).
 # Ce que des étapes règlent des variables, pour en retirer une (aligner_projet, selon_rejeu) : les noms
 # de celles dont une étape change le type ou les catégories (types), l'unité ou la description
 # (descriptions), que crée une formule (formules), et si une étape règle les coordonnées. Ce qu'aucune
@@ -1284,6 +1289,53 @@ reglages_etapes <- function(etapes) {
   r
 }
 
+# Les étapes `etapes` quand la k-ième, qui donnait à une variable le nom `nouveau` (son nom d'avant :
+# `ancien`), est retirée (serveur.R : retirer_etape_demande) : celles qui la suivent la nomment de nouveau
+# `ancien` (leurs paramètres de variables, leurs colonnes « var: », la formule d'une Nouvelle variable, la
+# variable d'une classe, le squelette et la définition du modèle d'une étape qui en ajuste un), jusqu'à
+# celle qui la renomme ou la supprime, comprise : ensuite, `nouveau` en nommerait une autre. Les autres
+# gardent leurs paramètres tels quels. attr(, "garde") : la variable s'appelle encore `nouveau` après
+# toutes (aucune ne la renomme ni ne la supprime), et le rejeu la rendra `ancien`.
+renommer_dans_etapes <- function(etapes, k, nouveau, ancien) {
+  remplacer <- function(x, de, vers) if (is.list(x)) lapply(x, remplacer, de, vers) else if (is.character(x)) ifelse(x == de, vers, x) else x
+  json <- function(x) as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", na = "null", digits = NA))
+  garde <- TRUE
+  for (i in seq_along(etapes)) {
+    if (i <= k || !garde) next
+    e <- etapes[[i]]
+    demande <- premier_texte(e$demande)
+    def <- ETAPES_DONNEES[[demande]]
+    if (is.null(def)) next
+    q <- jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = FALSE)
+    avant <- q
+    for (ch in def$variables) {
+      v <- valeur_chemin(q, ch)
+      if (length(v)) q <- changer_chemin(q, ch, remplacer(v, nouveau, ancien))
+    }
+    for (ch in def$colonnes) {
+      v <- valeur_chemin(q, ch)
+      if (length(v)) q <- changer_chemin(q, ch, remplacer(v, paste0("var:", nouveau), paste0("var:", ancien)))
+    }
+    if (identical(demande, "variable_calculee")) q$formule <- renommer_symbole(q$formule, nouveau, ancien) %||% q$formule
+    if (identical(demande, "classe_selection")) q$variable <- remplacer(q$variable, nouveau, ancien)
+    if (!is.null(q$squelette) && !is.null(q$definition)) {
+      s <- jsonlite::fromJSON(as.character(q$squelette), simplifyVector = FALSE)
+      j <- which(vapply(s$variables, function(v) identical(as.character(v$nom), nouveau), TRUE))
+      if (length(j)) {
+        s$variables[[j[1]]]$nom <- ancien
+        d <- jsonlite::fromJSON(as.character(q$definition), simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = TRUE)
+        ps <- suivre_renommage(projet_squelette(s, d), as.numeric(s$variables[[j[1]]]$uid), nouveau, ancien)
+        q$squelette <- json(s)
+        q$definition <- json(ps$models[[1]])
+      }
+    }
+    if (!identical(q, avant)) etapes[[i]]$parametres <- json(q)
+    # (renommée ou supprimée par cette étape : les suivantes ne la nomment plus `nouveau`)
+    if (demande %in% c("renommer_variable", "supprimer_variable") && identical(premier_texte(avant$variable), nouveau)) garde <- FALSE
+  }
+  structure(etapes, garde = garde)
+}
+
 aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu = FALSE) {
   nom <- function(v) as.character(v$ids[1])
   # (une étape retirée : ce que les étapes règlent vient du rejeu, le reste reste tel que le projet l'a ;
@@ -1297,7 +1349,15 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   vn <- avec(nouveau)
   noms_a <- vapply(va, nom, "")
   noms_n <- vapply(vn, nom, "")
-  k <- match(noms_n, noms_a)
+  # (un nom changé dont l'étape est retirée, `selon_rejeu$renommees` : la variable que le rejeu rend sous
+  # son nom d'avant, nommée par lui, est celle que le projet a sous le nom que l'étape lui avait donné,
+  # quand le rejeu n'a pas ce nom-là ; elle garde son numéro et prend le nom du rejeu)
+  ren <- if (is.list(selon_rejeu)) unlist(selon_rejeu$renommees) else NULL
+  cherches <- noms_n
+  renommee <- noms_n %in% names(ren)
+  renommee[renommee] <- ren[noms_n[renommee]] %in% noms_a & !ren[noms_n[renommee]] %in% noms_n
+  cherches[renommee] <- ren[noms_n[renommee]]
+  k <- match(cherches, noms_a)
   if (anyNA(k)) {
     ca <- nom_comparable(noms_a)
     cn <- nom_comparable(noms_n)
@@ -1389,6 +1449,7 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
     v$uid <- uid_v[i]
     vars[[i]] <- v
   }
+  for (i in which(renommee & !is.na(k))) vars[[i]]$ids[1] <- noms_n[i]
   # (les identifiants des observations : ceux du projet à leurs rangs, puis les nouveaux)
   noms_id_a <- as.character(unlist(actuel$observation_id_names %||% "Observation"))
   noms_id_n <- as.character(unlist(nouveau$observation_id_names %||% "Observation"))
@@ -1430,8 +1491,11 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   absentes <- va[setdiff(seq_along(va), k)]
   recalculees <- character(0)
   parties <- list()
+  # (les noms que le rejeu rend, ceux que l'étape retirée avait changés : nommés par celui du projet)
+  rendus <- stats::setNames(noms_n[renommee & !is.na(k)], cherches[renommee & !is.na(k)])
   for (a in absentes) {
     formule <- if (identical(premier_texte(a$origine$type), "formule")) premier_texte(a$formula) else ""
+    for (r in names(rendus)) formule <- renommer_symbole(formule, r, rendus[[r]]) %||% formule
     essai <- if (nzchar(formule) && !rejoue("formules", nom(a))) tryCatch(variable_calculee(p, nom(a), formule), error = function(e) NULL)
     if (is.null(essai)) {
       parties[[length(parties) + 1]] <- a
@@ -1463,6 +1527,14 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
   # catégories (sauf les classes d'une PLS-DA : ses observations d'une classe nouvelle n'y entrent
   # pas, nouvelles_admises), puis les observations suivent)
   p$models <- actuel$models
+  # (un nom changé dont l'étape est retirée : les définitions des modèles suivent le nom d'avant, leurs
+  # termes, leur condition, leurs réglages, comme quand on renomme la variable ; atelier.R, suivre_renommage)
+  renommees <- list()
+  for (i in which(renommee & !is.na(k))) {
+    p <- suivre_renommage(p, uid_v[i], cherches[i], noms_n[i])
+    renommees[[length(renommees) + 1]] <- list(variable = uid_v[i], ancien = cherches[i], nom = noms_n[i], modeles = I(attr(p, "suivis")), termes = attr(p, "termes"))
+    p <- sans_attributs(p)
+  }
   # (une étape retirée qui rend une variable à son autre type : refusé quand un modèle l'utilise, dont
   # les termes ne seraient plus les siens)
   for (u in retypees) {
@@ -1589,12 +1661,13 @@ aligner_projet <- function(actuel, nouveau, sans_nouvelles = NULL, selon_rejeu =
                         repetees = max(par_rang(cles$actuel), par_rang(cles$nouveau)),
                         distinguees = I(sub("^(var|id):", "", cles$colonnes))),
     variables = list(nouvelles = I(noms_n[is.na(k)]), absentes = I(vapply(parties, nom, "")), recalculees = I(recalculees),
-                     categories = categories, types = types),
+                     categories = categories, types = types,
+                     renommees = lapply(renommees, function(r) list(ancien = r$ancien, nom = r$nom, modeles = r$modeles))),
     identifiants = list(nouveaux = I(setdiff(noms_id_n[-1], noms_id_a)), absents = I(id_absents)),
     modeles = list(variables_absentes = touches, observations_choisies = choisies, sans_nouvelles = I(sans),
                    nouvelles_categories = gagnees, references_changees = references))
   list(projet = p, rapport = rapport, vers_nouveau = stats::setNames(uo_n, as.character(uid_o)), absentes = absentes_uid,
-       colonnes_absentes = cles$absentes)
+       colonnes_absentes = cles$absentes, renommees = renommees)
 }
 
 # Les identifiants des observations de deux projets qu'une mise à jour rapporte l'un à l'autre
@@ -1674,5 +1747,5 @@ mise_a_jour <- function(actuel, chemin = NULL, table = NULL, sans_nouvelles = NU
   rapport$fichier <- list(chemin = normalizePath(chemin, winslash = "/"), table = table, lecteur = lecteur)
   rapport$notes <- I(notes)
   rapport$changements_avant_etapes <- avant_etapes
-  list(projet = n, rapport = rapport)
+  list(projet = n, rapport = rapport, renommees = a$renommees)
 }

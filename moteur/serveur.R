@@ -1489,9 +1489,10 @@ etapes_demande <- function(q) {
 
 # Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
 # modèles de la séance suivent leurs définitions comme après un changement des catégories (leurs
-# conditions ; leurs catégories, par leurs noms : modele, aligner_categories).
-remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
-  memoriser(actuel, etiquette)
+# conditions ; leurs catégories, par leurs noms : modele, aligner_categories). `fusion`, `references` :
+# les documents dont les références ont suivi un nom rendu (retirer_etape_demande), pour memoriser.
+remplacer_par_mise_a_jour <- function(actuel, r, etiquette, fusion = NULL, references = NULL) {
+  memoriser(actuel, etiquette, fusion = fusion, references = references)
   # (l'entrée dit qu'elle remplace les données : l'annuler ou la rétablir ajuste à nouveau les modèles,
   # dans quelque fenêtre que ce soit : annuler_demande, reajuster)
   etat$annulations[[actuel$id]][[1]]$remplace <- TRUE
@@ -1544,10 +1545,36 @@ retirer_etape_demande <- function(q) {
         basename(premier_texte(f$chemin))))
     }
   }
-  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n], selon_rejeu = reglages_etapes(etapes))
+  restantes <- etapes[-n]
+  selon <- reglages_etapes(etapes)
+  # (un nom changé retiré : les étapes d'après nomment de nouveau la variable par son nom d'avant, et la
+  # variable le reprend, gardant son numéro, les modèles qui la lisent et leurs conditions la suivant :
+  # etapes.R, renommer_dans_etapes, aligner_projet)
+  e <- etapes[[n]]
+  if (identical(premier_texte(e$demande), "renommer_variable")) {
+    qe <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = TRUE), error = function(err) list())
+    ancien <- premier_texte(qe$variable)
+    nouveau <- premier_texte(qe$nom)
+    if (nzchar(ancien) && nzchar(nouveau)) {
+      suivantes <- renommer_dans_etapes(etapes, n, nouveau, ancien)
+      if (isTRUE(attr(suivantes, "garde"))) selon$renommees <- stats::setNames(nouveau, ancien)
+      restantes <- suivantes[-n]
+    }
+  }
+  r <- mise_a_jour(actuel, table = q$table, etapes = restantes, selon_rejeu = selon)
   if (!is.null(r$choisir)) return(r)
   if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
-  remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
+  # (les références des documents aux termes que le nom rendu renomme le suivent, et Annuler les remet,
+  # même dans un document écrit depuis : comme renommer_variable_demande)
+  carte <- list()
+  for (x in r$renommees) for (m in names(x$termes)) carte[[m]] <- c(carte[[m]], x$termes[[m]])
+  docs <- suivre_references(r$projet$documents, vapply(r$projet$models, function(d) premier_texte(d$name), ""), carte)
+  changes <- attr(docs, "changes")
+  if (length(changes)) r$projet$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+  reponse <- remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n),
+                                       fusion = if (length(changes)) list(fichier_lu = r$projet$fichier_lu, documents = r$projet$documents, figures = r$projet$figures),
+                                       references = if (length(changes)) carte_inverse(carte))
+  c(reponse, list(documents = I(changes)))
 }
 
 # ---------------------------------------------------------------- la fusion de deux versions (fusion.R)
