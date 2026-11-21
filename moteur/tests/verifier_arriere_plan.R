@@ -142,6 +142,11 @@ scenario <- function(faire) {
   d("note_modele", list(modele = acp$id, note = "La première ACP."))
   d("modele", list(modele = pls$id))
   d("projet", list(projet = p$id))
+  # (une valeur changée, puis l'ACP modifiée sous son nom, ajustée par le calculateur : Annuler la valeur
+  # garde l'ACP modifiée, ses talons ayant noté son nom : serveur.R, definitions_changees)
+  d("modifier_valeur", list(projet = p$id, observation = obs[1], variable = x[[1]], valeur = "1"))
+  d("ajuster", list(projet = p$id, type = "PCA", x = x[-1], y = list(), A = 0, G = 7, echelle = "UV", nom = acp$nom))
+  d("annuler", list(projet = p$id))
   # un tableau ouvert de son fichier, le fichier changé, Mettre à jour, Annuler, Rétablir
   writeLines(original, csv_source, useBytes = TRUE)
   Sys.setFileTime(csv_source, heure)
@@ -172,6 +177,12 @@ for (i in utils::head(differentes, 2)) {
   cat("    ", tout_ici[[i]]$nom, " (ici)     ", substr(tout_ici[[i]]$corps, 1, 400), "\n", sep = "")
 }
 verifier("les mêmes données à la fin", identical(lapply(donnees_serveur, function(p) p$donnees), lapply(etat$projets, function(p) p$donnees)))
+corps_serveur <- function(nom) jsonlite::fromJSON(Filter(function(r) identical(r$nom, nom), par_le_serveur)[[1]]$corps, simplifyVector = FALSE)
+nom_acp <- corps_serveur("ajuster")$nom
+x_de <- function(modeles) as.character(unlist(Find(function(m) identical(m$nom, nom_acp), modeles)$x))
+x_avant <- x_de(corps_serveur("projet")$modeles)
+verifier("une ACP modifiée dans le calculateur après un changement : Annuler le changement la garde modifiée",
+         length(x_avant) > 2 && identical(x_de(corps_serveur("annuler")$projet$modeles), x_avant[-1]))
 
 # La séance de nouveau, faite par le serveur : ce qui va au calculateur la seconde fois.
 neuve()

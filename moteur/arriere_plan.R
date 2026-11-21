@@ -127,8 +127,9 @@ faire_tache <- function(t) {
 
 # (le calculateur) ce qu'une tâche a changé dans la séance, depuis `depart` : les projets, les modèles
 # et les prédictions changés ou retirés, la révision du projet P, les entrées qu'elle a mises en haut
-# de sa pile d'Annuler (le projet tel qu'il était reçu y est PROJET_ENVOYE : le serveur l'a), si elle
-# a vidé celle de Rétablir, les paires calculées, le compteur des numéros, son journal. `autres` : ce
+# de sa pile d'Annuler (le projet tel qu'il était reçu y est PROJET_ENVOYE : le serveur l'a), les noms des
+# définitions changées que ses talons ont notés (`changees`), si elle a vidé celle de Rétablir, les
+# paires calculées, le compteur des numéros, son journal. `autres` : ce
 # qu'elle a changé d'autre, que le serveur ne reprend pas (il le note).
 changements_tache <- function(depart, P) {
   ecart <- function(liaison) {
@@ -147,6 +148,9 @@ changements_tache <- function(depart, P) {
   nouvelles <- if (is.na(k)) pile else utils::head(pile, k - 1L)
   recu <- depart$projets[[P]]
   nouvelles <- lapply(nouvelles, function(e) { if (identical(e$projet, recu)) e$projet <- PROJET_ENVOYE; e })
+  # (les définitions changées que les talons ont notées, que les entrées du serveur notent à leur tour :
+  # serveur.R, definitions_changees)
+  changees <- unique(as.character(unlist(lapply(Filter(function(e) isTRUE(e$talon), pile), function(e) e$changees))))
   refaire <- etat$retablissements[[P]] %||% list()
   autres <- character(0)
   if (length(refaire) && !all(vapply(refaire, function(e) isTRUE(e$talon), TRUE))) autres <- c(autres, "retablissements")
@@ -163,7 +167,7 @@ changements_tache <- function(depart, P) {
   list(projets = pr$valeurs, projets_retires = pr$retires, modeles = mo$valeurs, modeles_retires = mo$retires,
        predictions = pd$valeurs, predictions_retirees = pd$retires, paires = pa$valeurs,
        revision = (etat$revisions[[P]] %||% 0) - (depart$revisions[[P]] %||% 0),
-       annulations = nouvelles, retablissements_vides = length(depart$retablissements[[P]]) > 0 && !length(refaire),
+       annulations = nouvelles, changees = changees, retablissements_vides = length(depart$retablissements[[P]]) > 0 && !length(refaire),
        compteur = etat$compteur, journal = etat$journal, autres = unique(autres),
        # (les paquets chargés : le serveur charge ceux qu'il n'a pas, dont les méthodes des objets
        # rendus — predict d'une forêt de ranger —, comme s'il avait fait le calcul lui-même)
@@ -440,6 +444,9 @@ arriere_plan_reporter <- function(it, r) {
   }
   a$vu <- vu
   if (length(ch$revision) && ch$revision != 0) etat$revisions[[P]] <- (etat$revisions[[P]] %||% 0) + ch$revision
+  if (length(ch$changees) && length(etat$annulations[[P]])) {
+    etat$annulations[[P]] <- lapply(etat$annulations[[P]], function(e) { e$changees <- union(as.character(unlist(e$changees)), ch$changees); e })
+  }
   if (length(ch$annulations)) {
     nouvelles <- lapply(ch$annulations, function(e) { if (inherits(e$projet, "nuee_projet_envoye")) e$projet <- base$projets[[P]]; e })
     etat$annulations[[P]] <- utils::head(c(nouvelles, etat$annulations[[P]] %||% list()), 20)

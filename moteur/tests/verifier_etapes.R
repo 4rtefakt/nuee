@@ -1086,6 +1086,41 @@ verifier("Annuler une variable sur laquelle un modèle a été ajusté depuis : 
          !"w" %in% projet(aid)$noms_var && !"M3" %in% noms_modeles() && "M4" %in% noms_modeles())
 demande("retablir", list(projet = aid))
 verifier("Rétablir : la variable et ce modèle reviennent", "w" %in% projet(aid)$noms_var && all(c("M3", "M4") %in% noms_modeles()))
+# (un modèle d'avant un changement, modifié depuis sous son nom, sa note écrite depuis, un modèle modifié sous
+# un autre nom en gardant son numéro (comme un modèle de code R dont le code change) : Annuler le changement
+# les garde tels qu'ils sont, au lieu de rendre leurs définitions d'avant lui)
+termes_x <- function(nom) vapply(definition(projet(aid), nom)$x, `[[`, "", "name")
+id_seance <- function(nom) utils::tail(names(Filter(function(e) identical(e$projet, aid) && identical(e$definition$name, nom), etat$modeles)), 1)
+z_o3 <- function() unname(valeurs(projet(aid), "z")["O3"])
+z_avant <- z_o3()
+n_m2 <- definition(projet(aid), "M2")$number
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O3"), variable = ua("z"), valeur = "7"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("z")), y = ua("y"), nom = "M4"))
+demande("note_modele", list(modele = id_seance("P1"), note = "écrite après"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("z")), y = ua("y"), nom = "M2 bis", meme_numero = n_m2))
+u_m <- demande("annuler", list(projet = aid))
+verifier("un modèle modifié après un changement, une note écrite depuis, un modèle modifié sous un autre nom : Annuler le changement les garde",
+         z_o3() == z_avant && identical(termes_x("M4"), c("x", "z")) && identical(definition(projet(aid), "P1")$note, "écrite après") &&
+           identical(definition(projet(aid), "M2 bis")$number, n_m2) && !"M2" %in% noms_modeles() && sum(noms_modeles() == "M4") == 1 &&
+           !length(u_m$a_reajuster))
+demande("retablir", list(projet = aid))
+verifier("… et Rétablir de même", z_o3() == 7 && identical(termes_x("M4"), c("x", "z")) && identical(definition(projet(aid), "M2 bis")$number, n_m2) &&
+           !"M2" %in% noms_modeles())
+# (modifié avec une variable que l'annulation retire : il reprend sa définition d'avant le changement)
+demande("variable_calculee", list(projet = aid, nom = "v", formule = "x * 3"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("v")), y = ua("y"), nom = "M4"))
+demande("annuler", list(projet = aid))
+verifier("un modèle modifié avec une variable qu'Annuler retire : il reprend sa définition d'avant, sans partir",
+         !"v" %in% projet(aid)$noms_var && identical(termes_x("M4"), c("x", "z")))
+# (un nom de variable changé, puis un modèle modifié et un autre ajusté : Annuler le nom, leurs termes et
+# leur condition reprennent l'ancien nom)
+demande("renommer_variable", list(projet = aid, variable = ua("z"), nom = "zz"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("zz")), y = ua("y"), nom = "M4", condition = "zz > -10"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("zz")), y = ua("y"), nom = "M5"))
+demande("annuler", list(projet = aid))
+verifier("Annuler un nom changé : les termes et la condition d'un modèle modifié depuis, ceux d'un modèle ajusté depuis, reprennent l'ancien nom",
+         "z" %in% projet(aid)$noms_var && identical(termes_x("M4"), c("x", "z")) && identical(texte_condition(definition(projet(aid), "M4")$condition), "z > -10") &&
+           identical(termes_x("M5"), "z") && demande("ajuster", list(projet = aid, numero = definition(projet(aid), "M5")$number))$N == 20)
 
 cat("Une étape retirée : les variables telles que la source et les autres étapes les donnent\n")
 # (une variable en catégories, une unité, des catégories renommées et rangées, des coordonnées : chaque

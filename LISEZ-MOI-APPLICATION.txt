@@ -172,9 +172,12 @@ au lancement suivant, les projets enregistrés (.nuee) ouverts quand Nuée a ét
 reviennent, avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé
 dans la barre d'état. Sans cette case, la page d'accueil propose Rouvrir la dernière séance.
 Après un arrêt inattendu, ce sont les copies de secours qui sont proposées.
-Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
-(valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
-jusqu'à 20 en arrière. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
+Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet (valeur
+modifiée, nouvelle variable, classe, scores en variables, définition supprimée...), jusqu'à 20 en
+arrière. Les modèles ajustés depuis restent, et un modèle modifié depuis (ajusté de nouveau avec
+d'autres réglages, ses notes) garde sa nouvelle définition ; celui qui lit ce qu'Annuler retire
+(une variable faite par le changement) part avec lui ou, s'il était là avant le changement,
+revient tel qu'il était. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
 qu'Annuler a défait : une mise à jour des données avec sa source et ses étapes, les modèles
 ajustés à nouveau sur ses données. Les deux disent le changement qu'ils visent ; tout nouveau
 changement vide Rétablir.
