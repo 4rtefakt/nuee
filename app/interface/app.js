@@ -1540,9 +1540,15 @@ async function apresOuverture(res, session = null) {
 // The browser version (sauvegarderSecoursNavigateur) keeps them in the browser's storage.
 const LANCEMENT = MOTEUR_WEBR ? ONGLET : Date.now().toString(36);
 let moteurEtat = null;
-// the index changed by `f` (index => index), read just before: another main window may have written it
+// the index changed by `f` (index => index), read just before with its version: when another main
+// window (or this one, in another of its calls) has written it since, the write is refused and it is
+// read again (main.js: secours-index), so that no change made meanwhile is written over, nor the
+// copies it kept deleted
 async function changerSecours(f) {
-  await bureau.secoursIndex(f([].concat(await bureau.secoursListe()).filter((e) => e && e.fichier)));
+  for (let essai = 0; essai < 20; essai += 1) {
+    const { entrees, version } = await bureau.secoursEtat();
+    if (await bureau.secoursIndex(f([].concat(entrees || []).filter((e) => e && e.fichier)), version)) return;
+  }
 }
 async function sauvegarderSecours({ moi = false } = {}) {
   if (MOTEUR_WEBR) return sauvegarderSecoursNavigateur();

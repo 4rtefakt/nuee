@@ -83,6 +83,7 @@ let langue = 'en';  // the interface's (English until it says), for the dialogs 
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
 const indexSecours = () => path.join(dossierSecours(), 'index.json');
+let versionSecours = 0;  // each write of the index makes one more (secours-index)
 // The engine running now, by a name of its own: this launch's (its time) and how many engines it
 // started (one more each time one is ready). A recovery copy carries the one it was made with: a
 // restart reopens only the copies of the engine that stopped, whichever main window made them, and a
@@ -943,14 +944,24 @@ function ipc() {
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
+  // Several main windows change the index: each reads it with its version (secours-etat), changes it,
+  // and writes it back with that version; a write made on a version another window has written over
+  // since is refused (false), and that window reads it again (interface/app.js: changerSecours).
+  // Otherwise the later write would put back an index without the other window's change, and the
+  // copies that change had marked waiting, left out, would be deleted. (A write without a version is
+  // taken as it is.)
   recevoir('secours-dossier', () => { if (!quitter) fs.mkdirSync(dossierSecours(), { recursive: true }); return dossierSecours(); });
   recevoir('secours-liste', () => { try { return JSON.parse(fs.readFileSync(indexSecours(), 'utf8')); } catch { return []; } });
-  recevoir('secours-index', (_, entrees) => {
-    if (quitter) return;
+  recevoir('secours-etat', () => ({ entrees: copiesEnAttente(), version: versionSecours }));
+  recevoir('secours-index', (_, entrees, version) => {
+    if (quitter) return true;  // (nothing is written there any more: done)
+    if (version !== undefined && version !== null && version !== versionSecours) return false;
     fs.mkdirSync(dossierSecours(), { recursive: true });
     const gardes = new Set(entrees.map((e) => path.basename(e.fichier)));
     for (const f of fs.readdirSync(dossierSecours())) if (f !== 'index.json' && !gardes.has(f)) fs.rmSync(path.join(dossierSecours(), f), { force: true });
     fs.writeFileSync(indexSecours(), JSON.stringify(entrees, null, 1));
+    versionSecours += 1;
+    return true;
   });
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }

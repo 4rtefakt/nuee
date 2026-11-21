@@ -20,7 +20,9 @@
 // - the organisation's policies: R code off when they say so and when they couldn't be read, then
 //   given so to the engine at start-up, read before it starts; NUEE_GREFFONS_ORGANISATION not taken
 //   by an installed copy on Windows; Help › Diagnostic information says whether they were read.
-// - Zenodo's tokens kept in the store of the versions and the sign-ins (jetons.json), never given back.
+// - Zenodo's tokens kept in the store of the versions and the sign-ins (jetons.json), never given back;
+// - the recovery copies' index changed by two windows at once: a write made on an index read before
+//   the other's is refused, and nothing the other kept is forgotten or deleted.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -526,6 +528,31 @@ async function fermerUneFois(dossier) {
   moteur.close();
 }
 
+// The recovery copies' index changed by two main windows at once (interface/app.js: changerSecours):
+// each reads it with its version, changes it and writes it back. The second write, made on what was read
+// before the first, is refused: the copy the first marked waiting is neither forgotten nor deleted;
+// read again, the second window's write is taken.
+async function indexDeSecours(dossier) {
+  console.log('Copies de secours : l’index changé par deux fenêtres à la fois');
+  const demander = demandeur(chargerMain(dossier));
+  const copies = await demander('secours-dossier');
+  const copie = (nom) => { const f = path.join(copies, nom); fs.writeFileSync(f, '{}'); return f; };
+  const a = copie('fenetre1-P1.json');
+  const b = copie('fenetre1-P2.json');
+  verifier(await demander('secours-index', [{ fichier: a, projet: 'P1' }, { fichier: b, projet: 'P2' }]) === true, 'un index écrit sans version : pris tel quel');
+  const lu1 = await demander('secours-etat');
+  const lu2 = await demander('secours-etat');
+  const ecrit1 = await demander('secours-index', lu1.entrees.map((e) => (e.fichier === a ? { ...e, attente: true } : e)), lu1.version);
+  // (the other window's index, read before: without the first copy, which its write would delete)
+  const ecrit2 = await demander('secours-index', lu2.entrees.filter((e) => e.fichier !== a), lu2.version);
+  const relu = await demander('secours-etat');
+  verifier(ecrit1 === true && ecrit2 === false && fs.existsSync(a) && relu.entrees.some((e) => e.fichier === a && e.attente) && relu.version === lu1.version + 1,
+    'la seconde écriture, faite sur l’index lu avant la première, refusée : la copie que la première a marquée en attente reste, et son fichier', { ecrit1, ecrit2, relu });
+  const ecrit3 = await demander('secours-index', relu.entrees.filter((e) => e.fichier !== b), relu.version);
+  verifier(ecrit3 === true && fs.existsSync(a) && !fs.existsSync(b) && egal((await demander('secours-etat')).entrees.map((e) => e.fichier), [a]),
+    'relu, puis écrit de nouveau : pris, seule la copie qu’il retire part');
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -540,6 +567,7 @@ async function principal() {
     await fermerUneFois(dossier);
     await lesPolitiques(dossier);
     await jetonsZenodo(dossier);
+    await indexDeSecours(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {
