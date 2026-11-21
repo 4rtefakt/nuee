@@ -2651,8 +2651,17 @@ et rien d'autre : les projets ne changent pas, et un nouvel historique commence 
 enregistrement, sauf si les versions sont arrêtées (un projet dont les versions étaient arrêtées
 suit de nouveau les Réglages). Un projet partagé sur GitHub ou GitLab perd aussi son lien avec le
 dépôt : ses versions y restent, et Fichier › Ouvrir depuis GitHub ou GitLab, dans un autre
-dossier, reprend le projet avec elles. La version navigateur n'a pas d'Historique : l'application
-de bureau garde les versions.
+dossier, reprend le projet avec elles.
+Dans la version navigateur (nuee.io/app), l'Historique garde les versions dans le navigateur,
+dans le stockage de ce site, avec les mêmes versions automatiques, noms et boutons. Enregistrer
+télécharge le projet et l'y garde aussi, avec son historique ; Enregistrer sous... en fait un
+projet à part, qui emmène son historique. Un projet rouvert dans le même navigateur retrouve son
+historique : repris après un rechargement, ou ouvert depuis un fichier qu'il a téléchargé, même
+renommé. Les versions sont dans ce navigateur seulement : effacer les données de ce site les
+efface, et un autre navigateur ou un autre ordinateur ne les a pas ; téléchargez le projet pour
+le garder ailleurs. Le haut de l'Historique donne leur taille, et dit quand le navigateur n'a pas
+accepté de les garder pour de bon (il peut alors les effacer quand la place manque). Partager sur
+GitHub ou GitLab et ouvrir depuis GitHub ou GitLab demandent l'application de bureau.
 
 Ce qui a changé
 ---------------
