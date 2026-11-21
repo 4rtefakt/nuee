@@ -32,8 +32,9 @@ CALCULS <- c(
   "ipls", "appartenance", "comparer_resultats", "verifications_modele", "autocorrelation_residus",
   # les statistiques des données
   "tests_variables", "test_deux_variables", "rarefaction", "autocorrelation_spatiale", "series", "baci",
-  # Mettre à jour les données (le fichier relu, ses étapes refaites)
-  "mettre_a_jour")
+  # Mettre à jour les données (le fichier relu, ses étapes refaites), et retirer une étape (de même : ses
+  # formules de Nouvelle variable, ses modèles qui font des variables, refaits)
+  "mettre_a_jour", "retirer_etape")
 
 # Les demandes qui ne changent rien à la séance (ni un projet, ni un modèle, ni ses prédictions, ni ce
 # qu'Annuler et Rétablir gardent) : elles se font aussitôt, même sur un projet en calcul, qu'elles

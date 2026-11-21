@@ -462,7 +462,8 @@ variable_calculee <- function(projet, nom, formule) {
 # les noms des variables et des identifiants du projet, des nombres, du texte et les fonctions de
 # FONCTIONS_FORMULE, qui ne lisent ni n'écrivent rien d'autre que leurs arguments (ni fichier, ni
 # programme, ni le reste de la séance de R) ; ni seq() ni rep(), qui pourraient bâtir un objet
-# démesuré à chaque mise à jour. Le reste de R se tape dans la console R.
+# démesuré à chaque mise à jour, et, pour la même raison, cut(), interaction(), format(), formatC(),
+# sprintf(), gsub() et sub() bornées (environnement_borne). Le reste de R se tape dans la console R.
 FONCTIONS_FORMULE <- unique(c(FONCTIONS_CONDITION,
   "[", "[[", "factor", "as.factor", "as.integer", "as.double", "as.logical", "levels", "nlevels", "droplevels", "relevel",
   "is.finite", "is.nan", "is.element", "match", "cut", "findInterval", "rev", "cumsum", "cumprod", "cummax", "cummin",
@@ -511,6 +512,7 @@ lire_formule_variable <- function(projet, texte) {
   if (length(e) != 1) err("Une formule est une seule expression, sans « ; ».", "A formula is a single expression, without \";\".")
   n <- noms_condition(projet)
   noms <- c(names(n$variables), n$ids)
+  plages <- 0  # (les valeurs de toutes ses plages « : », MAX_PLAGE_CONDITION au plus en tout)
   nom_permis <- function(x) {
     nom <- as.character(x)
     if (!nom %in% noms && !nom %in% CONSTANTES_FORMULE) stop(variable_introuvable(nom), call. = FALSE)
@@ -545,6 +547,10 @@ lire_formule_variable <- function(projet, texte) {
         if (abs(bornes[[2]] - bornes[[1]]) + 1 > MAX_PLAGE_CONDITION) {
           err("Cette plage « : » est trop longue (plus de %s valeurs).", "This \":\" range is too long (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
         }
+        plages <<- plages + abs(bornes[[2]] - bornes[[1]]) + 1
+        if (plages > MAX_PLAGE_CONDITION) {
+          err("Ces plages « : » sont trop longues ensemble (plus de %s valeurs).", "These \":\" ranges are too long together (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
+        }
       }
       for (i in seq_along(arguments)) {
         if (identical(arguments[[i]], quote(expr = ))) {
@@ -569,10 +575,11 @@ lire_formule_variable <- function(projet, texte) {
 # qualitative y vaut le nom de sa catégorie), puis chaque identifiant des observations (site,
 # secteur...) par le sien, sauf si une variable a le même nom ; une valeur par observation, dans
 # l'ordre des lignes de projet$donnees. `noms` : seulement ceux-là (ceux que lit une condition :
-# un tableau de spectres a des milliers de variables).
+# un tableau de spectres a des milliers de variables). Son parent tient les fonctions bornées
+# (environnement_borne).
 environnement_formule <- function(projet, noms = NULL) {
   obs <- as.numeric(rownames(projet$donnees))
-  env <- new.env(parent = globalenv())
+  env <- new.env(parent = environnement_borne(nrow(projet$donnees)))
   vars <- Filter(function(v) nom_numero(v$uid) %in% colnames(projet$donnees), projet$variables)
   pris <- vapply(vars, function(v) as.character(v$ids[1]), "")
   for (v in vars) {
@@ -591,6 +598,100 @@ environnement_formule <- function(projet, noms = NULL) {
     assign(n, ids, envir = env)
   }
   env
+}
+
+# Les fonctions qu'une formule de Nouvelle variable (ou une condition) appelle et qu'un argument court
+# rendrait démesurées, bornées, puisqu'une formule gardée dans un projet reçu est refaite à chaque mise à
+# jour sans qu'on la relise (elle figerait le R qui la calcule, ou épuiserait la mémoire) ; `n`, le
+# nombre d'observations :
+#   - cut(x, n) : MAX_INTERVALLES_FORMULE intervalles au plus (cut(x, 1e9) en ferait un milliard, avec
+#     leurs étiquettes) ;
+#   - interaction() : les seules combinaisons observées (interaction_observee), jamais le produit de tous
+#     les niveaux ;
+#   - format() et formatC() : une largeur ou un nombre de chiffres d'au plus MAX_LARGEUR_FORMULE, et un
+#     texte à insérer (big.mark…) de 100 caractères au plus ; sprintf() : ce qu'il écrit d'une
+#     observation, fois le nombre d'observations, MAX_TEXTE_FORMULE caractères au plus ;
+#   - gsub() et sub() : leur résultat le plus long (chaque caractère remplacé, avec ses renvois \1…),
+#     MAX_TEXTE_FORMULE caractères au plus (des gsub("", "xxxxxxxxx", …) emboîtés le multiplieraient
+#     par dix chacun).
+# Le reste ne grandit qu'avec les données et le texte de la formule (20 000 caractères au plus), ses
+# plages « : » comprises (MAX_PLAGE_CONDITION valeurs en tout : lire_formule_variable, condition.R).
+# Mises dans le parent de l'environnement de la formule : une variable de leur nom y reste une donnée
+# (R saute une liaison qui n'est pas une fonction quand il cherche une fonction à appeler).
+MAX_INTERVALLES_FORMULE <- 10000
+MAX_LARGEUR_FORMULE <- 1000
+MAX_TEXTE_FORMULE <- 1e8
+environnement_borne <- function(n = 1) {
+  err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
+  chiffre <- function(x) format(x, big.mark = " ", scientific = FALSE)
+  e <- new.env(parent = globalenv())
+  e$cut <- function(x, breaks, ...) {
+    if (!missing(breaks) && is.numeric(breaks) && length(breaks) == 1 && isTRUE(breaks > MAX_INTERVALLES_FORMULE)) {
+      err("cut() : au plus %s intervalles (ou leurs bornes : cut(x, c(0, 10, 20))).", "cut(): %s intervals at most (or their bounds: cut(x, c(0, 10, 20))).",
+          chiffre(MAX_INTERVALLES_FORMULE))
+    }
+    base::cut(x, breaks, ...)
+  }
+  e$interaction <- function(..., drop = TRUE, sep = ".", lex.order = FALSE) interaction_observee(..., sep = sep, lex.order = lex.order)
+  bornes <- function(nom, args) {
+    for (a in args) {
+      if (is.numeric(a) && any(abs(a) > MAX_LARGEUR_FORMULE, na.rm = TRUE)) {
+        err("%s() : une largeur ou un nombre de chiffres de %s au plus.", "%s(): a width or a number of digits of %s at most.", nom, chiffre(MAX_LARGEUR_FORMULE))
+      }
+      if (is.character(a) && any(nchar(a, allowNA = TRUE) > 100, na.rm = TRUE)) {
+        err("%s() : un texte à insérer de 100 caractères au plus.", "%s(): a text to insert of 100 characters at most.", nom)
+      }
+    }
+  }
+  e$format <- function(x, ...) { bornes("format", list(...)); base::format(x, ...) }
+  e$formatC <- function(x, ...) { bornes("formatC", list(...)); base::formatC(x, ...) }
+  trop_long <- function(nom) err("%s() : plus de %s caractères en tout.", "%s(): more than %s characters in all.", nom, chiffre(MAX_TEXTE_FORMULE))
+  e$sprintf <- function(fmt, ...) {
+    # (une observation d'abord : ce que les largeurs de `fmt` font de son texte, pour toutes ; R borne
+    # chaque conversion à 8192 caractères, pas leur nombre)
+    args <- list(...)
+    essai <- do.call(base::sprintf, c(list(fmt[1]), lapply(args, function(a) if (length(a)) a[1] else a)))
+    if (sum(nchar(essai, type = "bytes")) * max(n, length(fmt), lengths(args), 1) > MAX_TEXTE_FORMULE) trop_long("sprintf")
+    do.call(base::sprintf, c(list(fmt), args))
+  }
+  remplacement <- function(nom, replacement, x, partout) {
+    r <- as.character(replacement)[1]
+    renvois <- if (is.na(r)) 0 else lengths(regmatches(r, gregexpr("\\\\[1-9]", r)))
+    texte <- if (is.na(r)) 2 else nchar(r) - 2 * renvois
+    l <- as.numeric(nchar(as.character(x), allowNA = TRUE, keepNA = FALSE))
+    l[is.na(l)] <- 2
+    if (sum(l) * (1 + renvois) + (if (partout) sum(l + 1) else length(l)) * texte > MAX_TEXTE_FORMULE) trop_long(nom)
+  }
+  e$gsub <- function(pattern, replacement, x, ...) { remplacement("gsub", replacement, x, TRUE); base::gsub(pattern, replacement, x, ...) }
+  e$sub <- function(pattern, replacement, x, ...) { remplacement("sub", replacement, x, FALSE); base::sub(pattern, replacement, x, ...) }
+  e
+}
+
+# interaction(..., drop = TRUE, sep, lex.order) sans jamais faire le produit de tous les niveaux (que
+# base::interaction fait deux facteurs à la fois, même avec drop = TRUE : n² étiquettes pour deux
+# identifiants de n valeurs) : les combinaisons observées, rangées comme base::interaction les range (le
+# premier facteur varie le plus vite, ou le plus lentement avec lex.order) ; manquante quand l'un des
+# facteurs l'est. Deux combinaisons du même texte (« a.b » et « c », « a » et « b.c ») n'en font qu'une,
+# à la place de la première observée (base::interaction la met parfois à celle d'une combinaison qu'on
+# n'observe pas, ou s'arrête en erreur) : les mêmes valeurs, en texte, que lui.
+interaction_observee <- function(..., sep = ".", lex.order = FALSE) {
+  args <- list(...)
+  if (length(args) == 1 && is.list(args[[1]])) args <- args[[1]]
+  if (!length(args)) stop(traduire("interaction() : aucun facteur.", "interaction(): no factor."), call. = FALSE)
+  facteurs <- lapply(args, function(a) { f <- as.factor(a); f[, drop = TRUE] })
+  n <- max(lengths(facteurs))
+  codes <- lapply(facteurs, function(f) rep_len(as.integer(f), n))
+  manquent <- Reduce(`|`, lapply(codes, is.na))
+  ordre <- do.call(order, if (lex.order) codes else rev(codes))
+  ordre <- ordre[!manquent[ordre]]
+  cles <- do.call(paste, c(codes, list(sep = "\r")))
+  vues <- unique(cles[ordre])
+  une <- match(vues, cles)
+  etiquettes <- do.call(paste, c(lapply(seq_along(facteurs), function(i) levels(facteurs[[i]])[codes[[i]][une]]), list(sep = sep)))
+  niveaux <- unique(etiquettes)
+  code <- match(etiquettes, niveaux)[match(cles, vues)]
+  code[manquent] <- NA_integer_
+  structure(code, levels = niveaux, class = "factor")
 }
 
 # Le message d'un nom qu'une formule de Nouvelle variable ou une condition ne trouve pas.

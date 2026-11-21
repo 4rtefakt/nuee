@@ -2583,8 +2583,12 @@ identifiants du projet, des nombres, du texte, les fonctions de calcul, de texte
 lois de R (log10, round, ifelse, paste, substr, as.Date, cut, pnorm...) et celles de Nuée
 (moyenne_groupe, precedent, shannon...). Gardée dans le projet, elle est refaite quand les
 données sont mises à jour, dans la copie d'un collègue aussi : ce qui pourrait lire ou écrire un
-fichier ou lancer un programme est refusé, et TRUE et FALSE s'écrivent en entier. Pour le reste
-de R, Affichage › Console R.
+fichier ou lancer un programme est refusé, et TRUE et FALSE s'écrivent en entier. Pour qu'une
+formule courte ne puisse pas non plus figer Nuée ou remplir sa mémoire, ses plages « : » tiennent
+100000 valeurs au plus en tout, cut() fait 10000 intervalles au plus, interaction() ne garde que
+les combinaisons observées, format() et formatC() prennent une largeur de 1000 au plus, et
+sprintf(), gsub() et sub() écrivent 100 millions de caractères au plus. Pour le reste de R,
+Affichage › Console R.
 Dans une formule de Nouvelle variable, d'une année à l'autre : precedent(x, annee, secteur), la
 valeur de x l'année d'avant dans le même secteur, et suivant(x, annee, secteur), celle de
 l'année d'après (pas = 2 : deux ans avant ou après). L'année cherchée doit exister : une année
@@ -2925,13 +2929,13 @@ substr(), substring(), startsWith(), endsWith(), tolower(), toupper(), trimws(),
 paste0(), mean(), median(), min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), et
 les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent(), suivant() et
 croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
-projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
-elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
-cette limite). Pour que cet ajustement reste rapide et borné, « : » ne va qu'entre deux nombres
-entiers (annee %in% 2005:2010) et sur une plage d'au plus 100000 valeurs, et interaction() laisse
-de côté les combinaisons vides : une condition courte ne peut pas construire un vecteur énorme qui
-figerait un ajustement. Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
-variable, puis employer cette variable dans la condition.
+projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par elle
+(une formule de Nouvelle variable, gardée aussi, est lue de même). Pour que cet ajustement reste
+rapide et borné, « : » ne va qu'entre deux nombres entiers (annee %in% 2005:2010), sur 100000
+valeurs au plus en tout, et interaction() ne garde que les combinaisons observées : une condition
+courte ne peut pas construire un vecteur énorme qui figerait un ajustement. Pour un indice de
+diversité (shannon()...), en faire d'abord une Nouvelle variable, puis employer cette variable
+dans la condition.
 
 Fenêtres
 --------

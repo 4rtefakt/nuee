@@ -2365,7 +2365,10 @@ text, and R's calculation, text, date and distribution functions (log10, round, 
 substr, as.Date, cut, pnorm...) with Nuée's own (group_mean, previous, shannon...). Kept in the
 project, it is replayed when the data are updated, in a colleague's copy too: anything that
 could read or write a file or start a program is refused, and TRUE and FALSE are written in
-full. For the rest of R, View › R console.
+full. So that a short formula can't tie up Nuée or fill its memory either, its ":" ranges hold
+100000 values at most in all, cut() makes 10000 intervals at most, interaction() keeps only the
+combinations observed, format() and formatC() take a width of 1000 at most, and sprintf(),
+gsub() and sub() write 100 million characters at most. For the rest of R, View › R console.
 In a New variable formula, from one year to the next: previous(x, year, sector), the value of x
 the year before in the same sector, and following(x, year, sector), that of the year after
 (pas = 2: two years before or after). The year sought must exist: a missing year gives a
@@ -2682,12 +2685,12 @@ startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mea
 min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions
 group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
 names). Nothing else: a condition is kept in the project file and run again at each fit, so a
-project received from someone can't run other code through it (a New variable formula, typed
-and computed once, is not kept and has no such limit). To keep that run quick and bounded, ":"
-goes only between two whole numbers (year %in% 2005:2010) and over a range of at most 100000
-values, and interaction() drops the empty combinations: a short condition can't build a huge
-vector that would tie up a fit. For a diversity index (shannon()...), make it a New variable
-first, then use that variable in the condition.
+project received from someone can't run other code through it (a New variable formula, kept too,
+is read the same way). To keep that run quick and bounded, ":" goes only between two whole
+numbers (year %in% 2005:2010), over 100000 values at most in all, and interaction() keeps only
+the combinations observed: a short condition can't build a huge vector that would tie up a fit.
+For a diversity index (shannon()...), make it a New variable first, then use that variable in
+the condition.
 
 Windows
 -------

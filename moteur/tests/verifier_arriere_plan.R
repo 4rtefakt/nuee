@@ -3,9 +3,11 @@
 # le même chemin que le serveur HTTP (appli$call : arriere_plan_demande, sinon traiter_demande) :
 #   - les mêmes réponses, au caractère près, qu'en un seul R : l'exemple des pommes ouvert, une ACP et
 #     une PLS ajustées, la PLS réajustée sans deux observations, ses permutations, refaite par son
-#     numéro, un test des variables, sa note ; un tableau ouvert de son fichier, le fichier changé,
-#     Mettre à jour les données, Annuler, Rétablir ; la seconde fois, le calculateur ne reçoit pas de
-#     nouveau le projet qu'il a déjà ;
+#     numéro, un test des variables, sa note ; une valeur changée, puis l'ACP modifiée, ajustée par le
+#     calculateur, et Annuler la valeur, qui la garde modifiée ; un tableau ouvert de son fichier, le
+#     fichier changé, Mettre à jour les données, Annuler, Rétablir, une valeur changée puis son étape
+#     retirée (son aperçu aussi) ; la seconde fois, le calculateur ne reçoit pas de nouveau le projet
+#     qu'il a déjà ;
 #   - pendant un long calcul sur un projet : une lecture du même projet répond aussitôt ; une demande
 #     qui le changerait attend la fin du calcul, puis se fait ; un autre projet s'ouvre aussitôt ; les
 #     numéros donnés pendant ce temps ne se croisent pas ;
@@ -85,10 +87,11 @@ lu <- function(r) jsonlite::fromJSON(r$body, simplifyVector = FALSE)
 par_serveur <- function(nom, q = list()) recevoir(envoyer(nom, q))
 ici <- function(nom, q = list()) traiter_demande(nom, corps_de(q), LANGUE)
 taches <- 0
+taches_noms <- character(0)
 suivre_taches <- local({
   avant <- arriere_plan_envoyer
   function() {
-    assign("arriere_plan_envoyer", function(it) { taches <<- taches + 1; avant(it) }, globalenv())
+    assign("arriere_plan_envoyer", function(it) { taches <<- taches + 1; taches_noms <<- c(taches_noms, it$nom); avant(it) }, globalenv())
   }
 })
 suivre_taches()
@@ -158,11 +161,17 @@ scenario <- function(faire) {
   d("mettre_a_jour", list(projet = t$id))
   d("annuler", list(projet = t$id))
   d("retablir", list(projet = t$id))
+  # (une valeur changée, son étape retirée : les étapes refaites par le calculateur, comme une mise à jour)
+  tv <- Filter(function(v) !isTRUE(v$qualitative), t$variables)[[1]]
+  d("modifier_valeur", list(projet = t$id, observation = unlist(t$observations$uid)[2], variable = tv$uid, valeur = "1.5"))
+  d("retirer_etape", list(projet = t$id, n = 1, apercu = TRUE))
+  d("retirer_etape", list(projet = t$id, n = 1))
   d("projet", list(projet = t$id))
   reponses
 }
 cat("Les mêmes réponses qu'en un seul R\n")
 taches <- 0
+taches_noms <- character(0)
 par_le_serveur <- scenario(par_serveur)
 donnees_serveur <- etat$projets
 taches_premiere <- taches
@@ -172,6 +181,7 @@ differentes <- which(!vapply(seq_along(tout_ici), function(i) identical(par_le_s
 verifier(sprintf("%d demandes, %d faites par le calculateur, les mêmes réponses%s", length(tout_ici), taches_premiere,
                  if (length(differentes)) paste0(" — différentes : ", paste(vapply(tout_ici[differentes], function(x) x$nom, ""), collapse = ", ")) else ""),
          !length(differentes) && length(par_le_serveur) == length(tout_ici) && taches_premiere >= 7)
+verifier("retirer une étape (son aperçu aussi) : fait par le calculateur, comme Mettre à jour les données", sum(taches_noms == "retirer_etape") == 2)
 for (i in utils::head(differentes, 2)) {
   cat("    ", tout_ici[[i]]$nom, " (serveur) ", substr(par_le_serveur[[i]]$corps, 1, 400), "\n", sep = "")
   cat("    ", tout_ici[[i]]$nom, " (ici)     ", substr(tout_ici[[i]]$corps, 1, 400), "\n", sep = "")
