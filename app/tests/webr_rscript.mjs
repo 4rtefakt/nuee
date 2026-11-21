@@ -69,9 +69,14 @@ const lecture = (async () => {
     try { m = await webR.read(); } catch { finir(1); return; }
     if (m.type === 'closed') { finir(1); return; }
     if (m.type !== 'stdout' && m.type !== 'stderr') continue;
-    // (after what a line printed without its end: a package's escape codes, say)
+    // (after what a line printed without its end: a package's escape codes, say, or the file's last
+    // cat() without "\n", which Rscript prints as it is)
     const k = m.type === 'stdout' ? m.data.indexOf(MARQUE) : -1;
-    if (k >= 0) { finir(Number(m.data.slice(k + MARQUE.length)) || 0); continue; }
+    if (k >= 0) {
+      if (affiche) process.stdout.write(m.data.slice(0, k).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''));
+      finir(Number(m.data.slice(k + MARQUE.length)) || 0);
+      continue;
+    }
     if (!affiche) continue;
     // (without a terminal's escape codes: cli shows the cursor again after each top-level call when R is interactive)
     (m.type === 'stdout' ? process.stdout : process.stderr).write(`${m.data.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')}\n`);
