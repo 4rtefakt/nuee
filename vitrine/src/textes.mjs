@@ -45,7 +45,7 @@ export const en = {
   app_p2: 'Then it hands everything back: the data and the results to any of those programs, the paragraph for your Methods section, and an R script that refits the model <mark>without Nuée</mark>.',
   app_note1: 'Select points with a box or a lasso: the selection follows you in every plot of the model.',
   app_note2: 'Ctrl+K finds any command from a part of its name.',
-  app_note3: 'A recovery copy every two minutes, and undo for data changes.',
+  app_note3: 'A recovery copy every two minutes, versions kept by themselves, Undo and Redo.',
   app_fig: 'The skylarks in Nuée, as the third tutorial leaves them: the explorer, the summary of their TRIM model with its trend said in words, the yearly indices and the totals.',
   app_fig_alt: 'Nuée’s window: the project explorer on the left, the summary of a TRIM model of skylark counts (a moderate decline of 3.0% a year), the plot of its yearly indices and that of its yearly totals.',
   app_jour: 'Day', app_nuit: 'Night', app_theme_aria: 'Show the application’s dark theme',
@@ -109,6 +109,8 @@ export const en = {
   r_script: '<b>Export to R</b> turns any model into a script, or an R Markdown or Quarto report, that refits it with R alone. This one is the skylarks’ TRIM model: {script_n} commented lines, of which the function for the overall slope is shown. Before writing the file, Nuée runs the script and checks that it gives the same results.',
   r_suite: 'lines {de} to {a} of {n}',
   r_corriger: '<b>Fix it yourself.</b> Edit a file of the engine, type <code>recharger_moteur()</code> in the console, and refit.',
+  r_modeles: '<b>Your own models.</b> <i>Model › New model…</i>, type <i>R code</i>: what you write fits any model R can fit (glmmTMB, unmarked, nls, brms…), and the model goes wherever the others go, documents, What changed, the Methods text and Export to R included. A plugin makes an R function a model with its own dialog, shared as one <code>.nueeplugin</code> file. Code from someone else runs only once you have read and approved it.',
+  r_votre_r: '<b>Your own R, if you prefer.</b> Nuée brings its R, or computes with one already on the computer (<i>File › Settings…</i>): it checks that R has what the engine needs, installs what it lacks, and goes back to its own if that one is gone.',
 
   // ---- 5. publishing
   pub_surtitre: 'From the model to the paper',
@@ -125,6 +127,19 @@ export const en = {
   pub_figure_titre: 'Figures at a journal’s width',
   pub_figure_p: 'Several plots composed as A, B, C panels, at one or two columns, exported as vector PDF or SVG, or as PNG and TIFF at 300 or 600 dpi.',
   pub_figure_alt: 'The figure composer: two panels, A and B, at 174 mm, with the export formats PDF, SVG, PNG and TIFF.',
+
+  // ---- 6. next spring
+  annee_surtitre: 'Next spring',
+  annee_titre: 'Next year’s counts, and the <em>whole project</em> follows.',
+  annee_p: 'A project made from a data file remembers that file, and every change you make to its data in Nuée. When next spring’s counts arrive, <i>Edit › Update the data</i> reads the new file, replays your changes, matches the sites by their names, shows what will change, then refits every model. One Ctrl+Z takes it all back.',
+  annee_etapes_titre: 'Every change, a step',
+  annee_etapes_p: 'A corrected value, Find and replace, categories, a New variable, columns from another table: each is kept as a step written with the variables’ names, which replays on next year’s file. Remove one, and the data follow.',
+  annee_change_titre: 'What changed',
+  annee_change_p: 'Two states of a project compared model by model on their key results (the fit, each coefficient with its interval and p-value, indices and trends), the notable changes first, in sentences: <q>the coefficient of year goes from −0.021 to −0.026, still significant</q>. The values your documents cite are marked in their text, old and new.',
+  annee_versions_titre: 'History',
+  annee_versions_p: '<i>File › History…</i>: Nuée keeps versions of each project by itself, beside it, each saying what changed. Name one, open an old one, compare it with now, restore it. Nothing to install, and no git to learn.',
+  annee_ensemble_titre: 'Working together',
+  annee_ensemble_p: 'Sign in to GitHub or GitLab with a short code, and a project becomes a private repository your colleagues open. When two of you changed it, Nuée merges by what changed (models by name, documents passage by passage, data by their steps) and asks only when you both changed the same thing. Projects on a shared folder are merged the same way.',
 
   // ---- 6. files
   fichiers_surtitre: 'Files',
@@ -147,7 +162,7 @@ export const en = {
   conf_note: 'Where Nuée differs on purpose, it says so: <i>Help › Results and known differences</i>.',
   conf_checks: 'Watch the checks run',
   prive_titre: 'Your data stay on your computer.',
-  prive_p: 'Nuée sends nothing: no account, no licence key, no usage statistics. Two exceptions, both yours to refuse: a question to GitHub at start-up about a newer version, and the area on screen to OpenStreetMap or IGN when you choose a background map.',
+  prive_p: 'Nuée sends nothing on its own: no account, no licence key, no usage statistics. It goes online to ask GitHub at start-up about a newer version (which you can turn off), to fetch the area on screen from OpenStreetMap or IGN when you choose a background map, and to download the spell checker’s dictionaries once (Windows and Linux). And only when you ask: a project you share, to your GitHub or GitLab repository; R packages, from CRAN.',
 
   // ---- 8. download
   dl_surtitre: 'Download',
@@ -157,7 +172,7 @@ export const en = {
   dl_win_p: 'The installer brings R with it: there is nothing else to install, and no administrator rights are needed.',
   dl_win_note: 'Windows may say it protected your PC, because the installer isn’t signed: <i>More info</i>, then <i>Run anyway</i>.',
   dl_mac_titre: 'macOS',
-  dl_mac_p: 'Open the <code>.dmg</code> and drag Nuée into <i>Applications</i>. R is included, as on Windows: an R already on the Mac is neither used nor changed.',
+  dl_mac_p: 'Open the <code>.dmg</code> and drag Nuée into <i>Applications</i>. R is included, as on Windows; Nuée can also compute with an R already on the Mac (<i>Nuée › Settings…</i>).',
   dl_mac_arm: 'Apple silicon', dl_mac_intel: 'Intel',
   dl_mac_note: 'macOS 14 or later on Apple silicon, 13 or later on Intel. The application isn’t signed with an Apple Developer ID: the first time, macOS says it couldn’t check it. Click <i>Done</i>, then <i>Open Anyway</i> in <i>System Settings › Privacy &amp; Security</i>.',
   dl_absent: 'Not in Nuée <b data-version></b>, the latest release.',
@@ -221,7 +236,7 @@ export const fr = {
   app_p2: 'Puis elle rend tout : les données et les résultats à chacun de ces logiciels, le paragraphe de votre section Méthodes, et un script R qui refait le modèle <mark>sans Nuée</mark>.',
   app_note1: 'Sélectionnez des points au rectangle ou au lasso : la sélection vous suit dans tous les graphiques du modèle.',
   app_note2: 'Ctrl+K trouve une commande à partir d’un bout de son nom.',
-  app_note3: 'Une copie de secours toutes les deux minutes, et l’annulation des changements de données.',
+  app_note3: 'Une copie de secours toutes les deux minutes, des versions gardées d’elles-mêmes, Annuler et Rétablir.',
   app_fig: 'Les alouettes dans Nuée, telles que les laisse le troisième tutoriel : l’explorateur, le résumé de leur modèle TRIM avec sa tendance dite en mots, les indices annuels et les totaux.',
   app_fig_alt: 'La fenêtre de Nuée : l’explorateur de projets à gauche, le résumé d’un modèle TRIM de comptages d’alouettes (un déclin modéré de 3,0 % par an), le graphique de ses indices annuels et celui de ses totaux annuels.',
   app_jour: 'Jour', app_nuit: 'Nuit', app_theme_aria: 'Montrer le thème sombre de l’application',
@@ -282,6 +297,8 @@ export const fr = {
   r_script: '<b>Exporter vers R</b> fait de tout modèle un script, ou un rapport R Markdown ou Quarto, qui le refait avec R seul. Celui-ci est le modèle TRIM des alouettes : {script_n} lignes commentées, dont voici la fonction de la pente globale. Avant d’écrire le fichier, Nuée lance le script et vérifie qu’il donne les mêmes résultats.',
   r_suite: 'lignes {de} à {a} sur {n}',
   r_corriger: '<b>Corrigez vous-même.</b> Modifiez un fichier du moteur, tapez <code>recharger_moteur()</code> dans la console, et réajustez.',
+  r_modeles: '<b>Vos propres modèles.</b> <i>Modèle › Nouveau modèle…</i>, type <i>Code R</i> : ce que vous écrivez ajuste n’importe quel modèle que R sait ajuster (glmmTMB, unmarked, nls, brms…), et le modèle va partout où vont les autres, documents, Ce qui a changé, texte des méthodes et export vers R compris. Un greffon fait d’une fonction R un modèle avec son propre dialogue, partagé en un seul fichier <code>.nueeplugin</code>. Le code de quelqu’un d’autre ne s’exécute qu’une fois lu et approuvé par vous.',
+  r_votre_r: '<b>Votre propre R, si vous préférez.</b> Nuée apporte son R, ou calcule avec un R déjà installé sur l’ordinateur (<i>Fichier › Réglages…</i>) : elle vérifie qu’il a ce dont le moteur a besoin, installe ce qui lui manque, et revient au sien si celui-là disparaît.',
 
   pub_surtitre: 'Du modèle à l’article',
   pub_titre: 'Elle rédige vos <em>Méthodes</em>.',
@@ -297,6 +314,19 @@ export const fr = {
   pub_figure_titre: 'Des figures à la largeur d’une revue',
   pub_figure_p: 'Plusieurs graphiques composés en panneaux A, B, C, sur une ou deux colonnes, exportés en PDF ou SVG vectoriels, ou en PNG et TIFF à 300 ou 600 ppp.',
   pub_figure_alt: 'Le compositeur de figures : deux panneaux, A et B, à 174 mm, avec les formats d’export PDF, SVG, PNG et TIFF.',
+
+  // ---- 6. le printemps suivant
+  annee_surtitre: 'Le printemps suivant',
+  annee_titre: 'Les comptages de l’année suivante, et <em>tout le projet</em> suit.',
+  annee_p: 'Un projet fait d’un fichier de données garde ce fichier, et chaque changement que vous faites à ses données dans Nuée. Quand arrivent les comptages du printemps suivant, <i>Édition › Mettre à jour les données</i> lit le nouveau fichier, rejoue vos changements, retrouve les sites par leurs noms, montre ce qui va changer, puis réajuste chaque modèle. Un seul Ctrl+Z défait le tout.',
+  annee_etapes_titre: 'Chaque changement, une étape',
+  annee_etapes_p: 'Une valeur corrigée, Chercher et remplacer, les catégories, une Nouvelle variable, des colonnes d’un autre tableau : chacun est gardé en étape, écrite avec les noms des variables, qui se rejoue sur le fichier de l’année suivante. Retirez-en une, et les données suivent.',
+  annee_change_titre: 'Ce qui a changé',
+  annee_change_p: 'Deux états d’un projet comparés modèle par modèle sur leurs résultats clés (l’ajustement, chaque coefficient avec son intervalle et sa valeur p, les indices et les tendances), les changements notables d’abord, en phrases : <q>le coefficient de l’année passe de −0,021 à −0,026, toujours significatif</q>. Les valeurs que vos documents citent sont marquées dans leur texte, l’ancienne et la nouvelle.',
+  annee_versions_titre: 'Historique',
+  annee_versions_p: '<i>Fichier › Historique…</i> : Nuée garde d’elle-même des versions de chaque projet, à côté de lui, chacune disant ce qui a changé. Nommez-en une, ouvrez-en une ancienne, comparez-la au projet actuel, restaurez-la. Rien à installer, et pas de git à apprendre.',
+  annee_ensemble_titre: 'Travailler à plusieurs',
+  annee_ensemble_p: 'Connectez-vous à GitHub ou GitLab avec un code court, et un projet devient un dépôt privé que vos collègues ouvrent. Quand vous l’avez changé chacun de votre côté, Nuée réunit les deux d’après ce qui a changé (les modèles par leur nom, les documents passage par passage, les données par leurs étapes) et ne demande que quand vous avez changé tous deux la même chose. Les projets d’un dossier partagé se réunissent de même.',
 
   fichiers_surtitre: 'Fichiers',
   fichiers_titre: 'Elle ouvre ce que vous avez, <em>rend</em> ce qu’il vous faut.',
@@ -317,7 +347,7 @@ export const fr = {
   conf_note: 'Là où Nuée s’écarte exprès, elle le dit : <i>Aide › Résultats et écarts connus</i>.',
   conf_checks: 'Regarder les vérifications tourner',
   prive_titre: 'Vos données restent sur votre ordinateur.',
-  prive_p: 'Nuée n’envoie rien : ni compte, ni clé de licence, ni statistiques d’usage. Deux exceptions, que vous pouvez refuser : une question à GitHub au démarrage pour savoir s’il existe une nouvelle version, et la zone affichée à OpenStreetMap ou à l’IGN quand vous choisissez un fond de carte.',
+  prive_p: 'Nuée n’envoie rien d’elle-même : ni compte, ni clé de licence, ni statistiques d’usage. Elle va en ligne pour demander à GitHub au démarrage s’il existe une nouvelle version (ce que vous pouvez couper), pour chercher chez OpenStreetMap ou l’IGN la zone affichée quand vous choisissez un fond de carte, et pour télécharger une fois les dictionnaires du correcteur (Windows et Linux). Et seulement à votre demande : un projet que vous partagez, vers votre dépôt GitHub ou GitLab ; des paquets R, depuis le CRAN.',
 
   dl_surtitre: 'Télécharger',
   dl_titre: 'Emportez-la <em>chez vous</em>.',
@@ -326,7 +356,7 @@ export const fr = {
   dl_win_p: 'L’installateur apporte R : il n’y a rien d’autre à installer, et aucun droit d’administrateur n’est nécessaire.',
   dl_win_note: 'Windows peut dire qu’il a protégé votre ordinateur, parce que l’installateur n’est pas signé : <i>Informations complémentaires</i>, puis <i>Exécuter quand même</i>.',
   dl_mac_titre: 'macOS',
-  dl_mac_p: 'Ouvrez le <code>.dmg</code> et faites glisser Nuée dans <i>Applications</i>. R est inclus, comme sous Windows : un R déjà présent sur le Mac n’est ni utilisé ni modifié.',
+  dl_mac_p: 'Ouvrez le <code>.dmg</code> et faites glisser Nuée dans <i>Applications</i>. R est inclus, comme sous Windows ; Nuée peut aussi calculer avec un R déjà présent sur le Mac (<i>Nuée › Réglages…</i>).',
   dl_mac_arm: 'Apple silicon', dl_mac_intel: 'Intel',
   dl_mac_note: 'macOS 14 ou plus récent sur Apple silicon, 13 ou plus récent sur Intel. L’application n’est pas signée avec un identifiant de développeur Apple : la première fois, macOS dit qu’il n’a pas pu la vérifier. Cliquez sur <i>OK</i>, puis sur <i>Ouvrir quand même</i> dans <i>Réglages Système › Confidentialité et sécurité</i>.',
   dl_absent: 'Absent de Nuée <b data-version></b>, la dernière version publiée.',

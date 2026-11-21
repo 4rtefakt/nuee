@@ -198,12 +198,14 @@ communautes <- list(
 vus <- comptes[!is.na(comptes$skylarks), ]
 pc <- importer_tableau("docs/site/donnees/skylark_counts.csv")
 uc <- function(nom) numeros(pc, nom)
-definir_trim <- function(projet, comptage, site, annee) {
+# (not named definir_trim: the engine takes a function definir_<type> for the definition of its analysis,
+# analyses.R, fonction_analyse)
+definition_trim <- function(projet, comptage, site, annee) {
   definir_modele(projet, "TRIM", x = NULL, y = numeros(projet, comptage), echelle = "none",
                  options = list(site = list(by = "variable", variable = numeros(projet, site)), temps = list(by = "variable", variable = numeros(projet, annee)),
                                 modele = 3, surdispersion = TRUE, correlation = TRUE))
 }
-d_trim <- definir_trim(pc, "skylarks", "site", "year")
+d_trim <- definition_trim(pc, "skylarks", "site", "year")
 m_trim <- ajuster(pc, d_trim)
 pente_trim <- m_trim$pentes[m_trim$pentes$quoi == "imputee", ]
 niveaux_sites <- sites_trim(m_trim)
@@ -322,6 +324,8 @@ carte <- list(
 # What the page quotes of the skylarks' TRIM model (M1 of the counts' project): a command typed in
 # the R console on it and its output, its Methods text in both languages, and of its Export to R
 # script, the header and the function for the overall slope.
+# (the version written in the Methods text's citation and the script's header: the application's own)
+version_nuee_site <- jsonlite::fromJSON("app/package.json")$version
 m <- m_trim
 commande <- "head(round(m$indices, 3))"
 sortie_console <- utils::capture.output(print(eval(parse(text = commande))))
@@ -331,15 +335,15 @@ textes <- function(langue) {
   # (the French tutorial's file holds the same counts, its variables named in French)
   if (langue == "fr") {
     pl <- importer_tableau("docs/site/donnees/comptages_alouette.csv")
-    dl <- definir_trim(pl, "alouettes", "site", "annee")
+    dl <- definition_trim(pl, "alouettes", "site", "annee")
   } else {
     pl <- pc
     dl <- d_trim
   }
   ml <- ajuster(pl, dl)
-  tm <- texte_methodes(pl, dl, ml, langue, "1.0.0")
+  tm <- texte_methodes(pl, dl, ml, langue, version_nuee_site)
   f <- file.path(tempdir(), if (langue == "fr") "alouettes M1.R" else "skylarks M1.R")
-  r <- ecrire_script(pl, dl, f, getOption("nuee.moteur"), m = ml, donnees = "csv", version = "1.0.0", langue = langue)
+  r <- ecrire_script(pl, dl, f, getOption("nuee.moteur"), m = ml, donnees = "csv", version = version_nuee_site, langue = langue)
   stopifnot(is.null(r$ecart), isTRUE(all.equal(ml$pentes$multiplicative, m_trim$pentes$multiplicative)))  # the script gives the engine's results
   lignes <- readLines(f, encoding = "UTF-8")
   # the script's header (up to the list of its parts), and its function for the overall slope with
