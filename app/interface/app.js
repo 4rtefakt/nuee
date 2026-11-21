@@ -35,6 +35,7 @@ import { installerGreffons } from './vues_greffons.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
+import { lieuEnregistrement, lieuConnu } from './versions_navigateur.js';
 import { nomFichier, sansExtension } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables, actionsVariable } from './atelier.js';
@@ -344,9 +345,11 @@ const app = {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
-    // (the browser version: never into R's file system in the tab, where a project opened there was
-    // put; always a copy downloaded)
+    // (the browser version: at its place in the browser's storage, where its versions are kept, never
+    // where a project opened in the tab was put; Save as, a new place; then downloaded. A place that
+    // can't be had: downloaded only. versions_navigateur.js)
     let chemin = !sous && !MOTEUR_WEBR && p.chemin_enregistrement ? p.chemin_enregistrement : null;
+    if (MOTEUR_WEBR) chemin = await lieuEnregistrement(p, { sous }).catch(() => null);
     if (bureau && !chemin) {
       // (an old version's name has its date, whose dot and colon a file's name can't take as they are)
       const nom = p.lecture_seule ? nomFichier(p.nom) : p.nom.replace(/\.[^.]+$/, '');
@@ -378,7 +381,7 @@ const app = {
       // (merged: saved as it is now, asked again if the file changed once more meanwhile)
       r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
     }
-    if (!bureau && !chemin) telecharger(r.chemin);
+    if (!bureau && (MOTEUR_WEBR || !chemin)) telecharger(r.chemin);
     statut(`${t('enregistre')} ${bureau ? r.chemin : r.chemin.split('/').pop()}`);  // (downloaded under its name)
     // (the project file, with its models, in File › Open recent and on the start page, where only the
     // table it came from was)
@@ -1619,7 +1622,8 @@ async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
         try {
           await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session, version: VERSION });
           await secoursNavigateur.garder(fichier);
-          // (no file: the next visit reopens it as the project it was, unsaved changes or not)
+          // (the next visit reopens it as the project it was, unsaved changes or not, at its place in
+          // the browser's storage when it has one, below)
           derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: null, lu: null, modifie: !!p.modifie, date: new Date().toISOString() });
           empreintes.set(p.id, empreinte);
         } catch {  // (tried again at the next change, or in a minute; said once: storage full, or refused)
@@ -1627,7 +1631,8 @@ async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
           if (!copieImpossibleDite) { copieImpossibleDite = true; statut(t('secours_navigateur_impossible'), true); }
         }
       }
-      if (derniersSecours.has(p.id)) entrees.push(derniersSecours.get(p.id));
+      // (its place, with its versions: versions_navigateur.js, known once a save or its file found it)
+      if (derniersSecours.has(p.id)) entrees.push({ ...derniersSecours.get(p.id), origine: lieuConnu(p) });
     }
     await secoursNavigateur.secoursIndex(entrees);
   })().catch(() => { for (const c of changes) aCopier.add(c); indexPerime = true; });
@@ -1709,7 +1714,7 @@ async function proposerRecuperationNavigateur() {
           for (const e of entrees) {
             try {
               await secoursNavigateur.rendre(e);
-              await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine: null, nom: e.nom, lu: null, modifie: e.modifie !== false })));
+              await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine: e.origine || null, nom: e.nom, lu: null, modifie: e.modifie !== false })));
             } catch { illisibles.push(e); }
             secoursNavigateur.effacerDansR(e);
           }
