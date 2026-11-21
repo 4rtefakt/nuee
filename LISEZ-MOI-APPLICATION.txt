@@ -221,9 +221,11 @@ son propre Arrêter interrompt aussi le modèle en train d'être ajusté. L'appl
 l'arrêt du moteur et propose de le redémarrer ; on peut aussi le faire soi-même (Aide ›
 Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et
 leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier
-où ils s'enregistrent ; les changements faits depuis la dernière copie de secours (deux minutes
-au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde les copies de secours,
-proposées au lancement suivant. Au-delà d'une minute de calcul, la barre d'état le rappelle.
+où ils s'enregistrent, une vue dans une fenêtre à elle y suivant son modèle (les vues d'une autre
+fenêtre principale se ferment, ses projets revenant dans son explorateur) ; les changements faits
+depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer Nuée quand le
+moteur ne répond plus garde les copies de secours, proposées au lancement suivant. Au-delà d'une
+minute de calcul, la barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
 jour). La version installée (Nuee-Setup, l'application macOS ou les paquets Linux) cherche au
 démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est

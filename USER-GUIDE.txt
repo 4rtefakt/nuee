@@ -200,10 +200,11 @@ R and stops only at its end; Stop then says so, and Help › Restart the R engin
 Update the data, its own Stop stops the model being fitted too. The application says when the
 engine stops and offers to restart it; you can also do it yourself (Help › Restart the R engine)
 if a computation doesn't finish. Projects reopen with their models and views, from their
-recovery copy if they had changes, otherwise from the file they save to; changes made since the
-last recovery copy (two minutes at most) are lost. Closing Nuée when the engine no longer
-answers keeps the recovery copies, offered at the next start. After a minute of computing, the
-status bar says so.
+recovery copy if they had changes, otherwise from the file they save to, a view in a window of
+its own following its model there (another main window's views close, its projects back in its
+explorer); changes made since the last recovery copy (two minutes at most) are lost. Closing
+Nuée when the engine no longer answers keeps the recovery copies, offered at the next start.
+After a minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
 copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at
 start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar;
