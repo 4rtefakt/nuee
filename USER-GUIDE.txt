@@ -2006,14 +2006,16 @@ code its data, takes from the model what it can, and treats it like its other mo
     it; the model stays in the dialog, not fitted.
 From the model, each part when the object allows it: print(summary()); the coefficients
 (coef(summary()) when it is a table of numbers with a column of standard errors, found by its
-name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; else coef() with the
-standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom
-when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(),
-BIC(); fitted() and residuals(), each value matched to its observation by its name, the number
-of its row in donnees (lm, glm, gls… keep them, even when the code reorders donnees), or to none
-when the names aren't those numbers (lme, nls) or the code fitted the model on other data;
-predict(fit, newdata) when it works, on the response scale (type = "response", when the model
-knows it: a GLM's counts, not their log).
+name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; an mgcv gam's from
+summary()$p.table, its parametric part, without the coefficients of its curves' bases, s(x).1…,
+its curves being in the summary; else coef() with the standard errors of vcov()) and their 95%
+interval (the t distribution at their degrees of freedom when their test is a t, else the
+normal); nobs(), logLik() and its degrees of freedom, AIC(), BIC(); fitted() and residuals(),
+each value matched to its observation by its name, the number of its row in donnees (lm, glm,
+gls… keep them, even when the code reorders donnees), or to none when the names aren't those
+numbers (lme, nls) or the code fitted the model on other data; predict(fit, newdata) when it
+works, on the response scale (type = "response", when the model knows it: a GLM's counts, not
+their log).
 
 Views: Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the
 warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table),

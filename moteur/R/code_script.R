@@ -37,6 +37,9 @@ code_sortie_code <- function(m, langue) {
   source <- attr(m$coefficients, "source")
   c(if (length(m$resume)) ligne_sortie(sprintf("print(summary(%s))", mod), tx("le résumé, comme Nuée le montre", "the summary, as Nuée shows it")),
     if (identical(source, "summary")) ligne_sortie(sprintf("print(coef(summary(%s)))", mod), tx("les coefficients", "the coefficients")),
+    # (un gam de mgcv : sa partie paramétrique, ses courbes étant dans le résumé)
+    if (identical(source, "p_table")) ligne_sortie(sprintf("print(summary(%s)$p.table)", mod), tx("les coefficients de la partie paramétrique (les courbes sont dans le résumé)",
+                                                                                                  "the coefficients of the parametric part (the curves are in the summary)")),
     if (identical(source, "vcov")) ligne_sortie(sprintf("print(cbind(%s = coef(%s), %s = sqrt(diag(vcov(%s)))))", tx("estimation", "estimate"), mod, tx("erreur_type", "se"), mod),
                                                 tx("les coefficients et leurs erreurs-types", "the coefficients and their standard errors")),
     # (des coefficients en tableau, une ligne par catégorie de la réponse : dans l'ordre de vcov())
@@ -106,6 +109,7 @@ ecrire_script_code <- function(projet, d, chemin_script, m, donnees = "script", 
                 tx("#   3. Modèle : le code R, tel qu'il est écrit dans Nuée", "#   3. Model: the R code, as written in Nuée")),
     resultats = Filter(Negate(is.null), list(
       if (identical(attr(m$coefficients, "source"), "summary")) list(nom = "coefficients-table", objet = sprintf("coef(summary(%s))", mod), chiffres = 4),
+      if (identical(attr(m$coefficients, "source"), "p_table")) list(nom = "coefficients-table", objet = sprintf("summary(%s)$p.table", mod), chiffres = 4),
       if (length(m$valeurs)) list(nom = "valeurs-table", objet = sprintf("t(%s)", tx("valeurs", "values")), chiffres = 4))),
     objets = c(res, mod, if (isTRUE(m$liste)) c(tx("valeurs", "values"), tx("tableaux", "tables"))))
   # (pendant cette exécution, les graphiques que le code dessine vont sur un périphérique sans sortie,

@@ -446,9 +446,17 @@ ddl_residus_code <- function(fit) {
 # matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie) dont chacune a une colonne
 # d'erreurs-types (coefficients_matrice), sinon coef(fit) avec les erreurs-types de vcov(fit) et
 # l'intervalle de la loi normale ; des coefficients en tableau, une ligne par catégorie de la réponse
-# (multinom), dans l'ordre de vcov(), « catégorie:terme ». NULL quand l'objet n'en a pas.
+# (multinom), dans l'ordre de vcov(), « catégorie:terme ». Un gam de mgcv (bam compris), dont
+# coef(summary()) n'est rien et dont coef() a aussi les coefficients des bases de ses courbes
+# (s(x).1, s(x).2…) : ceux de sa partie paramétrique, summary(fit)$p.table, comme summary() les montre
+# (ses courbes, leurs edf et leurs tests, sont dans le résumé). NULL quand l'objet n'en a pas.
 coefficients_code <- function(fit) {
   if (is.null(fit)) return(NULL)
+  if (inherits(fit, "gam")) {
+    pt <- essai_code(summary(fit)$p.table)
+    t <- if (is.matrix(pt) && is.numeric(pt) && nrow(pt) > 0) coefficients_matrice(pt, "", fit, FALSE)
+    if (!is.null(t)) return(structure(t, source = "p_table"))  # (l'export vers R refait le même appel)
+  }
   cs <- essai_code(stats::coef(summary(fit)))
   if (is.data.frame(cs) && length(cs) && all(vapply(cs, is.numeric, TRUE))) cs <- as.matrix(cs)
   matrice <- function(x) is.matrix(x) && is.numeric(x) && nrow(x) > 0
