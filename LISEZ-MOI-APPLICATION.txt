@@ -210,20 +210,20 @@ de la sélection par l'AIC, les départs aléatoires d'un NMDS, les simulations 
 tours des validations croisées (ACP, PLS, OPLS, modèles linéaires, GAM, arbres, forêts
 aléatoires, arbres boostés), les arbres boostés arbre par arbre, les tirages de la stabilité d'un
 arbre, la sélection pas à pas des points de changement de TRIM, les intervalles d'iPLS, Un modèle
-par réponse, le choix de k des k-moyennes, et les étapes que rejoue Mettre à jour les données. Un
-calcul qui ne s'arrête pas entre deux tours — un ajustement seul en code compilé (un modèle
-mixte, un GAM, les arbres d'une forêt aléatoire, l'échantillonnage par distances, l'estimation de
-TRIM) ou le code d'un modèle de code R — s'arrête tout de même une seconde et demie plus tard :
-son R est arrêté, un autre prend sa place, et le projet est tel qu'il était. Le code de la
-console R se fait dans le R de la fenêtre et ne s'arrête qu'à sa fin ; Arrêter le dit alors, et
-Aide › Redémarrer le moteur R reste. Pendant Mettre à jour les données, son propre Arrêter
-interrompt aussi le modèle en train d'être ajusté. L'application signale l'arrêt du moteur et
-propose de le redémarrer ; on peut aussi le faire soi-même (Aide › Redémarrer le moteur R) si un
-calcul ne finit pas. Les projets se rouvrent avec leurs modèles et leurs vues, depuis leur copie
-de secours s'ils avaient des changements, sinon depuis le fichier où ils s'enregistrent ; les
-changements faits depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer
-Nuée quand le moteur ne répond plus garde les copies de secours, proposées au lancement suivant.
-Au-delà d'une minute de calcul, la barre d'état le rappelle.
+par réponse, le choix de k des k-moyennes, et les étapes que rejouent Mettre à jour les données
+et le retrait d'une étape. Un calcul qui ne s'arrête pas entre deux tours — un ajustement seul en
+code compilé (un modèle mixte, un GAM, les arbres d'une forêt aléatoire, l'échantillonnage par
+distances, l'estimation de TRIM) ou le code d'un modèle de code R — s'arrête tout de même une
+seconde et demie plus tard : son R est arrêté, un autre prend sa place, et le projet est tel
+qu'il était. Le code de la console R se fait dans le R de la fenêtre et ne s'arrête qu'à sa fin ;
+Arrêter le dit alors, et Aide › Redémarrer le moteur R reste. Pendant Mettre à jour les données,
+son propre Arrêter interrompt aussi le modèle en train d'être ajusté. L'application signale
+l'arrêt du moteur et propose de le redémarrer ; on peut aussi le faire soi-même (Aide ›
+Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et
+leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier
+où ils s'enregistrent ; les changements faits depuis la dernière copie de secours (deux minutes
+au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde les copies de secours,
+proposées au lancement suivant. Au-delà d'une minute de calcul, la barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
 jour). La version installée (Nuee-Setup, l'application macOS ou les paquets Linux) cherche au
 démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est
