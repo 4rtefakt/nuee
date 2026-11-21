@@ -2659,9 +2659,10 @@ projet à part, qui emmène son historique. Un projet rouvert dans le même navi
 historique : repris après un rechargement, ou ouvert depuis un fichier qu'il a téléchargé, même
 renommé. Les versions sont dans ce navigateur seulement : effacer les données de ce site les
 efface, et un autre navigateur ou un autre ordinateur ne les a pas ; téléchargez le projet pour
-le garder ailleurs. Le haut de l'Historique donne leur taille, et dit quand le navigateur n'a pas
-accepté de les garder pour de bon (il peut alors les effacer quand la place manque). Partager sur
-GitHub ou GitLab et ouvrir depuis GitHub ou GitLab demandent l'application de bureau.
+le garder ailleurs, ou partagez-le. Le haut de l'Historique donne leur taille, et dit quand le
+navigateur n'a pas accepté de les garder pour de bon (il peut alors les effacer quand la place
+manque). Le partage sur GitHub ou GitLab y marche aussi, par le relais de nuee.io (voir Partager
+sur GitHub ou GitLab).
 
 Ce qui a changé
 ---------------
@@ -2720,6 +2721,15 @@ déconnecter (ou Se connecter...), et Envoyer maintenant, Recevoir maintenant, V
 l'adresse ou le jeton... et Arrêter le partage (les versions restent ici et dans le dépôt).
 L'horloge de la barre d'état montre le même état. Quand un collègue et vous avez changé le projet
 tous les deux : voir Travailler à plusieurs.
+Dans la version navigateur (nuee.io/app), le partage marche de même avec GitHub et GitLab
+(github.com et gitlab.com) : la connexion, le dépôt créé, Inviter un collègue..., les versions
+envoyées et reçues, et Ouvrir depuis GitHub ou GitLab, où le projet s'ouvre à une place à lui
+dans le navigateur, avec ses versions. La connexion et les projets partagés passent par le relais
+de nuee.io, dont le navigateur a besoin pour joindre GitHub et GitLab : il les voit passer et
+n'en garde rien. Le jeton reste dans ce navigateur (le stockage de ce site), et Se déconnecter
+l'efface. Le GitLab de votre institution, un autre serveur et la connexion git de cet ordinateur
+demandent l'application de bureau, comme des versions à envoyer de plus de 100 Mo d'un coup, plus
+que le relais n'en prend.
 
 Se connecter à GitHub ou GitLab
 -------------------------------

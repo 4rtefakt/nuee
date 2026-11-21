@@ -2431,9 +2431,10 @@ keeps it there too, with its history; Save as... makes it a project of its own, 
 taken along. A project opened again in the same browser finds its history: recovered after a
 reload, or opened from a file it downloaded, even renamed. The versions are in this browser
 only: clearing this site's data deletes them, and another browser or computer doesn't have them;
-download the project to keep it elsewhere. The top of History gives their size, and says when
-the browser hasn't agreed to keep them for good (it may then delete them when space runs short).
-Sharing on GitHub or GitLab and opening from GitHub or GitLab need the desktop application.
+download the project to keep it elsewhere, or share it. The top of History gives their size, and
+says when the browser hasn't agreed to keep them for good (it may then delete them when space
+runs short). Sharing on GitHub or GitLab works there too, through nuee.io's relay (see Sharing
+on GitHub or GitLab).
 
 What changed
 ------------
@@ -2487,6 +2488,14 @@ Invite a colleague... and Sign out (or Sign in...), and Send now, Get now, Check
 address or token... and Stop sharing (the versions stay here and in the repository). The clock
 in the status bar shows the same state. When you and a colleague both changed the project: see
 Working together.
+In the browser version (nuee.io/app), sharing works the same with GitHub and GitLab (github.com
+and gitlab.com): signing in, the repository made, Invite a colleague..., the versions sent and
+received, and Open from GitHub or GitLab, where the project opens at a place of its own in the
+browser, with its versions. The sign-in and the projects shared pass through nuee.io's relay,
+which the browser needs to reach GitHub and GitLab: it sees them pass and keeps nothing. The
+token stays in this browser (this site's storage), and Sign out removes it. Your institution's
+GitLab, another server and this computer's git sign-in need the desktop application, and so do
+versions to send of more than 100 MB at once, more than the relay takes.
 
 Signing in to GitHub or GitLab
 ------------------------------
