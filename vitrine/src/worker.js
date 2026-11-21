@@ -4,10 +4,14 @@
 //                        appimage, tar; the release's page when it doesn't have that file
 //   /version.json      → {"version": "1.0.0", "fichiers": {"windows": true, …}}: the latest
 //                        release and which of these files it has, for the page to say
+//   /relais/…          → the relay that lets the browser version share on GitHub and GitLab
+//                        (src/relais.js)
 //   anything else      → the 404 page
 // The latest release is read from the redirect of github.com/…/releases/latest, and each file
 // asked for by its name (no API, no rate limit to share with the other Workers); the answer is
 // kept ten minutes in the cache.
+
+import { relayer } from './relais.js';
 
 const DEPOT = 'https://github.com/4rtefakt/nuee';
 const FICHIERS = {
@@ -45,6 +49,7 @@ async function derniere(ctx) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/relais' || url.pathname.startsWith('/relais/')) return relayer(request, env, url);
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
 
     const telechargement = /^\/download\/([a-z0-9-]+)\/?$/.exec(url.pathname);

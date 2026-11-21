@@ -1,5 +1,6 @@
 // nuee.io: the pages of dist/ (built by construire.mjs) as static assets, and a small Worker
-// (src/worker.js) for what no file answers: the downloads of the latest release, its version, 404.
+// (src/worker.js) for what no file answers: the downloads of the latest release, its version, 404,
+// and the browser version's relay to GitHub and GitLab (src/relais.js).
 //   npx wrangler dev       the site at http://localhost:8787, rebuilt when src/ changes
 //   npx wrangler deploy    builds, then publishes to nuee.io
 {
@@ -21,5 +22,11 @@
   ],
   "workers_dev": false,
   "preview_urls": false,
-  "observability": { "enabled": true }
+  // errors kept, but no log of each request: the relay's carry repositories' addresses and sign-ins
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // the relay: 600 requests a minute sent on to GitHub and GitLab for each address, in each
+  // Cloudflare location (its own number among the account's limiters)
+  "ratelimits": [
+    { "name": "RELAIS_LIMITE", "namespace_id": "26111", "simple": { "limit": 600, "period": 60 } }
+  ]
 }
