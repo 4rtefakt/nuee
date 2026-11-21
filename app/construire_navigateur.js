@@ -11,8 +11,9 @@
 // page fetch a reproducibility package from zenodo.org's API, its link ?doi=: relancer.js), the
 // engine's files (moteur/, without its tests, exemple/, the user guide the help panel reads from
 // the engine, the application's package.json the protocol request reads its version from) with
-// their list (moteur-fichiers.json), webR in webr/, and _headers (the two headers, for hosts that
-// read it).
+// their list (moteur-fichiers.json), the desktop's versions of projects (app/versions.js) as an ES
+// module for History in the page, webR in webr/, and _headers (the two headers, for hosts that read
+// it).
 const fs = require('fs');
 const path = require('path');
 
@@ -69,6 +70,15 @@ for (const f of ['USER-GUIDE.txt', 'LISEZ-MOI-APPLICATION.txt', 'app/package.jso
   liste.push(f);
 }
 fs.writeFileSync(path.join(sortie, 'moteur-fichiers.json'), JSON.stringify(liste.sort()));
+
+// History in the page (interface/versions_navigateur.js): the desktop's app/versions.js itself, its
+// CommonJS made an ES module of the site, app/versions.js, a function given what it requires (Node's
+// modules as the page has them, isomorphic-git), `process` and `Buffer`
+const versions = fs.readFileSync(path.join(__dirname, 'versions.js'), 'utf8');
+if (!/^module\.exports = \{ creerVersions\b/m.test(versions)) { console.error('versions.js : ses exports ont changé, à revoir ici et dans interface/versions_navigateur.js'); process.exit(1); }
+fs.mkdirSync(path.join(sortie, 'app'), { recursive: true });
+fs.writeFileSync(path.join(sortie, 'app', 'versions.js'), '// app/versions.js as an ES module of the browser version (construire_navigateur.js)\n'
+  + `export default function charger(require, process, Buffer) {\nconst module = { exports: {} };\n${versions}\nreturn module.exports;\n}\n`);
 
 // webR: its module, worker, R and the base R library (not npm's REPL, tests and types)
 const dest = path.join(sortie, 'webr');
