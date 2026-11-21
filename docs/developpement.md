@@ -1073,6 +1073,65 @@ content, Range included), so the site's security policy adds `https://zenodo.org
   a record Zenodo doesn't know (404 or 410, an empty search), a record without a package, a package
   too large, no network (`fetch` failing), another error of Zenodo (its HTTP status).
 
+**nuee.io's relay (1.2), for sharing from the page.** A page can't use git's endpoints on GitHub and
+GitLab, nor those of their device flow: they send no CORS headers (asked with an `Origin`,
+github.com's answer 404 or 405 without any, gitlab.com's 200 without any; only gitlab.com's
+`/oauth/token` sends `Access-Control-Allow-Origin: *`). Their APIs answer any page:
+`api.github.com` and `gitlab.com/api/v4` send `Access-Control-Allow-Origin: *` on their preflights
+(which allow `Authorization`, `Content-Type` and every method `comptes.js` uses) and on their
+answers, 401 included, so the page asks them directly (its `connect-src` then names them). So do
+the accounts' pictures on `avatars.githubusercontent.com` (with `Cross-Origin-Resource-Policy:
+cross-origin`) and `secure.gravatar.com`, but not the ones uploaded to GitLab
+(`gitlab.com/uploads/…`: neither CORS nor CORP, so the page can't show them). The rest goes
+through nuee.io's Worker (`vitrine/src/relais.js`), in the form of isomorphic-git's `corsProxy`
+(`corsProxy: 'https://nuee.io/relais'`): `https://nuee.io/relais/<host>/<path>` goes to
+`https://<host>/<path>`, for these requests alone, anything else 404:
+- github.com and gitlab.com, git's smart HTTP: `GET <repository>/info/refs?service=git-upload-pack`
+  or `git-receive-pack`, `POST <repository>/git-upload-pack` or `git-receive-pack`; `<repository>`
+  an owner and a name on GitHub, up to 20 groups and a name on GitLab, with or without `.git`;
+- the device flow: github.com's `POST login/device/code` and `login/oauth/access_token`,
+  gitlab.com's `POST oauth/authorize_device` and `oauth/token` (its tokens' renewal too).
+
+How it answers:
+- CORS for Nuée's pages alone: `https://nuee.io` and `https://www.nuee.io` (the same site, which
+  doesn't redirect), and `http://127.0.0.1` and `http://localhost` on any port, for the checks; on
+  nuee.io, the page asks it from its own origin. Another `Origin`, or none from another site's page
+  (`Sec-Fetch-Site: cross-site` or `same-site`), gets 403 before anything is sent on. Preflights
+  are answered by the relay (`GET, POST`; `Accept, Authorization, Content-Type, Git-Protocol`; two
+  hours); the origin is given back in `Access-Control-Allow-Origin`, with `Vary: Origin`, and
+  `Retry-After` exposed. No credentials: a request with `credentials: 'include'` fails.
+- Sent on: `Accept`, `Authorization`, `Content-Type` and `Git-Protocol`, under `User-Agent:
+  git/nuee.io-relais`; never a cookie, the visitor's address, `Origin`, `Referer` or Cloudflare's
+  headers (`cf-*`, `x-forwarded-*`); Cloudflare adds its own `CF-Worker: nuee.io` to every request
+  a Worker makes. Given back: the status, `Content-Type` and `Retry-After`, with `Cache-Control:
+  no-store`, `X-Content-Type-Options: nosniff` and a `Content-Security-Policy` that sandboxes it;
+  never `Set-Cookie`, nor `WWW-Authenticate`: on nuee.io's own page, a 401 with it would have the
+  browser ask for a password itself (isomorphic-git reads the status alone).
+- The bodies stream both ways, never held. The relay follows no redirect: one is passed on,
+  rewritten to come back through the relay, only when it leads to one of these requests (as
+  GitLab's address without `.git` to the one with it); any other gives 502.
+- It sees the projects and sign-ins that pass through it, in transit, and keeps nothing: it writes
+  nothing, and the Worker keeps no log of each request (`wrangler.jsonc`:
+  `observability.logs.invocation_logs` false; Workers Logs would record each one with its address
+  and headers), its errors alone. `RELAIS_LIMITE`, Cloudflare's rate limiting by the visitor's
+  address (counted over a minute, in each of Cloudflare's locations), lets each address have 600
+  requests a minute sent on, then answers 429.
+- Cloudflare's free plan: 100,000 requests a day to the Worker, shared with the site's own
+  (`/download`, `/version.json`, the 404s; the static files don't count), 10 ms of CPU each (the
+  relay's own code takes about 10 µs a request, timed in Node; the bodies are streamed by the
+  runtime, not by its code), 50 subrequests (it makes one). Signing in polls every 5 s and a push
+  or a fetch is 2 to 4 requests, so a share is a few tens, and the plan covers thousands a day;
+  past it, until midnight UTC, Cloudflare answers its error 1027 instead of running the Worker (the
+  relay, `/download`, the 404s), while static files, which it doesn't count, are still served.
+  Cloudflare refuses a request body over 100 MB (413) before the Worker runs. A push sends at once
+  every version the repository doesn't have yet, each compressed (a project to about a quarter of
+  its size), so a project with many versions not sent yet, or a very large one, can be too much for
+  the relay where the desktop application would send it (GitHub refuses a file over 100 MB
+  anyway); receiving (clone, fetch) has no limit.
+- For the checks alone, `RELAIS_ESSAI`: an address on this computer (`http://127.0.0.1:<port>`)
+  that receives `/<host>/<path>` instead. It is read only when the relay itself is reached on this
+  computer (`wrangler dev`), never on nuee.io, and no configuration sets it.
+
 **Keeping the work.** A project lives in the tab (one saved there was downloaded, which the next
 visit doesn't open by itself), so every open project has a recovery copy in the browser's storage:
 its origin private file system (OPFS), else IndexedDB (`secours_navigateur.js`, the desktop's
@@ -1136,6 +1195,22 @@ go; the question closed without an answer keeps them for next time.
   `npx wrangler dev` in `vitrine/`, `--adresse=http://localhost:8787/app/`.
 - `node app/tests/banc_navigateur.mjs` times the same requests in the page and through the local
   R server (see Speed).
+- `node vitrine/tests/essai_relais.mjs` checks nuee.io's relay through the Worker's own handler in
+  Node, and `--wrangler[=<wrangler.js>] [--port=8796]` the same through `wrangler dev` (workerd;
+  `vitrine/node_modules`' Wrangler by default), against stand-ins on 127.0.0.1 (`RELAIS_ESSAI`):
+  nothing reaches github.com or gitlab.com. isomorphic-git (`app/node_modules`) through the relay
+  as a page of another origin uses it (its `Origin`, the preflights, what it may read, redirects
+  followed) against git's http-backend, every repository private: a project with a 30 MB file
+  pushed, cloned, changed, pushed and fetched on github.com and in a gitlab.com subgroup, git's
+  protocol 2, GitLab's address without `.git`; the device flow of both (GitHub's errors in a 200,
+  GitLab's in a 400, a token renewed); the headers sent on and given back (cookies, addresses,
+  Cloudflare's headers, `Set-Cookie`, `WWW-Authenticate` never); the bodies streamed both ways
+  (each side waits for the other to have the first part); other hosts, paths, methods, queries and
+  origins refused with nothing sent on, and the redirects; the limiter (a stand-in for it);
+  `RELAIS_ESSAI` ignored on nuee.io; `wrangler.jsonc` without invocation logs. Then, in Chrome or
+  Edge (`CHROME=…` to say which; `playwright-core` from `app/node_modules`), a page of another
+  origin and one of the relay's own make isomorphic-git's requests and the device flow's, and a
+  page of a third origin is refused. It needs git on the PATH.
 
 ## How it matches the stored results
 

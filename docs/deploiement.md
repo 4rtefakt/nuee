@@ -257,6 +257,12 @@ of the plugins as its value.
 - *Sign in with Zenodo* (from 1.2) listens on `127.0.0.1` as well, port 47864 (or 47865 when another
   program has it), from the click until Zenodo's page sends the browser back with its answer, ten
   minutes at most; again no firewall rule is needed.
+- Nuée's browser version (`https://nuee.io/app/`, from 1.2) installs nothing. A project shared from
+  it, and the sign-in to GitHub or GitLab there, go through nuee.io's relay,
+  `https://nuee.io/relais/`, since a web page can't reach git on GitHub and GitLab by itself: the
+  relay sees them in transit and keeps nothing (no log, no copy). A web proxy that lets sites
+  through by address must let `nuee.io` through, `/relais/` included; a push is one request to it,
+  100 MB at most.
 
 ## Proxies and certificates
 
