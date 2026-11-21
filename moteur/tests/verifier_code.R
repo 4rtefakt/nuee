@@ -1,7 +1,8 @@
 # Vérifie les modèles écrits en code R (moteur/R/code.R, code_script.R) par les demandes du serveur,
 # telles que l'interface les envoie (serveur.R : DEMANDES, chaque demande passée par le JSON) :
 #   - lm, glm, nls et un modèle mixte de nlme : les mêmes coefficients, erreurs-types, valeurs p,
-#     vraisemblance, AIC et BIC que ces fonctions appelées ici ; mgcv et MASS quand ils sont là ;
+#     vraisemblance, AIC et BIC que ces fonctions appelées ici ; mgcv (un gam : les coefficients de sa
+#     partie paramétrique, sans ceux des bases de ses courbes) et MASS quand ils sont là ;
 #   - les colonnes de coef(summary()) prises par leur nom : survival::coxph (se(coef), robust se) et
 #     nnet::multinom (coef() et vcov()) quand ils sont là ; la loi t d'un gls (N − p) ;
 #   - la forme liste : ses valeurs et ses tableaux, ses éléments inconnus ; ce que le code affiche, ses
@@ -205,9 +206,19 @@ if (requireNamespace("mgcv", quietly = TRUE)) {
   code_gam <- "library(mgcv)\ng <- gam(y ~ s(x, k = 5) + g, data = donnees)\nplot(g, pages = 1)\ng"
   approuver(code_gam)
   m_gam <- ajuste_code(code_gam, "R6")
-  verifier("mgcv : ajusté, ses coefficients par coef() et vcov(), le graphique qu'il dessine, son paquet, hors de la comparaison par l'AIC",
+  verifier("mgcv : ajusté, le graphique qu'il dessine, son paquet, hors de la comparaison par l'AIC",
            length(m_gam$images) == 1 && startsWith(m_gam$images[1], "data:image/png;base64,") && "mgcv" %in% m_gam$paquets$nom &&
-             "s(x).1" %in% m_gam$coefficients$terme && is.null(m_gam$comparaison$signature) && grepl("gam", m_gam$comparaison$raison))
+             is.null(m_gam$comparaison$signature) && grepl("gam", m_gam$comparaison$raison))
+  # (ses coefficients : ceux de sa partie paramétrique, comme summary() les montre, sans ceux des bases
+  # de sa courbe, s(x).1…, que coef() donne aussi ; l'intervalle de la loi t à ses ddl résiduels)
+  a_gam <- mgcv::gam(y ~ s(x, k = 5) + g, data = dd)
+  pt_gam <- summary(a_gam)$p.table
+  s_gam <- demande("script_r", list(modele = m_gam$id, chemin = fichier("R6.R"), langue = "fr"))
+  verifier("mgcv : ses coefficients, ceux de summary()$p.table (l'ordonnée et g, pas s(x).1…), leurs t, p et l'intervalle ; l'export vers R les redonne",
+           identical(m_gam$coefficients$terme, rownames(pt_gam)) && !any(startsWith(m_gam$coefficients$terme, "s(")) &&
+             proche(m_gam$coefficients$estimation, pt_gam[, 1]) && proche(m_gam$coefficients$erreur_type, pt_gam[, 2]) &&
+             proche(m_gam$coefficients$p, pt_gam[, 4]) && proche(m_gam$coefficients$haut, pt_gam[, 1] + qt(0.975, df.residual(a_gam)) * pt_gam[, 2]) &&
+             is.null(s_gam$ecart) && any(grepl("print(summary(modele)$p.table)", readLines(s_gam$script, encoding = "UTF-8"), fixed = TRUE)))
 } else cat("  (mgcv absent : pas de GAM)\n")
 if (requireNamespace("MASS", quietly = TRUE)) {
   code_nb <- "MASS::glm.nb(n ~ x, data = donnees)"

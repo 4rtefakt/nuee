@@ -35,9 +35,10 @@ FONCTIONS_NUEE_CONDITION <- c("moyenne_groupe", "ecart_groupe", "group_mean", "g
 # (des noms de R que lit une condition quand aucune variable ne les porte)
 CONSTANTES_CONDITION <- c("T", "F", "pi")
 
-# La plus longue plage « a:b » qu'une condition peut écrire : au-delà, elle est refusée. Une
-# condition courte (annee %in% 2005:2010) n'en approche jamais ; la borne empêche qu'un « : »
-# forgé (1:1e9) ne construise un vecteur qui épuise le temps ou la mémoire à chaque ajustement.
+# La plus longue plage « a:b » qu'une condition peut écrire, et toutes ses plages ensemble : au-delà,
+# elle est refusée (une formule de Nouvelle variable de même). Une condition courte (annee %in%
+# 2005:2010) n'en approche jamais ; la borne empêche qu'un « : » forgé (1:1e9), ou mille plages
+# (c(1:1e5, 1:1e5, …)), ne construise un vecteur qui épuise le temps ou la mémoire à chaque ajustement.
 MAX_PLAGE_CONDITION <- 100000L
 
 # La valeur d'un nombre littéral (un nombre, ou un moins/plus unaire devant un nombre : -5), NULL
@@ -84,6 +85,7 @@ lire_condition <- function(projet, texte) {
                           "A condition is a single expression, without \";\": site == \"S1\" & year >= 2010.")
   n <- noms_condition(projet)
   noms <- c(names(n$variables), n$ids)
+  plages <- 0  # (les valeurs de toutes ses plages « : », MAX_PLAGE_CONDITION au plus en tout)
   voir <- function(x) {
     if (is.call(x)) {
       f <- x[[1]]
@@ -105,6 +107,10 @@ lire_condition <- function(projet, texte) {
         }
         if (abs(bornes[[2]] - bornes[[1]]) + 1 > MAX_PLAGE_CONDITION) {
           err("Cette plage « : » est trop longue (plus de %s valeurs).", "This \":\" range is too long (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
+        }
+        plages <<- plages + abs(bornes[[2]] - bornes[[1]]) + 1
+        if (plages > MAX_PLAGE_CONDITION) {
+          err("Ces plages « : » sont trop longues ensemble (plus de %s valeurs).", "These \":\" ranges are too long together (more than %s values).", format(MAX_PLAGE_CONDITION, scientific = FALSE))
         }
       }
       for (i in seq_along(arguments)) {
@@ -131,18 +137,10 @@ lire_condition <- function(projet, texte) {
 valeurs_condition <- function(projet, condition) {
   err <- function(fr, en, ...) stop(sprintf(traduire(fr, en), ...), call. = FALSE)
   e <- lire_condition(projet, condition)
-  env <- environnement_formule(projet, all.names(e))  # (les seules variables qu'elle lit)
-  # interaction() ne sert dans une condition qu'à faire des groupes : forcée à drop = TRUE (le
-  # produit de tous les niveaux, sinon, peut épuiser la mémoire — la condition est réévaluée à
-  # chaque ajustement). Mise dans le parent de `env` : une variable nommée « interaction » y reste
-  # une donnée (R saute une liaison non-fonction quand il cherche une fonction à appeler).
-  pe <- new.env(parent = parent.env(env))
-  pe$interaction <- function(...) {
-    args <- list(...)
-    garde <- if (is.null(names(args))) rep(TRUE, length(args)) else names(args) != "drop"
-    do.call(base::interaction, c(args[garde], list(drop = TRUE)))
-  }
-  parent.env(env) <- pe
+  # (les seules variables qu'elle lit ; interaction() ne sert dans une condition qu'à faire des groupes :
+  # celle de environnement_formule, les seules combinaisons observées — le produit de tous les niveaux
+  # peut épuiser la mémoire, et la condition est réévaluée à chaque ajustement)
+  env <- environnement_formule(projet, all.names(e))
   avertit <- FALSE
   r <- tryCatch(withCallingHandlers(eval(e, envir = env), warning = function(w) {
     avertit <<- TRUE

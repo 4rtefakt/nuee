@@ -176,7 +176,8 @@ garder_avec_definition <- function(id, cle, valeur, modifie = TRUE) {
       p$models[[i]][[cle]] <- valeur
       if (modifie) {
         p$modifie <- TRUE
-        etat$retablissements[[p$id]] <- NULL  # (Rétablir remettrait la définition d'avant : serveur.R, definitions_changees)
+        # (Rétablir remettrait la définition d'avant, et Annuler un changement d'avant aussi : serveur.R)
+        definitions_changees(p$id, e$definition$name)
       }
     }
   }

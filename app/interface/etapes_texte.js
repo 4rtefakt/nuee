@@ -101,6 +101,11 @@ export function lireRapport(r, n = null) {
       detail: noms(parVariable.map((x) => `${x.variable} (${x.cellules})`), 10) })));
   }
   if (liste(v.recalculees).length) change.push(ligne(t('etapes_r_recalculees', { noms: noms(v.recalculees) })));
+  // (a step that renamed a variable, removed: its name before, followed by the steps, models and documents)
+  for (const x of liste(v.renommees)) {
+    const modeles = liste(x.modeles);
+    change.push(ligne(t(modeles.length ? 'etapes_r_renommee_modeles' : 'etapes_r_renommee', { avant: entre(x.ancien), apres: entre(x.nom), modeles: noms(modeles) })));
+  }
   for (const x of liste(v.types)) {
     change.push(ligne(x.type === 'qualitative' ? t('etapes_r_type_qualitative', { variable: entre(x.variable) })
       : t(Number(x.perdues) ? 'etapes_r_type_perdues' : 'etapes_r_type_quantitative', { variable: entre(x.variable), n: x.perdues }), Number(x.perdues) ? 'attention' : ''));

@@ -55,7 +55,10 @@
 #     numéro, si ;
 #   - une étape retirée défait ce qu'elle avait fait : des coordonnées, des catégories renommées et rangées
 #     (un modèle et sa condition les suivent), une unité, une variable en catégories (refusé tant qu'un
-#     modèle l'y utilise) ;
+#     modèle l'y utilise), un nom changé (la variable reprend le sien sous son numéro ; les étapes d'après,
+#     un modèle, sa condition et un document le suivent ; Ctrl+Z ; renommée deux fois, la première retirée) ;
+#   - Annuler un changement garde un modèle modifié depuis (sous son nom, ou sous son numéro), sa note ;
+#     modifié avec une variable que l'annulation retire, il reprend sa définition d'avant ;
 #   - un projet de la 1.0 (une valeur corrigée alors) : dit d'avant la 1.1 après sa première étape aussi,
 #     enregistré et rouvert, et par l'aperçu de la mise à jour, qui remplace cette valeur ;
 #   - des groupes de k-moyennes rejoués sur des données où l'ordre de leurs tailles change : chacun garde
@@ -1086,6 +1089,41 @@ verifier("Annuler une variable sur laquelle un modèle a été ajusté depuis : 
          !"w" %in% projet(aid)$noms_var && !"M3" %in% noms_modeles() && "M4" %in% noms_modeles())
 demande("retablir", list(projet = aid))
 verifier("Rétablir : la variable et ce modèle reviennent", "w" %in% projet(aid)$noms_var && all(c("M3", "M4") %in% noms_modeles()))
+# (un modèle d'avant un changement, modifié depuis sous son nom, sa note écrite depuis, un modèle modifié sous
+# un autre nom en gardant son numéro (comme un modèle de code R dont le code change) : Annuler le changement
+# les garde tels qu'ils sont, au lieu de rendre leurs définitions d'avant lui)
+termes_x <- function(nom) vapply(definition(projet(aid), nom)$x, `[[`, "", "name")
+id_seance <- function(nom) utils::tail(names(Filter(function(e) identical(e$projet, aid) && identical(e$definition$name, nom), etat$modeles)), 1)
+z_o3 <- function() unname(valeurs(projet(aid), "z")["O3"])
+z_avant <- z_o3()
+n_m2 <- definition(projet(aid), "M2")$number
+demande("modifier_valeur", list(projet = aid, observation = numeros_observations(projet(aid), "O3"), variable = ua("z"), valeur = "7"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("z")), y = ua("y"), nom = "M4"))
+demande("note_modele", list(modele = id_seance("P1"), note = "écrite après"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("z")), y = ua("y"), nom = "M2 bis", meme_numero = n_m2))
+u_m <- demande("annuler", list(projet = aid))
+verifier("un modèle modifié après un changement, une note écrite depuis, un modèle modifié sous un autre nom : Annuler le changement les garde",
+         z_o3() == z_avant && identical(termes_x("M4"), c("x", "z")) && identical(definition(projet(aid), "P1")$note, "écrite après") &&
+           identical(definition(projet(aid), "M2 bis")$number, n_m2) && !"M2" %in% noms_modeles() && sum(noms_modeles() == "M4") == 1 &&
+           !length(u_m$a_reajuster))
+demande("retablir", list(projet = aid))
+verifier("… et Rétablir de même", z_o3() == 7 && identical(termes_x("M4"), c("x", "z")) && identical(definition(projet(aid), "M2 bis")$number, n_m2) &&
+           !"M2" %in% noms_modeles())
+# (modifié avec une variable que l'annulation retire : il reprend sa définition d'avant le changement)
+demande("variable_calculee", list(projet = aid, nom = "v", formule = "x * 3"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("v")), y = ua("y"), nom = "M4"))
+demande("annuler", list(projet = aid))
+verifier("un modèle modifié avec une variable qu'Annuler retire : il reprend sa définition d'avant, sans partir",
+         !"v" %in% projet(aid)$noms_var && identical(termes_x("M4"), c("x", "z")))
+# (un nom de variable changé, puis un modèle modifié et un autre ajusté : Annuler le nom, leurs termes et
+# leur condition reprennent l'ancien nom)
+demande("renommer_variable", list(projet = aid, variable = ua("z"), nom = "zz"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("x"), ua("zz")), y = ua("y"), nom = "M4", condition = "zz > -10"))
+demande("ajuster", list(projet = aid, type = "LM", x = list(ua("zz")), y = ua("y"), nom = "M5"))
+demande("annuler", list(projet = aid))
+verifier("Annuler un nom changé : les termes et la condition d'un modèle modifié depuis, ceux d'un modèle ajusté depuis, reprennent l'ancien nom",
+         "z" %in% projet(aid)$noms_var && identical(termes_x("M4"), c("x", "z")) && identical(texte_condition(definition(projet(aid), "M4")$condition), "z > -10") &&
+           identical(termes_x("M5"), "z") && demande("ajuster", list(projet = aid, numero = definition(projet(aid), "M5")$number))$N == 20)
 
 cat("Une étape retirée : les variables telles que la source et les autres étapes les donnent\n")
 # (une variable en catégories, une unité, des catégories renommées et rangées, des coordonnées : chaque
@@ -1123,6 +1161,51 @@ demande("supprimer_modele", list(modele = ma$id, definition = TRUE))
 if (length(etape_n("type_variable"))) retirer("type_variable")
 verifier("sans le modèle : annee de nouveau en nombres, plus d'étape, les données d'accord",
          !length(variable_du_projet(projet(rid2), ur("annee"))$categories) && !length(projet(rid2)$etapes) && isTRUE(donnees_conformes(projet(rid2))))
+
+cat("Un nom changé, son étape retirée : la variable reprend son nom d'avant, et ce qui la nomme la suit\n")
+# (un modèle et sa condition, un document qui cite son terme, une valeur changée et une Nouvelle variable
+# qui la nomment ensuite : le nom d'avant revient sous le même numéro, et chacun le suit, comme quand on
+# renomme la variable ; Ctrl+Z rend le nouveau nom à tous)
+ren_csv <- fichier("renommer.csv")
+set.seed(4)
+utils::write.csv(data.frame(nom = paste0("O", 1:12), mesure = round(rnorm(12, 10), 2), z = round(rnorm(12), 3), y = round(rnorm(12), 3)), ren_csv, row.names = FALSE)
+nid_r <- demande("ouvrir", list(chemin = ren_csv))$id
+un_r <- function(n) uid_de(projet(nid_r), n)
+u_mesure <- un_r("mesure")
+demande("ajuster", list(projet = nid_r, type = "LM", x = list(un_r("mesure"), un_r("z")), y = un_r("y"), nom = "R1", condition = "mesure > 5"))
+doc_r <- demande("document_enregistrer", list(projet = nid_r, titre = "Rapport", texte = "La pente : {{R1.coef.mesure}}."))
+demande("renommer_variable", list(projet = nid_r, variable = u_mesure, nom = "mesure (cm)"))
+demande("modifier_valeur", list(projet = nid_r, observation = numeros_observations(projet(nid_r), "O2"), variable = u_mesure, valeur = "20"))
+demande("variable_calculee", list(projet = nid_r, nom = "double", formule = "`mesure (cm)` * 2"))
+avant_r <- projet(nid_r)
+ap_r <- demande("retirer_etape", list(projet = nid_r, n = 1, apercu = TRUE))
+verifier("l'aperçu du retrait du nom : la variable le reprend, R1 suit ; aucune variable nouvelle ni absente, les étapes d'après faites, rien de changé",
+         length(ap_r$variables$renommees) == 1 && identical(ap_r$variables$renommees[[1]]$nom, "mesure") && identical(as.character(ap_r$variables$renommees[[1]]$modeles), "R1") &&
+           !length(ap_r$variables$nouvelles) && !length(ap_r$variables$absentes) && length(ap_r$etapes) == 2 && all(statuts(ap_r) == "ok") &&
+           !length(ap_r$modeles$variables_absentes) && identical(projet(nid_r), avant_r))
+rr <- demande("retirer_etape", list(projet = nid_r, n = 1))
+pr_r <- projet(nid_r)
+dr_r <- definition(pr_r, "R1")
+texte_r <- function() Find(function(d) identical(d$id, doc_r$id), projet(nid_r)$documents)$texte
+verifier("retiré : « mesure » de nouveau, sous son numéro ; le terme et la condition de R1 la suivent, il s'ajuste ; la référence du document suit, dite à relire",
+         identical(unname(pr_r$noms_var[as.character(u_mesure)]), "mesure") && !"mesure (cm)" %in% pr_r$noms_var &&
+           "mesure" %in% vapply(dr_r$x, `[[`, "", "name") && identical(texte_condition(dr_r$condition), "mesure > 5") &&
+           identical(texte_r(), "La pente : {{R1.coef.mesure}}.") && identical(as.character(rr$documents), doc_r$id) &&
+           demande("ajuster", list(projet = nid_r, numero = dr_r$number))$N == 12)
+verifier("… les étapes d'après la nomment « mesure » (la valeur changée refaite, la formule de double), les données celles de leurs étapes",
+         length(pr_r$etapes) == 2 && identical(parametres(pr_r, 1)$variable, "mesure") && identical(parametres(pr_r, 2)$formule, "mesure * 2") &&
+           unname(valeurs(pr_r, "mesure")["O2"]) == 20 && isTRUE(all.equal(unname(valeurs(pr_r, "double")), 2 * unname(valeurs(pr_r, "mesure")))) &&
+           identical(variable_du_projet(pr_r, uid_de(pr_r, "double"))$formula, "mesure * 2") && isTRUE(donnees_conformes(pr_r)))
+demande("annuler", list(projet = nid_r))
+verifier("Ctrl+Z : « mesure (cm) » de nouveau, pour R1 et le document aussi, et ses trois étapes",
+         "mesure (cm)" %in% projet(nid_r)$noms_var && identical(texte_condition(definition(projet(nid_r), "R1")$condition), "`mesure (cm)` > 5") &&
+           identical(texte_r(), "La pente : {{R1.coef.mesure (cm)}}.") && length(projet(nid_r)$etapes) == 3)
+# (renommé deux fois, la première retirée : la seconde renomme la variable d'avant, qui garde son numéro)
+demande("renommer_variable", list(projet = nid_r, variable = u_mesure, nom = "taille"))
+demande("retirer_etape", list(projet = nid_r, n = 1))
+verifier("renommée deux fois, le premier nom retiré : elle s'appelle comme le second l'a nommée, sous son numéro, R1 la suit",
+         identical(unname(projet(nid_r)$noms_var[as.character(u_mesure)]), "taille") && identical(parametres(projet(nid_r), 3)$variable, "mesure") &&
+           identical(texte_condition(definition(projet(nid_r), "R1")$condition), "taille > 5") && isTRUE(donnees_conformes(projet(nid_r))))
 
 cat("Un projet de la 1.0, puis sa première étape de la 1.1\n")
 # (une valeur corrigée dans la 1.0, qui n'est pas une étape : dit avant la première étape faite dans la 1.1

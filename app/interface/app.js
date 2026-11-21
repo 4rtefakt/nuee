@@ -744,12 +744,14 @@ const app = {
       const s = p.modifie && moteur && dernieres.get(p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
+      // (its id and its fits' in the engine that stops, for the other windows to follow them: suivreRedemarrage)
+      const ancien = { ancien: p.id, anciens: app.modelesDe(p.id).filter((m) => m.numero !== null && m.numero !== undefined).map((m) => ({ id: m.id, numero: m.numero })) };
       // (an old version opened read-only stays one, under its name: versions.js)
       const lecture = p.lecture_seule ? { nom: p.nom, lecture_seule: p.lecture_seule } : {};
-      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null, ...lecture } });
+      if (s) aRouvrir.push({ ...ancien, nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null, ...lecture } });
       // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
       // (opened as is, it is opened as is again: an export would otherwise come back as an import to make)
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
+      else if (source) aRouvrir.push({ ...ancien, nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
     // (the copies to reopen marked waiting until they are: a main window writing the index meanwhile,
@@ -762,22 +764,31 @@ const app = {
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
     if (erreur) { await marquer(false); statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
+    // (the other windows hold the ids of the engine that stopped, which the new one gives again, to
+    // other projects and fits: they wait for the new ones, suivreRedemarrage)
+    diffuser('moteur_redemarre', { debut: true });
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
     moteurEtat = await bureau.idMoteur().catch(() => null);  // (the new engine numbers its projects from P1 again)
     let n = 0;
     const reprises = new Set();
+    const vers = { projets: {}, modeles: {} };  // (each id of the engine that stopped → the new engine's)
     for (const r of aRouvrir) {
       try {
-        await apresOuverture(await occupe(() => demander('ouvrir', r.q)), r.session);
+        const res = await occupe(() => demander('ouvrir', r.q));
+        await apresOuverture(res, r.session);
         n += 1;
         if (r.copie) reprises.add(r.copie.fichier);
+        vers.projets[r.ancien] = res.id;
+        const nouveaux = new Map(modelesSeance(res.id).map((m) => [m.numero, m.id]));
+        for (const a of r.anciens) if (nouveaux.has(a.numero)) vers.modeles[a.id] = nouveaux.get(a.numero);
       } catch {
         perdus.push(r.nom);  // (its recovery copy stays waiting, for another try)
       }
     }
     if (reprises.size) await changerSecours((index) => index.filter((e) => !reprises.has(e.fichier))).catch(() => {});
+    diffuser('moteur_redemarre', vers);
     diffuser('modeles');
     statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
     if (n) sauvegarderSecours({ moi: true });  // the reopened projects get copies of their own at once
@@ -1543,9 +1554,15 @@ async function apresOuverture(res, session = null) {
 // The browser version (sauvegarderSecoursNavigateur) keeps them in the browser's storage.
 const LANCEMENT = MOTEUR_WEBR ? ONGLET : Date.now().toString(36);
 let moteurEtat = null;
-// the index changed by `f` (index => index), read just before: another main window may have written it
+// the index changed by `f` (index => index), read just before with its version: when another main
+// window (or this one, in another of its calls) has written it since, the write is refused and it is
+// read again (main.js: secours-index), so that no change made meanwhile is written over, nor the
+// copies it kept deleted
 async function changerSecours(f) {
-  await bureau.secoursIndex(f([].concat(await bureau.secoursListe()).filter((e) => e && e.fichier)));
+  for (let essai = 0; essai < 20; essai += 1) {
+    const { entrees, version } = await bureau.secoursEtat();
+    if (await bureau.secoursIndex(f([].concat(entrees || []).filter((e) => e && e.fichier)), version)) return;
+  }
 }
 async function sauvegarderSecours({ moi = false } = {}) {
   if (MOTEUR_WEBR) return sauvegarderSecoursNavigateur();
@@ -2017,8 +2034,10 @@ function oublierProjet(pid) {
   majEtat();
 }
 
-// Everything the R server holds (for a new window, or after another window changed it).
+// Everything the R server holds (for a new window, or after another window changed it). (A view's own
+// window waiting for the new ids after a restart of the engine leaves it: suivreRedemarrage.)
 async function synchroniser() {
+  if (enAttenteDuMoteur) return;
   // (the engine's name first, then its state: a restart between the two leaves moteurEtat behind the
   // projects, never ahead of them, sauvegarderSecours)
   const moteur = bureau && bureau.idMoteur ? await bureau.idMoteur().catch(() => null) : null;
@@ -2747,6 +2766,54 @@ async function suivreRechargement({ ancien, nouveau, modeles }) {
   } else if (seul.params.projet === ancien) await lierVue(seul, { projet: nouveau });
 }
 
+// The R engine restarted by another main window (redemarrerMoteur): the new engine numbers its projects
+// and fits from the start, and gives this window's ids again, to other projects and fits. First
+// (`debut`), this window forgets the engine that stopped: a main window closes its views of it, as the
+// one restarting does, and the projects come back in its explorer; a view's own window waits, saying
+// so, its view no longer drawn from ids that now name something else (enAttenteDuMoteur: synchroniser
+// leaves it). Then, the projects reopened (`projets`, `modeles`: each old id → the new one), a view's own
+// window follows its model's new fit, or its project, as when a project is read again
+// (suivreRechargement), or says its model left.
+let enAttenteDuMoteur = false;
+async function suivreRedemarrage({ debut = false, projets = {}, modeles = {} }) {
+  const seul = VUE_SEULE && etat.panneaux.get('seul');
+  if (debut) {
+    if (!VUE_SEULE && dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
+    if (!VUE_SEULE) {
+      for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
+      app.rafraichirExplorateur();
+      majEtat();
+      return;
+    }
+    enAttenteDuMoteur = true;
+    if (seul) {
+      seul.element.replaceChildren(el('p', { class: 'note' }, t('moteur_redemarrage')));
+      seul.graphe = null;
+    }
+    return;
+  }
+  if (!VUE_SEULE) return;
+  enAttenteDuMoteur = false;
+  if (!seul) return;
+  const { modele: m0, projet: p0 } = seul.params;
+  const p1 = p0 ? projets[p0] : null;
+  const m1 = m0 ? modeles[m0] : null;
+  // (what this window kept by the old ids, a selection among them, could go to another fit of the same id)
+  for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
+  // (a document's or a figure's window: its texts and figures to the project as reopened)
+  if (p0 && p1) {
+    try { projetRecu(await demander('projet', { projet: p1 })); } catch { /* said below */ }
+    if (app.reattacherDocuments) await app.reattacherDocuments(p0, p1);
+    if (app.reattacherFigures) await app.reattacherFigures(p0, p1);
+  }
+  if ((m0 && !m1) || (!m0 && p0 && !p1)) {
+    seul.element.replaceChildren(el('p', { class: 'note' }, t('vue_modele_parti')));
+    seul.graphe = null;
+    return;
+  }
+  await lierVue(seul, { modele: m1 || null, projet: p1 || null });
+}
+
 // A fit replaced by another of the same model in another window (ajustement_remplace: Update the data,
 // an R-code model's code edited, an undo that fits the models again): here too its page shows the new
 // fit with its layout, its selection kept (suivreAjustement); a view in a window of its own shows it.
@@ -2840,6 +2907,8 @@ async function surMessage(msg) {
     if (app.surDocument) app.surDocument(msg);  // (a document written in another window: documents.js)
   } else if (msg.type === 'projet_recharge') {
     await suivreRechargement(msg);
+  } else if (msg.type === 'moteur_redemarre') {
+    await suivreRedemarrage(msg);
   } else if (msg.type === 'ajustement_remplace') {
     await surAjustementRemplace(msg);
   }

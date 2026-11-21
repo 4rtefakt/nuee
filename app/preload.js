@@ -125,7 +125,9 @@ contextBridge.exposeInMainWorld('bureau', {
   }),
   secoursDossier: () => ipcRenderer.invoke('secours-dossier'),
   secoursListe: () => ipcRenderer.invoke('secours-liste'),
-  secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
+  // (the index with its version, then written back with it: false when another window wrote it since)
+  secoursEtat: () => ipcRenderer.invoke('secours-etat'),
+  secoursIndex: (entrees, version) => ipcRenderer.invoke('secours-index', entrees, version),
   // the R engine running now, by a name of its own (a recovery copy carries it), and what every window
   // still holds sent to it (before a restart's copies)
   idMoteur: () => ipcRenderer.invoke('id-moteur'),

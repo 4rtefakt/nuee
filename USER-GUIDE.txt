@@ -158,11 +158,14 @@ at the next start, the saved projects (.nuee) open when Nuée closed come back, 
 models and views; a file moved or deleted since is named in the status bar. Without it, the
 start page offers Reopen last session. After an unexpected stop, the recovery copies are
 offered instead.
-Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
-variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo
-(Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with
-its source and steps, the models fitted again on its data. Both menu items name the change they
-act on; any new change empties Redo.
+Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new variable,
+class, scores as variables, deleted definition...), up to 20 steps back. Models fitted since
+stay, and a model modified since (fitted again with other settings, its notes) keeps its new
+definition; one that reads what Undo takes away (a variable the change made) goes with it or, if
+it was there before the change, comes back as it was. Edit › Redo (Ctrl+Y or Ctrl+Shift+Z) makes
+again, as it was, what Undo took back: an update of the data with its source and steps, the
+models fitted again on its data. Both menu items name the change they act on; any new change
+empties Redo.
 Notes: each model's summary has a notes area, saved with the project and included in the
 report; a pencil marks it in the explorer.
 Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
@@ -188,18 +191,20 @@ an RDA's tests, the variables fitted to an ordination's axes, Moran's I), the AI
 models, an NMDS's random starts, the power simulations, the cross-validation rounds (PCA, PLS,
 OPLS, linear models, GAMs, trees, random forests, boosted trees), boosted trees one tree at a
 time, a tree's stability draws, TRIM's stepwise selection of change points, iPLS's intervals,
-One model per response, k-means' choice of k, and the steps replayed by Update the data. A
-computation that doesn't stop between two rounds — a single fit in compiled code (a mixed model,
-a GAM, a random forest's trees, distance sampling, TRIM's estimation) or an R-code model's code
-— is stopped all the same a second and a half later: its R is stopped, another takes its place,
-and the project is as it was. The R console's code runs in the window's R and stops only at its
-end; Stop then says so, and Help › Restart the R engine remains. During Update the data, its own
-Stop stops the model being fitted too. The application says when the engine stops and offers to
-restart it; you can also do it yourself (Help › Restart the R engine) if a computation doesn't
-finish. Projects reopen with their models and views, from their recovery copy if they had
-changes, otherwise from the file they save to; changes made since the last recovery copy (two
-minutes at most) are lost. Closing Nuée when the engine no longer answers keeps the recovery
-copies, offered at the next start. After a minute of computing, the status bar says so.
+One model per response, k-means' choice of k, and the steps replayed by Update the data or by
+removing a step. A computation that doesn't stop between two rounds — a single fit in compiled
+code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's estimation) or an
+R-code model's code — is stopped all the same a second and a half later: its R is stopped,
+another takes its place, and the project is as it was. The R console's code runs in the window's
+R and stops only at its end; Stop then says so, and Help › Restart the R engine remains. During
+Update the data, its own Stop stops the model being fitted too. The application says when the
+engine stops and offers to restart it; you can also do it yourself (Help › Restart the R engine)
+if a computation doesn't finish. Projects reopen with their models and views, from their
+recovery copy if they had changes, otherwise from the file they save to, a view in a window of
+its own following its model there (another main window's views close, its projects back in its
+explorer); changes made since the last recovery copy (two minutes at most) are lost. Closing
+Nuée when the engine no longer answers keeps the recovery copies, offered at the next start.
+After a minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
 copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at
 start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar;
@@ -2006,14 +2011,16 @@ code its data, takes from the model what it can, and treats it like its other mo
     it; the model stays in the dialog, not fitted.
 From the model, each part when the object allows it: print(summary()); the coefficients
 (coef(summary()) when it is a table of numbers with a column of standard errors, found by its
-name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; else coef() with the
-standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom
-when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(),
-BIC(); fitted() and residuals(), each value matched to its observation by its name, the number
-of its row in donnees (lm, glm, gls… keep them, even when the code reorders donnees), or to none
-when the names aren't those numbers (lme, nls) or the code fitted the model on other data;
-predict(fit, newdata) when it works, on the response scale (type = "response", when the model
-knows it: a GLM's counts, not their log).
+name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; an mgcv gam's from
+summary()$p.table, its parametric part, without the coefficients of its curves' bases, s(x).1…,
+its curves being in the summary; else coef() with the standard errors of vcov()) and their 95%
+interval (the t distribution at their degrees of freedom when their test is a t, else the
+normal); nobs(), logLik() and its degrees of freedom, AIC(), BIC(); fitted() and residuals(),
+each value matched to its observation by its name, the number of its row in donnees (lm, glm,
+gls… keep them, even when the code reorders donnees), or to none when the names aren't those
+numbers (lme, nls) or the code fitted the model on other data; predict(fit, newdata) when it
+works, on the response scale (type = "response", when the model knows it: a GLM's counts, not
+their log).
 
 Views: Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the
 warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table),
@@ -2307,9 +2314,11 @@ Edit › Data steps (or right-click on the project's data): the source (found, c
 was read, or not found) and the steps, each with its date and the files it read. Remove shows
 first what removing a step would do (the source read again, the other steps replayed on it),
 then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
-and shows What changed; when the source changed since it was read, update the data first. When
-the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
-dialog says so: updating them would bring back what the source and the steps give.
+and shows What changed; when the source changed since it was read, update the data first.
+Removing the step that renamed a variable gives it its name back: the steps after it, the models
+(their terms, their conditions) and the documents' references name it so. When the data changed
+outside the steps (in the R console, or with a version of Nuée before 1.1), the dialog says so:
+updating them would bring back what the source and the steps give.
 Edit › Update the data: the source read again, or another file, next year's, whose columns may
 come in another order or with new ones. The steps are replayed on it, then its rows are matched
 to the project's observations by their identifiers and its columns to the variables by their
@@ -2360,7 +2369,10 @@ text, and R's calculation, text, date and distribution functions (log10, round, 
 substr, as.Date, cut, pnorm...) with Nuée's own (group_mean, previous, shannon...). Kept in the
 project, it is replayed when the data are updated, in a colleague's copy too: anything that
 could read or write a file or start a program is refused, and TRUE and FALSE are written in
-full. For the rest of R, View › R console.
+full. So that a short formula can't tie up Nuée or fill its memory either, its ":" ranges hold
+100000 values at most in all, cut() makes 10000 intervals at most, interaction() keeps only the
+combinations observed, format() and formatC() take a width of 1000 at most, and sprintf(),
+gsub() and sub() write 100 million characters at most. For the rest of R, View › R console.
 In a New variable formula, from one year to the next: previous(x, year, sector), the value of x
 the year before in the same sector, and following(x, year, sector), that of the year after
 (pas = 2: two years before or after). The year sought must exist: a missing year gives a
@@ -2685,12 +2697,12 @@ startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mea
 min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions
 group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
 names). Nothing else: a condition is kept in the project file and run again at each fit, so a
-project received from someone can't run other code through it (a New variable formula, typed
-and computed once, is not kept and has no such limit). To keep that run quick and bounded, ":"
-goes only between two whole numbers (year %in% 2005:2010) and over a range of at most 100000
-values, and interaction() drops the empty combinations: a short condition can't build a huge
-vector that would tie up a fit. For a diversity index (shannon()...), make it a New variable
-first, then use that variable in the condition.
+project received from someone can't run other code through it (a New variable formula, kept too,
+is read the same way). To keep that run quick and bounded, ":" goes only between two whole
+numbers (year %in% 2005:2010), over 100000 values at most in all, and interaction() keeps only
+the combinations observed: a short condition can't build a huge vector that would tie up a fit.
+For a diversity index (shannon()...), make it a New variable first, then use that variable in
+the condition.
 
 Windows
 -------
