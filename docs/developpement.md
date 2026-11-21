@@ -1097,6 +1097,9 @@ go; the question closed without an answer keeps them for next time.
   computer's disk, so that an `Rscript` started by `system2()` is that script again, in a process
   of its own, started from webR's worker, and finds the files the checks write beside
   `tempdir()`; `webr_chemins.mjs`: webR's worker loads `R.js` by a path Node refuses on Windows).
+  Of this computer's environment variables, R sees `CI` and `NUEE_LIMITE`, which
+  `verifier_robustesse.R` reads for its time limits: in webR its slowest request (114 s on a
+  Ryzen 7 5800X) comes close to its limit (120 s), so `NUEE_LIMITE=2` on a busy computer.
   `verifier_references.R` is left out (its exported projects aren't in the repository).
   `verifier_forets.R` fails there, as random forests need ranger; `verifier_etapes.R` and
   `verifier_resultats_cles.R` leave their forests out without ranger; `appli`'s static paths are
