@@ -2025,8 +2025,10 @@ async function principal() {
       const maj = await api('mettre_a_jour', { projet: ouvert.id, apercu: true }, 'en');
       verifier(ouvert.a_source === true && JSON.parse(zip.get('Apples package/orchards.nuee').toString('utf8')).nuee.format === 3 && et.source.existe && et.source.modifie === false
         && et.source.relatif === 'data/orchards.csv' && !et.etapes.length && et.conformes === true && maj.apercu && maj.observations.cellules === 0
-        && !maj.observations.ajoutees && !maj.observations.retirees && fs.realpathSync(maj.fichier.chemin) === fs.realpathSync(path.join(decompresse, 'Apples package', 'data', 'orchards.csv')),
-      `le projet du paquet ouvert : ${JSON.stringify({ et, maj: maj.fichier })}`);
+        && !maj.observations.ajoutees && !maj.observations.retirees
+        // (native: GitHub's Windows machines give a temporary folder under C:\Users\RUNNER~1, a short name R writes out in full)
+        && fs.realpathSync.native(maj.fichier.chemin) === fs.realpathSync.native(path.join(decompresse, 'Apples package', 'data', 'orchards.csv')),
+      `le projet du paquet ouvert : ${JSON.stringify({ et, maj: maj.fichier, apercu: maj.apercu, observations: maj.observations })}`);
       await api('fermer_projet', { projet: ouvert.id });
       // (in a browser: written in the engine's session folder, then downloaded)
       const t = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en');

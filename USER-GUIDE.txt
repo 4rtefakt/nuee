@@ -583,11 +583,14 @@ the project, its data as CSV with a data dictionary, one R script that redoes ev
 documents as reproducible Quarto files, each model's key results as Nuée computed them
 (results/key_results.json, with the versions of Nuée, R and the R packages), a README, the
 licence of the data with its text, CITATION.cff, codemeta.json and the SHA-256 hash of every
-file (MANIFEST.sha256). File › Deposit on Zenodo… (desktop application) creates a draft on Zenodo
-with its DOI reserved, writes the package with that DOI and deposits it there; Nuée never
-publishes: you check the draft on Zenodo and publish it there. Its last dialog gives the link that
-opens the package in Nuée in a browser, https://nuee.io/app/?doi=<DOI>, and its QR code (Copy
-link, Save the QR code… as SVG or PNG, for a poster or a slide); the package holds both.
+file (MANIFEST.sha256). File › Deposit on Zenodo… (desktop application) creates a draft on
+Zenodo with its DOI reserved, writes the package with that DOI and deposits it there; Nuée never
+publishes: you check the draft on Zenodo and publish it there. Sign in with Zenodo opens
+Zenodo's page in your browser, where you allow Nuée to upload, never to publish; the sign-in
+lasts 60 days (a personal access token with the scope deposit:write can be pasted instead). Its
+last dialog gives the link that opens the package in Nuée in a browser,
+https://nuee.io/app/?doi=<DOI>, and its QR code (Copy link, Save the QR code… as SVG or PNG, for
+a poster or a slide); the package holds both.
 File › Open a reproducibility package… (or File › Open on its .zip, or the .zip dropped on the
 window) checks every file against the package's manifest and names any file missing, changed or
 added; opens its project as a new project (Save asks where: nothing is written into the

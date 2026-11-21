@@ -638,9 +638,12 @@ R et des paquets R), un README, la licence des données et son texte, CITATION.c
 et l'empreinte SHA-256 de chaque fichier (MANIFEST.sha256). Fichier › Déposer sur Zenodo…
 (application de bureau) crée sur Zenodo un brouillon qui réserve son DOI, écrit le paquet avec ce
 DOI et l'y dépose ; Nuée ne publie jamais : vous vérifiez le brouillon sur Zenodo et le publiez
-là. Son dernier dialogue donne le lien qui ouvre le paquet dans Nuée, dans un navigateur,
-https://nuee.io/app/?doi=<DOI>, et son code QR (Copier le lien, Enregistrer le code QR… en SVG ou
-en PNG, pour une affiche ou une diapositive) ; le paquet a les deux.
+là. Se connecter avec Zenodo ouvre la page de Zenodo dans votre navigateur, où vous autorisez
+Nuée à déposer, jamais à publier ; la connexion dure 60 jours (un jeton d'accès personnel avec le
+droit deposit:write peut être collé à la place). Son dernier dialogue donne le lien qui ouvre le
+paquet dans Nuée, dans un navigateur, https://nuee.io/app/?doi=<DOI>, et son code QR (Copier le
+lien, Enregistrer le code QR… en SVG ou en PNG, pour une affiche ou une diapositive) ; le paquet
+a les deux.
 Fichier › Ouvrir un paquet de reproductibilité… (ou Fichier › Ouvrir sur son .zip, ou le .zip
 déposé sur la fenêtre) vérifie chaque fichier par le manifeste du paquet et nomme ceux qui
 manquent, ont changé ou ont été ajoutés ; ouvre son projet comme un nouveau projet (Enregistrer

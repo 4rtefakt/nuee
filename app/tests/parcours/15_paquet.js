@@ -3,9 +3,11 @@
 // (BibTeX); File › Export a reproducibility package…, its dialog filled in, the .zip written where
 // the system's dialog says and read back: the project (format 3, its data from data/orchards.csv), the
 // R script with the licence notice, the document as a reproducible Quarto file with its .bib, every
-// file's SHA-256. Then File › Deposit on Zenodo… against a stand-in for Zenodo's deposit API on
-// 127.0.0.1 (the main process's NUEE_ZENODO; nothing reaches zenodo.org): the token pasted once and
-// kept encrypted in the profile's jetons.json, the draft created with its DOI reserved, the package
+// file's SHA-256. Then File › Deposit on Zenodo… against a stand-in for Zenodo's deposit API and its
+// OAuth server on 127.0.0.1 (the main process's NUEE_ZENODO; nothing reaches zenodo.org): Sign in with
+// Zenodo, its page "opened in the browser" (the main process's shell.openExternal, pilote.js) and
+// fetched here, Zenodo's redirect followed back to Nuée, the token it gives for the code kept
+// encrypted in the profile's jetons.json, the draft created with its DOI reserved, the package
 // written with that DOI, then deposited in it with its description; never published. Its last dialog
 // shows the link that opens the package in the browser version and its QR code, which jsQR reads back
 // (as drawn in the window, saved as PNG, and the package's qr-code.svg): the README's link. Then the
@@ -22,16 +24,36 @@ const JETON = 'zx9TOKENfake0123456789abcdefABCDEF0123456789abcdefABCDEF0123';
 const DOI = '10.5072/zenodo.4242';
 
 // Zenodo's deposit API as essai_zenodo.js stands in for it: a DOI reserved only when the draft's
-// creation asks for one; every request recorded, the file's bytes kept
+// creation asks for one; every request recorded, the file's bytes kept. And its OAuth server, the
+// user signed in there: /oauth/authorize authorizes Nuée at once, the browser sent back with a code;
+// /oauth/token gives JETON for it (its requests in `oauth`).
 function zenodo() {
-  const s = { recues: [], fichiers: new Map(), creation: null, metadonnees: null };
+  const s = { recues: [], oauth: [], codes: new Map(), fichiers: new Map(), creation: null, metadonnees: null };
   s.serveur = http.createServer((req, res) => {
     const morceaux = [];
     req.on('data', (d) => morceaux.push(d));
     req.on('end', () => {
       const corps = Buffer.concat(morceaux);
-      s.recues.push({ method: req.method, url: req.url, auth: req.headers.authorization || '' });
       const json = (statut, x) => { res.writeHead(statut, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(x)); };
+      const u = new URL(req.url, 'http://x');
+      if (u.pathname.startsWith('/oauth/')) {
+        const champs = Object.fromEntries(new URLSearchParams(corps.toString('utf8')));
+        const q = Object.fromEntries(u.searchParams);
+        s.oauth.push({ method: req.method, chemin: u.pathname, q, champs });
+        if (req.method === 'GET' && u.pathname === '/oauth/authorize') {
+          const code = crypto.randomBytes(12).toString('hex');
+          s.codes.set(code, q);
+          res.writeHead(302, { Location: `${q.redirect_uri}?code=${code}&state=${encodeURIComponent(q.state)}` });
+          res.end();
+        } else if (req.method === 'POST' && u.pathname === '/oauth/token' && s.codes.has(champs.code)
+          && champs.client_id === s.codes.get(champs.code).client_id && champs.redirect_uri === s.codes.get(champs.code).redirect_uri) {
+          json(200, { access_token: JETON, token_type: 'Bearer', expires_in: 5184000, scope: s.codes.get(champs.code).scope, user: { id: '4242' } });
+        } else {
+          json(400, { error: 'invalid_grant' });
+        }
+        return;
+      }
+      s.recues.push({ method: req.method, url: req.url, auth: req.headers.authorization || '' });
       if (req.headers.authorization !== `Bearer ${JETON}`) { json(401, { status: 401, message: 'Unauthorized.' }); return; }
       const base = `http://127.0.0.1:${s.serveur.address().port}`;
       if (req.method === 'POST' && req.url === '/api/deposit/depositions') {
@@ -158,7 +180,21 @@ module.exports = {
       await n.attendre(titrePaquet);
       await n.bouton('paquet_zenodo');
       await n.dialogue('zenodo_titre');
-      await n.ecrire("__n.boite().querySelector('.zenodo-champ')", JETON);
+      // Sign in with Zenodo (a token still possible, under "Or use a personal access token"): Zenodo's
+      // page opened in the browser, here a fetch following its redirect back to Nuée
+      const offert = await n.evaluer("!!__n.boite().querySelector('button.zenodo-connexion') && !!__n.boite().querySelector('details.zenodo-par-jeton .zenodo-champ')");
+      await n.cliquer("__n.boite().querySelector('button.zenodo-connexion')");
+      await n.attendre("!!__n.boite().querySelector('.zenodo-attente')");
+      const page = (await n.principal()).liens.filter((l) => l.startsWith(`${base}/oauth/authorize?`)).pop() || '';
+      const q = page ? Object.fromEntries(new URL(page).searchParams) : {};
+      const navigateur = page ? await fetch(page) : null;
+      const vu = navigateur ? await navigateur.text() : '';
+      await n.attendre(`__n.norm(__n.boite().textContent).includes(__n.norm(__n.t('zenodo_jeton_garde').replace('{hote}', 'zenodo.org')))`);
+      const echange = s.oauth.find((x) => x.chemin === '/oauth/token') || { champs: {} };
+      verifier('zenodoConnexion', offert && q.response_type === 'code' && q.client_id === 'nuee-essai' && q.scope === 'deposit:write'
+        && /^http:\/\/127\.0\.0\.1:4786[45]\/zenodo$/.test(q.redirect_uri || '') && /^[0-9a-f]{48}$/.test(q.state || '') && navigateur && navigateur.status === 200
+        && vu.includes('Nuée is signed in to Zenodo') && echange.champs.grant_type === 'authorization_code' && echange.champs.client_id === 'nuee-essai'
+        && !Object.keys(echange.champs).some((k) => /secret/.test(k)), { offert, q, statut: navigateur && navigateur.status, vu: vu.slice(0, 200), echange });
       await n.bouton('zenodo_creer');
       const fait = await n.attendre("__n.titreDialogue() === __n.t('zenodo_fait_titre') && __n.norm(__n.boite().textContent)", 300000);
       const ordre = s.recues.map((x) => `${x.method} ${x.url.startsWith('/api/files/b0c1d2e3/') ? '/api/files/b0c1d2e3/…' : x.url}`).join(' | ');
