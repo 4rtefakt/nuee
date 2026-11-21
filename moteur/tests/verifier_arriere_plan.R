@@ -271,8 +271,20 @@ CALCULS <- setdiff(CALCULS, "console")
 cat("CALCULS et LECTURES\n")
 verifier("des demandes du moteur", all(c(CALCULS, LECTURES) %in% names(DEMANDES)))
 fonctions <- Filter(function(n) is.function(get(n, globalenv())), ls(globalenv(), all.names = TRUE))
+# Les noms qu'une fonction appelle (en tête d'un appel, dans son corps et les valeurs par défaut de
+# ses arguments), comme codetools::findGlobals(f, merge = FALSE)$functions, sans ce paquet que les R
+# des vérifications n'ont pas tous
+fonctions_appelees <- function(f) {
+  noms <- character(0)
+  voir <- function(e) {
+    if (is.call(e) && is.symbol(e[[1]])) noms <<- c(noms, as.character(e[[1]]))
+    if (is.call(e) || is.pairlist(e)) for (i in seq_along(e)) if (!identical(e[[i]], quote(expr = ))) voir(e[[i]])
+  }
+  if (!is.primitive(f)) { voir(formals(f)); voir(body(f)) }
+  unique(noms)
+}
 appels <- new.env()
-for (n in fonctions) appels[[n]] <- tryCatch(intersect(codetools::findGlobals(get(n, globalenv()), merge = FALSE)$functions, fonctions), error = function(e) character(0))
+for (n in fonctions) appels[[n]] <- tryCatch(intersect(fonctions_appelees(get(n, globalenv())), fonctions), error = function(e) character(0))
 ecrit <- function(f) {
   texte <- paste(deparse(f, width.cutoff = 500L), collapse = "\n")
   any(vapply(c("projets", "modeles", "predictions", "annulations", "retablissements", "revisions", "copies", "fusions"),
@@ -281,7 +293,7 @@ ecrit <- function(f) {
 ecrivent <- vapply(fonctions, function(n) ecrit(get(n, globalenv())), TRUE)
 atteintes <- function(f) {
   vus <- character(0)
-  a_voir <- intersect(codetools::findGlobals(f, merge = FALSE)$functions, fonctions)
+  a_voir <- intersect(fonctions_appelees(f), fonctions)
   while (length(a_voir)) {
     x <- a_voir[1]
     a_voir <- a_voir[-1]
