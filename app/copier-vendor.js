@@ -72,10 +72,10 @@ ajouterLicences(path.join(dest, 'qr.js'), qr.metafile);
 
 // History in the browser version (interface/versions_navigateur.js): isomorphic-git (MIT) for the
 // page, as an ES module imported at its first use, with the Buffer its code expects as a global
-// (the buffer package, MIT, which isomorphic-git brings along). The main process's own is
-// construire.js's.
+// (the buffer package, MIT, which isomorphic-git brings along) and the SHA-1 of sha.js (MIT, its
+// own too) for versions.js's createHash. The main process's own is construire.js's.
 const git = require('esbuild').buildSync({
-  stdin: { contents: "export * as git from 'isomorphic-git';\nexport { Buffer } from 'buffer/';", resolveDir: __dirname, loader: 'js' },
+  stdin: { contents: "export * as git from 'isomorphic-git';\nexport { Buffer } from 'buffer/';\nexport { default as Sha1 } from 'sha.js/sha1.js';", resolveDir: __dirname, loader: 'js' },
   bundle: true,
   minify: true,
   format: 'esm',

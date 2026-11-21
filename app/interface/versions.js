@@ -23,11 +23,14 @@
 //   - a project on a shared folder changed on disk by someone else (request fichier_change), or
 //     met by Save (app.js): their changes merged into the open project, with the same choices.
 // The browser version keeps the versions in the browser's storage, through the same functions in the
-// page (versions_navigateur.js); sharing there says it needs the desktop application.
+// page (versions_navigateur.js), and shares with GitHub and GitLab through nuee.io's relay
+// (comptes_navigateur.js): a self-hosted GitLab, another server and choosing a folder are the
+// desktop application's there, said so.
 import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau, MOTEUR_WEBR } from './api.js';
 import { versionsNavigateur } from './versions_navigateur.js';
+import { comptesNavigateur } from './comptes_navigateur.js';
 import { VUES } from './panneaux.js';
 import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, titreVersion, nomDeChemin, memeFichier, nomHote, hoteAdresse, liensConnexion,
   placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension,
@@ -98,13 +101,6 @@ export function installerVersions(app) {
     // (the name a saved file says it was written by: app.js, enregistrer)
     auteurVersions: () => nomAuteur(),
   });
-  // (the browser version: the sharing is the desktop application's, said so)
-  if (MOTEUR_WEBR) {
-    Object.assign(app, {
-      partagerProjet: () => app.bureauRequis('versions_partager'),
-      ouvrirDepuisDistant: () => app.bureauRequis('versions_ouvrir_distant'),
-    });
-  }
   const c = couche();
   if (!c || VUE_SEULE) return;
   if (typeof c.surVersions === 'function') c.surVersions((e) => { evenement(app, e).catch(() => {}); });
@@ -430,9 +426,8 @@ function ligneVersion(app, p, v, actuelle, partage) {
 function sectionPartage(app, p, e) {
   const chemin = fichierProjet(p);
   if (!e.partage) {
-    // (app.partagerProjet: in the browser version, it says it needs the desktop application)
     return el('div', { class: 'partage-versions' }, el('button', { disabled: !e.actif, onclick: () => app.partagerProjet(p.id) }, icone('cloud-upload'), t('versions_partager')),
-      el('span', { class: 'note' }, MOTEUR_WEBR ? t('bureau_requis', { quoi: t('versions_partager').replace(/…$/, '') }) : t('versions_partager_texte')));
+      el('span', { class: 'note' }, t('versions_partager_texte')));
   }
   const x = e.partage;
   const etat = etatPartage(e, vus.get(chemin));
@@ -750,8 +745,9 @@ async function refuserEnregistrement(app, pid) {
 
 // ------------------------------------------------------------ GitHub and GitLab
 
-// Signing in to GitHub and GitLab (app/comptes.js, through preload.js); none in a browser
-const comptes = () => (bureau && bureau.comptes && typeof bureau.comptes.compte === 'function' ? bureau.comptes : null);
+// Signing in to GitHub and GitLab (app/comptes.js, through preload.js; in the browser version, in
+// the page: comptes_navigateur.js); none in another browser
+const comptes = () => (MOTEUR_WEBR ? comptesNavigateur : bureau && bureau.comptes && typeof bureau.comptes.compte === 'function' ? bureau.comptes : null);
 
 // Who is signed in on each server, asked again after five minutes (a minute after a failure): each
 // drawing of History would otherwise ask the server. host → { k | erreur, quand } or { promesse }
@@ -903,7 +899,9 @@ async function dialoguePartage(app, pid, { existant = false } = {}) {
     const formulaire = formulaireExistant({ ouvert, url });
     etape(el('p', {}, t('versions_partager_compte')),
       el('div', { class: 'services-connexion' }, github, el('button', { onclick: () => serveurChoisi('gitlab.com') }, 'GitLab')),
-      el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))),
+      // (the browser version: nuee.io's relay reaches github.com and gitlab.com alone)
+      MOTEUR_WEBR ? el('p', { class: 'note autre-gitlab' }, t('bureau_requis', { quoi: t('connexion_autre_gitlab') }))
+        : el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))),
       formulaire);
     pied([{ libelle: t('annuler'), action: () => true }]);
     if (!a) (ouvert ? formulaire.querySelector('input') : github).focus();
@@ -1005,10 +1003,10 @@ async function dialoguePartage(app, pid, { existant = false } = {}) {
     });
     adresse.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') partager(); });
     return el('details', { class: 'depot-existant', open: ouvert }, el('summary', {}, t('versions_depot_existant')),
-      el('p', { class: 'note' }, t('versions_depot_existant_texte')),
+      el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_depot_existant_texte_navigateur' : 'versions_depot_existant_texte')),
       el('div', { class: 'grille-champs' },
         el('label', {}, t('versions_adresse')), adresse,
-        el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide')))),
+        el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_jeton_aide_navigateur' : 'versions_jeton_aide')))),
       liens,
       el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: partager }, icone('cloud-upload'), t('versions_partager_bouton'))));
   }
@@ -1401,15 +1399,16 @@ async function surveiller(app) {
 // ------------------------------------------------------------ Open from GitHub or GitLab
 
 // A colleague's project: the repository's address (signed in to its server, or a token, if it is
-// private), its projects, the folder to put the one chosen in; then it opens, shared with that
-// repository
+// private), its projects, the folder to put the one chosen in (in the browser version, a place of its
+// own in the browser's storage: versions_navigateur.js); then it opens, shared with that repository
 function dialogueDistant(app) {
   const c = couche();
   if (!c) { app.statut(t('versions_navigateur'), true); return; }
   const adresse = el('input', { type: 'url', placeholder: t('versions_adresse_exemple'), style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_adresse') });
   const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('versions_jeton') });
   const ligneConnexion = el('div', { class: 'ligne connexion-distant', hidden: true });
-  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide'))));
+  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')),
+    el('div', {}, jeton, el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_jeton_aide_navigateur' : 'versions_jeton_aide'))));
   const dossier = el('input', { style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_distant_dossier') });
   const projets = el('div', { class: 'projets-distants' });
   // (its projects, once found)
@@ -1453,11 +1452,11 @@ function dialogueDistant(app) {
   };
   const ouvrir = async () => {
     if (!choisi) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_projet'); return; }
-    if (!dossier.value.trim()) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_dossier'); return; }
+    if (!MOTEUR_WEBR && !dossier.value.trim()) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_dossier'); return; }
     message.className = 'message-connexion doux';
     message.textContent = t('versions_verification');
     try {
-      const r = await c.ouvrirDistant(adresse.value, choisi, dossier.value.trim());
+      const r = await c.ouvrirDistant(adresse.value, choisi, MOTEUR_WEBR ? '' : dossier.value.trim());
       d.fermer();
       await app.ouvrirChemin(r.chemin);
       app.statut(t('versions_distant_ouvert', { nom: nomDeChemin(r.chemin), hote: nomHote(hoteAdresse(adresse.value)) || hoteAdresse(adresse.value) }));
@@ -1465,12 +1464,12 @@ function dialogueDistant(app) {
   };
   adresse.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') chercher(); });
   const d = dialogue({ titre: t('versions_distant_titre'),
-    contenu: el('div', { class: 'dialogue-connexion dialogue-distant' }, el('p', {}, t('versions_distant_texte')),
+    contenu: el('div', { class: 'dialogue-connexion dialogue-distant' }, el('p', {}, t(MOTEUR_WEBR ? 'versions_distant_texte_navigateur' : 'versions_distant_texte')),
       el('div', { class: 'grille-champs' }, el('label', {}, t('versions_adresse')), el('div', { class: 'ligne' }, adresse,
         el('button', { onclick: chercher }, icone('search'), t('versions_distant_chercher')))),
       ligneConnexion, ligneJeton, ligneProjets,
-      el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
-          el('button', { disabled: !bureau.choisirDossier, onclick: async () => { const x = await bureau.choisirDossier(); if (x) dossier.value = x; } }, icone('folder-open'), t('versions_distant_choisir_dossier')))),
+      MOTEUR_WEBR ? null : el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
+        el('button', { disabled: !bureau.choisirDossier, onclick: async () => { const x = await bureau.choisirDossier(); if (x) dossier.value = x; } }, icone('folder-open'), t('versions_distant_choisir_dossier')))),
       message),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('versions_distant_ouvrir'), principal: true, action: () => { ouvrir(); return false; } }] });
 }

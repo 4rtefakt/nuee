@@ -7,13 +7,14 @@
 // its browser build, webr.js, as webr.mjs; R.js, R.wasm, BLAS and LAPACK, and the base R library
 // in vfs/), or a folder with the same files, as on webr.r-wasm.org/v<version>/.
 // The site: the interface (its page saying window.NUEE_MOTEUR = 'webr', and a security policy
-// that lets webR compile R, fetch its packages from repo.r-wasm.org and start its worker, and the
-// page fetch a reproducibility package from zenodo.org's API, its link ?doi=: relancer.js), the
-// engine's files (moteur/, without its tests, exemple/, the user guide the help panel reads from
-// the engine, the application's package.json the protocol request reads its version from) with
-// their list (moteur-fichiers.json), the desktop's versions of projects (app/versions.js) as an ES
-// module for History in the page, webR in webr/, and _headers (the two headers, for hosts that read
-// it).
+// that lets webR compile R, fetch its packages from repo.r-wasm.org and start its worker, the
+// page fetch a reproducibility package from zenodo.org's API, its link ?doi=: relancer.js, and
+// ask GitHub's and GitLab's APIs and the accounts' pictures, for sharing), the engine's files
+// (moteur/, without its tests, exemple/, the user guide the help panel reads from the engine, the
+// application's package.json the protocol request reads its version from) with their list
+// (moteur-fichiers.json), the desktop's versions of projects and sign-in (app/versions.js,
+// comptes.js, comptes_ids.js) as ES modules for History and sharing in the page, webR in webr/,
+// and _headers (the two headers, for hosts that read it).
 const fs = require('fs');
 const path = require('path');
 
@@ -39,10 +40,13 @@ fs.cpSync(interfaceDir, sortie, { recursive: true });
 const page = path.join(sortie, 'index.html');
 let html = fs.readFileSync(page, 'utf8');
 const avant = html;
+// (sharing: GitHub's and GitLab's APIs, and the accounts' pictures, answer the page itself; git and
+// the sign-in go through nuee.io's relay, on the page's own origin: comptes_navigateur.js)
+const connexions = 'https://repo.r-wasm.org https://zenodo.org https://api.github.com https://gitlab.com/api/v4/ https://avatars.githubusercontent.com https://secure.gravatar.com';
 html = html.replace("script-src 'self' 'unsafe-eval';", "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval';")
-  .replace('connect-src \'self\' data: blob:', 'connect-src \'self\' data: blob: https://repo.r-wasm.org https://zenodo.org')
+  .replace('connect-src \'self\' data: blob:', `connect-src 'self' data: blob: ${connexions}`)
   .replace('<script type="module" src="app.js"></script>', '<script src="navigateur.js"></script>\n  <script type="module" src="app.js"></script>');
-if (html === avant || !html.includes('navigateur.js') || !html.includes('https://repo.r-wasm.org https://zenodo.org') || !html.includes('wasm-unsafe-eval') || !/worker-src 'self' blob:/.test(html)) {
+if (html === avant || !html.includes('navigateur.js') || !html.includes(connexions) || !html.includes('wasm-unsafe-eval') || !/worker-src 'self' blob:/.test(html)) {
   console.error('index.html : la politique de sécurité ou le script de l’application a changé, à revoir ici');
   process.exit(1);
 }
@@ -72,14 +76,18 @@ for (const f of ['USER-GUIDE.txt', 'LISEZ-MOI-APPLICATION.txt', 'app/package.jso
 }
 fs.writeFileSync(path.join(sortie, 'moteur-fichiers.json'), JSON.stringify(liste.sort()));
 
-// History in the page (interface/versions_navigateur.js): the desktop's app/versions.js itself, its
-// CommonJS made an ES module of the site, app/versions.js, a function given what it requires (Node's
-// modules as the page has them, isomorphic-git), `process` and `Buffer`
-const versions = fs.readFileSync(path.join(__dirname, 'versions.js'), 'utf8');
-if (!/^module\.exports = \{ creerVersions\b/m.test(versions)) { console.error('versions.js : ses exports ont changé, à revoir ici et dans interface/versions_navigateur.js'); process.exit(1); }
+// History and sharing in the page (interface/versions_navigateur.js, comptes_navigateur.js): the
+// desktop's app/versions.js, comptes.js and comptes_ids.js themselves, each one's CommonJS made an
+// ES module of the site at the same path, a function given what it requires (Node's modules as the
+// page has them, isomorphic-git, the client ids), `process` and `Buffer`
 fs.mkdirSync(path.join(sortie, 'app'), { recursive: true });
-fs.writeFileSync(path.join(sortie, 'app', 'versions.js'), '// app/versions.js as an ES module of the browser version (construire_navigateur.js)\n'
-  + `export default function charger(require, process, Buffer) {\nconst module = { exports: {} };\n${versions}\nreturn module.exports;\n}\n`);
+for (const [nom, exports] of [['versions', /^module\.exports = \{ creerVersions\b/m], ['comptes', /^module\.exports = \{ creerComptes\b/m],
+  ['comptes_ids', /^module\.exports = \{\s*'github\.com'/m]]) {
+  const source = fs.readFileSync(path.join(__dirname, `${nom}.js`), 'utf8');
+  if (!exports.test(source)) { console.error(`${nom}.js : ses exports ont changé, à revoir ici et dans interface/versions_navigateur.js et comptes_navigateur.js`); process.exit(1); }
+  fs.writeFileSync(path.join(sortie, 'app', `${nom}.js`), `// app/${nom}.js as an ES module of the browser version (construire_navigateur.js)\n`
+    + `export default function charger(require, process, Buffer) {\nconst module = { exports: {} };\n${source}\nreturn module.exports;\n}\n`);
+}
 
 // webR: its module, worker, R and the base R library (not npm's REPL, tests and types)
 const dest = path.join(sortie, 'webr');
