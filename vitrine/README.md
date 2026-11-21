@@ -29,12 +29,14 @@ What it shows is taken from the application, not written beside it:
 | `src/assets/` | `site.css`, `site.js` (the swarm, *Which analysis?*, the page's small machines), the fonts, `og.png`, `carte.webp` |
 | `src/donnees.json` | the figures and the quoted texts, written by `donnees.R`: don't edit it by hand |
 | `src/carte.json` | where the map's tiles are, written by `carte.py` for `donnees.R` |
-| `src/worker.js` | what no file answers: `/download/<windows, mac-arm64, mac-x64, deb, appimage, tar>`, `/version.json`, the 404 pages |
+| `src/worker.js` | what no file answers: `/download/<windows, mac-arm64, mac-x64, deb, appimage, tar>`, `/version.json`, `/relais/…`, the 404 pages |
+| `src/relais.js` | the relay that lets the browser version share on GitHub and GitLab (below) |
+| `tests/essai_relais.mjs` | checks the relay against stand-ins of GitHub and GitLab |
 | `construire.mjs` | builds `dist/` (not committed), the browser version in `dist/app/` |
 | `donnees.R` | computes `src/donnees.json` with the engine |
 | `image.mjs` | makes `src/assets/og.png`, the picture of a shared link |
 | `carte.py` | makes `src/assets/carte.webp`, the map, and `src/carte.json` |
-| `wrangler.jsonc` | the Worker: its assets, its build, `nuee.io` and `www.nuee.io` |
+| `wrangler.jsonc` | the Worker: its assets, its build, `nuee.io` and `www.nuee.io`, no log of each request, the relay's rate limit |
 
 ## Looking at it
 
@@ -103,6 +105,26 @@ To check it as served, with `npx wrangler dev` running:
 ```
 cd app
 node tests/essai_navigateur.mjs --adresse=http://localhost:8787/app/
+```
+
+## The relay, at `/relais/`
+
+A page can't use git's endpoints on GitHub and GitLab, nor their sign-in's: they send no CORS
+headers. The Worker relays them for the browser version (`src/relais.js`), in the form of
+isomorphic-git's `corsProxy`: `https://nuee.io/relais/<host>/<path>` goes to
+`https://<host>/<path>`, for git's smart HTTP on github.com and gitlab.com and their device flow's
+four endpoints alone, for nuee.io's pages alone; anything else gets 404, and a page of another site
+403. It sends on what git and the sign-in need, never a cookie or the visitor's address, streams the
+bodies, and keeps nothing: the Worker keeps no log of each request (`invocation_logs`), and
+`RELAIS_LIMITE` limits each address to 600 requests a minute. The whole of it, and what
+Cloudflare's free plan allows: *Browser version* in `docs/developpement.md`.
+
+To check it, against stand-ins of GitHub and GitLab on this computer (git on the PATH, and the
+application's npm packages):
+
+```
+node vitrine/tests/essai_relais.mjs                # the Worker's handler, in Node
+node vitrine/tests/essai_relais.mjs --wrangler     # the same through wrangler dev, on port 8796
 ```
 
 ## After a change to the engine, the example or the tutorials' data
