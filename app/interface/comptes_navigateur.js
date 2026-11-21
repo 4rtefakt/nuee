@@ -30,6 +30,16 @@ export function adresseRelayee(url) {
   return `${relais()}/${u.hostname}${u.pathname}${u.search}`;
 }
 
+// What the page asks itself (its security policy: construire_navigateur.js): GitHub's and GitLab's
+// APIs, and the accounts' pictures on GitHub's and Gravatar's servers. A picture elsewhere (GitLab's
+// own uploads, which send neither CORS nor CORP) isn't asked for: the account has none here.
+const DIRECTES = /^https:\/\/(?:api\.github\.com|avatars\.githubusercontent\.com|secure\.gravatar\.com)\/|^https:\/\/gitlab\.com\/api\/v4\//;
+async function fetchCompte(url, init) {
+  const adresse = adresseRelayee(url);
+  if (adresse === url && !DIRECTES.test(String(url))) throw new TypeError('fetch failed');
+  return fetch(adresse, init);
+}
+
 // A refusal for a server the relay doesn't reach, in words
 export const refusHote = (hote) => Object.assign(new Error(t('versions_relais_hote', { hote })), { code: 'bureau' });
 export function exigerHoteRelais(hote) {
@@ -131,7 +141,7 @@ function charger() {
       return modules[n];
     }, PROCESSUS, Buffer);
     const c = creerComptes({
-      fetch: (url, init) => fetch(adresseRelayee(url), init),
+      fetch: fetchCompte,
       jeton: (h, j) => jetonsNavigateur.ecrire(h, j),
       jetons: jetonsNavigateur,
       renouvellements,
