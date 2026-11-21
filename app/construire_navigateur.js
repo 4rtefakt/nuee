@@ -21,7 +21,8 @@ const depot = path.join(__dirname, '..');
 const [sortie, webr] = [process.argv[2] || path.join(depot, 'dist', 'navigateur'), process.argv[3] || path.join(__dirname, 'node_modules', 'webr', 'dist')]
   .map((x) => path.resolve(x));
 const interfaceDir = path.join(__dirname, 'interface');
-if (!fs.existsSync(path.join(interfaceDir, 'vendor', 'plotly.min.js'))) { console.error('interface/vendor manque : node copier-vendor.js'); process.exit(1); }
+// (git.js: History in the page, since 1.2)
+if (!['plotly.min.js', 'git.js'].every((f) => fs.existsSync(path.join(interfaceDir, 'vendor', f)))) { console.error('interface/vendor manque : node copier-vendor.js'); process.exit(1); }
 // webR's browser build: npm's webr.js (its webr.mjs is for Node: it imports Node's modules), or
 // the webr.mjs of a folder like webr.r-wasm.org's
 const moduleWebr = ['webr.js', 'webr.mjs'].find((f) => fs.existsSync(path.join(webr, f)) && !/^import \{ createRequire \}/.test(fs.readFileSync(path.join(webr, f), 'utf8').slice(0, 100)));
