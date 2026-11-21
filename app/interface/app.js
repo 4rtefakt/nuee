@@ -2793,7 +2793,8 @@ async function suivreRedemarrage({ debut = false, projets = {}, modeles = {} }) 
   const { modele: m0, projet: p0 } = seul.params;
   const p1 = p0 ? projets[p0] : null;
   const m1 = m0 ? modeles[m0] : null;
-  for (const k of ['projets', 'modeles']) etat[k] = {};
+  // (what this window kept by the old ids, a selection among them, could go to another fit of the same id)
+  for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
   // (a document's or a figure's window: its texts and figures to the project as reopened)
   if (p0 && p1) {
     try { projetRecu(await demander('projet', { projet: p1 })); } catch { /* said below */ }
