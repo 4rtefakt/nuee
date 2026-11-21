@@ -35,12 +35,13 @@
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
 //   PLAYWRIGHT_BROWSERS_PATH=node_modules/.cache/ms-playwright node node_modules/playwright-core/cli.js install chromium-headless-shell
 // The first start downloads R's packages from the site's copy, else from repo.r-wasm.org. Exits with 1 when a check fails.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.join(ICI, '..');
@@ -78,9 +79,11 @@ const verifier = (nom, ok, valeur) => {
 };
 const erreurs = [];
 // (zenodo.org never resolves in this browser: its API is a stand-in, Playwright's routes below, and a
-// request that would get past them, a redirect's, fails rather than reach Zenodo)
+// request that would get past them, a redirect's, fails rather than reach Zenodo; nor do github.com,
+// gitlab.com, their APIs and the accounts' pictures: sharing's stand-ins, below too)
 const contexte = await chromium.launchPersistentContext(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 },
-  args: ['--host-resolver-rules=MAP zenodo.org ~NOTFOUND, MAP *.zenodo.org ~NOTFOUND'] });
+  args: [`--host-resolver-rules=${['zenodo.org', '*.zenodo.org', 'github.com', '*.github.com', 'gitlab.com', '*.gitlab.com', '*.githubusercontent.com', 'gravatar.com', '*.gravatar.com']
+    .map((h) => `MAP ${h} ~NOTFOUND`).join(', ')}`] });
 // every request of the pages and of their workers (webR's, which installs R's packages)
 const requetes = [];
 contexte.on('request', (r) => requetes.push(r.url()));
@@ -995,6 +998,261 @@ try {
     !!dansIdb && dansIdb.stockage === 'IndexedDB' && entreesVersionsIdb > 5 && reprisVersionsIdb === 1, `${JSON.stringify(dansIdb)} ; ${entreesVersionsIdb} entrées ; repris : ${reprisVersionsIdb}`);
   await copiesAJour(hi);
   await hi.close({ runBeforeUnload: true });
+
+  // ---- 1.2, sharing in the page through nuee.io's relay, in a tab of its own: the relay's own
+  // handler (vitrine/src/relais.js) answers the page's /relais/ (Playwright's routes), against
+  // stand-ins on this computer (RELAIS_ESSAI): GitHub's device flow, and git (the system git's
+  // http-backend, every repository private); GitHub's API and the account's picture answer through
+  // routes too. Signed in from Share (the device flow, its code), a repository made and the project
+  // sent; a colleague's change received with Get now; a change sent with Send now; the project opened
+  // from the repository into a new place, its versions with it; signed out, the token gone. Nothing
+  // reaches github.com or gitlab.com (their names never resolve here), no token in an address.
+  let gitSysteme = true;
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { gitSysteme = false; }
+  if (!gitSysteme) console.log('  (le partage dans la page : sauté, sans git sur cet ordinateur, dont le http-backend fait GitHub)');
+  else {
+    const racinePartage = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-partage-'));
+    const configVide = path.join(racinePartage, 'gitconfig');
+    fs.writeFileSync(configVide, '');
+    const envGit = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: configVide, GIT_TERMINAL_PROMPT: '0' };
+    const gitSys = (args, cwd = racinePartage) => execFileSync('git', args, { cwd, env: envGit, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const DEPOTS = path.join(racinePartage, 'depots');
+    const JETON = `gho_essai${Math.random().toString(36).slice(2, 14)}`;
+    let sondes = 0;
+    // the stand-in for github.com, as the relay sends it /github.com/<path>: the device flow (pending
+    // once, then the token), git's smart HTTP for the repositories made through the API (a token needed)
+    const banc = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://banc');
+      const [, hote = '', chemin = ''] = /^\/([^/]+)\/(.*)$/.exec(u.pathname) || [];
+      if (req.method === 'POST' && hote === 'github.com' && ['login/device/code', 'login/oauth/access_token'].includes(chemin)) {
+        req.resume();
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          if (chemin === 'login/device/code') {
+            res.end(JSON.stringify({ device_code: 'appareil-essai', user_code: 'WDJB-MJHT', verification_uri: 'https://github.com/login/device', expires_in: 899, interval: 1 }));
+            return;
+          }
+          sondes += 1;
+          res.end(JSON.stringify(sondes === 1 ? { error: 'authorization_pending' } : { access_token: JETON, token_type: 'bearer', scope: 'repo' }));
+        });
+        return;
+      }
+      const a = /^Basic (.+)$/i.exec(req.headers.authorization || '');
+      const motDePasse = a ? Buffer.from(a[1], 'base64').toString('utf8').replace(/^[^:]*:/, '') : null;
+      const depot = /^(.+\.git)\/(?:info\/refs|git-upload-pack|git-receive-pack)$/.exec(chemin);
+      if (hote !== 'github.com' || !depot) { req.resume(); res.writeHead(404); res.end('Not Found\n'); return; }
+      if (motDePasse !== JETON) { req.resume(); res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="github.com"' }); res.end('Authentication required\n'); return; }
+      if (!fs.existsSync(path.join(DEPOTS, hote, depot[1]))) { req.resume(); res.writeHead(404); res.end('Repository not found.\n'); return; }
+      const env = { ...envGit, GIT_PROJECT_ROOT: path.join(DEPOTS, hote), GIT_HTTP_EXPORT_ALL: '1', PATH_INFO: `/${chemin}`, REQUEST_METHOD: req.method,
+        QUERY_STRING: u.search.replace(/^\?/, ''), CONTENT_TYPE: req.headers['content-type'] || '', REMOTE_USER: 'essai', REMOTE_ADDR: '127.0.0.1' };
+      if (req.headers['content-length']) env.CONTENT_LENGTH = req.headers['content-length'];
+      if (req.headers['git-protocol']) env.GIT_PROTOCOL = req.headers['git-protocol'];
+      const cgi = spawn('git', ['http-backend'], { env, windowsHide: true });
+      req.pipe(cgi.stdin);
+      let tete = Buffer.alloc(0);
+      let commence = false;
+      cgi.stdout.on('data', (morceau) => {
+        if (commence) { res.write(morceau); return; }
+        tete = Buffer.concat([tete, morceau]);
+        const fin = tete.indexOf('\r\n\r\n');
+        if (fin < 0) return;
+        let statut = 200;
+        const entetes = {};
+        for (const ligne of tete.subarray(0, fin).toString('latin1').split('\r\n')) {
+          const i = ligne.indexOf(':');
+          if (/^status$/i.test(ligne.slice(0, i).trim())) statut = parseInt(ligne.slice(i + 1), 10);
+          else entetes[ligne.slice(0, i).trim()] = ligne.slice(i + 1).trim();
+        }
+        res.writeHead(statut, entetes);
+        commence = true;
+        res.write(tete.subarray(fin + 4));
+      });
+      cgi.on('close', () => { if (!commence) res.writeHead(500); res.end(); });
+    });
+    await new Promise((ok) => banc.listen(0, '127.0.0.1', ok));
+    try {
+      // the relay at the page's own origin, as on nuee.io, its handler here
+      const { relayer } = await import(pathToFileURL(path.join(APP, '..', 'vitrine', 'src', 'relais.js')).href);
+      const RELAIS_ESSAI = `http://127.0.0.1:${banc.address().port}`;
+      const origine = new URL(adresse).origin;
+      await contexte.route(`${origine}/relais/**`, async (route) => {
+        const q = route.request();
+        const url = new URL(q.url());
+        const h = new Headers();
+        for (const [k, v] of Object.entries(await q.allHeaders())) if (!['host', 'connection', 'content-length'].includes(k)) h.set(k, v);
+        const r = await relayer(new Request(url, { method: q.method(), headers: h, body: q.method() === 'POST' ? q.postDataBuffer() : undefined, duplex: 'half' }), { RELAIS_ESSAI }, url);
+        const e = {};
+        r.headers.forEach((v, k) => { e[k] = v; });
+        await route.fulfill({ status: r.status, headers: e, body: Buffer.from(await r.arrayBuffer()) });
+      });
+      // GitHub's API (the account, a repository made: a bare one of the stand-in), and the picture
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-GitHub-Api-Version', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE' };
+      await contexte.route('https://api.github.com/**', (route) => {
+        const q = route.request();
+        const u = new URL(q.url());
+        if (q.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+        const json = (statut, o) => route.fulfill({ status: statut, headers: { ...cors, 'Content-Type': 'application/json' }, body: JSON.stringify(o) });
+        if ((q.headers().authorization || '') !== `Bearer ${JETON}`) return json(401, { message: 'Bad credentials' });
+        if (q.method() === 'GET' && u.pathname === '/user') return json(200, { login: 'alice-exemple', name: 'Alice Exemple', avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4' });
+        if (q.method() === 'POST' && u.pathname === '/user/repos') {
+          const { name } = JSON.parse(q.postData() || '{}');
+          const d = path.join(DEPOTS, 'github.com', 'alice-exemple', `${name}.git`);
+          fs.mkdirSync(d, { recursive: true });
+          gitSys(['init', '-q', '--bare', d]);
+          gitSys(['symbolic-ref', 'HEAD', 'refs/heads/main'], d);
+          gitSys(['config', 'http.receivepack', 'true'], d);
+          return json(201, { name, clone_url: `https://github.com/alice-exemple/${name}.git`, html_url: `https://github.com/alice-exemple/${name}` });
+        }
+        return json(404, { message: 'Not Found' });
+      });
+      await contexte.route('https://avatars.githubusercontent.com/**', (route) => route.fulfill({ status: 200,
+        headers: { 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin', 'Content-Type': 'image/png' },
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') }));
+      const nu = path.join(DEPOTS, 'github.com', 'alice-exemple', 'orchards.git');
+      const versionsDuDepot = () => { try { return gitSys(['--git-dir', nu, 'log', '--format=%an|%s', 'main']).split('\n').filter(Boolean); } catch { return []; } };
+      const attendreDepot = async (n) => {
+        for (let i = 0; i < 120 && versionsDuDepot().length < n; i += 1) await new Promise((ok) => setTimeout(ok, 500));
+        return versionsDuDepot();
+      };
+      const debutPartage = requetes.length;
+      // (its errors noted, but the relay's planned 401s: isomorphic-git asks first without the token,
+      // and gives it when the server asks, and Chrome writes that 401 to the console)
+      const sp = await contexte.newPage();
+      sp.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
+      sp.on('console', (m) => {
+        if (m.type() === 'error' && !(/status of 401/.test(m.text()) && (m.location().url || '').startsWith(`${origine}/relais/`))) erreurs.push(`console : ${m.text()}`);
+      });
+      sp.on('dialog', (d) => d.accept());
+      await sp.addInitScript(() => {
+        window.nueeDemandes = [];
+        window.__violations = [];
+        document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`));
+      });
+      await sp.goto(adresse);
+      await sp.waitForFunction(() => document.querySelectorAll('.menu-haut').length > 3, null, { timeout: 60000 });
+      await sp.waitForFunction(() => window.nueeDemandes.length > 0 && !document.querySelector('.voile-webr'), null, { timeout: 600000 });
+      await ignorerCopies(sp);
+      await commande(sp, 'projet_exemple');
+      await sp.waitForFunction(() => window.nueeDemandes.some((d) => d.nom === 'exemple' && d.ok), null, { timeout: 300000 });
+      await sp.waitForTimeout(2000);
+      await enregistrerPar(sp, () => commande(sp, 'enregistrer'));
+      const premier = await attendre(sp, () => import('./app.js').then(({ app }) => {
+        const p = app.projet(app.projetActif());
+        return p && /^\/projets\//.test(p.chemin_enregistrement || '') ? { id: p.id, chemin: p.chemin_enregistrement } : null;
+      }), null, 60000);
+      const projetA = (p, c) => p.evaluate((x) => import('./app.js').then(({ app }) => {
+        const q = app.projets().find((y) => !y.lecture_seule && y.chemin_enregistrement === x);
+        return q ? { id: q.id, documents: [].concat(q.documents || []).map((d) => d.titre), modeles: (q.modeles || []).length, modifie: q.modifie } : null;
+      }), c);
+
+      // Share, from History: the author asked; GitHub; signed in with the device flow (the code, the
+      // relay's note in the dialog); a private repository made, the project sent through the relay
+      await montrerHistorique(sp, premier.id);
+      await boutonHistorique(sp, 'versions_partager');
+      await sp.waitForSelector('.dialogue-partage input[type="email"]', { timeout: 15000 });
+      const autreGitlab = await sp.evaluate(() => (document.querySelector('.dialogue-partage .autre-gitlab') || {}).textContent || '');
+      await sp.fill('.dialogue-partage input[autocomplete="name"]', 'Alice Exemple');
+      await sp.fill('.dialogue-partage input[type="email"]', 'alice@example.org');
+      await sp.evaluate(() => [...document.querySelectorAll('.dialogue-partage .services-connexion button')].find((b) => b.textContent === 'GitHub').click());
+      await sp.waitForSelector('.dialogue-compte .code-appareil code', { timeout: 30000 });
+      const codeAppareil = await sp.evaluate(() => document.querySelector('.dialogue-compte .code-appareil code').textContent);
+      const noteRelais = await sp.evaluate(() => (document.querySelector('.dialogue-compte .relais-connexion') || {}).textContent || '');
+      await sp.waitForSelector('.dialogue-compte .ok-compte', { timeout: 60000 });
+      await sp.evaluate(() => document.querySelector('.dialogue-compte').closest('.fond-dialogue').querySelector('.pied-dialogue button.principal').click());
+      const creerPartager = await libelle(sp, 'versions_creer_partager');
+      await attendre(sp, (x) => [...document.querySelectorAll('.dialogue-partage button.principal')].some((b) => b.textContent.trim() === x), creerPartager, 30000);
+      await sp.evaluate((x) => [...document.querySelectorAll('.dialogue-partage button.principal')].find((b) => b.textContent.trim() === x).click(), creerPartager);
+      await sp.waitForSelector('.dialogue-partage .ok-compte', { timeout: 60000 });
+      const partageFait = await sp.evaluate(() => document.querySelector('.dialogue-partage .ok-compte').textContent);
+      await sp.evaluate(() => document.querySelector('.dialogue-partage').closest('.fond-dialogue').querySelector('.pied-dialogue button.principal').click());
+      const envoyees = await attendreDepot(1);
+      const relaisAttendu = await libelle(sp, 'connexion_relais');
+      verifier('Partager dans la page : connecté à GitHub par son code (le relais, le jeton gardé dans ce navigateur : dit), un dépôt privé fait, le projet envoyé par le relais de nuee.io',
+        codeAppareil === 'WDJB-MJHT' && noteRelais === relaisAttendu && /desktop application|application de bureau/.test(autreGitlab) && /alice-exemple\/orchards/.test(partageFait)
+          && envoyees.length === 1 && /\|First version$/.test(envoyees[0]),
+        `${codeAppareil} ; ${partageFait} ; ${envoyees.join(' / ')} ; ${autreGitlab}`);
+
+      // a colleague's change (a document), sent to the repository with git; then Get now
+      const copie = path.join(racinePartage, 'collegue');
+      gitSys(['clone', '-q', nu, copie]);
+      const fichierCopie = path.join(copie, fs.readdirSync(copie).find((x) => x.endsWith('.nuee')));
+      const j = JSON.parse(fs.readFileSync(fichierCopie, 'utf8'));
+      j.documents = [...(j.documents || []), { id: 'D9', titre: 'Colleague notes', langue: 'en', texte: 'Seen by the colleague.' }];
+      fs.writeFileSync(fichierCopie, `${JSON.stringify(j)}\n`);
+      gitSys(['-c', 'user.name=Bob Exemple', '-c', 'user.email=bob@example.org', 'commit', '-q', '-am', 'Colleague notes added'], copie);
+      gitSys(['push', '-q', 'origin', 'main'], copie);
+      await montrerHistorique(sp, (await projetA(sp, premier.chemin)).id);
+      await boutonHistorique(sp, 'versions_recevoir_maintenant');
+      const recu = await attendre(sp, (c) => import('./app.js').then(({ app }) => {
+        const q = app.projets().find((y) => !y.lecture_seule && y.chemin_enregistrement === c);
+        return q && [].concat(q.documents || []).some((d) => d.titre === 'Colleague notes') ? { id: q.id, modifie: q.modifie } : null;
+      }), premier.chemin, 120000).catch(() => null);
+      verifier('Recevoir maintenant : la version d’un collègue reçue par le relais, le projet relu avec elle', !!recu && !recu.modifie, JSON.stringify(recu));
+
+      // a change here, then Send now: saved first (downloaded), its version sent
+      if (recu) await sp.evaluate((id) => import('./app.js').then(({ app }) => app.montrerProjet(id)), recu.id);
+      await nouveauModele(sp, { type: 'LM', x: ['sugar'], y: ['taste_score'], echelle: 'none' });
+      await sp.waitForTimeout(1000);
+      const ici = await projetA(sp, premier.chemin);
+      await montrerHistorique(sp, ici.id);
+      await enregistrerPar(sp, () => boutonHistorique(sp, 'versions_envoyer_maintenant'));
+      const apresEnvoi = await attendreDepot(3);
+      verifier('Envoyer maintenant : le projet enregistré d’abord (téléchargé), sa version envoyée par le relais',
+        apresEnvoi.length === 3 && /^Bob Exemple\|Colleague notes added$/.test(apresEnvoi[1]) && /^Alice Exemple\|/.test(apresEnvoi[0]), apresEnvoi.join(' / '));
+
+      // Open from GitHub or GitLab: the repository's projects, then the project at a new place of the
+      // browser, its versions with it (no folder asked)
+      await commande(sp, 'versions_ouvrir_distant');
+      await sp.waitForSelector('.dialogue-distant input[type="url"]', { timeout: 15000 });
+      const dossierDemande = await sp.evaluate(async () => { const { t } = await import('./i18n.js'); return [...document.querySelectorAll('.dialogue-distant label')].some((l) => l.textContent === t('versions_distant_dossier')); });
+      await sp.fill('.dialogue-distant input[type="url"]', 'https://github.com/alice-exemple/orchards');
+      await sp.evaluate(async () => { const { t } = await import('./i18n.js'); [...document.querySelectorAll('.dialogue-distant button')].find((b) => b.textContent.trim() === t('versions_distant_chercher')).click(); });
+      await sp.waitForSelector('.dialogue-distant .projets-distants input[type="radio"]', { timeout: 60000 });
+      const nOuvrirDistant = await combien(sp, 'ouvrir');
+      await sp.evaluate(() => document.querySelector('.dialogue-distant').closest('.fond-dialogue').querySelector('.pied-dialogue button.principal').click());
+      await attendreDemande(sp, 'ouvrir', nOuvrirDistant, 120000);
+      const distant = await attendre(sp, (c) => import('./app.js').then(async ({ app }) => {
+        const { coucheVersions } = await import('./versions.js');
+        const q = app.projets().find((y) => !y.lecture_seule && /^\/projets\//.test(y.chemin_enregistrement || '') && y.chemin_enregistrement !== c && y.chemin_enregistrement.split('/')[2] !== c.split('/')[2]);
+        if (!q) return null;
+        const l = await coucheVersions().liste(q.chemin_enregistrement);
+        const e = await coucheVersions().etat(q.chemin_enregistrement);
+        return { chemin: q.chemin_enregistrement, documents: [].concat(q.documents || []).map((d) => d.titre), versions: l.map((v) => `${v.auteur.nom}|${v.description}`), partage: e.partage && e.partage.url };
+      }), premier.chemin, 120000).catch((e) => ({ erreur: e.message }));
+      verifier('Ouvrir depuis GitHub ou GitLab dans la page : le projet du dépôt à une nouvelle place, ses versions avec lui, partagé avec ce dépôt (aucun dossier demandé)',
+        !dossierDemande && !!distant.chemin && distant.versions.length === 3 && distant.versions.some((v) => v === 'Bob Exemple|Colleague notes added') && distant.documents.includes('Colleague notes')
+          && distant.partage === 'https://github.com/alice-exemple/orchards.git', JSON.stringify(distant));
+
+      // signed out, from History: the token no longer in this browser's storage
+      await montrerHistorique(sp, (await projetA(sp, premier.chemin)).id);
+      const deconnecter = await libelle(sp, 'comptes_deconnecter');
+      await attendre(sp, (x) => [...document.querySelectorAll('.versions .compte-partage button')].some((b) => b.textContent.trim() === x), deconnecter, 30000);
+      await sp.evaluate((x) => [...document.querySelectorAll('.versions .compte-partage button')].find((b) => b.textContent.trim() === x).click(), deconnecter);
+      await sp.waitForSelector('.fond-dialogue .pied-dialogue button.principal', { timeout: 10000 });
+      await sp.click('.fond-dialogue .pied-dialogue button.principal');
+      const jetonsGardes = async () => sp.evaluate(() => new Promise((ok) => {
+        const r = indexedDB.open('nuee-jetons');
+        r.onerror = () => ok(-1);
+        r.onsuccess = () => {
+          try { const q = r.result.transaction('jetons', 'readonly').objectStore('jetons').count(); q.onsuccess = () => ok(q.result); q.onerror = () => ok(-1); } catch { ok(-1); }
+        };
+      }));
+      const connecter = await libelle(sp, 'comptes_connecter');
+      const apresDeconnexion = await attendre(sp, (x) => [...document.querySelectorAll('.versions .compte-partage button')].some((b) => b.textContent.trim() === x), connecter, 30000).catch(() => false);
+      const gardes = await jetonsGardes();
+      const adresses = requetes.slice(debutPartage);
+      const directs = adresses.filter((u) => /^https?:\/\/([^/]*\.)?(github\.com|gitlab\.com|githubusercontent\.com|gravatar\.com)\//.test(u) && !/^https:\/\/(api\.github\.com|avatars\.githubusercontent\.com)\//.test(u));
+      verifier('Se déconnecter : le jeton n’est plus dans ce navigateur ; rien n’a joint github.com ni gitlab.com que par le relais, aucun jeton dans une adresse',
+        apresDeconnexion && gardes === 0 && !directs.length && !adresses.some((u) => u.includes(JETON)) && adresses.some((u) => u.startsWith(`${origine}/relais/github.com/`)),
+        `${gardes} jeton(s) gardé(s) ; ${directs.slice(0, 3).join(', ') || 'rien en direct'}`);
+      if (options.capture !== false) await sp.screenshot({ path: path.join(sortie, 'partage.png') });
+      verifier('le partage sans violation de la politique de sécurité', (await sp.evaluate(() => window.__violations)).length === 0, await sp.evaluate(() => window.__violations));
+      await copiesAJour(sp);
+      await sp.close({ runBeforeUnload: true });
+    } finally {
+      banc.close();
+    }
+  }
 
   // (but the refusal of the random forest, which the interface writes to the console as any refusal)
   const autres = erreurs.filter((e) => !/desktop application is needed|application de bureau/.test(e));
