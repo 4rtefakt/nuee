@@ -41,16 +41,17 @@ const editeur = require('esbuild').buildSync({
   metafile: true,
   outfile: path.join(dest, 'editeur.min.js'),
 });
-// (the licence of each package a bundle holds, written at its end)
+// (the licence of each package a bundle holds, written at its end: each file's own package, one in
+// another package's node_modules included, once)
 function ajouterLicences(fichier, metafile) {
-  const paquets = new Set(Object.keys(metafile.inputs)
-    .map((f) => (/node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean).map((n) => n.replace(/\\/g, '/')));
-  const licences = [...paquets].sort().map((n) => {
-    const dossier = path.join(__dirname, 'node_modules', n);
+  const dossiers = new Set(Object.keys(metafile.inputs)
+    .map((f) => (/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean).map((d) => path.resolve(d)));
+  const licences = [...new Set([...dossiers].map((dossier) => {
+    const n = /node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)$/.exec(dossier)[1].replace(/\\/g, '/');
     const info = JSON.parse(fs.readFileSync(path.join(dossier, 'package.json'), 'utf8'));
     const f = fs.readdirSync(dossier).find((x) => /^licen[cs]e/i.test(x));
     return `${n} ${info.version} (${info.license})${f ? `\n\n${fs.readFileSync(path.join(dossier, f), 'utf8').trim()}` : ''}`;
-  });
+  }))].sort();
   fs.appendFileSync(fichier, `\n/*! Packages in this file, and their licences:\n\n${licences.join('\n\n----\n\n').replace(/\*\//g, '* /')}\n*/\n`);
 }
 ajouterLicences(path.join(dest, 'editeur.min.js'), editeur.metafile);
@@ -68,6 +69,23 @@ const qr = require('esbuild').buildSync({
   outfile: path.join(dest, 'qr.js'),
 });
 ajouterLicences(path.join(dest, 'qr.js'), qr.metafile);
+
+// History in the browser version (interface/versions_navigateur.js): isomorphic-git (MIT) for the
+// page, as an ES module imported at its first use, with the Buffer its code expects as a global
+// (the buffer package, MIT, which isomorphic-git brings along). The main process's own is
+// construire.js's.
+const git = require('esbuild').buildSync({
+  stdin: { contents: "export * as git from 'isomorphic-git';\nexport { Buffer } from 'buffer/';", resolveDir: __dirname, loader: 'js' },
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2020',
+  legalComments: 'eof',
+  metafile: true,
+  outfile: path.join(dest, 'git.js'),
+});
+ajouterLicences(path.join(dest, 'git.js'), git.metafile);
 
 const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkles circle-plus circle-minus
   table-2 chart-scatter chart-bar chart-column chart-line network target columns-2 external-link x sun moon

@@ -12,6 +12,7 @@ import { el, icone, dialogue } from './ui.js';
 import { demander, bureau, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { resumerProjet, afficherChangements, sectionsRapport } from './changements.js';
 import { valeursCitees } from './documents.js';
+import { coucheVersions } from './versions.js';
 import { liste, noms, dateLisible, tailleLisible, nomFichier, etatSource, ICONES_ETAPES, genreEtape, lireRapport, modelesAReajuster, resumeApres,
   valeursChangees, descriptionVersion, dateDescription } from './etapes_texte.js';
 
@@ -164,10 +165,12 @@ async function dialogueEtapes(app, pid) {
 
 // ------------------------------------------------------------ the preview of a change of the data
 
-// Whether the project keeps versions (versions.js): saved to a file whose versions are on.
+// Whether the project keeps versions (versions.js, the desktop's or the browser version's): saved to
+// a file whose versions are on.
 async function versionsActives(p) {
-  if (!bureau || !bureau.versions || !p.chemin_enregistrement) return false;
-  try { return (await bureau.versions.etat(p.chemin_enregistrement)).actif === true; } catch { return false; }
+  const v = coucheVersions();
+  if (!v || !p.chemin_enregistrement) return false;
+  try { return (await v.etat(p.chemin_enregistrement)).actif === true; } catch { return false; }
 }
 
 // "Save a version first" (versions.js), ticked, when the project keeps versions: its zone, and
@@ -422,7 +425,7 @@ export function progression(titre) {
 // one on request (marquer) and the project keeps versions.
 async function marquerVersion(app, pid, chemin, description) {
   if (!(await app.enregistrer(pid, false, { versionAuto: false }))) throw new Error(t('etapes_p_non_enregistre'));
-  const v = bureau && bureau.versions;
+  const v = coucheVersions();
   if (!v || typeof v.marquer !== 'function' || (await v.etat(chemin)).actif !== true) return;
   await v.marquer(chemin, description);
 }

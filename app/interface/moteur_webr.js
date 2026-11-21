@@ -285,8 +285,10 @@ export async function demarrer() {
         return chemin;
       }));
     },
-    // webR's files: those the engine wrote (an export, a recovery copy), and back (secours_navigateur.js)
+    // webR's files: those the engine wrote (an export, a recovery copy), and back (secours_navigateur.js,
+    // versions_navigateur.js)
     lireFichier: (chemin) => webR.FS.readFile(chemin),
+    existeFichier: async (chemin) => (await webR.FS.analyzePath(chemin)).exists === true,
     ecrireFichier: (chemin, octets) => ecrireFichier(webR, chemin, octets),
     supprimerFichier: (chemin) => webR.FS.unlink(chemin).catch(() => {}),
     creerDossier: (chemin) => creerDossiers(webR, chemin),

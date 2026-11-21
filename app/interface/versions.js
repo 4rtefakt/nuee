@@ -22,9 +22,12 @@
 //     fusionner and fusionner_finir), else Keep mine or Take theirs; Compare first;
 //   - a project on a shared folder changed on disk by someone else (request fichier_change), or
 //     met by Save (app.js): their changes merged into the open project, with the same choices.
+// The browser version keeps the versions in the browser's storage, through the same functions in the
+// page (versions_navigateur.js); sharing there says it needs the desktop application.
 import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
 import { demander, bureau, MOTEUR_WEBR } from './api.js';
+import { versionsNavigateur } from './versions_navigateur.js';
 import { VUES } from './panneaux.js';
 import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, titreVersion, nomDeChemin, memeFichier, nomHote, hoteAdresse, liensConnexion,
   placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension,
@@ -33,8 +36,10 @@ import { resumerProjet, afficherChangements, installerChangements } from './chan
 import { ouvrirConnexion, ouvrirInvitation, carteCompte } from './connexion.js';
 import { VERSION } from './nouveautes.js';
 
-// The main process's functions; none in a browser
-const couche = () => (bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
+// The main process's functions; in the browser version, the page's; none in another browser
+const couche = () => (MOTEUR_WEBR ? versionsNavigateur
+  : bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
+export const coucheVersions = couche;
 // (a view moved to its own window: no hooks, no background, no dialogs)
 const VUE_SEULE = new URLSearchParams(location.search).get('vue');
 
@@ -93,10 +98,9 @@ export function installerVersions(app) {
     // (the name a saved file says it was written by: app.js, enregistrer)
     auteurVersions: () => nomAuteur(),
   });
-  // (the browser version: the versions and the sharing are the desktop application's, said so)
+  // (the browser version: the sharing is the desktop application's, said so)
   if (MOTEUR_WEBR) {
     Object.assign(app, {
-      versions: () => app.bureauRequis('versions'),
       partagerProjet: () => app.bureauRequis('versions_partager'),
       ouvrirDepuisDistant: () => app.bureauRequis('versions_ouvrir_distant'),
     });
@@ -105,7 +109,8 @@ export function installerVersions(app) {
   if (!c || VUE_SEULE) return;
   if (typeof c.surVersions === 'function') c.surVersions((e) => { evenement(app, e).catch(() => {}); });
   // a shared folder: every 30 seconds, whether an open project's file was changed by someone else
-  setInterval(() => surveillerDossiers(app).catch(() => {}), 30000);
+  // (none in the browser version: only its tab writes there)
+  if (!MOTEUR_WEBR) setInterval(() => surveillerDossiers(app).catch(() => {}), 30000);
 }
 
 // ------------------------------------------------------------ the hooks
@@ -298,7 +303,8 @@ function indicateur(app) {
     const e = m && m.etat;
     if (e) {
       const etat = etatPartage(e, vus.get(chemin));
-      const titre = [!e.actif ? t('versions_indicateur_desactive') : e.versions ? t(e.versions === 1 ? 'versions_indicateur_local_une' : 'versions_indicateur_local', { n: e.versions })
+      const ici = MOTEUR_WEBR ? ['versions_indicateur_navigateur_une', 'versions_indicateur_navigateur'] : ['versions_indicateur_local_une', 'versions_indicateur_local'];
+      const titre = [!e.actif ? t('versions_indicateur_desactive') : e.versions ? t(ici[e.versions === 1 ? 0 : 1], { n: e.versions })
         : t('versions_indicateur_aucune'), etat ? etat.titre : ''].filter(Boolean).join(' · ');
       elements.push(el('button', { class: `icone-seule indicateur-versions${etat ? ` ${etat.cle}` : ''}`, title: titre, 'aria-label': titre,
         onclick: () => (etat && etat.cle === 'conflit' ? resoudreConflit(app, pid) : app.versions(pid)) },
@@ -346,7 +352,7 @@ async function rendreHistorique(app, conteneur, params) {
   if (p.lecture_seule) { montrer(...panneauLecture(app, p)); return; }
   const chemin = fichierProjet(p);
   if (!chemin) {
-    montrer(el('p', {}, t(p.chemin_enregistrement ? 'versions_pas_nuee' : 'versions_jamais_enregistre')),
+    montrer(el('p', {}, t(p.chemin_enregistrement ? 'versions_pas_nuee' : MOTEUR_WEBR ? 'versions_jamais_enregistre_navigateur' : 'versions_jamais_enregistre')),
       el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: async () => { if (await app.enregistrer(p.id, !!p.chemin_enregistrement)) redessinerHistorique(p.id); } },
         icone('save'), t(p.chemin_enregistrement ? 'enregistrer_sous_bouton' : 'versions_enregistrer_projet'))));
     return;
@@ -376,8 +382,11 @@ async function rendreHistorique(app, conteneur, params) {
       el('button', { onclick: () => apresAction(app, p.id) }, icone('refresh-cw'), t('versions_actualiser')),
       el('button', { onclick: () => dialogueReglages(app, p.id) }, icone('sliders-horizontal'), t('versions_reglages')),
       el('label', { class: 'champ interrupteur-versions' }, el('input', { type: 'checkbox', checked: !!e.actif, onchange: (ev) => activer(app, p.id, ev.target.checked) }), t('versions_garder_projet'))),
-    el('p', { class: 'note tete-versions', title: e.dossier || '' }, icone('lock'),
-      !e.actif ? t('versions_desactivees') : e.versions ? t('versions_tete', { taille: tailleLisible(e.taille) }) : t('versions_tete_vide')),
+    // (in the browser version, where they are: this browser only, kept for good or as long as it may)
+    el('p', { class: 'note tete-versions', title: MOTEUR_WEBR ? '' : e.dossier || '' }, icone('lock'),
+      !e.actif ? t('versions_desactivees') : e.versions ? t(MOTEUR_WEBR ? 'versions_tete_navigateur' : 'versions_tete', { taille: tailleLisible(e.taille) })
+        : t(MOTEUR_WEBR ? 'versions_tete_vide_navigateur' : 'versions_tete_vide'),
+      MOTEUR_WEBR && e.persistant === false ? ` ${t('versions_navigateur_non_persistant')}` : ''),
     sectionPartage(app, p, e),
     el('div', { class: 'liste-versions' }, liste.length ? grouperParJour(liste).map((g) => el('section', { class: 'jour-versions' },
       el('h4', {}, g.titre), g.versions.map((v) => ligneVersion(app, p, v, v.oid === actuelle, partage))))
@@ -421,8 +430,9 @@ function ligneVersion(app, p, v, actuelle, partage) {
 function sectionPartage(app, p, e) {
   const chemin = fichierProjet(p);
   if (!e.partage) {
-    return el('div', { class: 'partage-versions' }, el('button', { disabled: !e.actif, onclick: () => dialoguePartage(app, p.id) }, icone('cloud-upload'), t('versions_partager')),
-      el('span', { class: 'note' }, t('versions_partager_texte')));
+    // (app.partagerProjet: in the browser version, it says it needs the desktop application)
+    return el('div', { class: 'partage-versions' }, el('button', { disabled: !e.actif, onclick: () => app.partagerProjet(p.id) }, icone('cloud-upload'), t('versions_partager')),
+      el('span', { class: 'note' }, MOTEUR_WEBR ? t('bureau_requis', { quoi: t('versions_partager').replace(/…$/, '') }) : t('versions_partager_texte')));
   }
   const x = e.partage;
   const etat = etatPartage(e, vus.get(chemin));
@@ -529,7 +539,7 @@ async function dialogueReglages(app, pid) {
   };
   const d = dialogue({ titre: t('versions_reglages_titre'),
     contenu: el('div', { class: 'dialogue-version' },
-      el('label', { class: 'champ' }, auto, el('b', {}, t('versions_reglage_auto'))), el('p', { class: 'note' }, t('versions_reglage_auto_aide')),
+      el('label', { class: 'champ' }, auto, el('b', {}, t('versions_reglage_auto'))), el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_reglage_auto_aide_navigateur' : 'versions_reglage_auto_aide')),
       el('h4', {}, t('versions_auteur_titre')), el('p', { class: 'note' }, t('versions_auteur_texte')),
       el('div', { class: 'grille-champs' }, a.lignes), erreur),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('appliquer'), principal: true, action: () => { valider(); return false; } }] });

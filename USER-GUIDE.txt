@@ -2424,8 +2424,16 @@ outside Nuée is found again by its content, and Save as... takes its history al
 projects don't change, and a new history starts at their next save unless versions are turned
 off (a project whose versions were off follows Settings again). A project shared on GitHub or
 GitLab also loses its link to the repository: its versions stay there, and File › Open from
-GitHub or GitLab, into another folder, gets the project back with them. The browser version has
-no History: the desktop application keeps the versions.
+GitHub or GitLab, into another folder, gets the project back with them.
+In the browser version (nuee.io/app), History keeps the versions in the browser, in this site's
+storage, with the same automatic versions, names and buttons. Save downloads the project and
+keeps it there too, with its history; Save as... makes it a project of its own, its history
+taken along. A project opened again in the same browser finds its history: recovered after a
+reload, or opened from a file it downloaded, even renamed. The versions are in this browser
+only: clearing this site's data deletes them, and another browser or computer doesn't have them;
+download the project to keep it elsewhere. The top of History gives their size, and says when
+the browser hasn't agreed to keep them for good (it may then delete them when space runs short).
+Sharing on GitHub or GitLab and opening from GitHub or GitLab need the desktop application.
 
 What changed
 ------------

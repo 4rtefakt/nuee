@@ -1,28 +1,34 @@
-// The browser version used end to end in a headless Chromium (Playwright), as a person would:
-// the site built (construire_navigateur.js) and served on this computer with the headers webR
-// needs (servir_navigateur.js); R starts in the page; the example project opens; a PLS, a mixed
-// model and a PCoA are fitted and their views drawn; the data exported as CSV (a download);
-// random forests, whose package the browser version lacks, say they need the desktop app while
-// the rest goes on; the recovery copies: a reload, then a closed tab, offer the projects again,
-// with their models and their unsaved changes, and a second tab open meanwhile is offered
-// nothing, and without OPFS's createWritable they go to IndexedDB. Then 1.1 in a tab of its own:
-// History and Share say they need the desktop app; a table opened (File › Open), a data step (New
-// variable), Data steps, Update the data with next year's file chosen in the page, What changed;
-// a project saved, opened, saved again, downloaded each time; an R-code model, its package
-// (Kendall) installed from webR's repository, and one needing ranger refused; a plugin installed
-// from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the shared
-// permutation test, a PCoA's permutations in one R), the next request as usual; reloaded, the
-// plugin and the approvals still there. Then 1.2's link of a reproducibility package, ?doi=,
+// The browser version used end to end in a headless Chromium (Playwright), as a person would: the
+// site built (construire_navigateur.js) and served on this computer with the headers webR needs
+// (servir_navigateur.js); R starts in the page; the example project opens; a PLS, a mixed model
+// and a PCoA are fitted and their views drawn; the data exported as CSV (a download); random
+// forests, whose package the browser version lacks, say they need the desktop app while the rest
+// goes on; the recovery copies: a reload, then a closed tab, offer the projects again, with their
+// models and their unsaved changes, and a second tab open meanwhile is offered nothing, and
+// without OPFS's createWritable they go to IndexedDB. Then 1.1 in a tab of its own: Share says it
+// needs the desktop app, History of a table never saved says so; a table opened (File › Open), a
+// data step (New variable), Data steps, Update the data with next year's file chosen in the page,
+// What changed; a project saved, opened, saved again, downloaded each time; an R-code model, its
+// package (Kendall) installed from webR's repository, and one needing ranger refused; a plugin
+// installed from its file and fitted; the help panel's guide; Stop, R in the page interrupted (the
+// shared permutation test, a PCoA's permutations in one R), the next request as usual; reloaded,
+// the plugin and the approvals still there. Then 1.2's link of a reproducibility package, ?doi=,
 // against a stand-in for Zenodo's API (Playwright's routes; zenodo.org never resolves in this
 // browser): the package written in the page opened from its record and rerun, every model giving
 // its deposited results, then chosen in the page (File › Open, File › Open a reproducibility
 // package…); a concept DOI, a record, an unknown DOI, another one, not a DOI, no network; the link
 // of an unknown DOI and of a record without a package said plainly; nothing asked of another site.
-// Also the site as served: the page's headers (webR's two, no security policy but its own), where
-// R's packages came from (the site's copy of webR's repository when it has one, miroir_webr.mjs:
-// then nothing from another site until R is ready, and Kendall alone from repo.r-wasm.org), and,
-// under a path, /app redirected to /app/. Last, ?langue=fr: a new profile in French, until a
-// language is chosen. The time of each request goes to <folder>/demandes.json.
+// Then 1.2's History in the page, in a tab of its own: the example saved (downloaded, kept at its
+// place in the browser's storage, its first version), Save a version…, Name…, Compare, Open,
+// Restore…; a table saved, its history apart; Share from History still the desktop app's;
+// reloaded, the projects recovered at their places with their histories; the first download opened
+// again under another name, its history found by its content; Save as…, a new place with the
+// history; without OPFS's createWritable, the versions in IndexedDB. Also the site as served: the
+// page's headers (webR's two, no security policy but its own), where R's packages came from (the
+// site's copy of webR's repository when it has one, miroir_webr.mjs: then nothing from another
+// site until R is ready, and Kendall alone from repo.r-wasm.org), and, under a path, /app
+// redirected to /app/. Last, ?langue=fr: a new profile in French, until a language is chosen. The
+// time of each request goes to <folder>/demandes.json.
 //   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible]
 // --adresse: the site as another server serves it, neither built nor served here (nuee.io's
 // browser version: `wrangler dev` in vitrine/, then --adresse=http://127.0.0.1:8787/app/).
@@ -418,14 +424,16 @@ try {
   const tableau = await projetActif();
   verifier('un tableau ouvert dans la page (File › Open)', !!ouvert && ouvert.ok && !!tableau && tableau.n === 120, JSON.stringify(tableau && { nom: tableau.nom, n: tableau.n }));
 
-  // what only the desktop application does: History, Share, said in the status bar
-  const desktop = [];
-  for (const cle of ['versions', 'versions_partager']) {
-    await commande(page, cle);
-    await page.waitForTimeout(400);
-    desktop.push(await statutTexte());
-  }
-  verifier('Historique… et Partager : « il faut l’application de bureau »', desktop.every((s) => /desktop application is needed|application de bureau/.test(s)), desktop.join(' | '));
+  // what only the desktop application does: Share, said in the status bar (History: in the page since
+  // 1.2, below); History of a table never saved: it says so, with Save
+  await commande(page, 'versions_partager');
+  await page.waitForTimeout(400);
+  const desktop = await statutTexte();
+  await commande(page, 'versions');
+  const jamaisSauve = await libelle(page, 'versions_jamais_enregistre_navigateur');
+  const historiqueTableau = await attendre(page, (x) => [...document.querySelectorAll('.versions')].some((v) => v.offsetParent !== null && v.textContent.includes(x)), jamaisSauve, 30000).catch(() => false);
+  verifier('Partager : « il faut l’application de bureau » ; l’Historique d’un tableau jamais enregistré le dit',
+    /desktop application is needed|application de bureau/.test(desktop) && historiqueTableau, desktop);
 
   // a model, then a data step: a new variable (its dialog)
   const lmCsv = await nouveauModele(page, { type: 'LM', x: ['sugar'], y: ['taste_score'], echelle: 'none' });
@@ -752,6 +760,241 @@ try {
   verifier('le lien ne demande rien qu’à zenodo.org (et R ses paquets, à repo.r-wasm.org), sans violation de la politique de sécurité',
     !autresSites.length && !(await lien.evaluate(() => window.__violations)).length, autresSites.slice(0, 5));
   await lien.close();
+
+  // ---- 1.2, History in the page, in a tab of its own (versions_navigateur.js): the example saved
+  // (downloaded and kept at its place in the browser's storage, its first version), Save a version…,
+  // Name…, Compare, Open, Restore…, from History's own buttons; a table saved, its history apart;
+  // Share still the desktop application's; reloaded, the projects recovered at their places with their
+  // histories; the first download opened again, its history found by its content; Save as…, a place
+  // of its own with the history; in a browser without OPFS's createWritable, the versions in IndexedDB
+  const hp = await ouvrirPage();
+  await hp.waitForFunction(() => window.nueeDemandes.length > 0 && !document.querySelector('.voile-webr'), null, { timeout: 600000 });
+  // (the copies of the link's tabs, closed: set aside)
+  const ignorerCopies = async (p) => {
+    const offertes = await attendre(p, (tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, 5000).catch(() => false);
+    if (offertes) await p.click('.fond-dialogue .pied-dialogue button:not(.principal)');
+  };
+  await ignorerCopies(hp);
+  // a project's place and History's versions, as History asks them (the project in front, by its
+  // id, or at a place: the project read again after Restore has another id)
+  const historique = (p, { id = null, chemin = null } = {}) => p.evaluate(async ([pid, lieu]) => {
+    const { app } = await import('./app.js');
+    const { coucheVersions } = await import('./versions.js');
+    const q = lieu ? app.projets().find((x) => !x.lecture_seule && x.chemin_enregistrement === lieu) : app.projet(pid || app.projetActif());
+    if (!q) return null;
+    const c = q.chemin_enregistrement;
+    const l = c && /\.nuee$/i.test(c) ? await coucheVersions().liste(c) : [];
+    return { id: q.id, nom: q.nom, chemin: c, modifie: q.modifie, modeles: (q.modeles || []).length, versions: l.map((v) => ({ oid: v.oid, description: v.description, auto: v.auto, noms: v.noms })) };
+  }, [id, chemin]);
+  // History's panel in front, drawn: its header, its text
+  const panneau = (p) => attendre(p, () => {
+    const v = [...document.querySelectorAll('.versions')].find((x) => x.offsetParent !== null);
+    return v && !v.querySelector('.attente') ? { tete: (v.querySelector('.tete-versions') || {}).textContent || '', texte: v.textContent } : null;
+  }, null, 60000);
+  const montrerHistorique = async (p, pid) => { await p.evaluate((id) => import('./app.js').then(({ app }) => app.versions(id)), pid); return panneau(p); };
+  // a button of History (its words), on a version (by its rank, -1 the oldest) or at the top
+  const boutonHistorique = (p, cle, rang = null) => p.evaluate(async ([c, k]) => {
+    const { t } = await import('./i18n.js');
+    const v = [...document.querySelectorAll('.versions')].find((x) => x.offsetParent !== null);
+    const lignes = [...v.querySelectorAll('.liste-versions .version')];
+    const ou = k === null ? v : k < 0 ? lignes[lignes.length + k] : lignes[k];
+    const b = [...ou.querySelectorAll('button')].find((x) => x.textContent.trim() === t(c) && !x.disabled);
+    if (!b) throw new Error(`no ${c} in History`);
+    b.click();
+  }, [cle, rang]);
+  const lignesHistorique = (p, n) => attendre(p, (k) => [...document.querySelectorAll('.versions')].some((v) => v.offsetParent !== null && v.querySelectorAll('.liste-versions .version').length === k), n, 60000);
+  const enregistrerPar = async (p, f) => {
+    const t = p.waitForEvent('download', { timeout: 60000 });
+    await f();
+    return t;
+  };
+
+  // the example: History says it was never saved here; Save, from History, downloads it and keeps it
+  // at its place, with its first version
+  await commande(hp, 'projet_exemple');
+  await hp.waitForFunction(() => window.nueeDemandes.some((d) => d.nom === 'exemple' && d.ok), null, { timeout: 300000 });
+  await hp.waitForTimeout(2000);
+  await commande(hp, 'versions');
+  const jamaisIci = await panneau(hp);
+  const dl1 = await enregistrerPar(hp, () => boutonHistorique(hp, 'versions_enregistrer_projet'));
+  const fichier1 = path.join(sortie, `historique-1-${dl1.suggestedFilename()}`);
+  await dl1.saveAs(fichier1);
+  await lignesHistorique(hp, 1);
+  const h1 = await historique(hp);
+  const tete1 = (await panneau(hp)).tete;
+  const ici = (await libelle(hp, 'versions_tete_navigateur')).split('(')[0].trim();
+  verifier('Historique dans la page : jamais enregistré ici, il le dit ; Enregistrer le télécharge et le garde à sa place dans le navigateur, sa première version, la place qu’elle prend',
+    jamaisIci.texte.includes(jamaisSauve) && /\.nuee$/.test(dl1.suggestedFilename()) && /^\/projets\/[^/]+\/[^/]+\.nuee$/.test(h1.chemin) && !h1.modifie
+      && h1.versions.length === 1 && h1.versions[0].auto && tete1.includes(ici) && /\d+(\.\d+)? kB/.test(tete1),
+    `${dl1.suggestedFilename()} ; ${h1.chemin} ; ${h1.versions.map((v) => v.description).join(', ')} ; ${tete1.trim()}`);
+
+  // a model added, then Save a version…: the project saved first (downloaded), the version with its words
+  await nouveauModele(hp, { type: 'LM', x: ['sugar'], y: ['taste_score'], echelle: 'none' });
+  await hp.waitForTimeout(1500);
+  await montrerHistorique(hp, h1.id);
+  const dl2 = enregistrerPar(hp, async () => {
+    await boutonHistorique(hp, 'versions_maintenant');
+    await hp.waitForSelector('.dialogue-version input', { timeout: 10000 });
+    await hp.fill('.dialogue-version input', 'Sugar model added');
+    await hp.click('.fond-dialogue .pied-dialogue button.principal');
+  });
+  await dl2;
+  await lignesHistorique(hp, 2);
+  const h2 = await historique(hp, { id: h1.id });
+  verifier('Enregistrer une version… : le projet enregistré d’abord (téléchargé), la version avec ses mots',
+    h2.versions.length === 2 && h2.versions[0].description === 'Sugar model added' && !h2.versions[0].auto && h2.modeles === h1.modeles + 1, h2.versions.map((v) => v.description).join(' | '));
+
+  // Name… the first version
+  await boutonHistorique(hp, 'versions_nommer', -1);
+  await hp.waitForSelector('.dialogue-version input', { timeout: 10000 });
+  await hp.fill('.dialogue-version input', 'submitted');
+  await hp.click('.fond-dialogue .pied-dialogue button.principal');
+  await attendre(hp, () => [...document.querySelectorAll('.versions .nom-version')].some((b) => b.textContent.includes('submitted')), null, 30000);
+  const h3 = await historique(hp, { id: h1.id });
+  verifier('Nommer… : le nom sur la première version', JSON.stringify(h3.versions.map((v) => v.noms)) === JSON.stringify([[], ['submitted']]), JSON.stringify(h3.versions.map((v) => v.noms)));
+
+  // Compare the first version with the project now: What changed, the model added after
+  await boutonHistorique(hp, 'versions_comparer', -1);
+  const apresSeul = await libelle(hp, 'changements_apres_seul');
+  const comparaison = await attendre(hp, (x) => {
+    const c = [...document.querySelectorAll('.changements')].find((e) => e.offsetParent !== null);
+    return c && c.textContent.includes(x) ? c.textContent.replace(/\s+/g, ' ') : null;
+  }, apresSeul, 300000).catch(() => '');
+  verifier('Comparer : la première version et le projet d’aujourd’hui, Ce qui a changé (le modèle ajouté)', /M5/.test(comparaison.slice(comparaison.indexOf(apresSeul))), comparaison.slice(0, 240));
+
+  // Open the first version: beside the project, read-only, its models
+  await montrerHistorique(hp, h1.id);
+  await boutonHistorique(hp, 'versions_ouvrir', -1);
+  const lecture = await attendre(hp, (oid) => import('./app.js').then(({ app }) => {
+    const p = app.projets().find((x) => x.lecture_seule && x.lecture_seule.oid === oid);
+    return p ? { nom: p.nom, modeles: (p.modeles || []).length } : null;
+  }), h3.versions[1].oid, 120000).catch(() => null);
+  verifier('Ouvrir : la première version à côté du projet, en lecture seule', !!lecture && lecture.modeles === h1.modeles, JSON.stringify(lecture));
+
+  // Restore… the first version: asked, then the project becomes it again, a version saying so
+  await montrerHistorique(hp, h1.id);
+  await boutonHistorique(hp, 'versions_restaurer', -1);
+  await hp.waitForSelector('.fond-dialogue .pied-dialogue button.principal', { timeout: 10000 });
+  await hp.click('.fond-dialogue .pied-dialogue button.principal');
+  const restauree = (await libelle(hp, 'versions_restauree')).split('{date}')[0];
+  await attendre(hp, (r) => document.getElementById('statut').textContent.includes(r), restauree, 300000).catch(() => {});
+  await hp.waitForTimeout(2000);
+  const h4 = await historique(hp, { chemin: h1.chemin });
+  verifier('Restaurer… : le projet redevient la première version (ses modèles), une version le dit',
+    !!h4 && h4.versions.length === 3 && /^Restored the version of/.test(h4.versions[0].description) && h4.modeles === h1.modeles, h4 && `${h4.modeles} modèles ; ${h4.versions.map((v) => v.description).join(' | ')}`);
+
+  // a table opened, saved: its own place and history (a project of the same name), the first's unchanged
+  const nOuvrir = await combien(hp, 'ouvrir');
+  const choixCsv = hp.waitForEvent('filechooser', { timeout: 15000 });
+  await commande(hp, 'ouvrir');
+  await (await choixCsv).setFiles(csv);
+  await attendreDemande(hp, 'ouvrir', nOuvrir);
+  await hp.waitForTimeout(1500);
+  await enregistrerPar(hp, () => commande(hp, 'enregistrer'));
+  const deuxieme = await attendre(hp, () => import('./app.js').then(async ({ app }) => {
+    const { coucheVersions } = await import('./versions.js');
+    const p = app.projet(app.projetActif());
+    const l = p && p.chemin_enregistrement ? await coucheVersions().liste(p.chemin_enregistrement) : [];
+    return l.length === 1 ? { chemin: p.chemin_enregistrement, versions: l.length } : null;
+  }), null, 60000).catch(() => null);
+  const h5 = await historique(hp, { chemin: h1.chemin });
+  verifier('un second projet : sa place et son historique à lui, ceux du premier inchangés',
+    !!deuxieme && deuxieme.chemin.split('/')[2] !== h1.chemin.split('/')[2] && h5.versions.length === 3, `${deuxieme && deuxieme.chemin} ; ${h1.chemin} : ${h5.versions.length} versions`);
+
+  // Share: still the desktop application's, from History too
+  await montrerHistorique(hp, h4.id);
+  await boutonHistorique(hp, 'versions_partager');
+  await hp.waitForTimeout(400);
+  const partage = await hp.evaluate(() => document.getElementById('statut').textContent);
+  verifier('Partager sur GitHub ou GitLab, depuis l’Historique : « il faut l’application de bureau »', /desktop application is needed|application de bureau/.test(partage), partage);
+
+  // reloaded: the projects recovered at their places, with their histories and names
+  await copiesAJour(hp);
+  await hp.waitForTimeout(1000);
+  await hp.reload();
+  await hp.waitForFunction((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, { timeout: 120000 });
+  await hp.click('.fond-dialogue .pied-dialogue button.principal');
+  const reprisAvecHistorique = await attendre(hp, () => import('./app.js').then(async ({ app }) => {
+    const { coucheVersions } = await import('./versions.js');
+    const ps = app.projets().filter((p) => p.chemin_enregistrement);
+    if (ps.length < 2) return null;
+    const r = [];
+    for (const p of ps) r.push({ chemin: p.chemin_enregistrement, versions: (await coucheVersions().liste(p.chemin_enregistrement)).map((v) => v.noms.join(',') || v.description) });
+    return r;
+  }), null, 300000).catch(() => []);
+  const premierRepris = reprisAvecHistorique.find((x) => x.chemin === h1.chemin);
+  verifier('rechargé : les projets repris à leur place, leurs historiques là (le nom aussi)',
+    !!premierRepris && premierRepris.versions.length === 3 && premierRepris.versions.includes('submitted') && !!deuxieme && reprisAvecHistorique.some((x) => x.chemin === deuxieme.chemin && x.versions.length === 1),
+    JSON.stringify(reprisAvecHistorique));
+
+  // the first download opened again, under another name: its history found by its content
+  const nOuvrir2 = await combien(hp, 'ouvrir');
+  const choixNuee = hp.waitForEvent('filechooser', { timeout: 15000 });
+  await commande(hp, 'ouvrir');
+  await (await choixNuee).setFiles(fichier1);
+  await attendreDemande(hp, 'ouvrir', nOuvrir2);
+  await hp.waitForTimeout(1500);
+  const rouvertIci = await historique(hp);
+  verifier('son premier téléchargement rouvert, sous un autre nom : son historique retrouvé par son contenu',
+    /^\/depots\//.test(rouvertIci.chemin) && rouvertIci.versions.length === 3 && rouvertIci.versions.some((v) => v.noms.includes('submitted')), `${rouvertIci.chemin} : ${rouvertIci.versions.length} versions`);
+
+  // Save as…: a project of its own at a new place, its history with it, the former place's kept
+  await enregistrerPar(hp, () => commande(hp, 'enregistrer_sous'));
+  const copie = await attendre(hp, (id) => import('./app.js').then(async ({ app }) => {
+    const { coucheVersions } = await import('./versions.js');
+    const p = app.projet(id);
+    if (!p || !/^\/projets\//.test(p.chemin_enregistrement)) return null;
+    const l = await coucheVersions().liste(p.chemin_enregistrement);
+    return l.length >= 3 ? { chemin: p.chemin_enregistrement, versions: l.length } : null;
+  }), rouvertIci.id, 60000).catch(() => null);
+  const h6 = await historique(hp, { chemin: h1.chemin });
+  verifier('Enregistrer sous… : une nouvelle place, l’historique avec lui, celui d’avant resté',
+    !!copie && copie.chemin !== h1.chemin && copie.versions === 3 && h6.versions.length === 3, `${JSON.stringify(copie)} ; ${h1.chemin} : ${h6.versions.length}`);
+  if (options.capture !== false) await hp.screenshot({ path: path.join(sortie, 'historique.png') });
+  verifier('l’Historique sans violation de la politique de sécurité', (await hp.evaluate(() => window.__violations)).length === 0, await hp.evaluate(() => window.__violations));
+  await copiesAJour(hp);
+  await hp.close({ runBeforeUnload: true });
+
+  // a browser whose OPFS can't write (no createWritable): the versions in IndexedDB, there after a reload
+  const hi = await contexte.newPage();
+  hi.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
+  hi.on('dialog', (d) => d.accept());
+  await hi.addInitScript(() => { window.nueeDemandes = []; if (window.FileSystemFileHandle) delete FileSystemFileHandle.prototype.createWritable; });
+  await hi.goto(adresse);
+  await hi.waitForFunction(() => document.querySelectorAll('.menu-haut').length > 3, null, { timeout: 60000 });
+  await ignorerCopies(hi);
+  await commande(hi, 'projet_exemple');
+  await hi.waitForFunction(() => window.nueeDemandes.some((d) => d.nom === 'exemple' && d.ok), null, { timeout: 300000 });
+  await hi.waitForTimeout(2000);
+  await enregistrerPar(hi, () => commande(hi, 'enregistrer'));
+  const dansIdb = await attendre(hi, () => import('./app.js').then(async ({ app }) => {
+    const { coucheVersions } = await import('./versions.js');
+    const { systemeFichiers } = await import('./fichiers_navigateur.js');
+    const p = app.projet(app.projetActif());
+    const l = p && p.chemin_enregistrement ? await coucheVersions().liste(p.chemin_enregistrement) : [];
+    return l.length === 1 ? { chemin: p.chemin_enregistrement, stockage: (await systemeFichiers()).type } : null;
+  }), null, 60000).catch(() => null);
+  const entreesVersionsIdb = await hi.evaluate(() => new Promise((ok) => {
+    const r = indexedDB.open('nuee-versions');
+    r.onerror = () => ok(-1);
+    r.onsuccess = () => {
+      try { const q = r.result.transaction('entrees', 'readonly').objectStore('entrees').count(); q.onsuccess = () => ok(q.result); q.onerror = () => ok(-1); } catch { ok(-1); }
+    };
+  }));
+  await copiesAJour(hi);
+  await hi.waitForTimeout(1000);
+  await hi.reload();
+  await hi.waitForFunction((tt) => [...document.querySelectorAll('.fond-dialogue h2')].some((h) => h.textContent === tt), titreRecuperation, { timeout: 120000 });
+  await hi.click('.fond-dialogue .pied-dialogue button.principal');
+  const reprisVersionsIdb = dansIdb ? await attendre(hi, (c) => import('./app.js').then(async ({ app }) => {
+    const { coucheVersions } = await import('./versions.js');
+    const p = app.projets().find((x) => x.chemin_enregistrement === c);
+    return p ? (await coucheVersions().liste(c)).length : null;
+  }), dansIdb.chemin, 300000).catch(() => null) : null;
+  verifier('sans OPFS : les versions dans IndexedDB, là après un rechargement',
+    !!dansIdb && dansIdb.stockage === 'IndexedDB' && entreesVersionsIdb > 5 && reprisVersionsIdb === 1, `${JSON.stringify(dansIdb)} ; ${entreesVersionsIdb} entrées ; repris : ${reprisVersionsIdb}`);
+  await copiesAJour(hi);
+  await hi.close({ runBeforeUnload: true });
 
   // (but the refusal of the random forest, which the interface writes to the console as any refusal)
   const autres = erreurs.filter((e) => !/desktop application is needed|application de bureau/.test(e));
