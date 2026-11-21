@@ -4,7 +4,8 @@
 # and uses the installed program end to end (app/tests/essai_appli.js), then through the
 # workflows people do (app/tests/essai_parcours.js); Windows builds the program (no installer)
 # and macOS Nuée.app and its .dmg, and use them the same way. The packages stay with the run, and
-# are added to a release when it is published.
+# are added to a release when it is published. The browser version is checked on Ubuntu: the
+# engine's checks in webR's R, then the site in a headless Chromium (job navigateur).
 # (verifier_references.R needs exported .usp projects that are not in the repository.)
 name: Vérifications
 
@@ -431,6 +432,85 @@ jobs:
         with:
           name: capture-macos-${{ matrix.arch }}
           path: dist/*.png
+
+  # The browser version, where R is webR's (R compiled to WebAssembly), with Node alone: the
+  # engine's checks in webR's R (app/tests/essai_moteur_webr.mjs), then the site built as nuee.io
+  # serves it, with its own copy of webR's repository (app/construire_navigateur.js,
+  # app/miroir_webr.mjs), served on 127.0.0.1 and used in a headless Chromium
+  # (app/tests/essai_navigateur.mjs). R's packages come from repo.r-wasm.org and Chromium from
+  # Playwright's own installer (playwright-core, already a devDependency), both kept between runs.
+  # Nothing reaches zenodo.org: the check answers for Zenodo's API itself, and its Chromium resolves
+  # no zenodo.org.
+  navigateur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Paquets de l'interface
+        working-directory: app
+        run: npm ci --ignore-scripts
+
+      # R's packages for webR: the library the engine's checks install, and the binaries of the
+      # site's copy of webR's repository (checked against repo.r-wasm.org's index at each build).
+      # In node_modules/.cache, so restored once npm ci has emptied node_modules.
+      - uses: actions/cache@v6
+        with:
+          path: app/node_modules/.cache/nuee-webr
+          key: webr-${{ hashFiles('app/package-lock.json', 'app/interface/paquets_webr.js') }}
+
+      # Every check but verifier_forets.R (random forests need ranger, which webR can't run) and
+      # verifier_arriere_plan.R (computing in the background: a second R, which the page doesn't
+      # start); the longest first, as they run two at a time. GitHub's CI variable reaches webR's R
+      # (verifier_robustesse.R's time limits tripled, as on the other jobs). Each one's output
+      # follows, in a group.
+      - name: Vérifications du moteur dans webR
+        working-directory: app
+        run: |
+          liste=""
+          for f in robustesse script distance paquet validation communautes regression fusion etapes boosting vitesse reproductible trim classement spatial ordination resultats_cles greffons moyennes indicatrices arret kobo resultats raster familles code comparaisons texte_resultats langue observations donnees ipls formats par_reponse protocole spectres tableaux jeu_test fichiers_spectres rarefaction opls; do
+            liste="$liste verifier_$f.R"
+          done
+          statut=0
+          node tests/essai_moteur_webr.mjs $liste --sortie=../dist/verifications-webr || statut=$?
+          for f in ../dist/verifications-webr/*.txt; do
+            echo "::group::$(basename "$f" .txt)"
+            cat "$f"
+            echo "::endgroup::"
+          done
+          exit $statut
+
+      - name: La version navigateur, avec sa copie du dépôt de webR
+        working-directory: app
+        run: |
+          node copier-vendor.js
+          node construire_navigateur.js ../dist/navigateur
+          node miroir_webr.mjs ../dist/navigateur
+
+      - uses: actions/cache@v6
+        with:
+          path: app/node_modules/.cache/ms-playwright
+          key: playwright-linux-${{ hashFiles('app/package-lock.json') }}
+
+      # (its headless shell, and the libraries and fonts it needs from Ubuntu, by apt at each run)
+      - name: Chromium de Playwright
+        working-directory: app
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: node_modules/.cache/ms-playwright
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell
+
+      - name: La version navigateur, de bout en bout
+        working-directory: app
+        run: node tests/essai_navigateur.mjs --site=../dist/navigateur --sortie=../dist/essai-navigateur
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capture-navigateur
+          path: dist/essai-navigateur/*.png
 
   # A published release gets the macOS images, once both Macs' checks have passed
   macos-version-publiee:
