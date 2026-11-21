@@ -253,6 +253,15 @@ arriere_plan_demande <- function(nom, corps, langue, code) {
   p
 }
 
+# Les projets qu'une demande qui écrit, en cours dans le calculateur ou qui attend son tour, va
+# changer : projets_modifies (serveur.R) les compte comme non enregistrés, la séance n'ayant pas
+# encore ces changements (le texte d'un document tapé juste avant de quitter, par exemple)
+projets_a_changer <- function() {
+  a <- ARRIERE_PLAN
+  its <- c(if (!is.null(a$en_cours)) list(a$en_cours), a$file)
+  unique(unlist(lapply(its, function(it) if (!it$nom %in% LECTURES) it$projet)))
+}
+
 arriere_plan_programmer <- function(delai = 0.02) {
   if (isTRUE(ARRIERE_PLAN$programme)) return(invisible())
   ARRIERE_PLAN$programme <- TRUE

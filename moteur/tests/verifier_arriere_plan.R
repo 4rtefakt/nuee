@@ -223,6 +223,13 @@ lecture <- envoyer("projet", list(projet = p$id))
 verifier("une lecture du même projet répond aussitôt, avant la fin du calcul", lecture$fait && !long$fait && identical(lu(lecture$reponse)$id, p$id))
 note <- envoyer("note_modele", list(modele = acp$id, note = "Écrite pendant le calcul."))
 verifier("une demande qui changerait le projet attend", !note$fait && !identical(etat$modeles[[acp$id]]$definition$note, "Écrite pendant le calcul."))
+# (Quitter demande ce qui n'est pas enregistré : un projet qu'un calcul en cours ou une demande qui
+# attend son tour va changer en est, même si la séance n'en a encore rien de changé, puisque cette
+# lecture, elle, répond aussitôt ; le texte d'un document tapé juste avant de quitter attend ainsi)
+etat$projets[[p$id]]$modifie <- FALSE
+modifies <- envoyer("projets_modifies", list())
+verifier("les projets non enregistrés comptent celui qu'un calcul et une demande en attente vont changer",
+         modifies$fait && !long$fait && p$nom %in% unlist(lu(modifies$reponse)$noms))
 autre <- envoyer("exemple", list(nom = "alouettes_comptages"))
 verifier("un autre projet s'ouvre aussitôt", autre$fait && !long$fait && !is.null(etat$projets[[lu(autre$reponse)$id]]))
 invisible(recevoir(note))

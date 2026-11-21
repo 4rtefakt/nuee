@@ -1765,7 +1765,10 @@ DEMANDES <- list(
   # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
   # (et leurs identifiants : les copies de secours de l'interface, toutes les deux minutes, sans lire tout l'état)
   projets_modifies = function(q) {
-    m <- Filter(function(p) isTRUE(p$modifie), etat$projets)
+    # (et ceux qu'un calcul en cours ou une demande qui attend son tour va changer : cette lecture
+    # répond aussitôt, eux attendent le calculateur, arriere_plan.R)
+    a_changer <- projets_a_changer()
+    m <- Filter(function(p) isTRUE(p$modifie) || p$id %in% a_changer, etat$projets)
     list(noms = I(unname(vapply(m, function(p) p$nom, ""))), ids = I(unname(vapply(m, function(p) p$id, ""))))
   },
   fermer_projet = function(q) {
