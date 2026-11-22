@@ -11,11 +11,16 @@
 // how many give the deposited results, what changed in those that differ, those that can't be fitted
 // again here (said as such, not counted as a difference), what the manifest found, which Nuée and R
 // made the deposit and which reran it.
-//   ouvrirPaquet(app, chemin, { nom, lien })   the package at `chemin` (the engine's), rerun; its comparison
+//   ouvrirPaquet(app, chemin, { nom, lien, relancer })   the package at `chemin` (the engine's), rerun
+//                                               (its comparison), or just opened (relancer false)
 //   choisirPaquet(app)                          File › Open a reproducibility package…
-//   ouvrirLien(app, { doi, record })            the browser version's link
+//   ouvrirLien(app, { doi, record })            the browser version's link, opened and rerun
+//   paquetDuLien({ doi, record }, recuperer, dire)   its package, fetched from Zenodo and read without R
+//   ouvrirPaquetDuLien(app, x, { relancer })    that package opened in the engine (lecture.js)
+//   direRefusLien(app, quoi, e)                 what kept the link from opening, in a dialog
 //   recordZenodo({ doi, record }, recuperer)     the Zenodo record a DOI or an id names (fetch by default)
 //   fichiersRecord(record)                      its files, { key, size }
+// The link first shows the package's main document without R, when it has one (lecture.js).
 // The link asks nothing of any site but zenodo.org (its API, which answers any page:
 // Access-Control-Allow-Origin *): a version's DOI, 10.5281/zenodo.<id>, is the record <id>; a concept
 // DOI's id is its parent's, which Zenodo answers with its latest version (a redirect to it); any other
@@ -27,13 +32,14 @@ import { demander, deposer, bureau } from './api.js';
 import { VERSION } from './nouveautes.js';
 import { afficherChangements, bilanPaquet, phraseBilan, phraseManifeste } from './changements.js';
 import { progression } from './etapes.js';
+import { lireZip } from './zip.js';
 
 const ZENODO = 'https://zenodo.org';
 // The largest .zip the link downloads, in bytes: the tab holds it, then webR's files a copy, and R
 // unzips it beside it; a larger one is for the desktop application.
 const TAILLE_MAX_LIEN = 500e6;
 
-export async function ouvrirPaquet(app, chemin, { nom = null, lien = null } = {}) {
+export async function ouvrirPaquet(app, chemin, { nom = null, lien = null, relancer = true } = {}) {
   app.statut(t('relance_ouverture', { nom: nom || String(chemin).split(/[\\/]/).pop() }));
   // (a .zip that isn't a package: refused as such, which the link tries the next one for, not an error)
   const r = await app.occupe(() => demander('paquet_ouvrir', { chemin, ...(nom ? { nom } : {}), version: VERSION })
@@ -41,6 +47,18 @@ export async function ouvrirPaquet(app, chemin, { nom = null, lien = null } = {}
   if (r.refus) { app.statut(r.refus.message, true); throw r.refus; }
   await app.projetOuvert(r.projet);
   const notes = [].concat(r.note || []);
+  // (the link's Open the whole project, lecture.js: the project as the package's session had it, its
+  // models fitted as its views need them, nothing compared; its main document in front, the one the
+  // reader came from, now with the project behind it: the package's answer, else its first document)
+  if (!relancer) {
+    const p = app.projet(r.projet.id);
+    const docs = [].concat((p && p.documents) || []);
+    const choisi = p && p.paquet && p.paquet.principal !== undefined ? docs.find((d) => d.id === p.paquet.principal) : docs[0];
+    if (choisi && app.ouvrirDocument) app.ouvrirDocument(p.id, choisi.id);
+    app.statut([t('relance_ouvert', { titre: r.titre }), r.manifeste && r.manifeste.intact ? '' : t('relance_manifeste_differe_statut'), ...notes].filter(Boolean).join(' '),
+      !(r.manifeste && r.manifeste.intact));
+    return null;
+  }
   const pid = r.projet.id;
   const paquet = { titre: r.titre, doi: r.doi, fichier: r.fichier, manifeste: r.manifeste, depose: r.depose, ici: r.ici, paquets: r.paquets_differents, lien };
   if (!r.depose || !Array.isArray(r.depose.modeles)) {
@@ -166,51 +184,95 @@ export function fichiersRecord(r) {
   return liste.map((x) => ({ key: String(x.key || x.filename || ''), size: Number(x.size ?? x.filesize) || 0 })).filter((x) => x.key);
 }
 
-// The link's package, from Zenodo: the record found, each of its .zip files downloaded from zenodo.org
-// until one is a package (the engine says which isn't), then opened and rerun. What keeps it from
-// opening is said plainly, in a dialog: not a DOI, a DOI or a record Zenodo doesn't know, a record
-// without a package, a package larger than TAILLE_MAX_LIEN (by the size Zenodo gives, never
-// downloaded: the desktop application opens it), no network, an error of Zenodo.
+// A package in a .zip, read here without R: the folder whose top has a project (.nuee) and
+// MANIFEST.sha256, as ecrire_paquet writes it (moteur/R/paquet.R; the archive's root too, as the
+// engine reads it), and from its key results (resultats/resultats_cles.json, results/key_results.json)
+// the HTML page of its main document (document_principal, documents/<name>.html), with every
+// document's page. Resolves to { racine, principal (null without one), documents, lire(chemin) },
+// a file of the package as text; null for a .zip that isn't a package; { illisible: true } for one
+// this can't read (lireZip), which the engine may still open.
+export async function lirePaquetZip(octets) {
+  const z = lireZip(octets);
+  if (!z) return { illisible: true };
+  const racine = z.fichiers.map((x) => /^(?:([^/]+)\/)?[^/]+\.nuee$/.exec(x)).filter(Boolean)
+    .map((m) => (m[1] ? `${m[1]}/` : '')).find((r) => z.fichiers.includes(`${r}MANIFEST.sha256`));
+  if (racine === undefined) return null;
+  const lire = async (chemin) => { const o = await z.lire(racine + chemin); return o ? new TextDecoder('utf-8').decode(o) : null; };
+  let cles = {};
+  for (const f of ['results/key_results.json', 'resultats/resultats_cles.json']) {
+    if (!z.fichiers.includes(racine + f)) continue;
+    try { cles = JSON.parse(await lire(f)) || {}; } catch { cles = {}; }
+    break;
+  }
+  const documents = z.fichiers.filter((x) => x.startsWith(`${racine}documents/`) && /^[^/]+\.html$/i.test(x.slice(racine.length + 10))).map((x) => x.slice(racine.length));
+  const p = cles.document_principal;
+  return { racine, principal: typeof p === 'string' && documents.includes(p) ? p : null, documents, lire };
+}
+
+// The link's package, from Zenodo: the record found, each of its .zip files (up to TAILLE_MAX_LIEN, by
+// the size Zenodo gives) downloaded from zenodo.org until one is a package (lirePaquetZip). `dire`:
+// where it is, for the status bar or the reader's page. Resolves to { r (the record), f (its file),
+// octets, paquet (lirePaquetZip's), lien (what the comparison says of it) }; rejects with a refusal
+// said in the interface's language (genre: doi, inconnu, reseau, http, sans_paquet, taille): not a
+// DOI, a DOI or a record Zenodo doesn't know, a record without a package, a package larger than
+// TAILLE_MAX_LIEN (never downloaded: the desktop application opens it), no network, an error of Zenodo.
+export async function paquetDuLien({ doi = null, record = null }, recuperer = (url, o) => fetch(url, o), dire = () => {}) {
+  const quoi = record ? t('relance_lien_record', { record }) : t('relance_lien_doi', { doi });
+  dire(t('relance_zenodo_recherche', { quoi }));
+  const r = await recordZenodo({ doi, record }, recuperer);
+  const titre = (r.metadata && r.metadata.title) || r.title || '';
+  const zips = fichiersRecord(r).filter((f) => /\.zip$/i.test(f.key));
+  // (a .zip larger than a tab can hold, by the size Zenodo gives: not downloaded)
+  const tropGros = zips.filter((f) => f.size > TAILLE_MAX_LIEN);
+  for (const f of zips.filter((x) => x.size <= TAILLE_MAX_LIEN)) {
+    dire(t('relance_zenodo_telechargement', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)) }));
+    let x;
+    try { x = await recuperer(`${ZENODO}/api/records/${encodeURIComponent(r.id)}/files/${encodeURIComponent(f.key)}/content`); } catch { throw refus('reseau', t('relance_zenodo_reseau')); }
+    if (!x.ok) throw refus('http', t('relance_zenodo_fichier', { nom: f.key, statut: x.status }));
+    const octets = new Uint8Array(await x.arrayBuffer());
+    const paquet = await lirePaquetZip(octets);
+    if (!paquet) continue;
+    const lien = { record: r.id, doi: r.doi || '', concept: memeDoi(r.conceptdoi, lireDoi(doi)) && !memeDoi(r.doi, lireDoi(doi)) ? r.conceptdoi : null, titre };
+    return { r, f, octets, paquet, lien };
+  }
+  if (tropGros.length) {
+    const f = tropGros[0];
+    throw refus('taille', t('relance_zenodo_trop_gros', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)), max: TAILLE_MAX_LIEN / 1e6 }));
+  }
+  throw refus('sans_paquet', t('relance_zenodo_sans_paquet', { titre: titre || r.id, doi: r.doi || '' }));
+}
+
+// The link's package (paquetDuLien's) given to the engine, then rerun (relancer) or just opened; a
+// .zip the engine doesn't take for a package (one lireZip couldn't read) is a record without one.
+export async function ouvrirPaquetDuLien(app, x, { relancer = true } = {}) {
+  const chemin = await deposer(new File([x.octets], x.f.key, { type: 'application/zip' }));
+  try {
+    return await ouvrirPaquet(app, chemin, { nom: x.f.key, lien: x.lien, relancer });
+  } catch (e) {
+    if (e.reponse && e.reponse.pas_un_paquet) throw refus('sans_paquet', t('relance_zenodo_sans_paquet', { titre: x.lien.titre || x.r.id, doi: x.r.doi || '' }));
+    throw e;
+  }
+}
+
+// What kept the link (`quoi`, as relance_lien_doi or relance_lien_record says it) from opening, in a
+// dialog and the status bar: a refusal plainly, another error as one.
+export function direRefusLien(app, quoi, e) {
+  app.statut(e.message, true);
+  dialogue({ titre: t('relance_lien_titre', { quoi }), contenu: el('p', { class: e.genre ? '' : 'erreur' }, e.message),
+    boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+}
+
+// The link's package fetched, opened and rerun, in the application (a package without a main
+// document: lecture.js shows that one first, then comes here, or to ouvrirPaquetDuLien).
 export async function ouvrirLien(app, { doi = null, record = null }, recuperer = (url, o) => fetch(url, o)) {
   const quoi = record ? t('relance_lien_record', { record }) : t('relance_lien_doi', { doi });
-  // (busy meanwhile, as any request; a refusal is no error of the page: it is said below)
-  const travail = async (f) => {
-    const x = await app.occupe(() => f().catch((e) => { if (e.genre) return { refus: e }; throw e; }));
-    if (x && x.refus) throw x.refus;
-    return x;
-  };
   try {
-    app.statut(t('relance_zenodo_recherche', { quoi }));
-    const r = await travail(() => recordZenodo({ doi, record }, recuperer));
-    const titre = (r.metadata && r.metadata.title) || r.title || '';
-    const zips = fichiersRecord(r).filter((f) => /\.zip$/i.test(f.key));
-    // (a .zip larger than a tab can hold, by the size Zenodo gives: not downloaded)
-    const tropGros = zips.filter((f) => f.size > TAILLE_MAX_LIEN);
-    for (const f of zips.filter((x) => x.size <= TAILLE_MAX_LIEN)) {
-      app.statut(t('relance_zenodo_telechargement', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)) }));
-      const octets = await travail(async () => {
-        let x;
-        try { x = await recuperer(`${ZENODO}/api/records/${encodeURIComponent(r.id)}/files/${encodeURIComponent(f.key)}/content`); } catch { throw refus('reseau', t('relance_zenodo_reseau')); }
-        if (!x.ok) throw refus('http', t('relance_zenodo_fichier', { nom: f.key, statut: x.status }));
-        return new Uint8Array(await x.arrayBuffer());
-      });
-      const chemin = await deposer(new File([octets], f.key, { type: 'application/zip' }));
-      const lien = { record: r.id, doi: r.doi || '', concept: memeDoi(r.conceptdoi, lireDoi(doi)) && !memeDoi(r.doi, lireDoi(doi)) ? r.conceptdoi : null, titre };
-      try {
-        return await ouvrirPaquet(app, chemin, { nom: f.key, lien });
-      } catch (e) {
-        if (!(e.reponse && e.reponse.pas_un_paquet)) throw e;
-      }
-    }
-    if (tropGros.length) {
-      const f = tropGros[0];
-      throw refus('taille', t('relance_zenodo_trop_gros', { nom: f.key, taille: decimal((f.size / 1e6).toFixed(1)), max: TAILLE_MAX_LIEN / 1e6 }));
-    }
-    throw refus('sans_paquet', t('relance_zenodo_sans_paquet', { titre: titre || r.id, doi: r.doi || '' }));
+    // (busy meanwhile, as any request; a refusal is no error of the page: it is said below)
+    const x = await app.occupe(() => paquetDuLien({ doi, record }, recuperer, (m) => app.statut(m)).catch((e) => { if (e.genre) return { refus: e }; throw e; }));
+    if (x.refus) throw x.refus;
+    return await ouvrirPaquetDuLien(app, x);
   } catch (e) {
-    app.statut(e.message, true);
-    dialogue({ titre: t('relance_lien_titre', { quoi }), contenu: el('p', { class: e.genre ? '' : 'erreur' }, e.message),
-      boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
+    direRefusLien(app, quoi, e);
     return null;
   }
 }
@@ -223,6 +285,7 @@ ajouterTextes({
   relance_sans_resultats: 'Ce paquet n’a pas de résultats déposés (resultats/resultats_cles.json) : Nuée 1.1 n’en écrivait pas. Son projet est ouvert, ses modèles tels qu’il les avait ; rien n’est comparé.',
   relance_ouvert_sans_resultats: 'Paquet « {titre} » ouvert, sans résultats déposés à comparer.',
   relance_manifeste_statut: 'Ses fichiers ne sont plus ceux de son manifeste : voir le panneau.',
+  relance_ouvert: 'Paquet « {titre} » ouvert : son projet, tel que ses auteurs l’ont laissé.', relance_manifeste_differe_statut: 'Ses fichiers ne sont plus ceux de son manifeste (MANIFEST.sha256).',
   relance_lien_doi: 'le DOI {doi}', relance_lien_record: 'l’enregistrement {record}', relance_lien_titre: 'Ouvrir {quoi}',
   relance_zenodo_recherche: 'Zenodo : {quoi}…', relance_zenodo_telechargement: 'Zenodo : {nom} ({taille} Mo)…',
   relance_doi_invalide: '« {doi} » n’est pas un DOI : un DOI commence par 10. et a une barre oblique, comme 10.5281/zenodo.123.',
@@ -241,6 +304,7 @@ ajouterTextes({
   relance_sans_resultats: 'This package has no deposited results (results/key_results.json): Nuée 1.1 didn’t write them. Its project is open, its models as it had them; nothing is compared.',
   relance_ouvert_sans_resultats: 'Package “{titre}” opened, without deposited results to compare with.',
   relance_manifeste_statut: 'Its files are no longer those of its manifest: see the panel.',
+  relance_ouvert: 'Package “{titre}” opened: its project, as its authors left it.', relance_manifeste_differe_statut: 'Its files are no longer those of its manifest (MANIFEST.sha256).',
   relance_lien_doi: 'the DOI {doi}', relance_lien_record: 'record {record}', relance_lien_titre: 'Open {quoi}',
   relance_zenodo_recherche: 'Zenodo: {quoi}…', relance_zenodo_telechargement: 'Zenodo: {nom} ({taille} MB)…',
   relance_doi_invalide: '“{doi}” isn’t a DOI: a DOI starts with 10. and has a slash, as 10.5281/zenodo.123.',

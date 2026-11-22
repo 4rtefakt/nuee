@@ -2,7 +2,9 @@
 // fitted; the package fits the others), a document that cites M1's Q2 and a reference kept in it
 // (BibTeX); File › Export a reproducibility package…, its dialog filled in, the .zip written where
 // the system's dialog says and read back: the project (format 3, its data from data/orchards.csv), the
-// R script with the licence notice, the document as a reproducible Quarto file with its .bib, every
+// R script with the licence notice, the document as a reproducible Quarto file with its .bib and as
+// an HTML page filled in, the main one (the dialog's Shown first: the project's only document),
+// which the package's results name for its link (lecture.js) and its README to read first; every
 // file's SHA-256. Then File › Deposit on Zenodo… against a stand-in for Zenodo's deposit API and its
 // OAuth server on 127.0.0.1 (the main process's NUEE_ZENODO; nothing reaches zenodo.org): Sign in with
 // Zenodo, its page "opened in the browser" (the main process's shell.openExternal, pilote.js) and
@@ -151,6 +153,8 @@ module.exports = {
     await n.ecrire("__n.boite().querySelectorAll('.paquet-auteurs input')[0]", 'Alice');
     await n.ecrire("__n.boite().querySelectorAll('.paquet-auteurs input')[1]", 'Exemple');
     await n.ecrire("__n.boite().querySelector('.dialogue-paquet textarea')", 'Made-up apples, for the workflow test.');
+    // (Shown first: the project's only document, then "No document: the whole project")
+    const montre = await n.evaluer("(() => { const s = __n.boite().querySelector('.paquet-principal'); return s ? [s.value, [...s.options].map((o) => o.textContent)] : null; })()");
     await n.bouton('choisir_emplacement');
     const ecrit = await n.attendre("__n.statut().startsWith(__n.t('paquet_ecrit').split('{')[0].trim()) && __n.statut()", 300000);
     // (the remarks on what the package couldn't do, if any: the README says them too)
@@ -170,6 +174,13 @@ module.exports = {
     const bib = lire('documents/Package test.bib');
     verifier('paquetDocument', qmd.includes('Package test.bib') && /```\{r[^}]*\}/.test(qmd) && /`r [^`]+`/.test(qmd) && qmd.includes('@wold2001')
       && bib.includes('@article{wold2001') && z.has('Apples package/documents/Package test_R/nuee.R'), qmd.slice(0, 300));
+    const page = lire('documents/Package test.html');
+    const cles = JSON.parse(lire('results/key_results.json') || '{}');
+    verifier('paquetDocumentPage', montre && montre[0] === doc.id && montre[1].length === 2 && montre[1][0] === 'Package test'
+      && page.startsWith('<!doctype html>') && page.includes('<meta name="viewport" content="width=device-width, initial-scale=1">')
+      && /Q2 = <span class="ref"[^>]*>0[.,]\d+<\/span>/.test(page) && cles.document_principal === 'documents/Package test.html'
+      && lire('README.md').includes('- **Read first:** `documents/Package test.html`, “Package test”, which opens in any browser')
+      && nuee.paquet && nuee.paquet.principal === doc.id, { montre, principal: cles.document_principal, page: page.slice(0, 160) });
     verifier('paquetManifeste', manifesteJuste(z, 'Apples package'));
     verifier('paquetReadme', lire('README.md').startsWith('# Apples') && !lire('README.md').includes('nuee.io/app'), lire('README.md').slice(0, 120));
 

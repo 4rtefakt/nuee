@@ -189,7 +189,7 @@ ecrire <- function(langue) {
 
 meta_fr <- list(titre = "Pommes « bio » et conventionnelles", description = "Des données inventées : 120 pommes.\n\nUn second paragraphe.",
                 auteurs = data.frame(prenom = c("Alice", "Bob"), nom = c("Exemple", "Essai"), orcid = c("https://orcid.org/0000-0002-1825-0097", "")),
-                mots_cles = "pommes, ACP; PLS", licence = "CC-BY-4.0")
+                mots_cles = "pommes, ACP; PLS", licence = "CC-BY-4.0", principal = "doc-1")
 meta_en <- list(titre = "Organic and conventional apples", description = "Made-up data: 120 apples.",
                 auteurs = list(list(prenom = "Bob", nom = "Example", orcid = "000000000000001X")), mots_cles = c("apples", "PCA"), licence = "CC0-1.0")
 
@@ -238,10 +238,13 @@ for (langue in c("fr", "en")) {
     qmd <- c("---", "title: \"Mon article\"", "lang: fr", "bibliography: Mon article.bib", "---", "", rep$installation, "",
              sprintf("Le Q² de M2 est `r %s` [@wold2001].", rep$references[[1]]$code), "", "![Une figure](Mon article_figures/figure-1.png)")
     png <- jsonlite::base64_enc(as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1:24)))
+    # (sa page HTML, ses nombres remplis, comme l'interface l'écrit : rendu_document.js, pageHTML ; le
+    # document principal, celui que le lien montre d'abord)
+    html_doc <- sprintf("<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><title>Mon article</title></head><body><p>Le Q² de M2 est %s.</p></body></html>", attendu_q2)
     documents <- list(list(nom = "Mon article", titre = "Mon article", qmd = paste(qmd, collapse = "\n"),
                            bib = "@article{wold2001,\n  title = {PLS-regression},\n  year = {2001}\n}\n", csl = list(nom = "apa.csl", texte = "<style/>"),
                            figures = list(list(chemin = "Mon article_figures/figure-1.png", png = paste0("data:image/png;base64,", png))),
-                           fichiers = as.list(rep$fichiers), relatifs = as.list(rep$relatifs), note = ""))
+                           fichiers = as.list(rep$fichiers), relatifs = as.list(rep$relatifs), note = "", html = html_doc, principal = TRUE))
   }
   zip <- file.path(dossier, langue, tx("Mon paquet.zip", "My package.zip"))
   dir.create(dirname(zip), recursive = TRUE, showWarnings = FALSE)
@@ -263,7 +266,7 @@ for (langue in c("fr", "en")) {
                      tx("analyse.R", "analysis.R"), "README.md", "LICENSE", "CITATION.cff", "codemeta.json", "MANIFEST.sha256",
                      tx("resultats/resultats_cles.json", "results/key_results.json"), if (!fr) "qr-code.svg",
                      if (fr) c("documents/Mon article.qmd", "documents/Mon article.bib", "documents/apa.csl", "documents/Mon article_figures/figure-1.png",
-                               paste0("documents/", rep$relatifs))), method = "radix")
+                               "documents/Mon article.html", paste0("documents/", rep$relatifs))), method = "radix")
   verifier(sprintf("un seul dossier, « %s », et ses %d fichiers%s", base, length(attendus),
                    if (!identical(dans, paste0(base, "/", attendus))) sprintf(" ; LUS : %s", paste(dans, collapse = ", ")) else ""),
            identical(dans, paste0(base, "/", attendus)) && identical(sort(as.character(r$fichiers), method = "radix"), attendus))
@@ -461,6 +464,17 @@ for (langue in c("fr", "en")) {
              if (fr) !file.exists(file.path(racine, "code-qr.svg")) && !any(grepl("QR", readme, fixed = TRUE))
              else identical(readChar(file.path(racine, "qr-code.svg"), 1e5, useBytes = TRUE), qr_essai) && any(grepl("| `qr-code.svg` | The QR code of the link", readme, fixed = TRUE)) &&
                any(grepl("its QR code is `qr-code.svg`", readme, fixed = TRUE)))
+  # le document principal : sa page HTML telle que l'interface l'a donnée, que les résultats déposés nomment
+  # (ce que le lien montre d'abord, interface/lecture.js) et que le README donne à lire d'abord ; sans
+  # document, rien de tout cela
+  verifier(if (fr) "le document principal : sa page HTML écrite telle quelle, nommée par les résultats déposés (document_principal) et par le README (À lire d'abord), le dialogue gardé"
+           else "sans document, ni page HTML ni document_principal, ni « Read first » dans le README",
+           if (fr) identical(depot$document_principal, "documents/Mon article.html") &&
+             identical(paste(readLines(file.path(racine, "documents", "Mon article.html"), encoding = "UTF-8", warn = FALSE), collapse = "\n"), html_doc) &&
+             "- **À lire d'abord :** `documents/Mon article.html`, « Mon article », qui s'ouvre dans tout navigateur" %in% readme &&
+             any(grepl("- `documents/Mon article.qmd` (à lire : `documents/Mon article.html`)", readme, fixed = TRUE)) &&
+             identical(metadonnees_gardees(q$paquet)$principal, "doc-1")
+           else is.null(depot$document_principal) && !any(grepl("Read first", readme, fixed = TRUE)) && is.null(meta$principal))
 
   # le manifeste : chaque fichier sauf lui, une fois, et son empreinte recalculée ici
   manifeste <- readLines(file.path(racine, "MANIFEST.sha256"), encoding = "UTF-8")

@@ -72,7 +72,14 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
     el('input', { type: 'radio', name: 'paquet-licence', value: id, checked: id === licence, onchange: () => { licence = id; } }),
     el('span', {}, el('span', { class: 'titre-choix' }, t(`paquet_licence_${cle}`)), el('span', { class: 'note' }, t(`paquet_licence_${cle}_aide`))))));
   const n = p.modeles.length;
-  const nd = [].concat(p.documents || []).length;
+  const docs = [].concat(p.documents || []);
+  const nd = docs.length;
+  // the document readers of the package's link see first (lecture.js), by its id: the one kept, else
+  // the project's first; '' for none, the whole project at once
+  const garde1 = garde.principal === '' || docs.some((x) => x.id === garde.principal) ? garde.principal : (docs[0] && docs[0].id) || '';
+  const principal = nd ? el('select', { class: 'paquet-principal', 'aria-label': t('paquet_principal') },
+    ...docs.map((x) => el('option', { value: x.id, selected: x.id === garde1 }, x.titre || t('document_sans_titre'))),
+    el('option', { value: '', selected: garde1 === '' }, t('paquet_principal_aucun'))) : null;
   const erreur = el('p', { class: 'erreur' });
   const contenu = el('div', { class: 'dialogue-paquet' },
     el('p', {}, t('paquet_texte', { modeles: n ? t(n === 1 ? 'paquet_texte_modele' : 'paquet_texte_modeles', { n }) : '',
@@ -85,14 +92,15 @@ export function dialoguePaquet(app, p, { zenodo = false } = {}) {
           icone('plus'), ` ${t('paquet_ajouter_auteur')}`)),
       el('label', {}, t('paquet_description')), el('div', {}, description, el('p', { class: 'note' }, t('paquet_description_aide'))),
       el('label', {}, t('paquet_mots')), mots,
-      el('label', {}, t('paquet_licence')), licences),
+      el('label', {}, t('paquet_licence')), licences,
+      ...(principal ? [el('label', {}, t('paquet_principal')), el('div', {}, principal, el('p', { class: 'note' }, t('paquet_principal_aide')))] : [])),
     el('p', { class: 'note' }, t('paquet_garde')), erreur);
 
   // the answers, as the engine keeps them; null (and why, in the dialog) when one is missing
   const lire = (pourZenodo) => {
     erreur.textContent = '';
     const meta = { titre: titre.value.trim(), auteurs: [], description: description.value.trim(),
-      mots_cles: mots.value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), licence };
+      mots_cles: mots.value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), licence, ...(principal ? { principal: principal.value } : {}) };
     if (!meta.titre) { erreur.textContent = t('paquet_sans_titre'); titre.focus(); return null; }
     for (const a of auteurs) {
       const x = { prenom: a.prenom.trim(), nom: a.nom.trim(), orcid: lireOrcid(a.orcid) };
@@ -157,7 +165,7 @@ async function ecrirePaquet(app, pid, meta, chemin, doi = null, qr = null) {
     const documents = [];
     const notes = [];
     const pris = new Set();
-    for (const doc of [].concat(app.projet(pid).documents || [])) {
+    for (const [i, doc] of [].concat(app.projet(pid).documents || []).entries()) {
       const base = String(doc.titre || t('document_sans_titre')).replace(/[^\p{L}\p{N} _.()-]+/gu, '_').trim() || 'document';
       let nom = base;
       for (let k = 2; pris.has(nom.toLowerCase()); k += 1) nom = `${base} (${k})`;
@@ -165,6 +173,8 @@ async function ecrirePaquet(app, pid, meta, chemin, doi = null, qr = null) {
       app.statut(t('paquet_document', { nom: doc.titre || nom }));
       try {
         const x = await documentPourPaquet(app, pid, doc.id, nom);
+        // (the one readers of the link see first: the dialog's answer, else the first document)
+        x.principal = meta.principal === undefined ? i === 0 : doc.id === meta.principal;
         documents.push(x);
         if (x.erreurs) notes.push(t('paquet_document_erreurs', { nom: doc.titre || nom, n: x.erreurs }));
       } catch (e) { notes.push(t('paquet_document_absent', { nom: doc.titre || nom, erreur: e.message })); }
@@ -359,6 +369,8 @@ ajouterTextes({
   paquet_licence_cc_by_sa: 'CC BY-SA 4.0', paquet_licence_cc_by_sa_aide: 'En vous citant, et sous la même licence.',
   paquet_licence_cc_by_nc: 'CC BY-NC 4.0', paquet_licence_cc_by_nc_aide: 'En vous citant, et pas pour un usage commercial.',
   paquet_garde: 'Vos réponses sont gardées dans le projet : le prochain paquet repart d’elles.',
+  paquet_principal: 'Montré d’abord', paquet_principal_aucun: 'Aucun document : tout le projet',
+  paquet_principal_aide: 'Le document que les lecteurs du lien du paquet voient d’abord, sur un ordinateur comme sur un téléphone, ses nombres, graphiques et tableaux déjà remplis, sans attendre R ; tout le projet et la relance de ses modèles sont à un clic. Le paquet garde aussi chaque document en page HTML.',
   paquet_sans_titre: 'Donnez un titre au paquet.', paquet_sans_auteur: 'Donnez au moins un auteur, avec son nom.',
   paquet_auteur_sans_nom: 'Chaque auteur a besoin d’un nom de famille.', paquet_sans_description: 'Zenodo demande une description.',
   paquet_orcid_faux: 'Ce n’est pas un ORCID : {orcid}. Un ORCID a 16 chiffres, comme 0000-0002-1825-0097, dont le dernier (parfois X) vérifie les autres.',
@@ -414,6 +426,8 @@ ajouterTextes({
   paquet_licence_cc_by_sa: 'CC BY-SA 4.0', paquet_licence_cc_by_sa_aide: 'Citing you, and under the same licence.',
   paquet_licence_cc_by_nc: 'CC BY-NC 4.0', paquet_licence_cc_by_nc_aide: 'Citing you, and not for commercial use.',
   paquet_garde: 'Your answers are kept in the project: the next package starts from them.',
+  paquet_principal: 'Shown first', paquet_principal_aucun: 'No document: the whole project',
+  paquet_principal_aide: 'The document readers of the package’s link see first, on a computer as on a phone, its numbers, plots and tables already filled in, without waiting for R; the whole project and the rerun of its models are a click away. The package also holds each document as an HTML page.',
   paquet_sans_titre: 'Give the package a title.', paquet_sans_auteur: 'Give at least one author, with their family name.',
   paquet_auteur_sans_nom: 'Each author needs a family name.', paquet_sans_description: 'Zenodo asks for a description.',
   paquet_orcid_faux: 'This isn’t an ORCID: {orcid}. An ORCID has 16 digits, as 0000-0002-1825-0097, the last one (sometimes X) checking the others.',

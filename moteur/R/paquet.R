@@ -93,7 +93,11 @@ metadonnees_paquet <- function(x) {
   mots <- unique(substr(mots[!is.na(mots) & nzchar(mots)], 1, 100))
   licence <- as.character(unlist(x$licence %||% "CC-BY-4.0"))[1]
   if (!isTRUE(licence %in% names(LICENCES_PAQUET))) stop(sprintf(traduire("Licence inconnue : %s.", "Unknown licence: %s."), licence), call. = FALSE)
-  list(titre = titre, auteurs = auteurs, description = description, mots_cles = mots, licence = licence)
+  m <- list(titre = titre, auteurs = auteurs, description = description, mots_cles = mots, licence = licence)
+  # (le document que les lecteurs du lien voient d'abord, par son identifiant ; "" : aucun, le projet
+  # entier ; sans réponse, le premier document du projet : interface/paquet.js)
+  if (!is.null(x$principal)) m$principal <- ligne(x$principal, 200)
+  m
 }
 
 # Le DOI du paquet lui-même, celui que Zenodo a réservé pour son brouillon (Déposer sur Zenodo… :
@@ -177,10 +181,11 @@ paquets_charges <- function() {
 # nom, son numéro, son titre, son type (celui de l'explorateur, resume_modele : PCA, OPLS-DA, LM...), son
 # nombre de composantes (celui de son ajustement, qu'il reprend) et ses entrées ; un modèle qui n'est pas
 # refait, pourquoi, sans entrées. Avec la version de Nuée, celle de R et sa plateforme, les paquets
-# chargés (paquets_charges), la date, la langue et le DOI du paquet. Ses nombres à 15 chiffres
+# chargés (paquets_charges), la date, la langue et le DOI du paquet ; et `document_principal`, la page
+# HTML du document que son lien montre d'abord (documents/<nom>.html), quand il en a un. Ses nombres à 15 chiffres
 # significatifs : relus, ils sont ceux de la séance à 1e-15 près, bien moins que ce que comparer_resultats
 # tient pour un changement.
-json_resultats_paquet <- function(projet, modeles, langue, version, doi = NULL) {
+json_resultats_paquet <- function(projet, modeles, langue, version, doi = NULL, document = NULL) {
   ancienne <- options(nuee.langue = langue)
   on.exit(options(ancienne), add = TRUE)
   un <- function(x) {
@@ -194,6 +199,8 @@ json_resultats_paquet <- function(projet, modeles, langue, version, doi = NULL) 
   }
   x <- list(format = 1L, nuee = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."), plateforme = R.version$platform,
             paquets = paquets_charges(), date = format(Sys.Date()), langue = langue, doi = doi, modeles = lapply(modeles, un))
+  # (la page du document que le lien montre d'abord, sans R : interface/lecture.js)
+  if (!is.null(document)) x$document_principal <- document
   enc2utf8(as.character(jsonlite::toJSON(x, auto_unbox = TRUE, pretty = TRUE, digits = NA, null = "null", na = "null")))
 }
 
@@ -396,11 +403,15 @@ script_paquet <- function(projet, modeles, chemin, meta, langue, version) {
 # (documents.js : documentPourPaquet) : son .qmd reproductible, ses références (.bib) et son style
 # CSL, les figures que R ne redessine pas (en PNG, base64), et les fichiers que le moteur a écrits
 # pour lui (document_reproductible : les scripts des modèles qu'il cite et leurs données, dans un
-# dossier de la session, `fichiers`, à leur place `relatifs`). Rend les chemins écrits (relatifs à
-# `dossier`) et ce qu'il faut savoir de chacun.
+# dossier de la session, `fichiers`, à leur place `relatifs`) ; et sa page HTML (`html`), ses nombres,
+# graphiques et tableaux déjà remplis, qui s'ouvre dans tout navigateur : celle du document `principal`
+# est ce que le lien du paquet montre d'abord (interface/lecture.js). Rend les chemins écrits
+# (relatifs à `dossier`), ce qu'il faut savoir de chacun et le chemin, dans le paquet, de la page du
+# document principal (NULL sans lui).
 ecrire_documents_paquet <- function(documents, dossier) {
   ecrits <- character(0)
   notes <- list()
+  principal <- NULL
   session <- normalizePath(tempdir(), winslash = "/")
   pris <- character(0)
   for (d in documents) {
@@ -432,9 +443,12 @@ ecrire_documents_paquet <- function(documents, dossier) {
       if (!startsWith(s, paste0(session, "/")) || !file.exists(s)) stop(traduire("Fichier refusé dans le paquet : ", "File refused in the package: "), sources[k], call. = FALSE)
       garder(relatifs[k], function(f) file.copy(s, f, overwrite = TRUE))
     }
-    notes[[length(notes) + 1]] <- list(nom = nom, titre = as.character(d$titre %||% nom)[1], note = as.character(d$note %||% "")[1])
+    html <- length(d$html) && nzchar(as.character(d$html)[1])
+    if (html) garder(paste0(nom, ".html"), texte(d$html))
+    if (html && isTRUE(d$principal) && is.null(principal)) principal <- paste0("documents/", nom, ".html")
+    notes[[length(notes) + 1]] <- list(nom = nom, titre = as.character(d$titre %||% nom)[1], note = as.character(d$note %||% "")[1], html = html)
   }
-  list(fichiers = ecrits, documents = notes)
+  list(fichiers = ecrits, documents = notes, principal = principal)
 }
 
 # LICENSE : qui donne les données sous quelle licence, puis son texte (moteur/licences, fins de
@@ -564,6 +578,9 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
   citation <- paste0(paste(noms_cites, collapse = ", "), sprintf(" (%s). *%s* [%s]. ", annee, texte_sur(meta$titre), tx("Jeu de données", "Data set")),
                      if (!is.null(doi)) sprintf("Zenodo. https://doi.org/%s ", doi))
   dans_navigateur <- if (!is.null(doi)) paste0("https://nuee.io/app/?doi=", doi)
+  # (le document que le lien montre d'abord, et chaque document en page HTML, qui s'ouvre dans tout navigateur)
+  principal <- if (!is.null(ct$principal)) Find(function(d) identical(paste0("documents/", d$nom, ".html"), ct$principal), ct$documents)
+  avec_html <- any(vapply(ct$documents, function(d) isTRUE(d$html), TRUE))
   c(paste("#", texte_sur(meta$titre)), "",
     if (nzchar(meta$description)) c(gsub("\r", "", meta$description), ""),
     sprintf("- **%s** %s", tx("Auteurs :", "Authors:"), paste(vapply(meta$auteurs, auteur, ""), collapse = ", ")),
@@ -572,6 +589,8 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
     sprintf("- **%s** [%s](%s), %s", tx("Licence des données :", "Licence of the data:"), l$court, l$url, tx("son texte dans `LICENSE`", "its text in `LICENSE`")),
     sprintf("- **%s** %s", tx("Fait avec :", "Made with:"),
             sprintf(tx("Nuée %s ([doi:%s](https://doi.org/%s)) et R %s, le %s", "Nuée %s ([doi:%s](https://doi.org/%s)) and R %s, on %s"), version, DOI_NUEE, DOI_NUEE, r_version, format(Sys.Date()))),
+    if (!is.null(principal)) sprintf("- **%s** %s, %s", tx("À lire d'abord :", "Read first:"), code(ct$principal),
+                                     sprintf(tx("« %s », qui s'ouvre dans tout navigateur", "“%s”, which opens in any browser"), texte_sur(principal$titre))),
     "",
     paste("##", tx("Ce que contient ce paquet", "What this package holds")), "",
     sprintf("| %s | %s |", tx("Fichier", "File"), tx("Ce que c'est", "What it is")), "|---|---|",
@@ -580,7 +599,10 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
                                                     "The data: %d observations, %d columns (CSV in UTF-8, comma-separated; an empty cell for a missing value)"), ct$n_obs, ct$n_colonnes)),
     sprintf("| %s | %s |", code(ct$dictionnaire), tx("Chaque colonne des données : son type, son unité, sa description et ses catégories", "Each column of the data: its type, unit, description and categories")),
     if (!is.null(ct$script)) sprintf("| %s | %s |", code(ct$script), tx("Un seul script R qui refait chaque modèle à partir des données", "One R script that redoes every model from the data")),
-    if (length(ct$documents)) sprintf("| %s | %s |", code("documents/"), tx("Les documents du projet, en fichiers Quarto reproductibles", "The project's documents, as reproducible Quarto files")),
+    if (length(ct$documents)) sprintf("| %s | %s |", code("documents/"),
+                                      if (avec_html) tx("Les documents du projet, en fichiers Quarto reproductibles, et chacun en page HTML, ses nombres, graphiques et tableaux déjà remplis, qui s'ouvre dans tout navigateur",
+                                                        "The project's documents, as reproducible Quarto files, and each as an HTML page, its numbers, plots and tables already filled in, which opens in any browser")
+                                      else tx("Les documents du projet, en fichiers Quarto reproductibles", "The project's documents, as reproducible Quarto files")),
     sprintf("| %s | %s |", code(ct$resultats), tx("Les résultats clés de chaque modèle tels que Nuée les a calculés pour ce paquet (l'ajustement, chaque estimation avec son intervalle et sa valeur p…), avec les versions de Nuée, de R et des paquets R : ce à quoi Nuée compare les modèles quand il relance le paquet",
                                                   "Each model's key results as Nuée computed them for this package (the fit, each estimate with its interval and p-value…), with the versions of Nuée, R and the R packages: what Nuée compares the models with when it reruns the package")),
     if (!is.null(ct$qr)) sprintf("| %s | %s |", code(ct$qr), tx("Le code QR du lien qui ouvre ce paquet dans Nuée, dans un navigateur (pour une affiche, une diapositive ou un article)",
@@ -615,7 +637,8 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
       sprintf(tx("Les documents : %s recalcule leurs nombres, leurs graphiques et leurs tableaux à partir des données brutes (il faut [Quarto](https://quarto.org) et les paquets R knitr et rmarkdown) :",
                  "The documents: %s recomputes their numbers, plots and tables from the raw data (it takes [Quarto](https://quarto.org) and the R packages knitr and rmarkdown):"),
               code("quarto render documents/<document>.qmd")), "",
-      vapply(ct$documents, function(d) paste0("- ", code(paste0("documents/", d$nom, ".qmd")), if (nzchar(d$note)) paste0(" — ", texte_sur(d$note)) else ""), ""), ""),
+      vapply(ct$documents, function(d) paste0("- ", code(paste0("documents/", d$nom, ".qmd")), if (isTRUE(d$html)) paste0(tx(" (à lire : ", " (to read: "), code(paste0("documents/", d$nom, ".html")), ")") else "",
+                                              if (nzchar(d$note)) paste0(" — ", texte_sur(d$note)) else ""), ""), ""),
     paste("##", tx("L'ouvrir dans Nuée", "Open it in Nuée")), "",
     sprintf(tx("Nuée est libre et gratuit, pour Windows, macOS et Linux : %s (DOI %s). Fichier › Ouvrir un paquet de reproductibilité…, ou Fichier › Ouvrir sur ce .zip (Nuée %s ou plus récent) : Nuée vérifie chaque fichier par %s, ouvre le projet, ajuste de nouveau chaque modèle et dit si chacun redonne les résultats de %s.",
                "Nuée is free software, for Windows, macOS and Linux: %s (DOI %s). File › Open a reproducibility package…, or File › Open on this .zip (Nuée %s or later): Nuée checks each file against %s, opens the project, fits every model again and says whether each gives the results of %s."),
@@ -624,10 +647,14 @@ lignes_readme <- function(meta, langue, version, contenu, doi = NULL) {
     sprintf(tx("Avec Nuée %s, Fichier › Ouvrir, puis %s : les données, les modèles (Nuée les ajuste de nouveau) et les documents, tels qu'ils étaient ; Édition › Mettre à jour les données relit les données du CSV du paquet, changé ou non.",
                "With Nuée %s, File › Open, then %s: the data, the models (Nuée fits them again) and the documents, as they were; Edit › Update the data reads the data again from the package's CSV, changed or not."),
             "1.1", code(ct$nuee)),
-    if (!is.null(doi)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI, et le relance%s.",
-                                        "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI, and reruns it%s."),
-                                     sprintf("[%s](%s)", dans_navigateur, dans_navigateur),
-                                     if (!is.null(ct$qr)) sprintf(tx(" ; son code QR est %s", "; its QR code is %s"), code(ct$qr)) else "")),
+    if (!is.null(doi) && is.null(principal)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer : %s ouvre ce paquet dans Nuée, par son DOI, et le relance%s.",
+                                                             "Or in a browser, without installing anything: %s opens this package in Nuée, by its DOI, and reruns it%s."),
+                                                          sprintf("[%s](%s)", dans_navigateur, dans_navigateur),
+                                                          if (!is.null(ct$qr)) sprintf(tx(" ; son code QR est %s", "; its QR code is %s"), code(ct$qr)) else "")),
+    if (!is.null(doi) && !is.null(principal)) c("", sprintf(tx("Ou dans un navigateur, sans rien installer, sur un ordinateur comme sur un téléphone : %s ouvre ce paquet dans Nuée, par son DOI, sur son document « %s » ; Ouvrir tout le projet et Relancer les modèles sont à un clic%s.",
+                                                              "Or in a browser, without installing anything, on a computer as on a phone: %s opens this package in Nuée, by its DOI, on its document “%s”; Open the whole project and Rerun the models are a click away%s."),
+                                                           sprintf("[%s](%s)", dans_navigateur, dans_navigateur), texte_sur(principal$titre),
+                                                           if (!is.null(ct$qr)) sprintf(tx(" ; son code QR est %s", "; its QR code is %s"), code(ct$qr)) else "")),
     "",
     paste("##", tx("Vérifier les fichiers", "Check the files")), "",
     sprintf(tx("%s donne l'empreinte SHA-256 de chaque fichier. Dans ce dossier : %s (Linux), %s (macOS), ou %s dans PowerShell (Windows), fichier par fichier.",
@@ -714,13 +741,15 @@ ecrire_paquet <- function(projet, modeles, chemin, meta, documents = list(), lan
   s <- script_paquet(projet, modeles, file.path(racine, script), meta, langue, version)
   # les documents
   docs <- if (length(documents)) ecrire_documents_paquet(documents, file.path(racine, "documents")) else list(fichiers = character(0), documents = list())
-  # les résultats clés de chaque modèle, ceux que Nuée compare quand il relance le paquet ; le code QR de son lien
+  # les résultats clés de chaque modèle, ceux que Nuée compare quand il relance le paquet, et la page du
+  # document que son lien montre d'abord ; le code QR de son lien
   resultats <- fichier_resultats_paquet(langue)
-  ecrire_texte_paquet(file.path(racine, resultats), json_resultats_paquet(projet, modeles, langue, version, doi))
+  ecrire_texte_paquet(file.path(racine, resultats), json_resultats_paquet(projet, modeles, langue, version, doi, docs$principal))
   fichier_qr <- if (!is.null(qr)) fichier_qr_paquet(langue)
   if (!is.null(qr)) writeBin(charToRaw(enc2utf8(gsub("\r\n?", "\n", qr))), file.path(racine, fichier_qr))
   contenu <- list(nuee = fichier_nuee, csv = csv, dictionnaire = dictionnaire, script = if (!is.null(s$script)) script, documents = docs$documents,
-                  modeles = s$modeles, ecarts = s$ecarts, paquets = s$paquets, n_obs = nrow(tab), n_colonnes = ncol(tab), resultats = resultats, qr = fichier_qr)
+                  principal = docs$principal, modeles = s$modeles, ecarts = s$ecarts, paquets = s$paquets, n_obs = nrow(tab), n_colonnes = ncol(tab),
+                  resultats = resultats, qr = fichier_qr)
   ecrire_texte_paquet(file.path(racine, "LICENSE"), lignes_licence(meta))
   ecrire_texte_paquet(file.path(racine, "README.md"), lignes_readme(meta, langue, version, contenu, doi))
   ecrire_texte_paquet(file.path(racine, "CITATION.cff"), lignes_cff(meta, langue, version, s$paquets, doi))

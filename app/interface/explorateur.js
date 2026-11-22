@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { el, fmt, icone, menuContextuel } from './ui.js';
 import { ICONES_VUES } from './commandes.js';
 import { MOTEUR_WEBR } from './api.js';
+import { etroit } from './etroit.js';
 
 const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
@@ -50,8 +51,10 @@ export function rendreExplorateur(conteneur, app) {
     const ligne = el('div', {
       class: `noeud n${niveau} ${classe}` + (actif === cle ? ' actif' : ''), title: titre || '', tabindex: -1,
       role: 'treeitem', 'aria-level': niveau, 'aria-selected': String(actif === cle), 'aria-expanded': enfants ? String(ouvert) : null, 'data-cle': cle,
-      onclick: (e) => { e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); },
-      ondblclick: (e) => { e.stopPropagation(); if (double) double(); else if (enfants) basculer(); },
+      // (on a phone, etroit.js, one tap does what a double click does elsewhere: a folder opens or
+      // closes, a view opens in the explorer's place; a double tap's dblclick then does nothing more)
+      onclick: (e) => { e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); if (etroit()) { if (enfants) basculer(); else if (double) double(); } },
+      ondblclick: (e) => { e.stopPropagation(); if (etroit()) return; if (double) double(); else if (enfants) basculer(); },
       oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); if (menu) menuContextuel(e.clientX, e.clientY, menu()); },
       onkeydown: (e) => { if (e.key === 'Enter') { if (double) double(); else if (enfants) basculer(); } else if (e.key === ' ') { e.preventDefault(); app.choisirNoeud(cle); if (clic) clic(); } },
     },

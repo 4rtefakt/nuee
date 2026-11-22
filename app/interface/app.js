@@ -45,7 +45,9 @@ import { installerReglages } from './reglages.js';
 import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
 import { dialoguePaquet } from './paquet.js';
-import { ouvrirPaquet, choisirPaquet, ouvrirLien } from './relancer.js';
+import { ouvrirPaquet, choisirPaquet } from './relancer.js';
+import { demarrerLecture } from './lecture.js';
+import { etroit, unAUn } from './etroit.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -184,7 +186,8 @@ const app = {
   choisirNoeud(cle) {
     etat.noeud = cle;
     const n = /\/m\/([^/]+)$/.exec(cle);  // a model chosen in the explorer: its page comes to the front
-    const page = n && dock && dock.getPanel(`page:${n[1]}`);
+    // (not on a phone, where it would take the explorer's place: a view opened from it does, etroit.js)
+    const page = n && dock && !etroit() && dock.getPanel(`page:${n[1]}`);
     if (page) page.api.setActive();
     // (else the explorer comes to the front, as when a click brings the focus into it: the focus
     // may already be there, left on the node that opened the view in front, and dockview then sees
@@ -1265,6 +1268,19 @@ const app = {
     if (p) { p.api.close(); return; }
     dock.addPanel({ id: 'explorateur', component: 'explorateur', title: t('explorateur'), position: { direction: 'left' }, initialWidth: 300 });
   },
+  // The phone's layout, one group at a time (etroit.js): the explorer brought to the front (put back
+  // if it was closed), or, when it is in front, the view that was before it
+  explorateurDevant() {
+    let ex = dock.getPanel('explorateur');
+    if (ex && dock.activeGroup === ex.api.group) {
+      const p = (dernierContenu && dock.getPanel(dernierContenu)) || dock.panels.find((x) => !EXTERNES.includes(x.id)) || dock.getPanel('accueil');
+      if (p) p.api.setActive();
+      return;
+    }
+    if (!ex) app.basculerExplorateur();
+    ex = dock.getPanel('explorateur');
+    if (ex) ex.api.setActive();
+  },
 
   themeSombre: () => document.documentElement.dataset.theme === 'sombre',
   changerTheme(sombre, propager = true) {
@@ -2297,11 +2313,13 @@ function composantPage() {
   const element = el('div', { class: 'page-modele' });
   let id = null;
   let interne = null;
+  let finUnAUn = null;
   return {
     element,
     init(parameters) {
       id = parameters.params.modele;
       interne = DV.createDockview(element, optionsDock(true));
+      finUnAUn = unAUn(interne);  // (a phone's screen: one of its views at a time, etroit.js)
       pages.set(id, interne);
       elementsPages.set(id, element);
       new ResizeObserver(() => dimensionnerPage(id)).observe(element);
@@ -2325,6 +2343,7 @@ function composantPage() {
     dispose() {
       if (pages.get(id) === interne) { pages.delete(id); elementsPages.delete(id); }
       derniers.delete(id);
+      if (finUnAUn) finUnAUn();
       if (interne) interne.dispose();
     },
   };
@@ -2581,6 +2600,15 @@ function rendreMenus() {
     if (d.cle === 'm_fenetre' && bureau) fenetres = await bureau.fenetres();
     return menus(app, C).find((x) => x.cle === d.cle).items();
   } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
+  // (the phone's layout: the explorer brought to the front and back, before the menus; hidden on a
+  // larger screen, style.css: etroit.js)
+  let b = document.getElementById('bouton-explorateur');
+  const entete = document.getElementById('entete');
+  if (!b && entete) {
+    b = el('button', { id: 'bouton-explorateur', class: 'icone-seule', onclick: () => app.explorateurDevant() }, icone('panel-left'));
+    entete.prepend(b);
+  }
+  if (b) { b.title = t('explorateur'); b.setAttribute('aria-label', t('explorateur')); }
 }
 
 // The toolbar is one Tab stop: left and right (Home, End) go from button to button. Its views follow
@@ -3010,6 +3038,7 @@ async function demarrerPrincipal() {
   rendreMenus();
   rendreBarreOutils();
   dock = DV.createDockview(document.getElementById('dock'), optionsDock());
+  unAUn(dock);  // (a phone's screen: one group at a time, the explorer one of them, etroit.js)
   document.getElementById('dock').addEventListener('contextmenu', menuOnglet);
   dock.onDidActivePanelChange(() => {
     const a = dock.activePanel;
@@ -3046,9 +3075,6 @@ async function demarrerPrincipal() {
   if (ID_FENETRE === 'principale' && bureau && bureau.seance && etat.seance.precedente.length && !Object.keys(etat.projets).length
     && await bureau.seance.rouvrir().catch(() => false) && !(await bureau.secoursListe().catch(() => [])).length) await app.rouvrirSeance();
   if (params.get('ouvrir')) await app.ouvrirChemin(params.get('ouvrir'));
-  // (the browser version's link of a reproducibility package, https://nuee.io/app/?doi=<doi> or
-  // ?record=<id>: fetched from Zenodo, opened and rerun, relancer.js)
-  if (MOTEUR_WEBR && ID_FENETRE === 'principale' && (params.get('doi') || params.get('record'))) ouvrirLien(app, { doi: params.get('doi'), record: params.get('record') });
   if (!VUE_SEULE) {
     document.addEventListener('dragover', (e) => {
       if (![...e.dataTransfer.types].includes('Files')) return;  // not the panels' own tabs
@@ -3102,7 +3128,13 @@ async function siPaquet(lu, nom = null) {
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';
 document.documentElement.lang = langueActuelle();
 document.title = t('titre');
-if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
+// (the browser version's link of a reproducibility package, https://nuee.io/app/?doi=<doi> or
+// ?record=<id>: fetched from Zenodo, its main document shown first, without R, then the application
+// started for the whole project or the rerun, lecture.js)
+const lienPaquet = MOTEUR_WEBR && ID_FENETRE === 'principale' && (params.get('doi') || params.get('record'));
+if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue();
+else if (lienPaquet) demarrerLecture(app, { doi: params.get('doi'), record: params.get('record') }, demarrerPrincipal);
+else demarrerPrincipal();
 
 // (for the checks that use the page as a person would: import('./app.js'), tests/essai_navigateur.mjs)
 export { app };

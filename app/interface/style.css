@@ -1005,3 +1005,44 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
   color: var(--erreur); border-color: var(--erreur); background: var(--fond-panneau); box-shadow: var(--ombre); }
 #arret-calcul button:disabled { opacity: .8; color: var(--texte-doux); border-color: var(--bord); }
 #arret-calcul .icone { width: 14px; height: 14px; }
+
+/* ---------------------------------------------------------------- a phone's screen
+   (etroit.js: one group of views at a time, the explorer one of them, its button before the menus;
+   the toolbar hidden, its commands in the menus and its views in the explorer; larger rows to tap) */
+#bouton-explorateur { display: none; }
+body.etroit #entete { display: flex; align-items: stretch; }
+body.etroit #bouton-explorateur { display: inline-flex; flex: none; padding: 4px 10px; border-radius: 0; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
+body.etroit #bouton-explorateur .icone { width: 18px; height: 18px; color: var(--accent); }
+body.etroit #menus { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+body.etroit #menus .logo { display: none; }
+body.etroit .menu-haut { padding: 6px 9px; }
+body.etroit #barre-outils { display: none; }
+body.etroit .actions-groupe { display: none; }
+body.etroit .noeud { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+body.etroit .noeud .fleche { width: 20px; }
+body.etroit .grille-champs { grid-template-columns: minmax(0, 1fr); }
+body.etroit #statut { gap: 8px; padding: 2px 8px; }
+
+/* ---------------------------------------------------------------- the reader's page of a package's link
+   (lecture.js: its title, authors and DOI, the document to read, Open the whole project and Rerun
+   the models; then the document as its authors wrote it, as wide as the screen) */
+.lecture { position: fixed; inset: 0; z-index: 800; display: flex; flex-direction: column; background: var(--fond); }
+.lecture .logo { width: 26px; height: 26px; flex: none; }
+.debut-lecture { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; text-align: center; }
+.debut-lecture .logo { width: 44px; height: 44px; }
+.attente-lecture { margin: 0; color: var(--texte-doux); }
+.tete-lecture { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 14px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
+.titre-lecture { flex: 1 1 18em; min-width: 0; }
+.titre-lecture h1 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auteurs-lecture { margin: 2px 0 0; font-size: 12px; color: var(--texte-doux); overflow-wrap: anywhere; }
+.auteurs-lecture a { color: var(--accent); }
+.actions-lecture { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actions-lecture button { padding: 6px 12px; }
+.choix-lecture { max-width: 100%; padding: 5px 6px; }
+.document-lecture { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+@media (max-width: 700px) {
+  .tete-lecture { padding: 8px 10px; }
+  .titre-lecture h1 { white-space: normal; font-size: 15px; }
+  .actions-lecture { width: 100%; }
+  .actions-lecture button { flex: 1 1 auto; justify-content: center; }
+}

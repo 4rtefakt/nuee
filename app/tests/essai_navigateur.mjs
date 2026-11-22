@@ -14,8 +14,12 @@
 // test, a PCoA's permutations in one R), the next request as usual; reloaded, the plugin and the
 // approvals still there. Then 1.2's link of a reproducibility package, ?doi=, against a stand-in
 // for Zenodo's API (Playwright's routes; zenodo.org never resolves in this browser): the package
-// written in the page opened from its record and rerun, every model giving its deposited results,
-// then chosen in the page (File › Open, File › Open a reproducibility package…); a concept DOI, a
+// written in the page, with a document, its main one, shown first from its record without R (the
+// reader's page, lecture.js), then rerun, every model giving its deposited results; Open the whole
+// project, its document in front; at a phone's size, the reader's page as wide as the screen, then
+// the project one view at a time, the explorer behind its button, one click opening a view in its
+// place (etroit.js); then the package chosen in the page (File › Open, File › Open a
+// reproducibility package…); a concept DOI, a
 // record, an unknown DOI, another one, not a DOI, no network; the link of an unknown DOI and of a
 // record without a package said plainly; nothing asked of another site. Then 1.2's History in the
 // page, in a tab of its own: the example saved (downloaded, kept at its place in the browser's
@@ -724,9 +728,10 @@ try {
 
   // ---- 1.2, a reproducibility package's link: https://nuee.io/app/?doi=<doi>, against a stand-in for
   // Zenodo's API (Playwright's routes; zenodo.org itself never resolves here). The package written in
-  // the page (the example's four models, a mixed model and a PCoA, with the DOI of record 7000002) is
-  // the record's .zip, beside a PDF; its link opens it in a tab of its own and reruns it: each model
-  // gives its deposited results. A concept DOI gives the record of its latest version (Zenodo
+  // the page (the example's four models, a mixed model and a PCoA, a document citing M1, its main one,
+  // with the DOI of record 7000002) is the record's .zip, beside a PDF; its link opens it in a tab of
+  // its own: the document first, without R (lecture.js), then Rerun the models: each model gives its
+  // deposited results. A concept DOI gives the record of its latest version (Zenodo
   // redirects /api/records/<concept> to it, which fetch follows: the stand-in answers that record), a
   // record by its id; a DOI Zenodo doesn't know, a record without a package and no network are said.
   const paquet = await page.evaluate(async () => {
@@ -741,8 +746,15 @@ try {
     await app.calculerDiscret(p.id, (await a.demander('ajuster', { projet: p.id, type: 'PCOA', x: [u('variety')], y: ['sugar', 'acidity', 'firmness', 'starch'].map(u), echelle: 'none',
       options: { distance: 'gower', permutations: 99, graine: 1 }, nom: 'P1' })).numero);
     const ids = app.modelesSeance(p.id).map((m) => m.id);
-    const r = await a.demander('paquet', { projet: p.id, meta: { titre: 'Orchards rerun', auteurs: [{ prenom: 'Alice', nom: 'Exemple', orcid: '' }], licence: 'CC-BY-4.0' },
-      modeles: ids, documents: '[]', session: app.sessionProjet(p.id), doi: '10.5281/zenodo.7000002', version: 'essai', langue: 'en' });
+    // (the document, as the package's dialog writes it: documents.js, documentPourPaquet; its page
+    // filled in, the main one)
+    const texte = '---\ntitle: What the apples say\n---\n\nThe PCA’s Q² is {{M1.Q2}}.\n\n{{M1.scores | Scores of the 120 apples}}\n\n{{M1.table.resume | The components}}\n';
+    const rd = await a.demander('document_enregistrer', { projet: p.id, titre: 'What the apples say', langue: 'en', texte });
+    app.majProjet(rd.projet);
+    const doc = [].concat(rd.projet.documents)[0];
+    const d = await (await import('./documents.js')).documentPourPaquet(app, p.id, doc.id, 'What the apples say');
+    const r = await a.demander('paquet', { projet: p.id, meta: { titre: 'Orchards rerun', auteurs: [{ prenom: 'Alice', nom: 'Exemple', orcid: '' }], licence: 'CC-BY-4.0', principal: doc.id },
+      modeles: ids, documents: JSON.stringify([{ ...d, principal: true }]), session: app.sessionProjet(p.id), doi: '10.5281/zenodo.7000002', version: 'essai', langue: 'en' });
     const o = await a.lireFichier(r.chemin);
     let s = '';
     for (let i = 0; i < o.length; i += 8192) s += String.fromCharCode(...o.subarray(i, i + 8192));
@@ -771,17 +783,44 @@ try {
     return json(404, { status: 404, message: 'The persistent identifier does not exist.' });
   });
   const autresSites = [];
-  const ouvrirLien = async (requete) => {
+  // (`taille`: a phone's screen; the page's own requests in p.requetes)
+  const ouvrirLien = async (requete, taille = null) => {
     const p = await contexte.newPage();
+    p.requetes = [];
     p.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
     p.on('console', noterConsole);
-    p.on('request', (r) => { const h = new URL(r.url()).hostname; if (![new URL(adresse).hostname, 'zenodo.org', 'repo.r-wasm.org'].includes(h) && !/^(data|blob):/.test(r.url())) autresSites.push(r.url()); });
+    p.on('request', (r) => {
+      p.requetes.push(r.url());
+      const h = new URL(r.url()).hostname;
+      if (![new URL(adresse).hostname, 'zenodo.org', 'repo.r-wasm.org'].includes(h) && !/^(data|blob):/.test(r.url())) autresSites.push(r.url());
+    });
     await p.addInitScript(() => { window.nueeDemandes = []; window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`)); });
+    if (taille) await p.setViewportSize(taille);
     await p.goto(`${adresse}?${requete}`);
     return p;
   };
+  // the reader's page (lecture.js): its document in its frame (sandboxed: no script, nothing of the
+  // page), what the page shows of it
+  const pageLecteur = (p) => attendre(p, () => {
+    const f = document.querySelector('#lecture iframe.document-lecture');
+    if (!f || !f.srcdoc) return null;
+    return { titre: document.querySelector('.titre-lecture h1').textContent, sandbox: f.getAttribute('sandbox'), largeur: Math.round(f.getBoundingClientRect().width),
+      fenetre: innerWidth, defile: document.documentElement.scrollWidth > innerWidth + 1, demandes: window.nueeDemandes.length, violations: window.__violations.length,
+      document: /<h1 class="titre-document">What the apples say<\/h1>/.test(f.srcdoc), q2: /Q² is <span class="ref"[^>]*>0[.,]\d+<\/span>/.test(f.srcdoc),
+      figure: /<figure class="ref-figure"[^>]*><img src="data:image\/png;base64,/.test(f.srcdoc), tableau: /<div class="tableau-defile"><table>/.test(f.srcdoc),
+      boutons: [...document.querySelectorAll('.actions-lecture button')].map((b) => b.textContent) };
+  }, null, 120000).catch((e) => ({ erreur: e.message }));
+  // (R in the page: webR's files, R's packages)
+  const avecR = (p) => p.requetes.some((u) => /\/webr\/|repo\.r-wasm\.org/.test(u));
   const debutLien = Date.now();
   const lien = await ouvrirLien('doi=10.5281/zenodo.7000002');
+  const lu = await pageLecteur(lien);
+  const sansR = !avecR(lien);
+  verifier('le lien ?doi= : le document principal du paquet montré d’abord, rempli (Q², figure, tableau), dans un cadre sans script, sans R (ni ses fichiers ni une demande), Ouvrir tout le projet et Relancer les modèles offerts',
+    lu.document && lu.q2 && lu.figure && lu.tableau && lu.sandbox === 'allow-popups allow-popups-to-escape-sandbox' && !lu.demandes && sansR && !lu.violations && (lu.boutons || []).length === 2,
+    { ...lu, sansR });
+  if (options.capture !== false) await lien.screenshot({ path: path.join(sortie, 'lecture.png') });
+  await lien.click('.relancer-lecture');
   const rapport = await attendre(lien, async (n) => {
     const c = [...document.querySelectorAll('.changements')].find((x) => x.querySelector('.paquet-relance .bilan-relance'));
     if (!c) return null;
@@ -798,6 +837,61 @@ try {
       && JSON.stringify(demandesZenodo) === JSON.stringify(['GET /api/records/7000002', `GET /api/records/7000002/files/${encodeURIComponent(paquet.nom)}/content`]),
     `${rapport.erreur || rapport.bilan} (${res.lien_s.toFixed(1)} s) ; ${demandesZenodo.join(' | ')}`);
   if (options.capture !== false) await lien.screenshot({ path: path.join(sortie, 'lien.png') });
+  // Open the whole project: the project as its authors left it, its main document in front (with
+  // its references live), nothing compared
+  const entier = await ouvrirLien('doi=10.5281/zenodo.7000002');
+  await pageLecteur(entier);
+  await entier.click('.ouvrir-lecture');
+  // (the document's view on screen, its preview resolved; the tab in front of its own group)
+  const documentDevant = (p) => attendre(p, async () => {
+    const { app } = await import('./app.js');
+    const projet = app.projet(app.projetActif());
+    const apercu = document.querySelector('.document .apercu-document');
+    if (!projet || !apercu || !apercu.offsetWidth || !/Q² is 0[.,]\d/.test(apercu.textContent)) return null;
+    const groupe = apercu.closest('.dv-groupview');
+    const onglet = groupe && groupe.querySelector('.dv-tab.dv-active-tab');
+    return { projet: projet.nom, onglet: onglet ? onglet.textContent.trim() : '', comparaison: !!document.querySelector('.changements'), lecture: !!document.querySelector('#lecture') };
+  }, null, 600000).catch((e) => ({ erreur: e.message }));
+  const projetEntier = await documentDevant(entier);
+  verifier('Ouvrir tout le projet : le projet du paquet, son document principal devant, ses références vivantes, rien de comparé',
+    projetEntier.projet === 'Orchards rerun.nuee' && /What the apples say/.test(projetEntier.onglet) && !projetEntier.comparaison && !projetEntier.lecture, projetEntier);
+  await entier.close();
+  // a phone's screen (390 × 844): the reader's page as wide as it, nothing beside; then the whole
+  // project one view at a time (etroit.js), the explorer behind its button, one click opening a
+  // view in its place
+  const TELEPHONE = { width: 390, height: 844 };
+  const tel = await ouvrirLien('doi=10.5281/zenodo.7000002', TELEPHONE);
+  const luTel = await pageLecteur(tel);
+  verifier('sur un téléphone, la page du lecteur à la largeur de l’écran, son document dans toute la largeur, rien qui défile de côté',
+    luTel.document && luTel.largeur === luTel.fenetre && luTel.fenetre === TELEPHONE.width && !luTel.defile, luTel);
+  if (options.capture !== false) await tel.screenshot({ path: path.join(sortie, 'lecture-telephone.png') });
+  await tel.click('.ouvrir-lecture');
+  // (the groups of the main dock on screen, the tab in front of each)
+  const groupes = (p) => p.evaluate(() => ({
+    etroit: document.body.classList.contains('etroit'), defile: document.documentElement.scrollWidth > innerWidth + 1,
+    bouton: !!document.querySelector('#bouton-explorateur') && document.querySelector('#bouton-explorateur').offsetWidth > 0,
+    outils: document.querySelector('#barre-outils').offsetHeight,
+    vus: [...document.querySelectorAll('#dock .dv-groupview')].filter((g) => !g.closest('.page-modele') && g.offsetWidth > 0 && g.offsetHeight > 0)
+      .map((g) => ({ largeur: Math.round(g.offsetWidth), onglet: ((g.querySelector('.dv-tab.dv-active-tab') || {}).textContent || '').trim() })) }));
+  const unSeul = (x, motif) => x.etroit && !x.defile && x.bouton && !x.outils && x.vus.length === 1 && x.vus[0].largeur >= TELEPHONE.width - 2 && motif.test(x.vus[0].onglet);
+  const docTel = await documentDevant(tel);
+  const devantDoc = docTel.erreur ? docTel : await groupes(tel);
+  // (the recovery copies of the tabs closed above, which a tab starting offers: ignored here)
+  await tel.waitForTimeout(1000);
+  const ignorer = await libelle(tel, 'ignorer');
+  await tel.evaluate((x) => { const b = [...document.querySelectorAll('.fond-dialogue button')].find((y) => y.textContent.trim() === x); if (b) b.click(); }, ignorer);
+  await tel.click('#bouton-explorateur');
+  await tel.waitForTimeout(500);
+  const devantExplorateur = await groupes(tel);
+  // one click on M1's Loadings, under the fitted models: its view in the explorer's place
+  const cleChargements = await tel.evaluate(() => { const l = [...document.querySelectorAll('.arbre [role="treeitem"]')].find((x) => /\/m\/[^/]+\/loadings$/.test(x.dataset.cle || '')); return l ? l.dataset.cle : null; });
+  if (cleChargements) await tel.click(`.arbre [role="treeitem"][data-cle="${cleChargements}"] .libelle`);
+  const devantVue = await attendre(tel, () => { const x = document.querySelector('.page-modele .dv-tab.dv-active-tab'); return x && /Loadings/.test(x.textContent) && document.querySelector('.page-modele .js-plotly-plot'); }, null, 300000)
+    .then(() => groupes(tel), (e) => ({ erreur: e.message }));
+  verifier('sur un téléphone, le projet une vue à la fois : son document dans tout l’écran, l’explorateur derrière son bouton, la barre d’outils cachée ; un clic sur une vue de l’explorateur l’ouvre à sa place',
+    unSeul(devantDoc, /What the apples say/) && unSeul(devantExplorateur, /explorer/i) && !!cleChargements && unSeul(devantVue, /M1/), { devantDoc, devantExplorateur, cleChargements, devantVue });
+  if (options.capture !== false) await tel.screenshot({ path: path.join(sortie, 'telephone.png') });
+  await tel.close();
   const resolutions = await lien.evaluate(async () => {
     const m = await import('./relancer.js');
     const id = async (x) => { try { return (await m.recordZenodo(x)).id; } catch (e) { return `${e.genre} : ${e.message}`; } };

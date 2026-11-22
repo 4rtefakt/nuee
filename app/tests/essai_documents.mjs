@@ -8,7 +8,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import markdownit from 'markdown-it';
 import { pluginReferences, analyser, versHTML, versDocx, versQmd, lireEntete, referencesDansTexte, fixerEntete, listeEntete, referencesReproductibles,
-  nomFichierQuarto, sansMarkdown } from '../interface/rendu_document.js';
+  nomFichierQuarto, sansMarkdown, pageHTML } from '../interface/rendu_document.js';
 import { lireBibtex, formaterCitations, joindreReferences, versBibtex, SANS_ZOTERO } from '../interface/bibliographie.js';
 
 let echecs = 0;
@@ -88,6 +88,11 @@ contient('le code et l’échappé restent tels quels', html, ['<code>{{M1.Q2}}<
 contient('saut de page, erreur avec sa raison', html, ['<p class="saut-page"></p>', 'class="ref erreur"', '<small>— M1.inconnu']);
 contient('dans une liste et dans un tableau', html, ['<li><span class="ref" title="{{M1.A}}">2</span></li>', '<td style="text-align:right"><span class="ref" title="{{M1.Q2}}">0,65</span></td>']);
 contient('le titre du document', html, ['<h1 class="titre-document">Essai</h1>', 'A. Auteur']);
+// the HTML page (Compile › HTML, and each document's page in a reproducibility package, which its link
+// shows first): as wide as a phone's screen, a wide table scrolling on its own
+const page = pageHTML(html, 'Essai', 'fr');
+contient('la page HTML : à la largeur de l’écran d’un téléphone, ses tableaux défilant de côté', page,
+  ['<meta name="viewport" content="width=device-width, initial-scale=1">', '<div class="tableau-defile"><table>', '.tableau-defile { overflow-x: auto; }']);
 // a figure's source: the engine's PNG, or the preview's blob: copy of it (documents.js, urlApercu); anything else dropped
 const figure = (image) => versHTML(md, analyser(md, '{{M1.scores}}\n'), [{ genre: 'figure', image, numero: 1 }], libelles);
 const blob = 'blob:http://127.0.0.1:52817/0b6f2d9e-6c1a-4b0e-9a55-3f1d2e4c5b6a';

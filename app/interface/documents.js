@@ -1492,6 +1492,8 @@ async function preparerQmd(app, s, r, nom, rep, titre) {
 // and its CSL style; the figures R doesn't redraw (base64 PNG, at their path beside it); and the
 // cited models' Export to R scripts with their data, which the engine writes in a folder of its
 // session (`fichiers`, each to go at its path in `relatifs`). `erreurs`: its references not resolved.
+// And `html`, the document as Compile › HTML writes it (its numbers, plots and tables filled in),
+// which opens in any browser: the one readers of the package's link see first (lecture.js).
 export async function documentPourPaquet(app, pid, id, nom) {
   await chargerEditeur();
   const d = await demander('document', { projet: pid, id });
@@ -1502,7 +1504,8 @@ export async function documentPourPaquet(app, pid, id, nom) {
   const r = await resoudreDocument(app, s, texte);
   const rep = await demander('document_reproductible', { projet: pid, langue: s.langue, version: VERSION, nom, dossier: null, ...referencesReproductibles(r.resolus) });
   const q = await preparerQmd(app, s, r, nom, rep, s.titre || nom);
-  return { nom, titre: s.titre, qmd: q.texte, bib: q.texteBib, csl: q.csl ? { nom: q.csl, texte: q.texteCsl } : null,
+  const html = pageHTML(versHTML(md, r.analyse, r.resolus, libelles(s.langue), r.citations), s.titre || nom, s.langue);
+  return { nom, titre: s.titre, html, qmd: q.texte, bib: q.texteBib, csl: q.csl ? { nom: q.csl, texte: q.texteCsl } : null,
     figures: q.figures.map((x) => ({ chemin: `${q.dossier}/figure-${x.numero}.png`, png: String(x.image).split(',')[1] || '' })),
     fichiers: [].concat(rep.fichiers || []), relatifs: [].concat(rep.relatifs || []),
     erreurs: r.resolus.filter((x) => x && x.erreur).length + (r.citations ? r.citations.inconnues.length : 0), note: noteReproductible(rep) };
