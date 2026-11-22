@@ -34,7 +34,8 @@ verifier_arret <- local({
 # un tour d'une boucle oublie celles, plus profondes, qui ont fini avant lui. Dans le calculateur des
 # calculs en arrière-plan (arriere_plan.R), où options(nuee.progression) est un fichier, les niveaux y
 # sont écrits quatre fois par seconde au plus, avec le numéro de la tâche, pour le serveur qui le lit
-# (demande progression).
+# (demande progression). Dans le navigateur, c'est une fonction, qui les envoie à la page aussi souvent
+# (navigateur.R : progres_navigateur).
 PROGRES <- new.env(parent = emptyenv())
 PROGRES$niveaux <- list()
 PROGRES$ecrit <- 0
@@ -45,7 +46,10 @@ noter_progres <- function(fait, total, quoi, profondeur) {
   PROGRES$niveaux <- n
   f <- getOption("nuee.progression")
   maintenant <- proc.time()[[3]]
-  if (length(f) && nzchar(f[1]) && maintenant - PROGRES$ecrit >= 0.25) {
+  if (is.function(f) && maintenant - PROGRES$ecrit >= 0.25) {
+    PROGRES$ecrit <- maintenant
+    tryCatch(f(structure(n, tache = PROGRES$tache)), error = function(e) NULL, warning = function(w) NULL)
+  } else if (!is.function(f) && length(f) && nzchar(f[1]) && maintenant - PROGRES$ecrit >= 0.25) {
     PROGRES$ecrit <- maintenant
     tryCatch({
       saveRDS(structure(n, tache = PROGRES$tache), paste0(f[1], ".tmp"), compress = FALSE)

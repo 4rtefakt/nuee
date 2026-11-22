@@ -83,6 +83,47 @@ calcul_arretable <- function(expr) {
   allowInterrupts(withCallingHandlers(expr, interrupt = function(c) invokeRestart("arreter_calcul")))
 }
 
+# ---------------------------------------------------------------- Où en est le calcul
+
+# Le navigateur n'a qu'un R : la page ne peut pas lui demander où en est son calcul pendant qu'il le
+# fait (la demande progression attendrait derrière lui). Il le dit donc lui-même à la page, sur le
+# canal de l'onglet (un BroadcastChannel, options(nuee.canal_progres) : moteur_webr.js) : au début de
+# chaque demande, laquelle (progres_tache) ; puis les tours de ses boucles, quatre fois par seconde au
+# plus (options(nuee.progression = progres_navigateur) : arret.R, noter_progres), ce que la demande
+# progression rend dans l'application de bureau (arriere_plan.R : arriere_plan_progression), lu par
+# app/interface/progression.js. Le morceau d'un calcul partagé que fait ce R (moteur_webr.js :
+# partager) compte les tours de son morceau ; `echelle` (le tout sur le morceau) dit sa boucle la plus
+# extérieure sur le tout (« Permutation 400 sur 999 »), les morceaux avançant ensemble.
+progres_tache <- function(tache, nom, echelle = 1) {
+  hors_interruptions({
+    PROGRES$niveaux <- list()
+    PROGRES$ecrit <- 0
+    PROGRES$tache <- tache
+    PROGRES$nom <- nom
+    PROGRES$debut <- proc.time()[[3]]
+    PROGRES$echelle <- echelle
+    progres_navigateur(structure(list(), tache = tache))
+  })
+  invisible()
+}
+progres_navigateur <- function(niveaux) {
+  canal <- getOption("nuee.canal_progres")
+  if (!length(canal) || !nzchar(canal[1])) return(invisible())
+  etapes <- lapply(niveaux, function(x) list(quoi = x$quoi, fait = x$fait, total = x$total))
+  e <- PROGRES$echelle %||% 1
+  if (length(etapes) && is.finite(e) && e != 1) {
+    etapes[[1]]$total <- round(etapes[[1]]$total * e)
+    etapes[[1]]$fait <- min(etapes[[1]]$total, round(etapes[[1]]$fait * e))
+  }
+  message <- list(tache = attr(niveaux, "tache"), nom = PROGRES$nom %||% "",
+                  secondes = round(proc.time()[[3]] - (PROGRES$debut %||% proc.time()[[3]]), 2),
+                  fraction = fraction_progres(niveaux), etapes = I(etapes))
+  js <- sprintf("(globalThis.nueeProgres || (globalThis.nueeProgres = new BroadcastChannel(%s))).postMessage(%s), 0",
+                jsonlite::toJSON(canal[1], auto_unbox = TRUE), jsonlite::toJSON(message, auto_unbox = TRUE, null = "null", digits = NA))
+  tryCatch(getExportedValue("webr", "eval_js")(js), error = function(e) NULL)
+  invisible()
+}
+
 # ---------------------------------------------------------------- les paquets d'un code R, d'un greffon
 
 # Les paquets que demande un modèle de code R ou un greffon (code.R, greffons.R), dans le navigateur :

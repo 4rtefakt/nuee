@@ -7,6 +7,7 @@
 import { langueActuelle } from './i18n.js';
 import { PAQUETS_WEBR, SANS_WEBR } from './paquets_webr.js';
 import { magasin } from './secours_navigateur.js';
+import { CANAL_PROGRES, finTache } from './progression.js';
 import { VERSION } from './nouveautes.js';
 
 const TEXTES = {
@@ -152,7 +153,8 @@ async function nouveauR(progres = () => {}, aide = false) {
       if (is.call(e) && identical(e[[1]], as.name("<-")) && identical(e[[2]], as.name("appli"))) break
       eval(e, globalenv())
     }
-    rm(e)`, { env: { absents: absents.length ? absents : [''], sans_webr: Object.keys(SANS_WEBR), greffons: GREFFONS, version: VERSION } });
+    rm(e)
+    options(nuee.progression = progres_navigateur, nuee.canal_progres = canal)`, { env: { absents: absents.length ? absents : [''], sans_webr: Object.keys(SANS_WEBR), greffons: GREFFONS, version: VERSION, canal: CANAL_PROGRES } });
   const empreintes = approuves();
   if (empreintes.length) await webR.evalRVoid('approuver_codes(empreintes)', { env: { empreintes } });
   return { webR, absents };
@@ -193,9 +195,10 @@ export async function demarrer() {
       .catch((e) => { console.warn('Nuée : calcul partagé indisponible', e); return null; });
   }
   // a long request shared out: prepared here, its pieces in the other R and here, put together here
-  async function partager(nom, corps, langue, autres) {
+  // (`tache`: its number, which R says where it is under: navigateur.R, progres_tache)
+  async function partager(nom, corps, langue, autres, tache = 0) {
     const env = { nom, corps: JSON.stringify(corps ?? {}), langue };
-    const prep = await traiter(webR, 'travail_preparer(nom, charToRaw(enc2utf8(corps)), langue)', env);
+    const prep = await traiter(webR, '{ progres_tache(tache, nom); travail_preparer(nom, charToRaw(enc2utf8(corps)), langue) }', { ...env, tache });
     if (prep.statut !== 200) return prep;
     const { fichier, n } = prep.json;
     const octets = await webR.FS.readFile(fichier);
@@ -209,7 +212,9 @@ export async function demarrer() {
     const sorties = await Promise.all(tous.map(async (r, i) => {
       const [debut, fin] = morceaux[i];
       const ici = `/tmp/morceau-${i + 1}.rds`;
-      if (r === webR) return (await webR.evalRString(morceau(debut, fin, fichier, ici))) === 'fait' ? ici : null;
+      // (this R's piece says its rounds on the whole, the pieces going on together; under its
+      // request's number again: another request may have come in this R since the preparation)
+      if (r === webR) return (await webR.evalRString(`progres_tache(${tache}, "${nom}", ${n / (fin - debut + 1)}); ${morceau(debut, fin, fichier, ici)}`)) === 'fait' ? ici : null;
       await r.FS.writeFile('/tmp/travail.rds', octets);
       if ((await r.evalRString(morceau(debut, fin, '/tmp/travail.rds', '/tmp/morceau.rds'))) !== 'fait') return null;
       await webR.FS.writeFile(ici, await r.FS.readFile('/tmp/morceau.rds'));
@@ -222,6 +227,7 @@ export async function demarrer() {
   let depot = 0;
   let file = Promise.resolve();  // (one shared request at a time: the other R hold one task each)
   let enCours = 0;  // (requests R is computing or about to: Stop interrupts it only then)
+  let taches = 0;  // (each request's number, with which R says where it is: progression.js)
   let partage = null;  // (the other R of the shared request under way)
   let arretPartage = false;  // (and whether Stop came meanwhile)
   return {
@@ -229,15 +235,17 @@ export async function demarrer() {
     async demander(nom, corps, langue) {
       const autres = PARTAGEABLES[nom] && PARTAGEABLES[nom](corps ?? {}) >= SEUIL_PARTAGE && aides ? await aides : null;
       enCours += 1;
+      taches += 1;
+      const tache = taches;
       let r;
       try {
         if (autres && autres.length) {
-          const p = file.then(() => partager(nom, corps, langue, autres));
+          const p = file.then(() => partager(nom, corps, langue, autres, tache));
           file = p.catch(() => {});
           return await p;
         }
-        r = await traiter(webR, 'traiter_demande(nom, charToRaw(enc2utf8(corps)), langue)', { nom, corps: JSON.stringify(corps ?? {}), langue });
-      } finally { enCours -= 1; }
+        r = await traiter(webR, '{ progres_tache(tache, nom); traiter_demande(nom, charToRaw(enc2utf8(corps)), langue) }', { nom, corps: JSON.stringify(corps ?? {}), langue, tache });
+      } finally { enCours -= 1; finTache(tache); }
       // (a plugin installed or removed: the plugins' folder kept in the browser's storage)
       if (r.statut === 200 && (nom === 'greffon_installer' || nom === 'greffon_retirer')) {
         await garderGreffons(webR).catch((e) => console.warn('Nuée : les greffons installés n’ont pas pu être gardés', e));

@@ -569,11 +569,40 @@ try {
     const m = await a.demander('ajuster', { projet: p.id, numero: 2 });
     return { pid: p.id, m2: m.id, definitions: [].concat(p.modeles || []).length };
   });
-  const arreter = async (f, arg) => {
+  // Where the computation is, in the page as on the desktop: R says its request and its loops'
+  // rounds on the tab's channel (navigateur.R: progres_tache, progres_navigateur). The permutation
+  // test shared with the other R (99, its preparation first): this R's piece says its rounds on the
+  // whole 99, rising.
+  const progresPartage = await page.evaluate(async ({ m2 }) => {
+    const a = await import('./api.js');
+    const { CANAL_PROGRES } = await import('./progression.js');
+    const messages = [];
+    const canal = new BroadcastChannel(CANAL_PROGRES);
+    canal.onmessage = ({ data }) => messages.push(data);
+    const t0 = performance.now();
+    await a.demander('permutations', { modele: m2, n: 99 });
+    canal.close();
+    const etapes = messages.filter((m) => m.nom === 'permutations' && m.etapes.length && m.etapes[0].quoi === 'permutations').map((m) => m.etapes[0]);
+    return { s: (performance.now() - t0) / 1000, debuts: messages.filter((m) => m.nom === 'permutations' && !m.etapes.length).length,
+      etapes: etapes.map((e) => `${e.quoi} ${e.fait}/${e.total}`), monte: etapes.every((e, i) => !i || e.fait >= etapes[i - 1].fait) };
+  }, ex);
+  verifier('où en est le calcul, dit par le R de la page : sa demande, puis les tours du test de permutation partagé sur ses 99',
+    progresPartage.debuts >= 1 && progresPartage.etapes.length >= 1 && progresPartage.monte
+      && progresPartage.etapes.every((e) => /^permutations \d+\/99$/.test(e) && Number(e.split(' ')[1].split('/')[0]) <= 99),
+    `${progresPartage.s.toFixed(1)} s ; ${progresPartage.debuts} début(s) ; ${progresPartage.etapes.join(', ')}`);
+  // (before Stop, the status bar, as the desktop's: the step, a bar that fills, the time left)
+  const barreStatut = () => page.waitForFunction(() => {
+    const b = document.querySelector('.progres-statut .progres');
+    const texte = b ? b.querySelector('.progres-texte').textContent : '';
+    return b && b.hasAttribute('aria-valuenow') && /Permutation [\d,]+ of 99,999/.test(texte) && /left/.test(texte)
+      ? { texte, valeur: Number(b.getAttribute('aria-valuenow')) } : null;
+  }, null, { timeout: 45000, polling: 100 }).then((h) => h.jsonValue(), () => null);
+  const arreter = async (f, arg, barre = false) => {
     const fini = page.evaluate(f, arg);
     await page.waitForSelector('#arret-calcul:not([hidden]) button:not([disabled])', { timeout: 60000 });
+    const vue = barre ? await barreStatut() : null;
     await page.click('#arret-calcul button');
-    return fini;
+    return { ...(await fini), barre: vue };
   };
   const arretPermutations = await arreter(async ({ m2 }) => {
     const a = await import('./api.js');
@@ -592,7 +621,9 @@ try {
       await a.demander('ajuster', { projet: pid, type: 'PCOA', x: [u('variety')], y: y.map(u), echelle: 'none', options: { distance: 'gower', permutations: 99999, graine: 1 }, nom: 'PCoA' });
       return { fini: true, s: (performance.now() - t0) / 1000 };
     } catch (e) { return { arrete: !!(e.reponse && e.reponse.arrete), message: e.message, s: (performance.now() - t0) / 1000 }; }
-  }, ex);
+  }, ex, true);
+  verifier('la barre d’état dans la page, comme dans l’application de bureau : l’étape d’une PCoA, la barre qui avance, le temps restant',
+    !!arretPcoa.barre && arretPcoa.barre.valeur >= 0, arretPcoa.barre ? `${arretPcoa.barre.texte} (${arretPcoa.barre.valeur} %)` : 'rien');
   const apresArret = await page.evaluate(async ({ pid }) => {
     const a = await import('./api.js');
     const p = await a.demander('projet', { projet: pid });

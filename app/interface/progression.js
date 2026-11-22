@@ -9,11 +9,14 @@
 //   - in each view waiting for the engine, the skeleton of what it will show (style.css: .infos.attente)
 //     with the same bar when it waits for that computation, "Waiting for the computation before it"
 //     when its request is queued behind another one.
-// The browser version's single R would hold the question behind the computation: there, the bars
-// only move, with the time since it began.
+// The browser version's single R would hold the question behind the computation: there R says
+// itself, on this tab's channel, the request it begins and its loops' rounds (moteur/R/navigateur.R:
+// progres_tache, progres_navigateur), which make the same answer; the requests waiting are the
+// others the user waits for.
 import { demander, demandesEnAttente, MOTEUR_WEBR } from './api.js';
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el } from './ui.js';
+import { ONGLET } from './secours_navigateur.js';
 
 const ATTENTE = 1500;  // (as Stop's: app.js, ATTENTE_ARRET)
 const INTERVALLE = 500;
@@ -25,6 +28,31 @@ let reste = null;
 
 const statut = el('span', { class: 'progres-statut' });
 export const elementStatut = () => statut;
+
+// The browser version: what R last said (its request's number, name and seconds, its loops' rounds),
+// and when; a request ended (moteur_webr.js: finTache) says nothing more, even late
+export const CANAL_PROGRES = `nuee-progres-${ONGLET}`;
+let ditParR = null;
+let finies = new Set();
+export function finTache(n) {
+  finies.add(n);
+  if (finies.size > 2000) finies = new Set([...finies].slice(-1000));
+  if (ditParR && ditParR.tache === n) ditParR = null;
+}
+if (MOTEUR_WEBR && typeof BroadcastChannel === 'function') {
+  new BroadcastChannel(CANAL_PROGRES).onmessage = ({ data: m }) => {
+    if (!m || finies.has(m.tache)) return;
+    ditParR = { ...m, recu: Date.now() };
+  };
+}
+// the same answer as the desktop engine's: the computation R said, the others waiting behind it
+function reponseNavigateur() {
+  if (!ditParR) return null;
+  const autres = demandesEnAttente().map((d) => d.nom);
+  const i = autres.indexOf(ditParR.nom);
+  if (i >= 0) autres.splice(i, 1);
+  return { calcul: { nom: ditParR.nom, secondes: ditParR.secondes, fraction: ditParR.fraction ?? null, etapes: ditParR.etapes || [] }, attente: autres, recu: ditParR.recu };
+}
 
 const nombre = (x) => Number(x).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB');
 const duree = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -116,7 +144,8 @@ function dessiner() {
 async function demanderProgression() {
   minuterie = null;
   if (!demandesEnAttente().length) return;
-  if (!enVol && !MOTEUR_WEBR) {
+  if (MOTEUR_WEBR) reponse = reponseNavigateur();
+  else if (!enVol) {
     enVol = true;
     demander('progression', {}, { silencieux: true })
       .then((r) => { reponse = { ...r, recu: Date.now() }; }, () => { reponse = null; })
