@@ -367,7 +367,7 @@ paths, no data).
 
 *Model › Text for the Methods section* cites Nuée and the methods for you. Otherwise:
 
-> Boutin, C. (2026). Nuée (version 1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
+> Boutin, C. (2026). Nuée (version 1.2.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
 
 GitHub's *Cite this repository* button gives it in other formats ([CITATION.cff](CITATION.cff)).
 What changed in each version: [CHANGELOG.md](CHANGELOG.md).

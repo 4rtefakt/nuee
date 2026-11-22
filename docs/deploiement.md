@@ -23,8 +23,8 @@ The installer, `Nuee-Setup-<version>.exe`, comes from the
 
 | | Command | Installs in |
 |---|---|---|
-| For the user running it | `Nuee-Setup-1.1.0.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuee` |
-| For every user of the computer (administrator, e.g. run as SYSTEM by Configuration Manager or Intune) | `Nuee-Setup-1.1.0.exe /S /allusers` | `%ProgramFiles%\Nuee` |
+| For the user running it | `Nuee-Setup-1.2.0.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuee` |
+| For every user of the computer (administrator, e.g. run as SYSTEM by Configuration Manager or Intune) | `Nuee-Setup-1.2.0.exe /S /allusers` | `%ProgramFiles%\Nuee` |
 
 `/D=D:\Apps\Nuée` (last, without quotes, even with spaces) installs elsewhere. The program is
 `Nuee.exe` in that folder. The installer adds Start menu and desktop shortcuts, an entry in
@@ -134,15 +134,15 @@ yours.
 ## Deployment tools
 
 The usual choice with these tools is an installation for every user of the computer, run as
-SYSTEM. Its values, for version 1.1.0 (put the version you deploy in the file name and the
+SYSTEM. Its values, for version 1.2.0 (put the version you deploy in the file name and the
 detection rule):
 
 | | |
 |---|---|
-| Install command | `Nuee-Setup-1.1.0.exe /S /allusers` |
+| Install command | `Nuee-Setup-1.2.0.exe /S /allusers` |
 | Uninstall command | `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S` |
 | Exit codes | 0 when it worked; no restart needed |
-| Detection | Registry, 64-bit view: key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`, value `DisplayVersion`, a version greater than or equal to `1.1.0` |
+| Detection | Registry, 64-bit view: key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`, value `DisplayVersion`, a version greater than or equal to `1.2.0` |
 | Requirements | Windows 10 or 11, 64-bit (x64); about 550 MB of disk |
 | Updating | Run the new version's installer with the same command: it replaces the installed copy in place, and keeps its shortcuts and taskbar pins |
 
@@ -157,10 +157,10 @@ As a *Windows app (Win32)*:
 
 1. **Package** the installer with the
    [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool):
-   put `Nuee-Setup-1.1.0.exe` alone in a folder, then
-   `IntuneWinAppUtil.exe -c <that folder> -s Nuee-Setup-1.1.0.exe -o <output folder>`, and upload
+   put `Nuee-Setup-1.2.0.exe` alone in a folder, then
+   `IntuneWinAppUtil.exe -c <that folder> -s Nuee-Setup-1.2.0.exe -o <output folder>`, and upload
    the `.intunewin` file it writes.
-2. **Program:** install command `Nuee-Setup-1.1.0.exe /S /allusers`; uninstall command
+2. **Program:** install command `Nuee-Setup-1.2.0.exe /S /allusers`; uninstall command
    `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`; install behavior *System*; device
    restart behavior *No specific action*; return codes as they are.
 3. **Requirements:** operating system architecture *x64*; minimum operating system, the oldest
@@ -168,7 +168,7 @@ As a *Windows app (Win32)*:
 4. **Detection rules:** *Manually configure detection rules*, rule type *Registry*: key path
    `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`,
    value name `DisplayVersion`, detection method *Version comparison*, operator *Greater than or
-   equal to*, value `1.1.0`, associated with a 32-bit app on 64-bit clients *No*.
+   equal to*, value `1.2.0`, associated with a 32-bit app on 64-bit clients *No*.
 5. **A new version:** add it as a new app, then in its *Supersedence*, add the previous one with
    *Uninstall previous version* set to *No*: its installer updates the installed copy.
 6. **Turning the update check off:** a platform script (*Devices › Scripts and remediations ›
@@ -190,11 +190,11 @@ As a *Windows app (Win32)*:
 
 An application with a *Script Installer* deployment type:
 
-- **Programs:** installation program `Nuee-Setup-1.1.0.exe /S /allusers`; uninstall program
+- **Programs:** installation program `Nuee-Setup-1.2.0.exe /S /allusers`; uninstall program
   `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`.
 - **Detection method:** setting type *Registry*, hive `HKEY_LOCAL_MACHINE`, key
   `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`,
-  value `DisplayVersion`, data type *Version*, the rule *Greater than or equals* `1.1.0`; leave
+  value `DisplayVersion`, data type *Version*, the rule *Greater than or equals* `1.2.0`; leave
   *This registry key is associated with a 32-bit application on 64-bit systems* unticked.
 - **User experience:** installation behavior *Install for system*; logon requirement *Whether or
   not a user is logged on*; installation program visibility *Hidden*.
@@ -207,13 +207,13 @@ An application with a *Script Installer* deployment type:
 Group Policy's *Software installation* only takes MSI packages, and Nuée's installer is a
 program, so install it from a computer startup script (*Computer Configuration › Policies ›
 Windows Settings › Scripts › Startup*), with the installer on a share the computers can read
-(*Domain Computers*). This one installs 1.1.0 unless that version is already there; change both
+(*Domain Computers*). This one installs 1.2.0 unless that version is already there; change both
 version numbers to deploy another:
 
 ```bat
 @echo off
-reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503" /v DisplayVersion /reg:64 2>nul | findstr /e /c:" 1.1.0" >nul
-if errorlevel 1 "\\server\share\Nuee-Setup-1.1.0.exe" /S /allusers
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503" /v DisplayVersion /reg:64 2>nul | findstr /e /c:" 1.2.0" >nul
+if errorlevel 1 "\\server\share\Nuee-Setup-1.2.0.exe" /S /allusers
 ```
 
 To turn the update check off: *Computer Configuration › Preferences › Windows Settings ›
@@ -225,7 +225,7 @@ of the plugins as its value.
 
 ### PDQ Deploy and other tools
 
-- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.1.0.exe`, parameters `/S /allusers`,
+- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.2.0.exe`, parameters `/S /allusers`,
   success code `0`, run as *Local System* or as a deploy user who is an administrator.
 - **Other tools** (ManageEngine, Ivanti, NinjaOne, Chocolatey for Business, a private WinGet
   source…): the installer is an NSIS one (*nullsoft* for WinGet); the commands, exit codes and

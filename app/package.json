@@ -1,7 +1,7 @@
 {
   "name": "nuee",
   "productName": "Nuée",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "PCA, PLS, community ecology, models and maps, computed in R",
   "author": "4rtefakt",
   "license": "GPL-3.0-or-later",

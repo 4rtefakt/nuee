@@ -7,7 +7,7 @@ authors:
   - given-names: "Clément"
     family-names: "Boutin"
     alias: "4rtefakt"
-version: "1.1.0"
+version: "1.2.0"
 doi: "10.5281/zenodo.24263014"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/4rtefakt/nuee"

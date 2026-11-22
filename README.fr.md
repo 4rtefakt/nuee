@@ -394,7 +394,7 @@ coller (ni chemins ni données).
 
 *Modèle › Texte pour la section Méthodes* cite Nuée et les méthodes pour vous. Sinon :
 
-> Boutin, C. (2026). Nuée (version 1.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
+> Boutin, C. (2026). Nuée (version 1.2.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24263014
 
 Le bouton *Cite this repository* de GitHub la donne dans d'autres formats
 ([CITATION.cff](CITATION.cff)). Ce qui a changé à chaque version : [CHANGELOG.md](CHANGELOG.md)
