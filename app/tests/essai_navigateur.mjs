@@ -99,14 +99,28 @@ const contexte = await lancer(profil, { headless: !options.visible, acceptDownlo
 // every request of the pages and of their workers (webR's, which installs R's packages)
 const requetes = [];
 contexte.on('request', (r) => requetes.push(r.url()));
+const relaisEnCours = [];  // (the relay's requests in the sharing part, answered or not)
 const ailleurs = () => requetes.filter((u) => /^https?:/.test(u) && new URL(u).origin !== new URL(adresse).origin);
 
 // a page of the site: its errors noted (but the stand-in for Zenodo's planned refusals, a 404, no
 // network), every request timed (api.js: window.nueeDemandes)
+// (Zenodo's planned refusals, a 404, no network: Chromium's message is located at Zenodo's address,
+// Firefox's names it in its text)
+const zenodoAttendu = (m) => (m.location().url || '').startsWith('https://zenodo.org/') || /https:\/\/zenodo\.org\//.test(m.text());
+// a page's console error noted, where it was written; Firefox's text of an Error is "Error" alone:
+// its message asked of the page
+async function noterConsole(m) {
+  if (m.type() !== 'error' || zenodoAttendu(m)) return;
+  let texte = m.text();
+  if (texte.trim() === 'Error') {
+    texte = (await Promise.all(m.args().map((a) => a.evaluate((x) => (x instanceof Error ? `${x.name}: ${x.message}` : String(x))).catch(() => '?')))).join(' ');
+  }
+  erreurs.push(`console : ${texte} (${m.location().url || '?'}:${m.location().lineNumber})`);
+}
 async function ouvrirPage(url = adresse) {
   const page = await contexte.newPage();
   page.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !(m.location().url || '').startsWith('https://zenodo.org/')) erreurs.push(`console : ${m.text()}`); });
+  page.on('console', noterConsole);
   page.on('dialog', (d) => d.accept());  // (leaving the page while a copy is written: leave)
   await page.addInitScript(() => {
     window.nueeDemandes = [];
@@ -290,6 +304,19 @@ try {
   verifier('PCoA ajustée (New model), ses vues', !!pcoa.d && pcoa.d.ok && !pcoa.erreur && mPcoa && mPcoa.type === 'PCOA' && vPcoa.length >= 2,
     pcoa.erreur || `${pcoa.d && Math.round(pcoa.d.ms)} ms ; ${mPcoa && mPcoa.nom} ; ${vPcoa.join(', ')}`);
   if (options.capture !== false) await page.screenshot({ path: path.join(sortie, 'pcoa.png') });
+  // (no part of a view left out written as the text "null" or "undefined", the mixed model's
+  // Coefficients among them: replaceChildren writes what isn't a node as text)
+  const vides = await page.evaluate(() => {
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const r = [];
+    for (let x = w.nextNode(); x; x = w.nextNode()) {
+      const t = x.textContent.trim();
+      const p = x.parentElement;
+      if ((t === 'null' || t === 'undefined') && p && !p.closest('td, .cm-editor, .console, textarea, pre, code')) r.push(`${t} : ${(p.closest('.dv-content-container') || p).textContent.trim().slice(0, 80)}`);
+    }
+    return r;
+  });
+  verifier('aucun « null » ni « undefined » écrit dans les vues ouvertes (les Coefficients du modèle mixte compris)', vides.length === 0, vides.join(' | ') || 'aucun');
 
   // ---- the data as CSV: a download
   const telechargement = page.waitForEvent('download', { timeout: 60000 });
@@ -497,8 +524,8 @@ try {
   const choixMaj = page.waitForEvent('filechooser', { timeout: 15000 });
   await page.click('.dialogue-maj .choisir-fichier-maj');
   await (await choixMaj).setFiles(csv2027);
-  await page.waitForFunction(() => document.querySelector('.dialogue-maj .resume-maj'), null, { timeout: 60000 });
-  const apercuMaj = await page.evaluate(() => document.querySelector('.dialogue-maj .resume-maj').textContent);
+  // (read as it is waited for: the preview is drawn again meanwhile)
+  const apercuMaj = await (await page.waitForFunction(() => { const r = document.querySelector('.dialogue-maj .resume-maj'); return r ? r.textContent : null; }, null, { timeout: 60000 })).jsonValue();
   await page.waitForFunction(() => { const b = document.querySelector('.fond-dialogue .pied-dialogue button.principal'); return b && !b.disabled; }, null, { timeout: 30000 });
   await page.click('.fond-dialogue .pied-dialogue button.principal');
   await page.waitForFunction(([a]) => window.nueeDemandes.filter((d) => d.nom === 'mettre_a_jour' && !(d.corps && d.corps.apercu)).length > 0 && window.nueeDemandes.filter((d) => d.nom === 'mettre_a_jour').length > a, [nMaj], { timeout: 120000 });
@@ -747,7 +774,7 @@ try {
   const ouvrirLien = async (requete) => {
     const p = await contexte.newPage();
     p.on('pageerror', (e) => erreurs.push(`page : ${e.message}`));
-    p.on('console', (m) => { if (m.type() === 'error' && !(m.location().url || '').startsWith('https://zenodo.org/')) erreurs.push(`console : ${m.text()}`); });
+    p.on('console', noterConsole);
     p.on('request', (r) => { const h = new URL(r.url()).hostname; if (![new URL(adresse).hostname, 'zenodo.org', 'repo.r-wasm.org'].includes(h) && !/^(data|blob):/.test(r.url())) autresSites.push(r.url()); });
     await p.addInitScript(() => { window.nueeDemandes = []; window.__violations = []; document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`)); });
     await p.goto(`${adresse}?${requete}`);
@@ -859,7 +886,18 @@ try {
     const v = [...document.querySelectorAll('.versions')].find((x) => x.offsetParent !== null);
     return v && !v.querySelector('.attente') ? { tete: (v.querySelector('.tete-versions') || {}).textContent || '', texte: v.textContent } : null;
   }, null, 60000);
-  const montrerHistorique = async (p, pid) => { await p.evaluate((id) => import('./app.js').then(({ app }) => app.versions(id)), pid); return panneau(p); };
+  // (History waiting for ever: what it shows, and the relay's requests still without an answer)
+  // (asked again every 3 s while it waits: a model's page just fitted comes to the front when its
+  // views are drawn, later than History in a slower browser, as it does for a person)
+  const montrerHistorique = async (p, pid) => {
+    const montrer = () => p.evaluate((id) => import('./app.js').then(({ app }) => app.versions(id)), pid);
+    await montrer();
+    const encore = setInterval(() => { montrer().catch(() => {}); }, 3000);
+    return panneau(p).finally(() => clearInterval(encore)).catch(async (e) => {
+      const montre = await p.evaluate(() => [...document.querySelectorAll('.versions')].map((v) => `${v.offsetParent !== null ? 'visible' : 'caché'} : ${v.textContent.slice(0, 120)}`)).catch(() => []);
+      throw new Error(`${e.message.split(/\r?\n/)[0]} ; Historique : ${montre.join(' | ') || 'aucun'} ; relais sans réponse : ${relaisEnCours.filter((x) => !x.fini).map((x) => x.quoi).join(', ') || 'aucun'}`);
+    });
+  };
   // a button of History (its words), on a version (by its rank, -1 the oldest) or at the top; waited
   // for 15 s (the panel is drawn again once the project's history is known: a button greyed at first)
   const boutonHistorique = (p, cle, rang = null) => p.evaluate(async ([c, k]) => {
@@ -950,8 +988,12 @@ try {
   await hp.click('.fond-dialogue .pied-dialogue button.principal');
   const restauree = (await libelle(hp, 'versions_restauree')).split('{date}')[0];
   await attendre(hp, (r) => document.getElementById('statut').textContent.includes(r), restauree, 300000).catch(() => {});
-  await hp.waitForTimeout(2000);
-  const h4 = await historique(hp, { chemin: h1.chemin });
+  // (the project read again from the version: back at its place with its three versions)
+  let h4 = null;
+  for (let i = 0; i < 60 && !(h4 && h4.versions.length === 3 && h4.modeles === h1.modeles); i += 1) {
+    await hp.waitForTimeout(1000);
+    h4 = await historique(hp, { chemin: h1.chemin }).catch(() => null);
+  }
   verifier('Restaurer… : le projet redevient la première version (ses modèles), une version le dit',
     !!h4 && h4.versions.length === 3 && /^Restored the version of/.test(h4.versions[0].description) && h4.modeles === h1.modeles, h4 && `${h4.modeles} modèles ; ${h4.versions.map((v) => v.description).join(' | ')}`);
 
@@ -962,6 +1004,14 @@ try {
   await (await choixCsv).setFiles(csv);
   await attendreDemande(hp, 'ouvrir', nOuvrir);
   await hp.waitForTimeout(1500);
+  // (the table's Data view in front, as a person clicks its tab: the restored project, read again
+  // meanwhile, may come to the front after the table in a slower run, and Save saves the one in front)
+  await attendre(hp, () => import('./app.js').then(({ app }) => {
+    const table = app.projets().filter((x) => /\.csv$/i.test(x.nom) && !x.chemin_enregistrement).pop();
+    if (!table) return false;
+    if (app.projetActif() !== table.id) app.ouvrirVue('donnees', null, null, table.id);
+    return app.projetActif() === table.id;
+  }), null, 30000).catch(() => {});
   await enregistrerPar(hp, () => commande(hp, 'enregistrer'));
   const deuxieme = await attendre(hp, () => import('./app.js').then(async ({ app }) => {
     const { coucheVersions } = await import('./versions.js');
@@ -1139,6 +1189,8 @@ try {
       const origine = new URL(adresse).origin;
       await contexte.route(`${origine}/relais/**`, async (route) => {
         const q = route.request();
+        const relais = { quoi: `${q.method()} ${new URL(q.url()).pathname.replace(/^\/relais\//, '')}`, fini: false };
+        relaisEnCours.push(relais);
         const url = new URL(q.url());
         // (a body over 100 MB: Cloudflare's 413, before the Worker runs; trop-gros.git stands for it)
         if (q.method() === 'POST' && /\/trop-gros\.git\//.test(url.pathname)) return route.fulfill({ status: 413, headers: { 'Content-Type': 'text/html' }, body: '<html>413</html>' });
@@ -1148,6 +1200,7 @@ try {
         const e = {};
         r.headers.forEach((v, k) => { e[k] = v; });
         await route.fulfill({ status: r.status, headers: e, body: Buffer.from(await r.arrayBuffer()) });
+        relais.fini = true;
       });
       // GitHub's API (the account, a repository made: a bare one of the stand-in), and the picture
       const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, X-GitHub-Api-Version', 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE' };
@@ -1332,6 +1385,9 @@ try {
 } catch (e) {
   verifier('erreur', false, e.stack || e.message);
   if (page) try { await page.screenshot({ path: path.join(sortie, 'navigateur-erreur.png') }); } catch { /* no page */ }
+  // (every tab open, the one that failed among them, and what the pages said wrong so far)
+  for (const [i, x] of contexte.pages().entries()) try { await x.screenshot({ path: path.join(sortie, `navigateur-erreur-${i + 1}.png`) }); } catch { /* closed */ }
+  if (erreurs.length) console.log(`  Erreurs des pages : ${erreurs.slice(-20).join(' | ')}`);
 } finally {
   fs.writeFileSync(path.join(sortie, 'demandes.json'), JSON.stringify(res, null, 1));
   await contexte.close().catch(() => {});
