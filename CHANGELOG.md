@@ -18,6 +18,7 @@ What changed in each version: the same list as *Help › What's new* in the appl
 - Fixed: removing a “rename variable” step (Edit › Data steps…) brought the variable back under its old name as a new variable, while the models, the documents’ references and the later steps kept the new name: the models could no longer be fitted. The variable now gets its name back and everything that names it follows; Undo gives the step’s name again.
 - Fixed: a short New variable formula or model condition could hang Nuée or fill its memory (cut(x, 1e9), interaction() of identifiers, nested gsub()…). What a short argument would make huge is now bounded (10,000 intervals, the combinations observed, 100 million characters, 100,000 values for “:” ranges), and Stop can end the removal of a data step, as it ends Update the data.
 - Fixed: an mgcv GAM fitted as a model in R code listed every basis coefficient of its curves among its coefficients; it shows its parametric coefficients, as mgcv’s summary does, and Export to R prints the same table.
+- Fixed: the word “null” no longer shows above the coefficients of a model without a log or logit link, nor under a table of an R-code model or a plugin shown whole.
 - Fixed in the desktop app: after Help › Restart the R engine, a view in a window of its own could say its model had left or show another model’s results; it now follows its model, with its selection. Two windows changing the recovery copies at the same moment no longer lose one’s change.
 
 ## 1.1.0 — 2026-11-17

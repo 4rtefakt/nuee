@@ -346,7 +346,8 @@ function rendreTableauxCode(conteneur, ctx, p, loc) {
     const cols = liste(x.colonnes);
     const vals = liste(x.valeurs).map(liste);
     const bas = el('div', { class: 'bas tableau-code' });
-    zone.append(el('h4', {}, x.nom), x.n > vals[0]?.length ? el('p', { class: 'note' }, t('code_tableau_tronque', { n: vals[0].length, total: x.n })) : null, bas);
+    // (a table shown whole: no note, rather than append writing null as the text "null")
+    zone.append(...[el('h4', {}, x.nom), x.n > vals[0]?.length ? el('p', { class: 'note' }, t('code_tableau_tronque', { n: vals[0].length, total: x.n })) : null, bas].filter(Boolean));
     loc.tables[k] ??= {};
     tableau(bas, ctx, loc.tables[k], {
       n: vals.length ? vals[0].length : 0, nom: x.nom,
