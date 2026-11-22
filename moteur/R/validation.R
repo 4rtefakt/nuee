@@ -10,39 +10,54 @@
 # ordonnées à l'origine mesurent le surajustement (règle usuelle : Q2 < 0,05 et R2 < 0,3 à 0,4
 # pour un modèle valide). `m` : le modèle ajusté de `projet` d'après `definition`.
 permutations <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
-  A <- m$A
+  t <- permutations_taches(projet, m, definition, y, n, graine)
+  permutations_fin(t, permutations_morceau(t, seq_len(t$n)))
+}
+
+# Le test en trois temps, qu'on peut partager entre plusieurs R (le navigateur : travaux.R) :
+# les permutations tirées d'abord (l'ajustement ne tire pas de hasard : ce sont celles qu'une
+# boucle tirerait au fil des réajustements), les réajustements par morceaux, puis le tableau.
+permutations_taches <- function(projet, m, definition, y = 1, n = 20, graine = 1) {
   d <- definition
   d$test <- NULL  # (le jeu de test ne change ni R2 ni Q2)
-  mesure <- function(r) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = unname(r$q2v_cum[y]))
   lignes_y <- match(nom_numero(m$observations), rownames(projet$donnees))
   # (une PLS-DA d'un fichier .usp a une variable 0/1 par classe, celle de l'application une variable de classe)
   variables <- unique(vapply(if (m$plsda) d$y else d$y[y], function(t) nom_numero(t$variables[1]), ""))
-  valeurs <- projet$donnees[lignes_y, variables, drop = FALSE]
-  present <- m$MY[, y] == 1
   # X ne change pas d'une permutation à l'autre : le côté X du modèle (ses blocs, ceux de chaque
-  # sous-modèle de la validation croisée) est calculé une fois pour toutes (modele.R : cote_x_modele),
+  # sous-modèle de la validation croisée) est calculé une fois par morceau (modele.R : cote_x_modele),
   # sauf quand une variable permutée est aussi en X, ou fait les groupes de la validation croisée
   en_x <- unique(nom_numero(unlist(lapply(d$x, function(t) t$variables))))
   groupes_par <- if (identical(as.character(d$groupes_vc$by %||% "")[1], "variable")) nom_numero(d$groupes_vc$variable)
-  cote_x <- if (!any(variables %in% c(en_x, groupes_par))) cote_x_modele(projet, d, m$G)
   set.seed(graine)
-  lignes <- list(c(correlation = 1, mesure(m)))
-  for (i in seq_len(n)) {
-    verifier_arret()
-    ordre <- sample(length(lignes_y))
-    pp <- projet
-    pp$donnees[lignes_y, variables] <- valeurs[ordre, , drop = FALSE]
-    r <- calculer_modele(pp, d, A, m$G, cote_x = cote_x)
-    deux <- present & r$MY[, y] == 1
-    corr <- suppressWarnings(stats::cor(m$Y[deux, y], r$Y[deux, y]))
-    lignes[[i + 1]] <- c(correlation = abs(corr), mesure(r))
-  }
-  tab <- as.data.frame(do.call(rbind, lignes))
-  tab$origine <- c(TRUE, rep(FALSE, n))
+  list(projet = projet, definition = d, A = m$A, G = m$G, y = y, n = n, nom_y = m$y$noms[y],
+       lignes_y = lignes_y, variables = variables, valeurs = projet$donnees[lignes_y, variables, drop = FALSE],
+       present = m$MY[, y] == 1, Y = m$Y, origine = c(correlation = 1, mesure_permutation(m, y, m$A)),
+       meme_x = !any(variables %in% c(en_x, groupes_par)),
+       ordres = lapply(seq_len(n), function(i) sample(length(lignes_y))))
+}
+mesure_permutation <- function(r, y, A) c(R2 = 1 - unname(r$ssyv[y, A + 1] / r$ssyv[y, 1]), Q2 = unname(r$q2v_cum[y]))
+# les réajustements des permutations `i` : une ligne chacun (corrélation, R2, Q2) ; Arrêter les
+# interrompt entre deux (arret.R)
+permutations_morceau <- function(t, i) {
+  cote_x <- if (t$meme_x) cote_x_modele(t$projet, t$definition, t$G)
+  do.call(rbind, lapply(i, function(k) {
+    verifier_arret(match(k, i), length(i), "permutations")
+    pp <- t$projet
+    pp$donnees[t$lignes_y, t$variables] <- t$valeurs[t$ordres[[k]], , drop = FALSE]
+    r <- calculer_modele(pp, t$definition, t$A, t$G, cote_x = cote_x)
+    deux <- t$present & r$MY[, t$y] == 1
+    corr <- suppressWarnings(stats::cor(t$Y[deux, t$y], r$Y[deux, t$y]))
+    c(correlation = abs(corr), mesure_permutation(r, t$y, t$A))
+  }))
+}
+permutations_fin <- function(t, lignes) {
+  tab <- as.data.frame(rbind(t$origine, lignes))
+  rownames(tab) <- NULL
+  tab$origine <- c(TRUE, rep(FALSE, t$n))
   droite <- function(v) unname(stats::coef(stats::lm(v ~ tab$correlation)))
   r2 <- droite(tab$R2)
   q2 <- droite(tab$Q2)
-  list(y = m$y$noms[y], n = n, points = tab,
+  list(y = t$nom_y, n = t$n, points = tab,
        ordonnee_R2 = r2[1], pente_R2 = r2[2], ordonnee_Q2 = q2[1], pente_Q2 = q2[2])
 }
 

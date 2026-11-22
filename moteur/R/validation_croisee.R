@@ -178,7 +178,7 @@ tours_x_validation <- function(projet, d, X, bx, vx, poids, plan, projets = NULL
   y_croises <- identical(d$type, "PLS") && any(vapply(d$y, function(t) length(t$variables) > 1, TRUE))
   ponderation <- if (!plan$complet && length(d$x)) facteurs_ponderation(d$x)  # (la même pour chaque sous-modèle)
   lapply(sort(unique(plan$groupes)), function(g) {
-    verifier_arret()
+    verifier_arret(match(g, sort(unique(plan$groupes))), length(unique(plan$groupes)), "preparation")
     hors <- plan$groupes == g
     if (plan$complet) {
       sx <- bx
@@ -308,7 +308,7 @@ composante_validation <- function(vc, a, E = NULL, F = NULL, comp = NULL) {
   press <- 0
   if (vc$pls) vc$predictions[[a]] <- matrix(NA_real_, nrow(vc$Z$E), ncol(vc$Z$E))
   for (i in seq_along(vc$tours)) {
-    verifier_arret()
+    verifier_arret(i, length(vc$tours), "validation")
     r <- vc$tours[[i]]
     comp <- if (!r$arrete) tryCatch(if (vc$pls) composante_pls(r$E, r$X$M, r$F, r$Y$M, r$depart, vc$version) else composante_acp(r$E, r$X$M, r$depart, vc$version),
                                     sans_variation = function(e) NULL)
@@ -374,7 +374,7 @@ validation_par_composante <- function(vc, a, E, F, comp) {
     press <- 0
     prediction <- matrix(NA_real_, nrow(F), ncol(F))
     for (i in seq_along(vc$tours)) {
-      verifier_arret()
+      verifier_arret(i, length(vc$tours), "validation")
       r <- vc$tours[[i]]
       h <- r$hors
       k <- tryCatch(composante_pls(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], F[!h, , drop = FALSE], MF[!h, , drop = FALSE], vc$depart,
@@ -412,7 +412,7 @@ validation_par_composante <- function(vc, a, E, F, comp) {
     P <- matrix(0, ncol(E), nrow(E))  # le loading de chaque observation, d'après son groupe
     Tc <- matrix(0, nrow(E), ncol(E))  # le score de chaque terme, d'après son groupe
     for (i in seq_along(vc$tours)) {
-      verifier_arret()
+      verifier_arret(i, length(vc$tours), "validation")
       h <- vc$tours[[i]]$hors
       k <- tryCatch(composante_acp(E[!h, , drop = FALSE], ME[!h, , drop = FALSE], vc$depart[1], version), sans_variation = sans)
       if (is.null(k)) next

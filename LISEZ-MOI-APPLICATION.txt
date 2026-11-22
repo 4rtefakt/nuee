@@ -172,9 +172,12 @@ au lancement suivant, les projets enregistrés (.nuee) ouverts quand Nuée a ét
 reviennent, avec leurs modèles et leurs vues ; un fichier déplacé ou supprimé depuis est nommé
 dans la barre d'état. Sans cette case, la page d'accueil propose Rouvrir la dernière séance.
 Après un arrêt inattendu, ce sont les copies de secours qui sont proposées.
-Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet
-(valeur modifiée, nouvelle variable, classe, scores en variables, définition supprimée...),
-jusqu'à 20 en arrière. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
+Édition › Annuler (Ctrl+Z) revient sur la dernière modification des données d'un projet (valeur
+modifiée, nouvelle variable, classe, scores en variables, définition supprimée...), jusqu'à 20 en
+arrière. Les modèles ajustés depuis restent, et un modèle modifié depuis (ajusté de nouveau avec
+d'autres réglages, ses notes) garde sa nouvelle définition ; celui qui lit ce qu'Annuler retire
+(une variable faite par le changement) part avec lui ou, s'il était là avant le changement,
+revient tel qu'il était. Édition › Rétablir (Ctrl+Y ou Ctrl+Maj+Z) refait, tel qu'il était, ce
 qu'Annuler a défait : une mise à jour des données avec sa source et ses étapes, les modèles
 ajustés à nouveau sur ses données. Les deux disent le changement qu'ils visent ; tout nouveau
 changement vide Rétablir.
@@ -186,8 +189,19 @@ aussi (annulable).
 
 Si le moteur R s'arrête
 -----------------------
-Un calcul qui dure plus d'une seconde et demie a Arrêter dans la barre d'état (au-dessus d'un
-dialogue aussi, comme Nouveau modèle qui ajuste). Arrêter l'interrompt entre deux de ses tours,
+Les longs calculs se font en arrière-plan, dans un second R : pendant qu'un modèle s'ajuste, que
+des permutations tournent ou qu'une simulation avance, le reste de la fenêtre répond — les vues
+des autres modèles, les autres projets, les données, les menus. Le dialogue Nouveau modèle se met
+de côté quand l'ajustement dure plus d'un instant ; les vues du modèle s'ouvrent une fois qu'il
+est là, et si l'ajustement échoue, le dialogue revient avec ses réglages et l'erreur. Un
+changement du projet en calcul (une variable renommée, un modèle réajusté) attend la fin du
+calcul, puis se fait.
+
+Un calcul qui dure plus d'une seconde et demie se montre dans la barre d'état, avec Arrêter
+(au-dessus d'un dialogue aussi) : une barre avec l'étape en cours — « Permutation 420 sur 999 »,
+« Validation croisée : groupe 3 sur 7 » — et le temps qui reste, ou, pour un calcul qui ne compte
+pas ses tours (un ajustement seul), une barre qui passe et repasse avec le temps depuis son
+début ; une vue qui l'attend montre la même barre. Arrêter l'interrompt entre deux de ses tours,
 et rien ne change : le modèle ne s'ajoute pas, les données ne changent pas, la vue dit « Calcul
 arrêté ». Les longues boucles s'arrêtent ainsi : les permutations (d'une PLS, d'une PERMANOVA,
 d'un test de dispersion, du test de Mantel et de son corrélogramme, des espèces indicatrices, des
@@ -196,18 +210,22 @@ de la sélection par l'AIC, les départs aléatoires d'un NMDS, les simulations 
 tours des validations croisées (ACP, PLS, OPLS, modèles linéaires, GAM, arbres, forêts
 aléatoires, arbres boostés), les arbres boostés arbre par arbre, les tirages de la stabilité d'un
 arbre, la sélection pas à pas des points de changement de TRIM, les intervalles d'iPLS, Un modèle
-par réponse, le choix de k des k-moyennes, et les étapes que rejoue Mettre à jour les données. Ce
-qui ne s'arrête pas avant sa fin : un ajustement seul en code compilé (un modèle mixte, un GAM, les
-arbres d'une forêt aléatoire, l'échantillonnage par distances, l'estimation de TRIM), le code de
-la console R et celui d'un modèle de code R ; Arrêter le dit alors, et Aide › Redémarrer le moteur
-R reste. Pendant Mettre à jour les données, son propre Arrêter interrompt aussi le modèle en train
-d'être ajusté. L'application signale l'arrêt du moteur et propose de le redémarrer ; on peut aussi
-le faire soi-même (Aide › Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs
-modèles et leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon
-depuis le fichier où ils s'enregistrent ; les changements faits depuis la dernière copie de
-secours (deux minutes au plus) sont perdus. Fermer Nuée quand le moteur ne répond plus garde
-les copies de secours, proposées au lancement suivant. Au-delà d'une minute de calcul, la
-barre d'état le rappelle.
+par réponse, le choix de k des k-moyennes, et les étapes que rejouent Mettre à jour les données
+et le retrait d'une étape. Un calcul qui ne s'arrête pas entre deux tours — un ajustement seul en
+code compilé (un modèle mixte, un GAM, les arbres d'une forêt aléatoire, l'échantillonnage par
+distances, l'estimation de TRIM) ou le code d'un modèle de code R — s'arrête tout de même une
+seconde et demie plus tard : son R est arrêté, un autre prend sa place, et le projet est tel
+qu'il était. Le code de la console R se fait dans le R de la fenêtre et ne s'arrête qu'à sa fin ;
+Arrêter le dit alors, et Aide › Redémarrer le moteur R reste. Pendant Mettre à jour les données,
+son propre Arrêter interrompt aussi le modèle en train d'être ajusté. L'application signale
+l'arrêt du moteur et propose de le redémarrer ; on peut aussi le faire soi-même (Aide ›
+Redémarrer le moteur R) si un calcul ne finit pas. Les projets se rouvrent avec leurs modèles et
+leurs vues, depuis leur copie de secours s'ils avaient des changements, sinon depuis le fichier
+où ils s'enregistrent, une vue dans une fenêtre à elle y suivant son modèle (les vues d'une autre
+fenêtre principale se ferment, ses projets revenant dans son explorateur) ; les changements faits
+depuis la dernière copie de secours (deux minutes au plus) sont perdus. Fermer Nuée quand le
+moteur ne répond plus garde les copies de secours, proposées au lancement suivant. Au-delà d'une
+minute de calcul, la barre d'état le rappelle.
 Aide › Quoi de neuf : les nouveautés de chaque version (affichées une fois après une mise à
 jour). La version installée (Nuee-Setup, l'application macOS ou les paquets Linux) cherche au
 démarrage s'il existe une nouvelle version (une seule demande à GitHub, rien d'autre n'est
@@ -256,6 +274,11 @@ modèle complet (comme SIMCA) » redonne celui du fichier.
 L'explorateur suit le travail : un projet ouvert, ou un modèle ajusté, vient en vue en haut, et
 ouvrir un projet replie les modèles ajustés des autres projets, une ligne chacun (leur flèche
 les déplie).
+Sur un téléphone (ou dans une fenêtre de moins de 700 px de large), Nuée montre une vue à la
+fois, aussi grande que l'écran : l'explorateur est derrière le bouton avant les menus, et une
+touche sur une de ses vues l'ouvre à sa place (une touche ouvre ou ferme aussi un dossier) ; la
+barre d'outils est cachée, ses commandes sont dans les menus. C'est fait pour lire des
+résultats ; modifier est plus commode sur un plus grand écran.
 
 Menus et barre d'outils
 -----------------------
@@ -615,6 +638,47 @@ de votre choix, y compris les parties du moteur de Nuée qu'il recopie (une exce
 licence GPL de Nuée, LICENSE-EXCEPTION.md). Ses commentaires du début le disent, et comment
 citer Nuée si vous publiez des résultats obtenus avec lui.
 
+Paquet de reproductibilité
+--------------------------
+Fichier › Exporter un paquet de reproductibilité… : une archive .zip que quiconque a R, ou Nuée,
+peut relancer : le projet, ses données en CSV avec leur dictionnaire, un seul script R qui refait
+chaque modèle, les documents en fichiers Quarto reproductibles et en pages HTML (leurs nombres,
+graphiques et tableaux remplis : elles s'ouvrent dans tout navigateur, sur un téléphone aussi),
+les résultats clés de chaque
+modèle tels que Nuée les a calculés (resultats/resultats_cles.json, avec les versions de Nuée, de
+R et des paquets R), un README, la licence des données et son texte, CITATION.cff, codemeta.json
+et l'empreinte SHA-256 de chaque fichier (MANIFEST.sha256). Fichier › Déposer sur Zenodo…
+(application de bureau) crée sur Zenodo un brouillon qui réserve son DOI, écrit le paquet avec ce
+DOI et l'y dépose ; Nuée ne publie jamais : vous vérifiez le brouillon sur Zenodo et le publiez
+là. Se connecter avec Zenodo ouvre la page de Zenodo dans votre navigateur, où vous autorisez
+Nuée à déposer, jamais à publier ; la connexion dure 60 jours (un jeton d'accès personnel avec le
+droit deposit:write peut être collé à la place). Son dernier dialogue donne le lien qui ouvre le
+paquet dans Nuée, dans un navigateur, https://nuee.io/app/?doi=<DOI>, et son code QR (Copier le
+lien, Enregistrer le code QR… en SVG ou en PNG, pour une affiche ou une diapositive) ; le paquet
+a les deux. Montré d'abord, dans le dialogue, est le document que les lecteurs du lien voient
+d'abord : le premier document du projet, un autre, ou aucun (le lien ouvre alors tout le projet
+et le relance aussitôt) ; le README dit de le lire d'abord.
+Fichier › Ouvrir un paquet de reproductibilité… (ou Fichier › Ouvrir sur son .zip, ou le .zip
+déposé sur la fenêtre) vérifie chaque fichier par le manifeste du paquet et nomme ceux qui
+manquent, ont changé ou ont été ajoutés ; ouvre son projet comme un nouveau projet (Enregistrer
+demande où : rien ne s'écrit dans le paquet) ; ajuste de nouveau chaque modèle et compare ses
+résultats clés à ceux déposés, dans le panneau Ce qui a changé : « 4 modèles relancés : 4
+redonnent les résultats déposés (3 à l'identique, 1 à 6 chiffres significatifs près), 0
+diffère », et la Nuée et le R qui ont fait le dépôt et ceux qui l'ont relancé. Un modèle est
+identique quand chaque valeur est à 1e-10 près de celle déposée ; à 6 chiffres significatifs
+près à 1e-6 près, comme le laissent le calcul d'un autre ordinateur ou un optimiseur arrêté un
+rien plus loin (son plus grand écart est donné ; près de zéro, et pour une valeur p, l'écart est
+absolu) ; au-delà, il diffère, avec les phrases de Ce qui a changé. Un modèle qui ne peut pas
+être ajusté ici (une forêt aléatoire dans la version pour navigateur, du code R qui attend
+Exécuter) est dit tel quel, sans compter comme une différence. Le lien du paquet l'ouvre dans
+un navigateur, sans rien installer : Nuée va chercher le paquet sur Zenodo (le DOI d'une
+version, ou un DOI de concept, qui donne sa dernière version), puis montre aussitôt son document
+principal, tel que ses auteurs l'ont écrit, ses nombres, graphiques et tableaux remplis, sans
+attendre R, sur un téléphone comme sur un ordinateur (un menu donne ses autres documents). Ouvrir
+tout le projet ouvre le projet avec ce document devant, vivant ; Relancer les modèles l'ouvre et
+le relance comme ci-dessus. Un paquet sans document principal est ouvert et relancé aussitôt ; un
+paquet de plus de 500 Mo est pour l'application de bureau.
+
 Texte des méthodes
 ------------------
 Modèle › Texte pour la section Méthodes : un paragraphe écrit d'après le modèle, en français
@@ -966,8 +1030,8 @@ l'altitude, la pente, l'occupation du sol, le climat… lus dans des fichiers ra
 de chaque observation, et ajoutés au projet comme de nouvelles variables, une par bande.
 Choisissez un ou plusieurs fichiers : GeoTIFF (.tif, celui de QGIS, de la BD ALTI et du RGE ALTI
 de l'IGN, de Copernicus, de CORINE, de WorldClim ou de CHELSA) ou grilles ASCII d'ESRI (.asc,
-avec leur .prj). Dans la version navigateur, tapez le chemin complet de chaque fichier
-(plusieurs : séparés par « ; ») : le moteur lit les fichiers là où ils sont. Avant d'ajouter,
+avec leur .prj). Dans la version navigateur, choisissez les fichiers ensemble, chaque raster
+avec son .tfw ou son .prj : ils vont au R de la page, qui les lit. Avant d'ajouter,
 chaque fichier montre sa taille, son format, sa compression, ses cellules et leur taille, ses
 bandes et leur type, son système de coordonnées, sa valeur manquante, et combien d'observations
 y tombent ; un fichier qui ne se lit pas dit pourquoi. Pour chaque fichier, choisissez la
@@ -2142,14 +2206,16 @@ traite comme ses autres modèles.
     ajusté.
 Du modèle, chaque partie quand l'objet le permet : print(summary()) ; les coefficients
 (coef(summary()) quand c'est un tableau de nombres avec une colonne d'erreurs-types, trouvée par
-son nom (Std. Error, se(coef)…), ou plusieurs, comme cond, zi et disp de glmmTMB ; sinon coef()
-avec les erreurs-types de vcov()) et leur intervalle à 95 % (la loi t à leurs degrés de liberté
-quand leur test est un t, sinon la loi normale) ; nobs(), logLik() et ses degrés de liberté,
-AIC(), BIC() ; fitted() et residuals(), chaque valeur rapportée à son observation par son nom, le
-numéro de sa ligne dans donnees (lm, glm, gls… les gardent, même quand le code réordonne
-donnees), ou à aucune quand ces noms ne sont pas ces numéros (lme, nls) ou que le code a ajusté le
-modèle sur d'autres données ; predict(fit, newdata) quand il marche, sur l'échelle de la réponse
-(type = "response", quand le modèle le connaît : les comptages d'un GLM, pas leur log).
+son nom (Std. Error, se(coef)…), ou plusieurs, comme cond, zi et disp de glmmTMB ; ceux d'un gam
+de mgcv de summary()$p.table, sa partie paramétrique, sans les coefficients des bases de ses
+courbes, s(x).1…, ses courbes étant dans le résumé ; sinon coef() avec les erreurs-types de
+vcov()) et leur intervalle à 95 % (la loi t à leurs degrés de liberté quand leur test est un t,
+sinon la loi normale) ; nobs(), logLik() et ses degrés de liberté, AIC(), BIC() ; fitted() et
+residuals(), chaque valeur rapportée à son observation par son nom, le numéro de sa ligne dans
+donnees (lm, glm, gls… les gardent, même quand le code réordonne donnees), ou à aucune quand ces
+noms ne sont pas ces numéros (lme, nls) ou que le code a ajusté le modèle sur d'autres données ;
+predict(fit, newdata) quand il marche, sur l'échelle de la réponse (type = "response", quand le
+modèle le connaît : les comptages d'un GLM, pas leur log).
 
 Vues : Résumé (la classe, N, logLik, AIC, BIC, les versions de R et des paquets, les
 avertissements, ce que le code a affiché, summary(), Modifier le code), Coefficients (un graphique
@@ -2471,10 +2537,12 @@ descriptions, les coordonnées, une classe d'une sélection, des scores ou des g
 k-moyennes en variables.
 Édition › Étapes des données (ou clic droit sur les données du projet) : la source (trouvée,
 modifiée depuis sa lecture, ou introuvable) et les étapes, chacune avec sa date et les fichiers
-qu'elle a lus. Retirer montre d'abord ce que ferait le retrait d'une étape (la source relue,
-les autres étapes rejouées dessus), puis, comme une mise à jour, remplace les données en un seul
+qu'elle a lus. Retirer montre d'abord ce que ferait le retrait d'une étape (la source relue, les
+autres étapes rejouées dessus), puis, comme une mise à jour, remplace les données en un seul
 changement qu'annule Ctrl+Z, ajuste à nouveau chaque modèle et montre Ce qui a changé ; quand la
-source a changé depuis sa lecture, mettez d'abord les données à jour. Quand les données ont
+source a changé depuis sa lecture, mettez d'abord les données à jour. Retirer l'étape qui a
+renommé une variable lui rend son nom d'avant : les étapes qui la suivent, les modèles (leurs
+termes, leurs conditions) et les références des documents la nomment ainsi. Quand les données ont
 changé hors des étapes (dans la console R, ou avec une version de Nuée d'avant la 1.1), le
 dialogue le dit : les mettre à jour reprendrait celles que la source et les étapes donnent.
 Édition › Mettre à jour les données : la source relue, ou un autre fichier, celui de l'année
@@ -2532,8 +2600,12 @@ identifiants du projet, des nombres, du texte, les fonctions de calcul, de texte
 lois de R (log10, round, ifelse, paste, substr, as.Date, cut, pnorm...) et celles de Nuée
 (moyenne_groupe, precedent, shannon...). Gardée dans le projet, elle est refaite quand les
 données sont mises à jour, dans la copie d'un collègue aussi : ce qui pourrait lire ou écrire un
-fichier ou lancer un programme est refusé, et TRUE et FALSE s'écrivent en entier. Pour le reste
-de R, Affichage › Console R.
+fichier ou lancer un programme est refusé, et TRUE et FALSE s'écrivent en entier. Pour qu'une
+formule courte ne puisse pas non plus figer Nuée ou remplir sa mémoire, ses plages « : » tiennent
+100000 valeurs au plus en tout, cut() fait 10000 intervalles au plus, interaction() ne garde que
+les combinaisons observées, format() et formatC() prennent une largeur de 1000 au plus, et
+sprintf(), gsub() et sub() écrivent 100 millions de caractères au plus. Pour le reste de R,
+Affichage › Console R.
 Dans une formule de Nouvelle variable, d'une année à l'autre : precedent(x, annee, secteur), la
 valeur de x l'année d'avant dans le même secteur, et suivant(x, annee, secteur), celle de
 l'année d'après (pas = 2 : deux ans avant ou après). L'année cherchée doit exister : une année
@@ -2605,8 +2677,18 @@ et rien d'autre : les projets ne changent pas, et un nouvel historique commence 
 enregistrement, sauf si les versions sont arrêtées (un projet dont les versions étaient arrêtées
 suit de nouveau les Réglages). Un projet partagé sur GitHub ou GitLab perd aussi son lien avec le
 dépôt : ses versions y restent, et Fichier › Ouvrir depuis GitHub ou GitLab, dans un autre
-dossier, reprend le projet avec elles. La version navigateur n'a pas d'Historique : l'application
-de bureau garde les versions.
+dossier, reprend le projet avec elles.
+Dans la version navigateur (nuee.io/app), l'Historique garde les versions dans le navigateur,
+dans le stockage de ce site, avec les mêmes versions automatiques, noms et boutons. Enregistrer
+télécharge le projet et l'y garde aussi, avec son historique ; Enregistrer sous... en fait un
+projet à part, qui emmène son historique. Un projet rouvert dans le même navigateur retrouve son
+historique : repris après un rechargement, ou ouvert depuis un fichier qu'il a téléchargé, même
+renommé. Les versions sont dans ce navigateur seulement : effacer les données de ce site les
+efface, et un autre navigateur ou un autre ordinateur ne les a pas ; téléchargez le projet pour
+le garder ailleurs, ou partagez-le. Le haut de l'Historique donne leur taille, et dit quand le
+navigateur n'a pas accepté de les garder pour de bon (il peut alors les effacer quand la place
+manque). Le partage sur GitHub ou GitLab y marche aussi, par le relais de nuee.io (voir Partager
+sur GitHub ou GitLab).
 
 Ce qui a changé
 ---------------
@@ -2665,6 +2747,15 @@ déconnecter (ou Se connecter...), et Envoyer maintenant, Recevoir maintenant, V
 l'adresse ou le jeton... et Arrêter le partage (les versions restent ici et dans le dépôt).
 L'horloge de la barre d'état montre le même état. Quand un collègue et vous avez changé le projet
 tous les deux : voir Travailler à plusieurs.
+Dans la version navigateur (nuee.io/app), le partage marche de même avec GitHub et GitLab
+(github.com et gitlab.com) : la connexion, le dépôt créé, Inviter un collègue..., les versions
+envoyées et reçues, et Ouvrir depuis GitHub ou GitLab, où le projet s'ouvre à une place à lui
+dans le navigateur, avec ses versions. La connexion et les projets partagés passent par le relais
+de nuee.io, dont le navigateur a besoin pour joindre GitHub et GitLab : il les voit passer et
+n'en garde rien. Le jeton reste dans ce navigateur (le stockage de ce site), et Se déconnecter
+l'efface. Le GitLab de votre institution, un autre serveur et la connexion git de cet ordinateur
+demandent l'application de bureau, comme des versions à envoyer de plus de 100 Mo d'un coup, plus
+que le relais n'en prend.
 
 Se connecter à GitHub ou GitLab
 -------------------------------
@@ -2874,13 +2965,13 @@ substr(), substring(), startsWith(), endsWith(), tolower(), toupper(), trimws(),
 paste0(), mean(), median(), min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), et
 les fonctions de Nouvelle variable moyenne_groupe(), ecart_groupe(), precedent(), suivant() et
 croissance() (et leurs noms anglais). Rien d'autre : une condition est gardée dans le fichier du
-projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par
-elle (une formule de Nouvelle variable, tapée et calculée une fois, n'est pas gardée et n'a pas
-cette limite). Pour que cet ajustement reste rapide et borné, « : » ne va qu'entre deux nombres
-entiers (annee %in% 2005:2010) et sur une plage d'au plus 100000 valeurs, et interaction() laisse
-de côté les combinaisons vides : une condition courte ne peut pas construire un vecteur énorme qui
-figerait un ajustement. Pour un indice de diversité (shannon()...), en faire d'abord une Nouvelle
-variable, puis employer cette variable dans la condition.
+projet et refaite à chaque ajustement, un projet reçu ne peut donc rien exécuter d'autre par elle
+(une formule de Nouvelle variable, gardée aussi, est lue de même). Pour que cet ajustement reste
+rapide et borné, « : » ne va qu'entre deux nombres entiers (annee %in% 2005:2010), sur 100000
+valeurs au plus en tout, et interaction() ne garde que les combinaisons observées : une condition
+courte ne peut pas construire un vecteur énorme qui figerait un ajustement. Pour un indice de
+diversité (shannon()...), en faire d'abord une Nouvelle variable, puis employer cette variable
+dans la condition.
 
 Fenêtres
 --------

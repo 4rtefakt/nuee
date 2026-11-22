@@ -47,6 +47,9 @@ const TEXTES = {
     retabli: 'Rétabli : {quoi}.',
     recuperation: 'Récupérer des projets',
     recuperation_question: 'L’application ne s’est pas fermée normalement. Ces projets avaient des changements non enregistrés ; une copie de secours en a été gardée :',
+    recuperation_question_navigateur: 'Ces projets étaient ouverts quand l’onglet de Nuée a été fermé ; ce navigateur en a gardé une copie de secours :',
+    recuperation_non_enregistre: 'changements non enregistrés',
+    secours_navigateur_impossible: 'Ce navigateur ne garde pas la copie de secours d’un projet (stockage plein ou refusé) : enregistrez-le avant de fermer l’onglet.',
     ignorer: 'Ignorer',
     recuperer: 'Récupérer',
     moteur_arrete: 'Le moteur R s’est arrêté',
@@ -59,6 +62,9 @@ const TEXTES = {
     moteur_redemarre: 'Moteur R redémarré : {n} projet(s) rouvert(s).',
     moteur_redemarre_console: '— nouveau moteur R —',
     moteur_navigateur: 'Le serveur R ne répond plus : relancer le serveur, puis recharger la page.',
+    moteur_webr_arrete: 'R s’est arrêté dans cet onglet (mémoire pleine ?). Rechargez la page : les projets ouverts y seront proposés depuis leur copie de secours.',
+    fenetre_webr: 'Dans la version navigateur, les vues restent dans l’onglet : une autre fenêtre aurait un R à elle, sans vos projets.',
+    bureau_requis: '{quoi} : il faut l’application de bureau de Nuée.',
     calcul_long: 'Calcul en cours depuis plus d’une minute… (si l’application ne répond plus : Aide › Redémarrer le moteur R)',
     arreter_calcul: 'Arrêter', arreter_calcul_aide: 'Arrêter le calcul en cours : rien ne change', arret_demande: 'Arrêt demandé…',
     arret_lent: 'Ce calcul ne s’arrête qu’à sa fin', calcul_arrete: 'Calcul arrêté : rien n’a changé.',
@@ -765,6 +771,8 @@ const TEXTES = {
     etapes_r_vars_absentes: '{n} variable(s) qui ne sont plus dans le fichier, et quittent le projet : {noms}',
     etapes_r_ids_absents: 'Colonnes d’identifiants qui ne sont plus dans le fichier : {noms}',
     etapes_r_cellules: '{n} cellule(s) des observations déjà là : {detail}', etapes_r_recalculees: 'Calculées de nouveau d’après leur formule : {noms}',
+    etapes_r_renommee: '{avant} s’appelle de nouveau {apres} : les étapes qui suivent, les définitions des modèles (leurs termes, leurs conditions) et les références des documents la nomment ainsi.',
+    etapes_r_renommee_modeles: '{avant} s’appelle de nouveau {apres} : les étapes qui suivent, les définitions de {modeles} (leurs termes, leurs conditions) et les références des documents la nomment ainsi.',
     etapes_r_type_qualitative: '{variable} a des nombres dans le fichier : gardée qualitative, comme dans le projet',
     etapes_r_type_quantitative: '{variable} a du texte dans le fichier : lue en nombres, comme dans le projet',
     etapes_r_type_perdues: '{variable} a du texte dans le fichier : lue en nombres, comme dans le projet ; {n} valeur(s) qui ne sont pas des nombres deviennent manquantes',
@@ -843,6 +851,9 @@ const TEXTES = {
     retabli: 'Redone: {quoi}.',
     recuperation: 'Recover projects',
     recuperation_question: 'The application did not close normally. These projects had unsaved changes; a recovery copy was kept:',
+    recuperation_question_navigateur: 'These projects were open when Nuée’s tab was closed; this browser kept a recovery copy of them:',
+    recuperation_non_enregistre: 'unsaved changes',
+    secours_navigateur_impossible: 'This browser isn’t keeping a project’s recovery copy (storage full or refused): save it before closing the tab.',
     ignorer: 'Ignore',
     recuperer: 'Recover',
     moteur_arrete: 'The R engine stopped',
@@ -855,6 +866,9 @@ const TEXTES = {
     moteur_redemarre: 'R engine restarted: {n} project(s) reopened.',
     moteur_redemarre_console: '— new R engine —',
     moteur_navigateur: 'The R server no longer answers: restart the server, then reload the page.',
+    moteur_webr_arrete: 'R stopped in this tab (out of memory?). Reload the page: the projects that were open are offered there from their recovery copies.',
+    fenetre_webr: 'In the browser version, views stay in the tab: another window would have an R of its own, without your projects.',
+    bureau_requis: '{quoi}: Nuée’s desktop application is needed.',
     calcul_long: 'Computing for over a minute… (if the application no longer responds: Help › Restart the R engine)',
     arreter_calcul: 'Stop', arreter_calcul_aide: 'Stop the computation under way: nothing changes', arret_demande: 'Stopping…',
     arret_lent: 'This computation only stops at its end', calcul_arrete: 'Computation stopped: nothing changed.',
@@ -1558,6 +1572,8 @@ const TEXTES = {
     etapes_r_vars_absentes: '{n} variable(s) no longer in the file, which leave the project: {noms}',
     etapes_r_ids_absents: 'Identifier columns no longer in the file: {noms}',
     etapes_r_cellules: '{n} cell(s) of the observations already there: {detail}', etapes_r_recalculees: 'Computed again from their formula: {noms}',
+    etapes_r_renommee: '{avant} is called {apres} again: the steps after, the models’ definitions (their terms, their conditions) and the documents’ references name it so.',
+    etapes_r_renommee_modeles: '{avant} is called {apres} again: the steps after, the definitions of {modeles} (their terms, their conditions) and the documents’ references name it so.',
     etapes_r_type_qualitative: '{variable} holds numbers in the file: kept qualitative, as in the project',
     etapes_r_type_quantitative: '{variable} holds text in the file: read as numbers, as in the project',
     etapes_r_type_perdues: '{variable} holds text in the file: read as numbers, as in the project; {n} value(s) that aren’t numbers become missing',
@@ -1611,7 +1627,9 @@ export function ecrire(k, v) {
 // English unless the person chose French (View › Language). Until 1.0 the default was French, and
 // the choice was kept only when changed: a profile that has shown an earlier version's What's new
 // (version_vue) and has no choice ran in French, and keeps it. Written once, so that a new
-// profile's What's new doesn't turn it French at its next start.
+// profile's What's new doesn't turn it French at its next start. With no language kept yet, the
+// application's page takes its address's (?langue=fr: the browser version opened from nuee.io's
+// French page; not another window, ?vue=…), kept the same way: a choice made since wins over it.
 // (the hidden page that draws a document's tables and plots in the other language, app.js:
 // ?vue=hors_ecran&langue=…: that language, its own, never kept as the person's choice. A global
 // language held across the awaits of a drawing would switch the window's menus, dialogs, status bar
@@ -1620,7 +1638,8 @@ const page = typeof location !== 'undefined' ? new URLSearchParams(location.sear
 const langueDePage = page && page.get('vue') === 'hors_ecran' ? page.get('langue') : null;
 let langue = langueDePage === 'fr' || langueDePage === 'en' ? langueDePage : lire('langue');
 if (langue !== 'fr' && langue !== 'en') {
-  langue = lire('version_vue') ? 'fr' : 'en';
+  const demandee = page && !page.get('vue') && page.get('langue');
+  langue = demandee === 'fr' || demandee === 'en' ? demandee : lire('version_vue') ? 'fr' : 'en';
   ecrire('langue', langue);
 }
 

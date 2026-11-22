@@ -23,8 +23,8 @@ The installer, `Nuee-Setup-<version>.exe`, comes from the
 
 | | Command | Installs in |
 |---|---|---|
-| For the user running it | `Nuee-Setup-1.1.0.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuee` |
-| For every user of the computer (administrator, e.g. run as SYSTEM by Configuration Manager or Intune) | `Nuee-Setup-1.1.0.exe /S /allusers` | `%ProgramFiles%\Nuee` |
+| For the user running it | `Nuee-Setup-1.2.0.exe /S /currentuser` | `%LOCALAPPDATA%\Programs\Nuee` |
+| For every user of the computer (administrator, e.g. run as SYSTEM by Configuration Manager or Intune) | `Nuee-Setup-1.2.0.exe /S /allusers` | `%ProgramFiles%\Nuee` |
 
 `/D=D:\Apps\Nuée` (last, without quotes, even with spaces) installs elsewhere. The program is
 `Nuee.exe` in that folder. The installer adds Start menu and desktop shortcuts, an entry in
@@ -134,15 +134,15 @@ yours.
 ## Deployment tools
 
 The usual choice with these tools is an installation for every user of the computer, run as
-SYSTEM. Its values, for version 1.1.0 (put the version you deploy in the file name and the
+SYSTEM. Its values, for version 1.2.0 (put the version you deploy in the file name and the
 detection rule):
 
 | | |
 |---|---|
-| Install command | `Nuee-Setup-1.1.0.exe /S /allusers` |
+| Install command | `Nuee-Setup-1.2.0.exe /S /allusers` |
 | Uninstall command | `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S` |
 | Exit codes | 0 when it worked; no restart needed |
-| Detection | Registry, 64-bit view: key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`, value `DisplayVersion`, a version greater than or equal to `1.1.0` |
+| Detection | Registry, 64-bit view: key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`, value `DisplayVersion`, a version greater than or equal to `1.2.0` |
 | Requirements | Windows 10 or 11, 64-bit (x64); about 550 MB of disk |
 | Updating | Run the new version's installer with the same command: it replaces the installed copy in place, and keeps its shortcuts and taskbar pins |
 
@@ -157,10 +157,10 @@ As a *Windows app (Win32)*:
 
 1. **Package** the installer with the
    [Microsoft Win32 Content Prep Tool](https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool):
-   put `Nuee-Setup-1.1.0.exe` alone in a folder, then
-   `IntuneWinAppUtil.exe -c <that folder> -s Nuee-Setup-1.1.0.exe -o <output folder>`, and upload
+   put `Nuee-Setup-1.2.0.exe` alone in a folder, then
+   `IntuneWinAppUtil.exe -c <that folder> -s Nuee-Setup-1.2.0.exe -o <output folder>`, and upload
    the `.intunewin` file it writes.
-2. **Program:** install command `Nuee-Setup-1.1.0.exe /S /allusers`; uninstall command
+2. **Program:** install command `Nuee-Setup-1.2.0.exe /S /allusers`; uninstall command
    `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`; install behavior *System*; device
    restart behavior *No specific action*; return codes as they are.
 3. **Requirements:** operating system architecture *x64*; minimum operating system, the oldest
@@ -168,7 +168,7 @@ As a *Windows app (Win32)*:
 4. **Detection rules:** *Manually configure detection rules*, rule type *Registry*: key path
    `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`,
    value name `DisplayVersion`, detection method *Version comparison*, operator *Greater than or
-   equal to*, value `1.1.0`, associated with a 32-bit app on 64-bit clients *No*.
+   equal to*, value `1.2.0`, associated with a 32-bit app on 64-bit clients *No*.
 5. **A new version:** add it as a new app, then in its *Supersedence*, add the previous one with
    *Uninstall previous version* set to *No*: its installer updates the installed copy.
 6. **Turning the update check off:** a platform script (*Devices › Scripts and remediations ›
@@ -190,11 +190,11 @@ As a *Windows app (Win32)*:
 
 An application with a *Script Installer* deployment type:
 
-- **Programs:** installation program `Nuee-Setup-1.1.0.exe /S /allusers`; uninstall program
+- **Programs:** installation program `Nuee-Setup-1.2.0.exe /S /allusers`; uninstall program
   `"%ProgramFiles%\Nuee\Uninstall Nuee.exe" /allusers /S`.
 - **Detection method:** setting type *Registry*, hive `HKEY_LOCAL_MACHINE`, key
   `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503`,
-  value `DisplayVersion`, data type *Version*, the rule *Greater than or equals* `1.1.0`; leave
+  value `DisplayVersion`, data type *Version*, the rule *Greater than or equals* `1.2.0`; leave
   *This registry key is associated with a 32-bit application on 64-bit systems* unticked.
 - **User experience:** installation behavior *Install for system*; logon requirement *Whether or
   not a user is logged on*; installation program visibility *Hidden*.
@@ -207,13 +207,13 @@ An application with a *Script Installer* deployment type:
 Group Policy's *Software installation* only takes MSI packages, and Nuée's installer is a
 program, so install it from a computer startup script (*Computer Configuration › Policies ›
 Windows Settings › Scripts › Startup*), with the installer on a share the computers can read
-(*Domain Computers*). This one installs 1.1.0 unless that version is already there; change both
+(*Domain Computers*). This one installs 1.2.0 unless that version is already there; change both
 version numbers to deploy another:
 
 ```bat
 @echo off
-reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503" /v DisplayVersion /reg:64 2>nul | findstr /e /c:" 1.1.0" >nul
-if errorlevel 1 "\\server\share\Nuee-Setup-1.1.0.exe" /S /allusers
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\3dabb207-3e0d-5aa0-bdfc-da17bd7f0503" /v DisplayVersion /reg:64 2>nul | findstr /e /c:" 1.2.0" >nul
+if errorlevel 1 "\\server\share\Nuee-Setup-1.2.0.exe" /S /allusers
 ```
 
 To turn the update check off: *Computer Configuration › Preferences › Windows Settings ›
@@ -225,7 +225,7 @@ of the plugins as its value.
 
 ### PDQ Deploy and other tools
 
-- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.1.0.exe`, parameters `/S /allusers`,
+- **PDQ Deploy:** an *Install* step with `Nuee-Setup-1.2.0.exe`, parameters `/S /allusers`,
   success code `0`, run as *Local System* or as a deploy user who is an administrator.
 - **Other tools** (ManageEngine, Ivanti, NinjaOne, Chocolatey for Business, a private WinGet
   source…): the installer is an NSIS one (*nullsoft* for WinGet); the commands, exit codes and
@@ -241,7 +241,9 @@ of the plugins as its value.
   spell-checker; where they can't be downloaded, documents are simply not spell-checked); and,
   when a user asks Nuée to install R packages (from 1.1) — those another R lacks (*File ›
   Settings…*), or those a plugin needs (*File › Plugins…*), into Nuée's own R as into another —,
-  their download from CRAN (`cloud.r-project.org`), made by that R itself. There is no telemetry,
+  their download from CRAN (`cloud.r-project.org`), made by that R itself; and a reproducibility
+  package a user deposits on Zenodo (from 1.2, *File › Deposit on Zenodo…*), to `zenodo.org` (or
+  `sandbox.zenodo.org`, its test server), as a draft. There is no telemetry,
   no usage statistics, no crash report, no account of Nuée's own and no licence server.
 - All of it goes through the system's proxy settings and certificates, as Chrome does (see
   [Proxies and certificates](#proxies-and-certificates)), except the downloads from CRAN, which R
@@ -252,6 +254,15 @@ of the plugins as its value.
   each request must carry a random token drawn at each start, in a cookie that no other site can
   send, and name 127.0.0.1 as its host. Web pages open in a browser can't use it, and neither can
   other users of a shared computer (Remote Desktop).
+- *Sign in with Zenodo* (from 1.2) listens on `127.0.0.1` as well, port 47864 (or 47865 when another
+  program has it), from the click until Zenodo's page sends the browser back with its answer, ten
+  minutes at most; again no firewall rule is needed.
+- Nuée's browser version (`https://nuee.io/app/`, from 1.2) installs nothing. A project shared from
+  it, and the sign-in to GitHub or GitLab there, go through nuee.io's relay,
+  `https://nuee.io/relais/`, since a web page can't reach git on GitHub and GitLab by itself: the
+  relay sees them in transit and keeps nothing (no log, no copy). A web proxy that lets sites
+  through by address must let `nuee.io` through, `/relais/` included; a push is one request to it,
+  100 MB at most.
 
 ## Proxies and certificates
 
@@ -261,7 +272,8 @@ check: the system's proxy settings (manual, a PAC file or WPAD) and the system's
 store apply, so a proxy that inspects TLS works once its root certificate is trusted by the
 computer, as in Chrome or Edge. The hosts are `github.com`, `api.github.com` and
 `avatars.githubusercontent.com` (the account's picture) for GitHub; `gitlab.com`, or your own
-GitLab's host. The page where users approve Nuée opens in their default browser. *Use this
+GitLab's host. Zenodo is reached the same way (`zenodo.org`, and `sandbox.zenodo.org` for a test
+deposit). The page where users approve Nuée opens in their default browser. *Use this
 computer's git sign-in*, in the sign-in dialog, asks the git installed on the computer for its
 stored sign-in (`git credential fill`), which follows git's own settings. The spell-checking
 dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
@@ -278,7 +290,7 @@ dictionaries (Windows and Linux) come the same way, from `redirector.gvt1.com`.
 | Projects | Wherever users save them (`.nuee`) |
 | Projects' versions (1.1) | A hidden folder beside the projects, `.nuee-versions`: see [The versions folder](#the-versions-folder) |
 | Old versions opened or compared | R's temporary folder above, deleted when Nuée closes |
-| Sign-ins and tokens for GitHub and GitLab, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
+| Sign-ins and tokens for GitHub and GitLab, and the Zenodo sign-in or token of *File › Deposit on Zenodo…*, encrypted for the user by Windows (DPAPI, through Electron's `safeStorage`) | `%APPDATA%\Nuee\jetons.json` and `jetons-renouvellement.json`; the accounts' names, never a secret, and a self-hosted GitLab's application ID in `%APPDATA%\Nuee\reglages.json` |
 | The R a user chose in *File › Settings…* (1.1) | `%APPDATA%\Nuee\reglages.json` |
 | The plugins a user installed (1.1) | `%APPDATA%\Nuee\greffons`, one folder per plugin (its `plugin.json` and R files); approving them, their fingerprints in `reglages.json` |
 | Packages installed for that R, or for a plugin, when the user asks | That R's user library, made if needed: `%LOCALAPPDATA%\R\win-library\<R version>`, unless `R_LIBS_USER` says otherwise |

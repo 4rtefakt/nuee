@@ -8,7 +8,10 @@
 # fonction qui n'est pas permise, jamais exécutée, même d'un fichier reçu ; un résultat de la
 # mauvaise longueur ou du mauvais type ; aucune observation) ; les cases cochées gardées ; les
 # réajustements (les données changées, la sélection par l'AIC, CAR1, l'ajustement automatique) ;
-# l'enregistrement et la relecture ; le texte des méthodes ; la prédiction des observations écartées.
+# l'enregistrement et la relecture ; le texte des méthodes ; la prédiction des observations écartées ;
+# les bornes d'une condition et d'une formule de Nouvelle variable (des plages « : » qui s'additionnent,
+# cut(x, 1e9), interaction() de beaucoup de niveaux, format(), formatC() et sprintf() très larges, des
+# gsub() emboîtés : refusés aussitôt, le reste comme R le calcule).
 #   Rscript moteur/tests/verifier_observations.R
 
 source("moteur/charger.R", encoding = "UTF-8")
@@ -195,6 +198,60 @@ lente <- refus(valeurs_condition(p, "sucre > 12 | sum(nchar(paste0(1:1e8))) < 0"
 ecoule <- as.numeric(Sys.time() - t0, units = "secs")
 verifier(sprintf("une condition faite pour être lente (1:1e8) est refusée aussitôt (%.2f s)", ecoule),
          grepl("est trop longue", lente, fixed = TRUE) && ecoule < 1)
+verifier("mille plages « : » courtes ne font pas une longue : refusées ensemble",
+         grepl("trop longues ensemble", refus(valeurs_condition(p, "sucre > 12 | sum(c(1:60000, 1:60000)) < 0")), fixed = TRUE))
+
+# les formules de Nouvelle variable de même (variables.R : environnement_borne) : ce qu'un argument court
+# rendrait démesuré est refusé aussitôt (un projet reçu, refait à chaque mise à jour, ne fige pas le
+# moteur), le reste comme R le calcule ; interaction(), les seules combinaisons observées (dans une
+# condition aussi), sans le produit de tous les niveaux
+formule <- function(f) {
+  t0 <- proc.time()[[3]]
+  r <- tryCatch({ q <- variable_calculee(p, "v", f); valeurs(q, "v") }, error = conditionMessage)
+  structure(r, secondes = proc.time()[[3]] - t0)
+}
+cascade <- function(k) { f <- "variete"; for (i in seq_len(k)) f <- sprintf('gsub("", "xxxxxxxxx", %s)', f); sprintf("nchar(%s)", f) }
+for (k in list(list("cut(sucre, 1e9)", "cut() : au plus 10 000 intervalles"), list("format(variete, width = 1e9)", "format() : une largeur"),
+               list("formatC(sucre, width = 1e9)", "formatC() : une largeur"),
+               list(sprintf("format(1e300 * sucre, scientific = FALSE, big.mark = '%s')", strrep("x", 101)), "format() : un texte à insérer de 100 caractères au plus"),
+               list(sprintf('sprintf("%s", variete)', strrep("%1$8000s", 110)), "sprintf() : plus de 100 000 000 caractères"),
+               list(cascade(9), "gsub() : plus de 100 000 000 caractères"), list("sucre + sum(c(1:60000, 1:60000)) * 0", "trop longues ensemble"))) {
+  r <- formule(k[[1]])
+  verifier(sprintf("%s : refusé aussitôt (%.2f s : « %s »)", substr(k[[1]], 1, 50), attr(r, "secondes"), substr(r[1], 1, 60)),
+           length(r) == 1 && grepl(k[[2]], r, fixed = TRUE) && attr(r, "secondes") < 5)
+}
+t_int <- formule("interaction(poids, fermete, sucre, acidite)")
+verifier(sprintf("interaction(poids, fermete, sucre, acidite) : les combinaisons observées, aussitôt (%.2f s ; le produit de leurs niveaux en a %s)",
+                 attr(t_int, "secondes"), format(prod(lengths(lapply(df[c("poids", "fermete", "sucre", "acidite")], unique))), big.mark = " ")),
+         identical(as.vector(t_int), with(df, as.character(interaction(poids, fermete, sucre, acidite, drop = TRUE)))) && attr(t_int, "secondes") < 1)
+verifier("cut(sucre, 4), format(nsmall = 2), formatC(), sprintf(), gsub() : comme R les calcule",
+         identical(as.vector(formule("cut(sucre, 4)")), as.character(cut(df$sucre, 4))) &&
+           identical(as.vector(formule("format(sucre, nsmall = 2)")), format(df$sucre, nsmall = 2)) &&
+           identical(as.vector(formule("formatC(sucre, width = 8, format = 'f', digits = 1)")), formatC(df$sucre, width = 8, format = "f", digits = 1)) &&
+           identical(as.vector(formule("sprintf('%.1f kg', poids)")), sprintf("%.1f kg", df$poids)) &&
+           identical(as.vector(formule('gsub("a", "A", variete)')), gsub("a", "A", df$variete)) &&
+           identical(as.vector(formule(cascade(2))), as.numeric(nchar(gsub("", "xxxxxxxxx", gsub("", "xxxxxxxxx", df$variete))))))
+set.seed(8)
+pareils <- 0
+compares <- 0
+for (essai in 1:200) {
+  args <- lapply(seq_len(sample(1:4, 1)), function(i) {
+    x <- sample(c("a", "b", "c", "a.b", "b.c", "", NA, "1", "10")[seq_len(if (essai %% 2) 9 else 7)], 30, TRUE)
+    if (i == 2) factor(x, levels = sample(unique(c(x[!is.na(x)], "inutile")))) else x
+  })
+  for (lex in c(FALSE, TRUE)) for (sep in c(".", "")) {
+    a <- tryCatch(do.call(base::interaction, c(args, list(drop = TRUE, lex.order = lex, sep = sep))), error = function(e) NULL)
+    if (is.null(a)) next  # (base::interaction s'arrête parfois sur deux combinaisons du même texte et une valeur manquante)
+    b <- do.call(interaction_observee, c(args, list(lex.order = lex, sep = sep)))
+    sans_collision <- identical(sep, ".") && !any(grepl(".", unlist(lapply(args, as.character)), fixed = TRUE))
+    compares <- compares + 1
+    pareils <- pareils + (identical(as.character(a), as.character(b)) && (!sans_collision || identical(a, b)))
+  }
+}
+# (au moins 200 cas comparés : base::interaction s'arrête sur plus de ces collisions avec un R plus
+# ancien, 554 cas restent avec R 4.6.2, 226 avec le R 4.3.3 d'Ubuntu)
+verifier(sprintf("interaction_observee : les valeurs de base::interaction(drop = TRUE), et ses niveaux dans son ordre quand deux combinaisons ne peuvent pas s'écrire pareil (%d cas sur %d)", pareils, compares),
+         compares >= 200 && pareils == compares)
 verifier("aucune observation cochée ne la remplit : le modèle est refusé, et le dit",
          grepl("Aucune des 120 observations cochées ne remplit la condition sucre > 100", refus(definir_modele(p, "PCA", x = x, A = 2, condition = "sucre > 100")), fixed = TRUE))
 verifier("en anglais aussi", {

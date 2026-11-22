@@ -158,11 +158,14 @@ at the next start, the saved projects (.nuee) open when Nuée closed come back, 
 models and views; a file moved or deleted since is named in the status bar. Without it, the
 start page offers Reopen last session. After an unexpected stop, the recovery copies are
 offered instead.
-Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new
-variable, class, scores as variables, deleted definition...), up to 20 steps back. Edit › Redo
-(Ctrl+Y or Ctrl+Shift+Z) makes again, as it was, what Undo took back: an update of the data with
-its source and steps, the models fitted again on its data. Both menu items name the change they
-act on; any new change empties Redo.
+Edit › Undo (Ctrl+Z) takes back the last change to a project's data (edited value, new variable,
+class, scores as variables, deleted definition...), up to 20 steps back. Models fitted since
+stay, and a model modified since (fitted again with other settings, its notes) keeps its new
+definition; one that reads what Undo takes away (a variable the change made) goes with it or, if
+it was there before the change, comes back as it was. Edit › Redo (Ctrl+Y or Ctrl+Shift+Z) makes
+again, as it was, what Undo took back: an update of the data with its source and steps, the
+models fitted again on its data. Both menu items name the change they act on; any new change
+empties Redo.
 Notes: each model's summary has a notes area, saved with the project and included in the
 report; a pencil marks it in the explorer.
 Removing a model (Model › Delete model) asks for confirmation. Its definition stays in the
@@ -170,25 +173,38 @@ project; for a model made in the application, a checkbox removes it as well (und
 
 If the R engine stops
 ---------------------
-A computation that takes more than a second and a half gets Stop in the status bar (above a
-dialog too, such as New model fitting). Stop ends it between two of its rounds, and nothing
-changes: the model isn't added, the data aren't changed, the view says "Computation stopped".
-The long loops stop this way: permutations (of a PLS, a PERMANOVA, a dispersion test, Mantel's
-test and its correlogram, indicator species, an RDA's tests, the variables fitted to an
-ordination's axes, Moran's I), the AIC selection's models, an NMDS's random starts, the power
-simulations, the cross-validation rounds (PCA, PLS, OPLS, linear models, GAMs, trees, random
-forests, boosted trees), boosted trees one tree at a time, a tree's stability draws, TRIM's
-stepwise selection of change points, iPLS's intervals, One model per response, k-means' choice
-of k, and the steps replayed by Update the data. What can't be stopped before it ends: a single
-fit in compiled code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's
-estimation), the R console's code and an R-code model's code; Stop then says so, and Help ›
-Restart the R engine remains. During Update the data, its own Stop stops the model being fitted
-too. The application says when the engine stops and offers to restart it; you can also do it
-yourself (Help › Restart the R engine) if a computation doesn't finish. Projects reopen with their models and
-views, from their recovery copy if they had changes, otherwise from the file they save to;
-changes made since the last recovery copy (two minutes at most) are lost. Closing Nuée when
-the engine no longer answers keeps the recovery copies, offered at the next start. After a
-minute of computing, the status bar says so.
+Long computations run in the background, in a second R: while a model is fitted, permutations
+run or a simulation goes on, the rest of the window works — other models' views, other projects,
+the data, the menus. New model's dialog steps aside when the fit takes more than a moment; the
+model's views open once it is there, and if the fit fails the dialog comes back with its
+settings and the error. A change to the project being computed (a variable renamed, a model
+refitted) waits for the end of the computation, then is made.
+
+A computation that takes more than a second and a half shows in the status bar, with Stop (above
+a dialog too): a bar with the step under way — “Permutation 420 of 999”, “Cross-validation:
+group 3 of 7” — and the time left, or, for a computation that doesn't count its rounds (a single
+fit), a bar going across with the time since it began; a view waiting for it shows the same bar.
+Stop ends it between two of its rounds, and nothing changes: the model isn't added, the data
+aren't changed, the view says "Computation stopped". The long loops stop this way: permutations
+(of a PLS, a PERMANOVA, a dispersion test, Mantel's test and its correlogram, indicator species,
+an RDA's tests, the variables fitted to an ordination's axes, Moran's I), the AIC selection's
+models, an NMDS's random starts, the power simulations, the cross-validation rounds (PCA, PLS,
+OPLS, linear models, GAMs, trees, random forests, boosted trees), boosted trees one tree at a
+time, a tree's stability draws, TRIM's stepwise selection of change points, iPLS's intervals,
+One model per response, k-means' choice of k, and the steps replayed by Update the data or by
+removing a step. A computation that doesn't stop between two rounds — a single fit in compiled
+code (a mixed model, a GAM, a random forest's trees, distance sampling, TRIM's estimation) or an
+R-code model's code — is stopped all the same a second and a half later: its R is stopped,
+another takes its place, and the project is as it was. The R console's code runs in the window's
+R and stops only at its end; Stop then says so, and Help › Restart the R engine remains. During
+Update the data, its own Stop stops the model being fitted too. The application says when the
+engine stops and offers to restart it; you can also do it yourself (Help › Restart the R engine)
+if a computation doesn't finish. Projects reopen with their models and views, from their
+recovery copy if they had changes, otherwise from the file they save to, a view in a window of
+its own following its model there (another main window's views close, its projects back in its
+explorer); changes made since the last recovery copy (two minutes at most) are lost. Closing
+Nuée when the engine no longer answers keeps the recovery copies, offered at the next start.
+After a minute of computing, the status bar says so.
 Help › What's new: the changes in each version (shown once after an update). The installed
 copy (Nuee-Setup, the macOS application or the Linux packages) looks for a new version at
 start-up (a single request to GitHub, nothing else is sent) and mentions it in the status bar;
@@ -232,6 +248,11 @@ different. Q2 usually differs: an imported model is validated like the others (s
 The explorer follows the work: a project opened, or a model fitted, comes into view at its top,
 and opening a project folds the other projects' fitted models to a line each (their arrow
 unfolds them).
+On a phone (or in a window narrower than 700 px), Nuée shows one view at a time, as large as
+the screen: the explorer is behind the button before the menus, and one tap on a view in it
+opens that view in its place (one tap opens or closes a folder too); the toolbar is hidden,
+its commands are in the menus. It is made for reading results; editing is easier on a larger
+screen.
 
 Menus and toolbar
 -----------------
@@ -565,6 +586,43 @@ The script is yours: you may use, change and share it under any terms, the parts
 engine it copies included (an exception to Nuée's GPL licence, LICENSE-EXCEPTION.md). Its
 opening comments say so, and how to cite Nuée if you publish results obtained with it.
 
+Reproducibility package
+-----------------------
+File › Export a reproducibility package…: one .zip that anyone with R, or with Nuée, can rerun:
+the project, its data as CSV with a data dictionary, one R script that redoes every model, the
+documents as reproducible Quarto files and as HTML pages (their numbers, plots and tables filled
+in: they open in any browser, on a phone too), each model's key results as Nuée computed them
+(results/key_results.json, with the versions of Nuée, R and the R packages), a README, the
+licence of the data with its text, CITATION.cff, codemeta.json and the SHA-256 hash of every
+file (MANIFEST.sha256). File › Deposit on Zenodo… (desktop application) creates a draft on
+Zenodo with its DOI reserved, writes the package with that DOI and deposits it there; Nuée never
+publishes: you check the draft on Zenodo and publish it there. Sign in with Zenodo opens
+Zenodo's page in your browser, where you allow Nuée to upload, never to publish; the sign-in
+lasts 60 days (a personal access token with the scope deposit:write can be pasted instead). Its
+last dialog gives the link that opens the package in Nuée in a browser,
+https://nuee.io/app/?doi=<DOI>, and its QR code (Copy link, Save the QR code… as SVG or PNG, for
+a poster or a slide); the package holds both. Shown first, in the dialog, is the document
+readers of the link see first: the project's first document, another, or none (then the link
+opens the whole project and reruns it at once); the README says to read it first.
+File › Open a reproducibility package… (or File › Open on its .zip, or the .zip dropped on the
+window) checks every file against the package's manifest and names any file missing, changed or
+added; opens its project as a new project (Save asks where: nothing is written into the
+package); fits every model again and compares its key results with the deposited ones, in the
+What changed panel: "4 models rerun: 4 give the deposited results (3 identical, 1 the same to 6
+significant digits), 0 differ", and which Nuée and R made the deposit and which reran it. A model
+is identical when each value is within 1e-10 of the deposited one; the same to 6 significant
+digits within 1e-6, as another computer's arithmetic or an optimiser stopping a hair further
+leaves it (its largest gap is given; near zero, and for a p-value, the gap is absolute); beyond,
+it differs, with What changed's sentences. A model that can't be fitted here (a random forest in
+the browser version, R code waiting for Run it) is said as such, not counted as a difference.
+The package's link opens it in a browser, without installing anything: Nuée fetches the
+package from Zenodo (a version's DOI, or a concept DOI, which gives its latest version), then
+shows its main document at once, as its authors wrote it, its numbers, plots and tables filled
+in, without waiting for R, on a phone as on a computer (a menu gives its other documents). Open
+the whole project opens the project with that document in front, live; Rerun the models opens
+it and reruns it as above. A package without a main document is opened and rerun at once; a
+package larger than 500 MB is for the desktop application.
+
 Methods text
 ------------
 Model › Text for the Methods section: a paragraph written from the model, in French or
@@ -882,8 +940,8 @@ Raster values (Edit › Add raster values…, or the button on the map): an elev
 land cover, a climate layer… read from raster files at each observation's position, and added
 to the project as new variables, one per band. Choose one or several files: GeoTIFF (.tif, as
 QGIS, IGN's BD ALTI and RGE ALTI, Copernicus, CORINE, WorldClim or CHELSA write it) or ESRI
-ASCII grids (.asc, with their .prj). In the browser version, type each file's full path
-(several: separated by ";"): the engine reads the files where they are. Before adding, each
+ASCII grids (.asc, with their .prj). In the browser version, choose the files together, each
+raster with its .tfw or .prj: they go to the page's R, which reads them. Before adding, each
 file shows its size, format, compression, cells and their size, bands and their type,
 coordinate system, no-data value, and how many observations fall in it; a file that can't be
 read says why. For each file, choose the value: the cell holding the observation (classes,
@@ -1965,14 +2023,16 @@ code its data, takes from the model what it can, and treats it like its other mo
     it; the model stays in the dialog, not fitted.
 From the model, each part when the object allows it: print(summary()); the coefficients
 (coef(summary()) when it is a table of numbers with a column of standard errors, found by its
-name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; else coef() with the
-standard errors of vcov()) and their 95% interval (the t distribution at their degrees of freedom
-when their test is a t, else the normal); nobs(), logLik() and its degrees of freedom, AIC(),
-BIC(); fitted() and residuals(), each value matched to its observation by its name, the number
-of its row in donnees (lm, glm, gls… keep them, even when the code reorders donnees), or to none
-when the names aren't those numbers (lme, nls) or the code fitted the model on other data;
-predict(fit, newdata) when it works, on the response scale (type = "response", when the model
-knows it: a GLM's counts, not their log).
+name (Std. Error, se(coef)…), or several, as glmmTMB's cond, zi and disp; an mgcv gam's from
+summary()$p.table, its parametric part, without the coefficients of its curves' bases, s(x).1…,
+its curves being in the summary; else coef() with the standard errors of vcov()) and their 95%
+interval (the t distribution at their degrees of freedom when their test is a t, else the
+normal); nobs(), logLik() and its degrees of freedom, AIC(), BIC(); fitted() and residuals(),
+each value matched to its observation by its name, the number of its row in donnees (lm, glm,
+gls… keep them, even when the code reorders donnees), or to none when the names aren't those
+numbers (lme, nls) or the code fitted the model on other data; predict(fit, newdata) when it
+works, on the response scale (type = "response", when the model knows it: a GLM's counts, not
+their log).
 
 Views: Summary (the class, N, logLik, AIC, BIC, the versions of R and of the packages, the
 warnings, what the code printed, summary(), Edit the code), Coefficients (a plot and the table),
@@ -2266,9 +2326,11 @@ Edit › Data steps (or right-click on the project's data): the source (found, c
 was read, or not found) and the steps, each with its date and the files it read. Remove shows
 first what removing a step would do (the source read again, the other steps replayed on it),
 then, as an update, replaces the data as one change that Ctrl+Z undoes, fits every model again
-and shows What changed; when the source changed since it was read, update the data first. When
-the data changed outside the steps (in the R console, or with a version of Nuée before 1.1), the
-dialog says so: updating them would bring back what the source and the steps give.
+and shows What changed; when the source changed since it was read, update the data first.
+Removing the step that renamed a variable gives it its name back: the steps after it, the models
+(their terms, their conditions) and the documents' references name it so. When the data changed
+outside the steps (in the R console, or with a version of Nuée before 1.1), the dialog says so:
+updating them would bring back what the source and the steps give.
 Edit › Update the data: the source read again, or another file, next year's, whose columns may
 come in another order or with new ones. The steps are replayed on it, then its rows are matched
 to the project's observations by their identifiers and its columns to the variables by their
@@ -2319,7 +2381,10 @@ text, and R's calculation, text, date and distribution functions (log10, round, 
 substr, as.Date, cut, pnorm...) with Nuée's own (group_mean, previous, shannon...). Kept in the
 project, it is replayed when the data are updated, in a colleague's copy too: anything that
 could read or write a file or start a program is refused, and TRUE and FALSE are written in
-full. For the rest of R, View › R console.
+full. So that a short formula can't tie up Nuée or fill its memory either, its ":" ranges hold
+100000 values at most in all, cut() makes 10000 intervals at most, interaction() keeps only the
+combinations observed, format() and formatC() take a width of 1000 at most, and sprintf(),
+gsub() and sub() write 100 million characters at most. For the rest of R, View › R console.
 In a New variable formula, from one year to the next: previous(x, year, sector), the value of x
 the year before in the same sector, and following(x, year, sector), that of the year after
 (pas = 2: two years before or after). The year sought must exist: a missing year gives a
@@ -2383,8 +2448,17 @@ outside Nuée is found again by its content, and Save as... takes its history al
 projects don't change, and a new history starts at their next save unless versions are turned
 off (a project whose versions were off follows Settings again). A project shared on GitHub or
 GitLab also loses its link to the repository: its versions stay there, and File › Open from
-GitHub or GitLab, into another folder, gets the project back with them. The browser version has
-no History: the desktop application keeps the versions.
+GitHub or GitLab, into another folder, gets the project back with them.
+In the browser version (nuee.io/app), History keeps the versions in the browser, in this site's
+storage, with the same automatic versions, names and buttons. Save downloads the project and
+keeps it there too, with its history; Save as... makes it a project of its own, its history
+taken along. A project opened again in the same browser finds its history: recovered after a
+reload, or opened from a file it downloaded, even renamed. The versions are in this browser
+only: clearing this site's data deletes them, and another browser or computer doesn't have them;
+download the project to keep it elsewhere, or share it. The top of History gives their size, and
+says when the browser hasn't agreed to keep them for good (it may then delete them when space
+runs short). Sharing on GitHub or GitLab works there too, through nuee.io's relay (see Sharing
+on GitHub or GitLab).
 
 What changed
 ------------
@@ -2438,6 +2512,14 @@ Invite a colleague... and Sign out (or Sign in...), and Send now, Get now, Check
 address or token... and Stop sharing (the versions stay here and in the repository). The clock
 in the status bar shows the same state. When you and a colleague both changed the project: see
 Working together.
+In the browser version (nuee.io/app), sharing works the same with GitHub and GitLab (github.com
+and gitlab.com): signing in, the repository made, Invite a colleague..., the versions sent and
+received, and Open from GitHub or GitLab, where the project opens at a place of its own in the
+browser, with its versions. The sign-in and the projects shared pass through nuee.io's relay,
+which the browser needs to reach GitHub and GitLab: it sees them pass and keeps nothing. The
+token stays in this browser (this site's storage), and Sign out removes it. Your institution's
+GitLab, another server and this computer's git sign-in need the desktop application, and so do
+versions to send of more than 100 MB at once, more than the relay takes.
 
 Signing in to GitHub or GitLab
 ------------------------------
@@ -2636,12 +2718,12 @@ startsWith(), endsWith(), tolower(), toupper(), trimws(), paste(), paste0(), mea
 min(), max(), sum(), quantile(), pmin(), pmax(), interaction(), and the New variable functions
 group_mean(), group_deviation(), previous(), following() and growth_rate() (and their French
 names). Nothing else: a condition is kept in the project file and run again at each fit, so a
-project received from someone can't run other code through it (a New variable formula, typed
-and computed once, is not kept and has no such limit). To keep that run quick and bounded, ":"
-goes only between two whole numbers (year %in% 2005:2010) and over a range of at most 100000
-values, and interaction() drops the empty combinations: a short condition can't build a huge
-vector that would tie up a fit. For a diversity index (shannon()...), make it a New variable
-first, then use that variable in the condition.
+project received from someone can't run other code through it (a New variable formula, kept too,
+is read the same way). To keep that run quick and bounded, ":" goes only between two whole
+numbers (year %in% 2005:2010), over 100000 values at most in all, and interaction() keeps only
+the combinations observed: a short condition can't build a huge vector that would tie up a fit.
+For a diversity index (shannon()...), make it a New variable first, then use that variable in
+the condition.
 
 Windows
 -------

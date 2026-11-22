@@ -2,11 +2,13 @@
 // ?vue=<view>&modele=<id> shows a single view instead (a panel moved to its own window).
 // All windows share the R server's state and keep selections in step over a BroadcastChannel.
 import { t, changerLangue as changerLangueTexte, langueActuelle, lire, ecrire, deuxPoints } from './i18n.js';
-import { demander, televerser, bureau, debutAttente } from './api.js';
+import { demander, televerser, deposer, telechargerFichier, bureau, debutAttente, MOTEUR_WEBR, moteurWebR } from './api.js';
+import { elementStatut } from './progression.js';
+import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
-import { rendreExplorateur } from './explorateur.js';
+import { rendreExplorateur, marquerNoeud } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
 import { dialogueRapport, partiesModele, imageVue } from './rapport.js';
@@ -33,6 +35,7 @@ import { installerGreffons } from './vues_greffons.js';
 import { installerDocuments } from './documents.js';
 import { installerFigures } from './figures.js';
 import { installerVersions } from './versions.js';
+import { lieuEnregistrement, lieuConnu } from './versions_navigateur.js';
 import { nomFichier, sansExtension } from './versions_texte.js';
 import { dialogueQuelleAnalyse } from './quelle_analyse.js';
 import { dialogueRemplacer, dialogueCategories, dialogueVariables, actionsVariable } from './atelier.js';
@@ -41,6 +44,10 @@ import { installerEtapes } from './etapes.js';
 import { installerReglages } from './reglages.js';
 import { installerAide, prechargerGuide } from './aide.js';
 import { messagesDock, ongletDock, donneesGraphe } from './accessibilite.js';
+import { dialoguePaquet } from './paquet.js';
+import { ouvrirPaquet, choisirPaquet } from './relancer.js';
+import { demarrerLecture } from './lecture.js';
+import { etroit, unAUn } from './etroit.js';
 
 const params = new URLSearchParams(location.search);
 const VUE_SEULE = params.get('vue');
@@ -91,6 +98,8 @@ const garder_ = (res) => garder(res);
 
 const app = {
   bureau,
+  // (the browser version: what only the desktop application does, said so in the status bar)
+  bureauRequis: (cle) => statut(t('bureau_requis', { quoi: t(cle).replace(/…$/, '') }), true),
   projets: () => Object.values(etat.projets),
   projet: (id) => etat.projets[id],
   modele: (id) => etat.modeles[id],
@@ -177,7 +186,8 @@ const app = {
   choisirNoeud(cle) {
     etat.noeud = cle;
     const n = /\/m\/([^/]+)$/.exec(cle);  // a model chosen in the explorer: its page comes to the front
-    const page = n && dock && dock.getPanel(`page:${n[1]}`);
+    // (not on a phone, where it would take the explorer's place: a view opened from it does, etroit.js)
+    const page = n && dock && !etroit() && dock.getPanel(`page:${n[1]}`);
     if (page) page.api.setActive();
     // (else the explorer comes to the front, as when a click brings the focus into it: the focus
     // may already be there, left on the node that opened the view in front, and dockview then sees
@@ -186,7 +196,14 @@ const app = {
       const ex = dock && dock.getPanel('explorateur');
       if (ex && !ex.api.isActive) ex.api.setActive();
     }
-    app.rafraichirExplorateur();
+    // (the explorer marks it without being drawn again, so that a double click reaches its node:
+    // explorateur.js, marquerNoeud; the start page follows the project chosen)
+    const arbre = etat.panneaux.get('explorateur');
+    if (!arbre || !marquerNoeud(arbre.element, cle)) app.rafraichirExplorateur();
+    else {
+      const accueil = etat.panneaux.get('accueil');
+      if (accueil) rendrePanneau(accueil);
+    }
     majEtat();
   },
 
@@ -206,7 +223,9 @@ const app = {
     }
     const f = await choisirFichierNavigateur(acceptOuverture());
     if (!f) return;
-    const res = await choisirTable(await occupe(() => televerser(f)));
+    const lu = await occupe(() => televerser(f));
+    if (await siPaquet(lu, f.name)) return;
+    const res = await choisirTable(lu);
     if (res) await apresOuverture(res);
   },
 
@@ -230,7 +249,7 @@ const app = {
     const choisir = async (spectres) => {
       if (bureau) return spectres ? bureau.choisirFichiers(filtresSpectres()) : [await bureau.choisirFichier(filtresOuverture(true))].filter(Boolean);
       const fichiers = await choisirFichiersNavigateur(spectres ? acceptSpectres() : acceptOuverture(true), spectres);
-      return Promise.all(fichiers.map(async (f) => (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin));
+      return Promise.all(fichiers.map((f) => deposer(f)));
     };
     const nom = (c) => c.split(/[\\/]/).pop();
     const contenu = el('div', { class: 'import-spectres' });
@@ -312,12 +331,15 @@ const app = {
       statut(t('deja_ouvert', { nom: ouvert.nom }));
       return;
     }
-    const res = await choisirTable(await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined })));
-    if (!res) return;
-    await apresOuverture(res);
-    if ([].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
+    const lu = await occupe(() => demander('ouvrir', { chemin, collecte: collecte || undefined }));
+    // (a reproducibility package: opened and rerun, relancer.js)
+    const paquet = await siPaquet(lu);
+    const res = paquet ? null : await choisirTable(lu);
+    if (!res && !paquet) return;
+    if (res) await apresOuverture(res);
+    if (res && [].concat(res.note || []).length) statut([].concat(res.note).join(' ; '), true);  // cells read as missing, a project from a newer Nuée
     if (bureau) recents = await bureau.ajouterRecent(chemin);
-    else {
+    else if (!MOTEUR_WEBR) {  // (in the browser version, a file's path is R's in the tab: gone with it)
       recents = [chemin, ...recents.filter((r) => r !== chemin)].slice(0, 10);
       ecrire('recents', JSON.stringify(recents));
     }
@@ -333,7 +355,11 @@ const app = {
     if (app.viderDocuments) await app.viderDocuments(pid);  // (a document's text still being typed goes in first)
     if (app.viderFigures) await app.viderFigures(pid);  // (and a figure's last change)
     const p = etat.projets[pid];
-    let chemin = !sous && p.chemin_enregistrement ? p.chemin_enregistrement : null;
+    // (the browser version: at its place in the browser's storage, where its versions are kept, never
+    // where a project opened in the tab was put; Save as, a new place; then downloaded. A place that
+    // can't be had: downloaded only. versions_navigateur.js)
+    let chemin = !sous && !MOTEUR_WEBR && p.chemin_enregistrement ? p.chemin_enregistrement : null;
+    if (MOTEUR_WEBR) chemin = await lieuEnregistrement(p, { sous }).catch(() => null);
     if (bureau && !chemin) {
       // (an old version's name has its date, whose dot and colon a file's name can't take as they are)
       const nom = p.lecture_seule ? nomFichier(p.nom) : p.nom.replace(/\.[^.]+$/, '');
@@ -365,8 +391,8 @@ const app = {
       // (merged: saved as it is now, asked again if the file changed once more meanwhile)
       r = await sauver({ ...q, session: VUE_SEULE ? undefined : JSON.stringify(collecterSession(pid)), ...(choix === 'ecraser' ? { ecraser: true } : {}) });
     }
-    if (!bureau && !chemin) telecharger(r.chemin);
-    statut(`${t('enregistre')} ${r.chemin}`);
+    if (!bureau && (MOTEUR_WEBR || !chemin)) telecharger(r.chemin);
+    statut(`${t('enregistre')} ${bureau ? r.chemin : r.chemin.split('/').pop()}`);  // (downloaded under its name)
     // (the project file, with its models, in File › Open recent and on the start page, where only the
     // table it came from was)
     if (bureau) recents = await bureau.ajouterRecent(r.chemin);
@@ -569,6 +595,7 @@ const app = {
   // written): the explorer and the status bar, no panel drawn again.
   majProjet(res) {
     projetRecu(res);
+    copierBientot(res.id);
     app.rafraichirExplorateur();
     majEtat();
   },
@@ -727,12 +754,14 @@ const app = {
       const s = p.modifie && moteur && dernieres.get(p.id);
       const source = p.chemin_enregistrement || p.chemin;
       const session = dock ? collecterSession(p.id) : null;
+      // (its id and its fits' in the engine that stops, for the other windows to follow them: suivreRedemarrage)
+      const ancien = { ancien: p.id, anciens: app.modelesDe(p.id).filter((m) => m.numero !== null && m.numero !== undefined).map((m) => ({ id: m.id, numero: m.numero })) };
       // (an old version opened read-only stays one, under its name: versions.js)
       const lecture = p.lecture_seule ? { nom: p.nom, lecture_seule: p.lecture_seule } : {};
-      if (s) aRouvrir.push({ nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null, ...lecture } });
+      if (s) aRouvrir.push({ ...ancien, nom: p.nom, session, copie: s, q: { chemin: s.fichier, secours: true, origine: s.origine || null, nom: p.nom, lu: s.lu || null, ...lecture } });
       // (an import from KoboToolbox or ODK is redone with its settings: kobo.js)
       // (opened as is, it is opened as is again: an export would otherwise come back as an import to make)
-      else if (source) aRouvrir.push({ nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
+      else if (source) aRouvrir.push({ ...ancien, nom: p.nom, session, q: p.chemin_enregistrement ? { chemin: source, ...lecture } : { chemin: source, table: p.table || undefined, kobo: p.kobo || undefined, brut: p.brut || undefined } });
       else perdus.push(p.nom);
     }
     // (the copies to reopen marked waiting until they are: a main window writing the index meanwhile,
@@ -745,22 +774,31 @@ const app = {
     const erreur = await bureau.redemarrerMoteur();
     moteurArrete = false;
     if (erreur) { await marquer(false); statut(`${t('erreur')}${deuxPoints()}${erreur}`, true); return; }
+    // (the other windows hold the ids of the engine that stopped, which the new one gives again, to
+    // other projects and fits: they wait for the new ones, suivreRedemarrage)
+    diffuser('moteur_redemarre', { debut: true });
     if (dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
     for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
     app.rafraichirExplorateur();
     moteurEtat = await bureau.idMoteur().catch(() => null);  // (the new engine numbers its projects from P1 again)
     let n = 0;
     const reprises = new Set();
+    const vers = { projets: {}, modeles: {} };  // (each id of the engine that stopped → the new engine's)
     for (const r of aRouvrir) {
       try {
-        await apresOuverture(await occupe(() => demander('ouvrir', r.q)), r.session);
+        const res = await occupe(() => demander('ouvrir', r.q));
+        await apresOuverture(res, r.session);
         n += 1;
         if (r.copie) reprises.add(r.copie.fichier);
+        vers.projets[r.ancien] = res.id;
+        const nouveaux = new Map(modelesSeance(res.id).map((m) => [m.numero, m.id]));
+        for (const a of r.anciens) if (nouveaux.has(a.numero)) vers.modeles[a.id] = nouveaux.get(a.numero);
       } catch {
         perdus.push(r.nom);  // (its recovery copy stays waiting, for another try)
       }
     }
     if (reprises.size) await changerSecours((index) => index.filter((e) => !reprises.has(e.fichier))).catch(() => {});
+    diffuser('moteur_redemarre', vers);
     diffuser('modeles');
     statut(t('moteur_redemarre', { n }) + (perdus.length ? ` ${t('non_rouverts', { noms: perdus.join(', ') })}` : ''), perdus.length > 0);
     if (n) sauvegarderSecours({ moi: true });  // the reopened projects get copies of their own at once
@@ -813,7 +851,7 @@ const app = {
       ? 'couldn’t be read (neither reg.exe nor PowerShell could): R-code models are off, and so are plugins other than the organisation’s'
       : `read by ${pol.par === 'powershell' ? 'PowerShell (reg.exe couldn’t)' : 'reg.exe'}, ${Object.keys(pol.valeurs).length
         ? Object.entries(pol.valeurs).map(([k, x]) => (x === 'set' ? `${k} set` : `${k} = ${x}`)).join(', ') : 'none set'}`);
-    const texte = [`Nuée ${VERSION}${!bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
+    const texte = [`Nuée ${VERSION}${MOTEUR_WEBR ? ' (browser version, webR)' : !bureau ? ' (browser)' : d.installe ? ' (installed)' : ' (from the sources)'}`,
       `System: ${d.systeme}`,
       d.electron ? `Electron ${d.electron}, Chromium ${d.chrome}` : null,
       `${v.R}, ${v.plateforme}, ${v.systeme}`,
@@ -920,7 +958,7 @@ const app = {
       chemin = await bureau.choisirFichier(filtresOuverture(true));
     } else {
       const f = await choisirFichierNavigateur(acceptOuverture(true));
-      if (f) chemin = (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+      if (f) chemin = await deposer(f);
     }
     if (!chemin) return null;
     return occupe(() => demander('predire_fichier', { modele: id, chemin }));
@@ -962,6 +1000,17 @@ const app = {
         boutons: [{ libelle: t('fermer'), principal: true, action: () => true }] });
     }
   },
+  // File › Export a reproducibility package… and Deposit on Zenodo… (paquet.js): the project, its
+  // data, one R script for every model, its documents, its citation, in one .zip
+  exporterPaquet: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p); },
+  deposerZenodo: (pid) => { const p = etat.projets[pid || app.projetActif()]; if (p) dialoguePaquet(app, p, { zenodo: true }); },
+  // File › Open a reproducibility package…: opened, every model fitted again and compared with its
+  // deposited results (relancer.js); and a project the engine opened, shown as File › Open shows one
+  choisirPaquet: () => choisirPaquet(app),
+  projetOuvert: (res, session = null) => apresOuverture(res, session),
+  // (for the package: the latest fit of each model of the project, and the session Save keeps)
+  modelesSeance: (pid) => modelesSeance(pid),
+  sessionProjet: (pid) => (VUE_SEULE || !dock ? undefined : JSON.stringify(collecterSession(pid))),
   // The Methods paragraph written from the model, in French or English, with its references.
   async texteMethodes(id) {
     const m = etat.modeles[id];
@@ -1035,7 +1084,7 @@ const app = {
     if (bureau) return bureau.choisirFichier(filtresOuverture());
     const f = await choisirFichierNavigateur(acceptOuverture());
     if (!f) return null;
-    return (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin;
+    return deposer(f);
   },
   async lirePressePapiers() {
     try { return (bureau ? await bureau.lirePressePapiers() : await navigator.clipboard.readText()) || ''; } catch { return ''; }
@@ -1143,6 +1192,8 @@ const app = {
 
   // (loc: the settings the view starts with, a document's: which one it shows)
   ouvrirFenetreVue(vue, id, pid, loc = null) {
+    // (the browser version: another window would start an R of its own, without the projects)
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     const m = id ? etat.modeles[id] : null;
     // (de: the main window it belongs to, also when a view's own window opens it)
     const de = VUE_SEULE ? params.get('de') || ID_FENETRE : ID_FENETRE;
@@ -1156,6 +1207,7 @@ const app = {
     if (!p) return;
     const e = etat.panneaux.get(p.id);
     if (!e) return;
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     app.ouvrirFenetreVue(e.vue, e.params.modele, e.params.projet, suffixeVue(e.vue, e.loc) ? e.loc : null);
     p.api.close();
   },
@@ -1194,6 +1246,7 @@ const app = {
   },
 
   nouvelleFenetre() {
+    if (MOTEUR_WEBR) { statut(t('fenetre_webr'), true); return; }
     window.open('./?fenetre=' + Math.random().toString(36).slice(2, 8), '_blank', 'popup,width=1300,height=850');
   },
   focusFenetre: (id) => bureau && bureau.focusFenetre(id),
@@ -1214,6 +1267,19 @@ const app = {
     const p = dock.getPanel('explorateur');
     if (p) { p.api.close(); return; }
     dock.addPanel({ id: 'explorateur', component: 'explorateur', title: t('explorateur'), position: { direction: 'left' }, initialWidth: 300 });
+  },
+  // The phone's layout, one group at a time (etroit.js): the explorer brought to the front (put back
+  // if it was closed), or, when it is in front, the view that was before it
+  explorateurDevant() {
+    let ex = dock.getPanel('explorateur');
+    if (ex && dock.activeGroup === ex.api.group) {
+      const p = (dernierContenu && dock.getPanel(dernierContenu)) || dock.panels.find((x) => !EXTERNES.includes(x.id)) || dock.getPanel('accueil');
+      if (p) p.api.setActive();
+      return;
+    }
+    if (!ex) app.basculerExplorateur();
+    ex = dock.getPanel('explorateur');
+    if (ex) ex.api.setActive();
   },
 
   themeSombre: () => document.documentElement.dataset.theme === 'sombre',
@@ -1302,12 +1368,13 @@ async function occupe(f) {
 // the status bar, after the engine's state; main.js then writes the file the engine's long loops
 // look at between two rounds (moteur/R/arret.R), and the request comes back "stopped", nothing
 // changed. It is an element of its own beside #appli, which a dialog doesn't make inert (aria-live):
-// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file.
+// New model fits with its dialog open. Desktop app only: in a browser nothing writes the file; in the
+// browser version, R in the page is interrupted instead (moteur_webr.js: arreter; navigateur.R).
 const ATTENTE_ARRET = 1500;
 let minuterieArret = null;
 let minuterieArretLent = null;
 function majArret() {
-  if (!bureau || !bureau.arreterCalcul) return;
+  if (!(bureau && bureau.arreterCalcul) && !MOTEUR_WEBR) return;
   clearTimeout(minuterieArret);
   let b = document.getElementById('arret-calcul');
   const debut = debutAttente();
@@ -1347,12 +1414,14 @@ async function arreterCalcul() {
   majArret();
   // (a progress dialog under way, Update the data's, stops after the model being fitted: etapes.js)
   window.dispatchEvent(new CustomEvent('arret-demande'));
-  try { await bureau.arreterCalcul(); } catch { etat.arretDemande = false; majArret(); return; }
+  try { await (MOTEUR_WEBR ? (await moteurWebR()).arreter() : bureau.arreterCalcul()); } catch { etat.arretDemande = false; majArret(); return; }
   // (a computation that doesn't check between rounds, a single fit in compiled code: said after a while)
   clearTimeout(minuterieArretLent);
   minuterieArretLent = setTimeout(() => { if (etat.arretDemande) { etat.arretLent = true; majArret(); } }, 8000);
 }
 window.addEventListener('requetes', majArret);
+// (the status bar's progress, drawn again twice a second, changes its width: Stop follows it)
+window.addEventListener('progression', placerArret);
 
 function choisirFichierNavigateur(accept) {
   return new Promise((resolve) => {
@@ -1369,7 +1438,7 @@ function choisirFichiersNavigateur(accept, plusieurs) {
 }
 
 function telecharger(chemin) {
-  window.location.href = '/api/fichier?chemin=' + encodeURIComponent(chemin);
+  telechargerFichier(chemin);
 }
 
 // A file with several tables (Excel sheets, objects of an .RData file): the one to open.
@@ -1479,6 +1548,7 @@ async function apresOuverture(res, session = null) {
   // and the project opened brought into view, explorateur.js)
   for (const m of Object.values(etat.modeles)) if (m.projet !== res.id) etat.replies.add(`${m.projet}/m/${m.id}`);
   projetRecu(res);
+  copierBientot(res.id);
   etat.noeud = res.id;
   diffuser('modeles');
   app.rafraichirExplorateur();
@@ -1490,7 +1560,7 @@ async function apresOuverture(res, session = null) {
   if (dock && ![].concat(res.modeles || []).length) app.ouvrirVue('donnees', null, null, res.id);
 }
 
-// ------------------------------------------------------------ recovery copies (desktop app)
+// ------------------------------------------------------------ recovery copies
 
 // Every two minutes, a copy of each project with unsaved changes, with its session, goes to
 // the application's recovery folder (deleted when the application closes normally). After an
@@ -1504,13 +1574,21 @@ async function apresOuverture(res, session = null) {
 // once it is closed, the next one); any main window that restarts the engine makes them first (moi).
 // moteurEtat: the engine this window's projects are those of (synchroniser); a window that hasn't
 // heard of a restart yet makes no copy, its projects being the engine before's.
-const LANCEMENT = Date.now().toString(36);
+// The browser version (sauvegarderSecoursNavigateur) keeps them in the browser's storage.
+const LANCEMENT = MOTEUR_WEBR ? ONGLET : Date.now().toString(36);
 let moteurEtat = null;
-// the index changed by `f` (index => index), read just before: another main window may have written it
+// the index changed by `f` (index => index), read just before with its version: when another main
+// window (or this one, in another of its calls) has written it since, the write is refused and it is
+// read again (main.js: secours-index), so that no change made meanwhile is written over, nor the
+// copies it kept deleted
 async function changerSecours(f) {
-  await bureau.secoursIndex(f([].concat(await bureau.secoursListe()).filter((e) => e && e.fichier)));
+  for (let essai = 0; essai < 20; essai += 1) {
+    const { entrees, version } = await bureau.secoursEtat();
+    if (await bureau.secoursIndex(f([].concat(entrees || []).filter((e) => e && e.fichier)), version)) return;
+  }
 }
 async function sauvegarderSecours({ moi = false } = {}) {
+  if (MOTEUR_WEBR) return sauvegarderSecoursNavigateur();
   if (!bureau || VUE_SEULE || !dock) return;
   try {
     if (!moi) {
@@ -1546,10 +1624,84 @@ async function sauvegarderSecours({ moi = false } = {}) {
   } catch { /* tried again two minutes later */ }
 }
 
+// The browser version (secours_navigateur.js): a project lives in the tab (one saved there was
+// downloaded, which the next visit doesn't open by itself), so every open project has its copy,
+// in the browser's storage: written again 3 s after a change of the project (aCopier), at each
+// minute when it has unsaved changes, and on each pass when its session changed (views, models);
+// a pass also when the tab is hidden. The index follows the projects opened and closed
+// (indexPerime). Closing or reloading the tab before a change is copied asks first.
+const aCopier = new Set();
+let indexPerime = false;
+const empreintes = new Map();  // project -> what its last copy held
+const derniersSecours = new Map();  // project -> the index's entry of its last copy
+let copieEnCours = null;
+let encoreUneCopie = false;
+let minuterieCopie = null;
+let copieImpossibleDite = false;
+function copierBientot(pid = null) {
+  if (!MOTEUR_WEBR || VUE_SEULE) return;
+  if (pid) aCopier.add(pid); else indexPerime = true;
+  clearTimeout(minuterieCopie);
+  minuterieCopie = setTimeout(sauvegarderSecours, 3000);
+}
+async function sauvegarderSecoursNavigateur(chaqueMinute = false) {
+  if (VUE_SEULE || !dock) return;
+  if (copieEnCours) { encoreUneCopie = true; return; }
+  clearTimeout(minuterieCopie);
+  const changes = new Set(aCopier);
+  aCopier.clear();
+  indexPerime = false;
+  copieEnCours = (async () => {
+    const dossier = await secoursNavigateur.secoursDossier();
+    const entrees = [];
+    for (const p of Object.values(etat.projets)) {
+      const fichier = `${dossier}/${LANCEMENT}-${p.id}.json`;  // (one engine per tab: a project's id is never another's)
+      const session = JSON.stringify(collecterSession(p.id));
+      const empreinte = JSON.stringify([p.revision, p.modifie, p.nom, session]);
+      if (changes.has(p.id) || (chaqueMinute && p.modifie) || empreintes.get(p.id) !== empreinte) {
+        try {
+          await demander('sauvegarde_secours', { projet: p.id, chemin: fichier, session, version: VERSION });
+          await secoursNavigateur.garder(fichier);
+          // (the next visit reopens it as the project it was, unsaved changes or not, at its place in
+          // the browser's storage when it has one, below)
+          derniersSecours.set(p.id, { fichier, projet: p.id, nom: p.nom, origine: null, lu: null, modifie: !!p.modifie, date: new Date().toISOString() });
+          empreintes.set(p.id, empreinte);
+        } catch {  // (tried again at the next change, or in a minute; said once: storage full, or refused)
+          aCopier.add(p.id);
+          if (!copieImpossibleDite) { copieImpossibleDite = true; statut(t('secours_navigateur_impossible'), true); }
+        }
+      }
+      // (its place, with its versions: versions_navigateur.js, known once a save or its file found it)
+      if (derniersSecours.has(p.id)) entrees.push({ ...derniersSecours.get(p.id), origine: lieuConnu(p) });
+    }
+    await secoursNavigateur.secoursIndex(entrees);
+  })().catch(() => { for (const c of changes) aCopier.add(c); indexPerime = true; });
+  await copieEnCours;
+  copieEnCours = null;
+  if (encoreUneCopie) { encoreUneCopie = false; sauvegarderSecoursNavigateur(); }
+}
+// (whether every change is in a copy: the checks, tests/essai_navigateur.mjs, wait for it)
+app.copiesAJour = () => !aCopier.size && !indexPerime && !copieEnCours;
+if (MOTEUR_WEBR && !VUE_SEULE) {
+  // (a document's text or a figure: changed without a new summary of its project)
+  window.addEventListener('nuee-demande', (e) => {
+    if (/^(document|figure)_(enregistrer|supprimer)$/.test(e.detail.nom)) copierBientot(e.detail.corps && e.detail.corps.projet);
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sauvegarderSecours(); });
+  window.addEventListener('beforeunload', (e) => {
+    if (!aCopier.size && !indexPerime && !copieEnCours) return;
+    sauvegarderSecours();
+    e.preventDefault();
+    e.returnValue = '';  // (the browser's own question: leave, or stay while the copy is written)
+  });
+}
+
 // The copies of an earlier stop: reopened as the projects they hold (their name, the file they
 // save to, if any, and unsaved changes), or set aside (deleted). Closing the question without
-// answering keeps them, to be offered again next time.
+// answering keeps them, to be offered again next time. In the browser version, those of the tabs
+// closed since this browser last opened Nuée.
 async function proposerRecuperation() {
+  if (MOTEUR_WEBR) return proposerRecuperationNavigateur();
   if (!bureau || VUE_SEULE) return;
   let entrees = [];
   try { entrees = [].concat(await bureau.secoursListe()).filter((e) => e && e.fichier); } catch { entrees = []; }
@@ -1580,13 +1732,47 @@ async function proposerRecuperation() {
       } }] });
 }
 
+// The browser version: the copies of the tabs closed since (secours_navigateur.js), each with
+// whether it had unsaved changes, reopened as those projects or set aside (deleted); the
+// recovered ones get copies of their own before the old ones go, but those that couldn't be read
+// (kept for another try). Closing the question keeps them all.
+async function proposerRecuperationNavigateur() {
+  if (VUE_SEULE) return;
+  let entrees = [];
+  try { entrees = await secoursNavigateur.secoursListe(); } catch { entrees = []; }
+  if (!entrees.length) return;
+  const onglets = [...new Set(entrees.map((e) => e.onglet))];
+  const quand = (d) => new Date(d).toLocaleString(langueActuelle() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  dialogue({ titre: t('recuperation'),
+    contenu: el('div', {}, el('p', {}, t('recuperation_question_navigateur')),
+      el('ul', {}, entrees.map((e) => el('li', {}, `${e.nom} — ${quand(e.date)}${e.modifie ? ` (${t('recuperation_non_enregistre')})` : ''}`)))),
+    boutons: [
+      { libelle: t('ignorer'), action: () => { onglets.forEach((o) => secoursNavigateur.oublier(o)); return true; } },
+      { libelle: t('recuperer'), principal: true, action: () => {
+        (async () => {
+          const illisibles = [];
+          for (const e of entrees) {
+            try {
+              await secoursNavigateur.rendre(e);
+              await apresOuverture(await occupe(() => demander('ouvrir', { chemin: e.fichier, secours: true, origine: e.origine || null, nom: e.nom, lu: null, modifie: e.modifie !== false })));
+            } catch { illisibles.push(e); }
+            secoursNavigateur.effacerDansR(e);
+          }
+          await sauvegarderSecours();
+          for (const o of onglets) await secoursNavigateur.oublier(o, illisibles.filter((e) => e.onglet === o));
+          if (illisibles.length) statut(t('recuperation_echec', { noms: illisibles.map((e) => e.nom).join(', ') }), true);
+        })();
+        return true;
+      } }] });
+}
+
 // ------------------------------------------------------------ the R engine stopped
 
 let moteurArrete = false;
 function signalerMoteurArrete() {
   if (moteurArrete || VUE_SEULE) return;
   moteurArrete = true;
-  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t('moteur_navigateur')),
+  dialogue({ titre: t('moteur_arrete'), contenu: el('p', {}, bureau ? t('moteur_arrete_texte') : t(MOTEUR_WEBR ? 'moteur_webr_arrete' : 'moteur_navigateur')),
     boutons: bureau ? [{ libelle: t('plus_tard'), action: () => { moteurArrete = false; return true; } },
       { libelle: t('redemarrer_moteur'), principal: true, action: () => { app.redemarrerMoteur(); return true; } }]
       : [{ libelle: t('fermer'), principal: true, action: () => { moteurArrete = false; return true; } }] });
@@ -1769,6 +1955,7 @@ function projetRecu(res) {
 // and label lists, and the views that keep a copy of its data when the data changed.
 function projetChange(res) {
   projetRecu(res);
+  copierBientot(res.id);
   app.rafraichirExplorateur();
   rafraichirModele(null);
   diffuser('modeles');
@@ -1794,6 +1981,7 @@ async function garder(res) {
   // (the project's views that list its models, the map's Colour and Size and Compare models, drawn
   // again: a model fitted after they were opened shows in them at once)
   rafraichirModele(res.projet);
+  copierBientot(res.projet);
   diffuser('modeles');
   majEtat();
 }
@@ -1864,12 +2052,15 @@ function oublierProjet(pid) {
       if ((e && e.params.projet === pid) || (estPage(p) && !etat.modeles[p.id.slice(5)])) p.api.close();
     }
   }
+  copierBientot();  // (its copy leaves the index)
   app.rafraichirExplorateur();
   majEtat();
 }
 
-// Everything the R server holds (for a new window, or after another window changed it).
+// Everything the R server holds (for a new window, or after another window changed it). (A view's own
+// window waiting for the new ids after a restart of the engine leaves it: suivreRedemarrage.)
 async function synchroniser() {
+  if (enAttenteDuMoteur) return;
   // (the engine's name first, then its state: a restart between the two leaves moteurEtat behind the
   // projects, never ahead of them, sauvegarderSecours)
   const moteur = bureau && bureau.idMoteur ? await bureau.idMoteur().catch(() => null) : null;
@@ -2122,11 +2313,13 @@ function composantPage() {
   const element = el('div', { class: 'page-modele' });
   let id = null;
   let interne = null;
+  let finUnAUn = null;
   return {
     element,
     init(parameters) {
       id = parameters.params.modele;
       interne = DV.createDockview(element, optionsDock(true));
+      finUnAUn = unAUn(interne);  // (a phone's screen: one of its views at a time, etroit.js)
       pages.set(id, interne);
       elementsPages.set(id, element);
       new ResizeObserver(() => dimensionnerPage(id)).observe(element);
@@ -2150,6 +2343,7 @@ function composantPage() {
     dispose() {
       if (pages.get(id) === interne) { pages.delete(id); elementsPages.delete(id); }
       derniers.delete(id);
+      if (finUnAUn) finUnAUn();
       if (interne) interne.dispose();
     },
   };
@@ -2406,6 +2600,15 @@ function rendreMenus() {
     if (d.cle === 'm_fenetre' && bureau) fenetres = await bureau.fenetres();
     return menus(app, C).find((x) => x.cle === d.cle).items();
   } })), [el('img', { class: 'logo', src: 'nuee.svg', alt: '' })]);
+  // (the phone's layout: the explorer brought to the front and back, before the menus; hidden on a
+  // larger screen, style.css: etroit.js)
+  let b = document.getElementById('bouton-explorateur');
+  const entete = document.getElementById('entete');
+  if (!b && entete) {
+    b = el('button', { id: 'bouton-explorateur', class: 'icone-seule', onclick: () => app.explorateurDevant() }, icone('panel-left'));
+    entete.prepend(b);
+  }
+  if (b) { b.title = t('explorateur'); b.setAttribute('aria-label', t('explorateur')); }
 }
 
 // The toolbar is one Tab stop: left and right (Home, End) go from button to button. Its views follow
@@ -2499,11 +2702,13 @@ function majEtat() {
   const nv = id ? app.variablesChoisies(id).length : 0;
   // (a view's request that takes long computes too, under Stop: majArret)
   const arret = document.getElementById('arret-calcul');
-  const calcule = etat.occupe || !!(arret && !arret.hidden);
+  const arretVisible = !!(arret && !arret.hidden);
+  const calcule = etat.occupe || arretVisible;
   const debut = etat.occupe ? etat.debutOccupe : debutAttente();
   s.replaceChildren(...[
+    // (once Stop shows, where the computation is, with a bar: progression.js)
     el('span', { class: 'moteur' + (calcule ? ' occupe' : etat.erreur ? ' erreur' : '') }, el('span', { class: 'point' }),
-      calcule ? (debut !== null && Date.now() - debut > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
+      calcule ? (arretVisible ? elementStatut() : debut !== null && Date.now() - debut > 60000 ? t('calcul_long') : t('calcul')) : etat.message || t('pret')),
     el('span', { class: 'espace' }),
     etat.nouvelleVersion && lire('version_ignoree') !== etat.nouvelleVersion.version ? el('span', { class: 'nouvelle-version' },
       el('a', { href: '#', title: etat.nouvelleVersion.page, onclick: (e) => { e.preventDefault(); if (etat.nouvelleVersion.installateur) app.mettreAJour(); else window.open(etat.nouvelleVersion.page); } },
@@ -2560,6 +2765,7 @@ function rattacher() {
   // (a model no longer in the session: nothing to bring back, the window just closes)
   const modele = params.get('modele');
   if (!modele || etat.modeles[modele]) diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele, projet: params.get('projet'), loc });
+  enFermeture = true;
   window.close();
 }
 
@@ -2594,6 +2800,54 @@ async function suivreRechargement({ ancien, nouveau, modeles }) {
     if (modeles && modeles[seul.params.modele]) await lierVue(seul, { modele: modeles[seul.params.modele], projet: nouveau });
     else if (modeles) rendrePanneau(seul);
   } else if (seul.params.projet === ancien) await lierVue(seul, { projet: nouveau });
+}
+
+// The R engine restarted by another main window (redemarrerMoteur): the new engine numbers its projects
+// and fits from the start, and gives this window's ids again, to other projects and fits. First
+// (`debut`), this window forgets the engine that stopped: a main window closes its views of it, as the
+// one restarting does, and the projects come back in its explorer; a view's own window waits, saying
+// so, its view no longer drawn from ids that now name something else (enAttenteDuMoteur: synchroniser
+// leaves it). Then, the projects reopened (`projets`, `modeles`: each old id → the new one), a view's own
+// window follows its model's new fit, or its project, as when a project is read again
+// (suivreRechargement), or says its model left.
+let enAttenteDuMoteur = false;
+async function suivreRedemarrage({ debut = false, projets = {}, modeles = {} }) {
+  const seul = VUE_SEULE && etat.panneaux.get('seul');
+  if (debut) {
+    if (!VUE_SEULE && dock) for (const p of [...dock.panels]) if (!EXTERNES.includes(p.id)) p.api.close();
+    if (!VUE_SEULE) {
+      for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
+      app.rafraichirExplorateur();
+      majEtat();
+      return;
+    }
+    enAttenteDuMoteur = true;
+    if (seul) {
+      seul.element.replaceChildren(el('p', { class: 'note' }, t('moteur_redemarrage')));
+      seul.graphe = null;
+    }
+    return;
+  }
+  if (!VUE_SEULE) return;
+  enAttenteDuMoteur = false;
+  if (!seul) return;
+  const { modele: m0, projet: p0 } = seul.params;
+  const p1 = p0 ? projets[p0] : null;
+  const m1 = m0 ? modeles[m0] : null;
+  // (what this window kept by the old ids, a selection among them, could go to another fit of the same id)
+  for (const k of ['projets', 'modeles', 'selection', 'variables', 'choixVIP', 'groupesHCA']) etat[k] = {};
+  // (a document's or a figure's window: its texts and figures to the project as reopened)
+  if (p0 && p1) {
+    try { projetRecu(await demander('projet', { projet: p1 })); } catch { /* said below */ }
+    if (app.reattacherDocuments) await app.reattacherDocuments(p0, p1);
+    if (app.reattacherFigures) await app.reattacherFigures(p0, p1);
+  }
+  if ((m0 && !m1) || (!m0 && p0 && !p1)) {
+    seul.element.replaceChildren(el('p', { class: 'note' }, t('vue_modele_parti')));
+    seul.graphe = null;
+    return;
+  }
+  await lierVue(seul, { modele: m1 || null, projet: p1 || null });
 }
 
 // A fit replaced by another of the same model in another window (ajustement_remplace: Update the data,
@@ -2641,6 +2895,10 @@ async function pourPrincipale(msg) {
 // (the requests between a view's window and its main one answered at once; the other messages one
 // at a time, in the order sent: a fit replaced is followed before 'modeles' forgets the old one)
 let suiteMessages = Promise.resolve();
+// (the window closing, Move back or its own close: what it still asked of the engine fails, as
+// "Failed to fetch", and isn't an error to report)
+let enFermeture = false;
+window.addEventListener('pagehide', () => { enFermeture = true; });
 canal.onmessage = ({ data: msg }) => {
   // (the hidden page of a document's language follows no window: its language stays its own)
   if (!msg || HORS_ECRAN) return;
@@ -2656,7 +2914,7 @@ canal.onmessage = ({ data: msg }) => {
     if (!VUE_SEULE && msg.vers === ID_FENETRE) pourPrincipale(msg);
     return;
   }
-  suiteMessages = suiteMessages.then(() => surMessage(msg)).catch((e) => console.error(e));
+  suiteMessages = suiteMessages.then(() => surMessage(msg)).catch((e) => { if (!enFermeture) console.error(e); });
 };
 
 async function surMessage(msg) {
@@ -2689,6 +2947,8 @@ async function surMessage(msg) {
     if (app.surDocument) app.surDocument(msg);  // (a document written in another window: documents.js)
   } else if (msg.type === 'projet_recharge') {
     await suivreRechargement(msg);
+  } else if (msg.type === 'moteur_redemarre') {
+    await suivreRedemarrage(msg);
   } else if (msg.type === 'ajustement_remplace') {
     await surAjustementRemplace(msg);
   }
@@ -2778,6 +3038,7 @@ async function demarrerPrincipal() {
   rendreMenus();
   rendreBarreOutils();
   dock = DV.createDockview(document.getElementById('dock'), optionsDock());
+  unAUn(dock);  // (a phone's screen: one group at a time, the explorer one of them, etroit.js)
   document.getElementById('dock').addEventListener('contextmenu', menuOnglet);
   dock.onDidActivePanelChange(() => {
     const a = dock.activePanel;
@@ -2799,6 +3060,7 @@ async function demarrerPrincipal() {
     quoiDeNeuf();
     proposerRecuperation();
     app.signalerRepliR();
+    if (MOTEUR_WEBR) setInterval(() => sauvegarderSecoursNavigateur(true), 60000);
   }
   if (bureau) setInterval(sauvegarderSecours, 120000);  // (every main window: the first one open writes them)
   setTimeout(prechargerGuide, 3000);  // (the guide read while R waits: F1 then shows it at once)
@@ -2835,7 +3097,7 @@ async function demarrerPrincipal() {
 async function deposerFichiers(fichiers) {
   const ext = (f) => f.name.split('.').pop().toLowerCase();
   const chemin = async (f) => (bureau && bureau.cheminFichier ? bureau.cheminFichier(f)
-    : (await (await fetch('/api/deposer?nom=' + encodeURIComponent(f.name), { method: 'POST', body: f })).json()).chemin);
+    : await deposer(f));
   if (fichiers.every((f) => ['jdx', 'dx', 'jcm', 'spc'].includes(ext(f)))) {
     const chemins = await Promise.all(fichiers.map(chemin));
     const res = await occupe(() => demander('importer_spectres', { chemins, nom: chemins.length === 1 ? fichiers[0].name : t('spectres_importes', { n: chemins.length }) }));
@@ -2846,13 +3108,33 @@ async function deposerFichiers(fichiers) {
   for (const f of fichiers) {
     if (bureau && bureau.cheminFichier) await app.ouvrirChemin(bureau.cheminFichier(f));
     else {
-      const res = await choisirTable(await occupe(() => televerser(f)));
+      const lu = await occupe(() => televerser(f));
+      if (await siPaquet(lu, f.name)) continue;
+      const res = await choisirTable(lu);
       if (res) await apresOuverture(res);
     }
   }
 }
 
+// What ouvrir answers for a reproducibility package (paquet_ouvrir: the engine opens it with that
+// request instead): the package opened and rerun (relancer.js); true then. `nom`: the file's name
+// in the page.
+async function siPaquet(lu, nom = null) {
+  if (!lu || !lu.paquet_ouvrir) return false;
+  await ouvrirPaquet(app, lu.paquet_ouvrir.chemin, { nom: nom || lu.paquet_ouvrir.nom });
+  return true;
+}
+
 document.documentElement.dataset.theme = lire('theme') === 'sombre' ? 'sombre' : 'clair';
 document.documentElement.lang = langueActuelle();
 document.title = t('titre');
-if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue(); else demarrerPrincipal();
+// (the browser version's link of a reproducibility package, https://nuee.io/app/?doi=<doi> or
+// ?record=<id>: fetched from Zenodo, its main document shown first, without R, then the application
+// started for the whole project or the rerun, lecture.js)
+const lienPaquet = MOTEUR_WEBR && ID_FENETRE === 'principale' && (params.get('doi') || params.get('record'));
+if (HORS_ECRAN) demarrerHorsEcran(); else if (VUE_SEULE) demarrerVue();
+else if (lienPaquet) demarrerLecture(app, { doi: params.get('doi'), record: params.get('record') }, demarrerPrincipal);
+else demarrerPrincipal();
+
+// (for the checks that use the page as a person would: import('./app.js'), tests/essai_navigateur.mjs)
+export { app };

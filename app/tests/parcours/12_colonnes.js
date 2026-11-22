@@ -119,8 +119,11 @@ module.exports = {
     await n.libre();
     await n.ecrire("__n.tous('input[type=number]').find((i) => i.max === '999')", '999');
     await n.attendre("(() => { const a = document.getElementById('arret-calcul'); return !!a && !a.hidden; })()", 30000);
-    const statutCalcul = await n.evaluer('__n.statut()');
-    verifier('arretVisible', statutCalcul === (await n.t('calcul')), statutCalcul);
+    // (the status bar says where the computation is, with a bar: progression.js; before the engine's
+    // first answer, that it computes)
+    const statutCalcul = await n.evaluer("(() => { const b = document.querySelector('#statut .progres'); return b ? __n.norm(b.textContent) : __n.statut(); })()");
+    const permutation = (await n.t('progres_permutations', { fait: '', total: '' })).split(' ')[0];
+    verifier('arretVisible', statutCalcul.startsWith(await n.t('calcul')) || statutCalcul.startsWith(permutation), statutCalcul);
     await capture('5-arreter');
     await n.cliquer("document.querySelector('#arret-calcul button')");
     await n.attendre(`__n.tous('.dv-content-container p.infos').some((e) => __n.norm(e.textContent) === __n.t('calcul_arrete'))`, 30000);

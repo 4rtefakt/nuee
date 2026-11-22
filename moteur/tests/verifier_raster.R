@@ -637,9 +637,14 @@ if (!requireNamespace("terra", quietly = TRUE)) {
   # (un fichier creux de réels, NaN pour valeur manquante : six tuiles de 16 × 16 cellules absentes)
   rn <- fabriquer("FLT4S")
   rn[1:40, 1:50] <- NA
-  if (ecrire(rn, f("gdal_creux_nan.tif"), datatype = "FLT4S", gdal = c("TILED=YES", "BLOCKXSIZE=16", "BLOCKYSIZE=16", "SPARSE_OK=TRUE"), NAflag = NaN)) {
+  # (NaN donné au raster, pas à writeRaster : terra 1.9-60 n'écrit plus de NoData quand on lui passe
+  # NAflag = NaN, et les tuiles de NaN sont alors écrites, le fichier plus creux du tout)
+  terra::NAflag(rn) <- NaN
+  if (ecrire(rn, f("gdal_creux_nan.tif"), datatype = "FLT4S", gdal = c("TILED=YES", "BLOCKXSIZE=16", "BLOCKYSIZE=16", "SPARSE_OK=TRUE"))) {
+    nan_ecrit <- any(grepl("NoData Value=nan", terra::describe(f("gdal_creux_nan.tif")), ignore.case = TRUE))
+    if (!nan_ecrit) cat(sprintf("    (terra %s n'a pas écrit NaN comme valeur manquante : le fichier n'est pas creux)\n", utils::packageVersion("terra")))
     verifier("un fichier creux de réels, NaN pour valeur manquante : ses tuiles absentes sans valeur (pas 0), comme terra",
-             is.nan(ouvrir_raster(f("gdal_creux_nan.tif"))$nodata) && ecart_gdal(f("gdal_creux_nan.tif")) == 0)
+             (!nan_ecrit || is.nan(ouvrir_raster(f("gdal_creux_nan.tif"))$nodata)) && ecart_gdal(f("gdal_creux_nan.tif")) == 0)
   }
   # un COG (tuiles et aperçus), l'échelle et le décalage, le nom des bandes, une palette, JPEG
   r <- fabriquer("FLT4S", etendue = c(800000, 800000 + 1300 * 25, 6250000, 6250000 + 1100 * 25), lignes = 1100, colonnes = 1300)

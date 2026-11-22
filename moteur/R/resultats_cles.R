@@ -917,12 +917,50 @@ phrases_variables <- function(xs, fr) {
   }))
 }
 
+# Le verdict d'une comparaison, celui d'un modèle d'un paquet relancé (interface/relancer.js) :
+#   identique     aucune valeur d'avant ne change (la tolérance de comparer_entree : 1e-10 relatif) ;
+#   six_chiffres  chacune reste à 1e-6 près : une valeur et les bornes de son intervalle en relatif,
+#                 rapportées à la plus grande des deux, ou à PLANCHER_ECART près de zéro (un zéro
+#                 numérique, une ordonnée à l'origine de termes centrés, ne change qu'en absolu) ; une
+#                 valeur p en absolu, à six décimales (une probabilité : dans la queue d'une loi, elle bouge
+#                 bien plus que la statistique qui la donne, un z de 6 changé de 1e-7 la change de 4e-6) ;
+#                 sans entrée disparue ni catégorie changée ;
+#   differe       au-delà.
+# Ce que d'autres BLAS, ou un optimiseur arrêté un peu ailleurs (nlme, mgcv), changent aux derniers
+# chiffres n'est pas une différence. Une entrée que seul le nouvel ajustement a ne compte pas : rien
+# n'avait été déposé pour elle. Rend aussi le plus grand de ces écarts, `ecart_max` (NULL sans entrée
+# commune), son entrée, `cle_ecart_max` et `libelle_ecart_max`, et sa partie, `partie_ecart_max` (valeur,
+# ic ou p).
+SEUIL_SIX_CHIFFRES <- 1e-6
+PLANCHER_ECART <- 1e-10
+verdict_comparaison <- function(entrees) {
+  # (l'écart de chaque partie d'une entrée : sa valeur, son intervalle, sa valeur p ; NA pour une nouvelle)
+  ecart <- function(x) {
+    if (isTRUE(x$nouveau)) return(c(valeur = NA_real_, ic = NA_real_, p = NA_real_))
+    if (isTRUE(x$disparu) || isTRUE(x$categorie)) return(c(valeur = Inf, ic = 0, p = 0))
+    relatif <- function(a, b) {
+      if (is.null(a) && is.null(b)) return(0)
+      if (is.null(a) || is.null(b) || length(a) != length(b)) return(Inf)
+      max(abs(a - b) / pmax(abs(a), abs(b), PLANCHER_ECART))
+    }
+    p <- if (is.null(x$p_avant) && is.null(x$p_apres)) 0 else if (is.null(x$p_avant) || is.null(x$p_apres)) Inf else abs(x$p_avant - x$p_apres)
+    c(valeur = relatif(x$avant, x$apres), ic = relatif(x$ic_avant, x$ic_apres), p = p)
+  }
+  parties <- vapply(entrees, ecart, c(valeur = 0, ic = 0, p = 0))
+  ecarts <- if (length(entrees)) apply(parties, 2, max) else numeric(0)
+  k <- if (any(!is.na(ecarts))) which.max(replace(ecarts, is.na(ecarts), -1))
+  identique <- !any(vapply(entrees, function(x) isTRUE(x$change) && !isTRUE(x$nouveau), NA))
+  list(verdict = if (identique) "identique" else if (!is.null(k) && ecarts[k] <= SEUIL_SIX_CHIFFRES) "six_chiffres" else "differe",
+       ecart_max = if (!is.null(k)) ecarts[[k]], cle_ecart_max = if (!is.null(k)) entrees[[k]]$cle, libelle_ecart_max = if (!is.null(k)) entrees[[k]]$libelle,
+       partie_ecart_max = if (!is.null(k)) names(which.max(parties[, k])))
+}
+
 # Deux résumés de resume_resultats (ou tels qu'une demande les rend : entrees_recues) comparés entrée
 # par entrée, par leur clé. Rend `entrees` (chaque entrée comparée : comparer_entree), `phrases` (celles
 # des changements qui comptent, la plus importante d'abord : { texte, cles, importance }) et `resume`
 # (combien d'entrées comparées, changées, identiques, nouvelles, disparues, de chaque drapeau, et de
-# phrases). Les libellés sont ceux des entrées : le résumé et la comparaison se demandent dans la même
-# langue, `langue` celle des phrases.
+# phrases ; le verdict, verdict_comparaison). Les libellés sont ceux des entrées : le résumé et la
+# comparaison se demandent dans la même langue, `langue` celle des phrases.
 comparer_resultats <- function(avant, apres, langue = if (identical(getOption("nuee.langue"), "en")) "en" else "fr") {
   fr <- !identical(langue, "en")
   avant <- entrees_recues(avant)
@@ -950,7 +988,7 @@ comparer_resultats <- function(avant, apres, langue = if (identical(getOption("n
   if (length(phrases)) phrases <- phrases[order(-vapply(phrases, `[[`, 0, "importance"))]
   compte <- function(f) sum(vapply(entrees, function(x) isTRUE(x[[f]]), TRUE))
   list(entrees = entrees, phrases = phrases,
-       resume = list(entrees = length(entrees), changees = compte("change"), identiques = length(entrees) - compte("change"), nouvelles = compte("nouveau"),
-                     disparues = compte("disparu"), signe = compte("signe"), seuil = compte("seuil"), ic = compte("ic"), categorie = compte("categorie"),
-                     retournees = length(retournes), phrases = length(phrases)))
+       resume = c(list(entrees = length(entrees), changees = compte("change"), identiques = length(entrees) - compte("change"), nouvelles = compte("nouveau"),
+                       disparues = compte("disparu"), signe = compte("signe"), seuil = compte("seuil"), ic = compte("ic"), categorie = compte("categorie"),
+                       retournees = length(retournes), phrases = length(phrases)), verdict_comparaison(entrees)))
 }

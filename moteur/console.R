@@ -215,6 +215,13 @@ journaliser <- function(nom, q, r) {
               paste0(vapply(c("renv", "rdata", "rproj"), function(o) if (isTRUE(q[[o]])) sprintf(", %s = TRUE", o) else "", ""), collapse = ""),
               if (identical(q$langue, "en")) ", langue = \"en\"" else "")
     },
+    # (le paquet de reproductibilité : paquet.R ; chaque modèle, son dernier ajustement de la séance)
+    paquet = {
+      ids <- as.character(unlist(q$modeles))
+      c(sprintf("modeles <- lapply(%s, function(id) list(id = id, definition = definition(id), modele = get(id)))", vecteur_r(ids)),
+        sprintf("ecrire_paquet(%s, modeles, %s, %s, langue = %s%s)", q$projet, code_r(r$chemin), code_r(metadonnees_paquet(q$meta)),
+                code_r(if (identical(q$langue, "en")) "en" else "fr"), if (!is.null(doi_paquet(q$doi))) sprintf(", doi = %s", code_r(doi_paquet(q$doi))) else ""))
+    },
     NULL)
   if (length(lignes)) noter("appel", lignes)
   # un modèle ajusté : ce que R en affiche, comme après l'avoir tapé dans la console
@@ -286,7 +293,8 @@ local({
     row.names = NULL), c("objet", "nom", "type", "A", "projet"), c("object", "name", "type", "A", "project")))
   en_deux("engine_folder", "dossier_moteur", function() normalizePath(file.path(racine, "moteur", "R"), winslash = "/"))
   en_deux("reload_engine", "recharger_moteur", function() {
-    for (f in sort(list.files(file.path(racine, "moteur", "R"), "\\.R$", full.names = TRUE))) sys.source(f, envir = globalenv(), keep.source = FALSE)
+    # (comme au démarrage, charger.R : ses fichiers relus, et les noms qu'ils définissent tenus à jour)
+    source(file.path(racine, "moteur", "charger.R"), encoding = "UTF-8")
     message(traduire("Moteur rechargé depuis ", "Engine reloaded from "), normalizePath(file.path(racine, "moteur", "R"), winslash = "/"),
             traduire(" : réajuster les modèles pour l'utiliser.", ": refit the models to use it."))
   })

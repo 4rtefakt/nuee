@@ -93,6 +93,8 @@ source(file.path(racine, "moteur", "console.R"), encoding = "UTF-8")  # journal 
 # Un fichier .usp passe par le convertisseur (export_project), qui écrit un .json : le
 # programme compilé sous Windows, le script Python ailleurs (python3 sous Linux).
 convertir_usp <- function(chemin) {
+  if (dans_navigateur()) refus_navigateur("Les fichiers .usp", ".usp files", traduire("leur convertisseur est un programme, que le navigateur ne lance pas",
+                                                                                     "their converter is a program, which the browser doesn't run"))
   dossier <- file.path(tempdir(), nouvel_id("usp"))
   dir.create(dossier)
   exe <- Sys.getenv("CONVERTISSEUR_USP", file.path(racine, "outils", "export_project.exe"))
@@ -125,8 +127,18 @@ memoriser <- function(p, etiquette, fusion = NULL, references = NULL, modeles = 
   etat$retablissements[[p$id]] <- NULL
 }
 # Une définition de modèle du projet ajoutée ou changée (un modèle ajusté, sa note, les réglages d'un calcul
-# gardés avec lui) : Rétablir, qui remettrait les définitions d'avant Annuler, ne refait plus rien.
-definitions_changees <- function(id) etat$retablissements[[id]] <- NULL
+# gardés avec lui) : Rétablir, qui remettrait les définitions d'avant Annuler, ne refait plus rien. Chaque
+# entrée d'Annuler note les noms de ces définitions (`noms` : la sienne, et celle qu'elle remplace sous un
+# autre nom) : Annuler un changement d'avant les garde telles qu'elles sont maintenant (modeles_venus), au
+# lieu de rendre celles d'avant lui. (Dans le calculateur, les entrées sont des talons, qui les notent aussi :
+# arriere_plan.R, changements_tache.)
+definitions_changees <- function(id, noms = NULL) {
+  etat$retablissements[[id]] <- NULL
+  noms <- unique(as.character(unlist(noms)))
+  if (length(noms) && length(etat$annulations[[id]])) {
+    etat$annulations[[id]] <- lapply(etat$annulations[[id]], function(e) { e$changees <- union(as.character(unlist(e$changees)), noms); e })
+  }
+}
 # Les noms des modèles de `apres` que `avant` n'a pas.
 modeles_ajoutes <- function(avant, apres) {
   setdiff(vapply(apres$models %||% list(), function(d) premier_texte(d$name), ""), vapply(avant$models %||% list(), function(d) premier_texte(d$name), ""))
@@ -198,7 +210,9 @@ modeles_a_reajuster <- function(pid) {
 
 # Le projet `actuel` ramené à l'état d'une entrée `e` d'une des deux piles (etiquette, projet, fusion) :
 # Annuler prend la plus récente des annulations, Rétablir celle des rétablissements. Les modèles ajustés
-# depuis (Ajuster ne passe pas par Annuler) restent, comme les documents et les figures (modeles_venus).
+# depuis (Ajuster ne passe pas par Annuler) restent, comme les documents et les figures (modeles_venus) ;
+# un modèle modifié depuis garde sa définition, qui prend la place de celle d'avant (de son nom, ou de son
+# numéro quand il a changé de nom : un modèle de code R modifié sous un autre nom, meme_numero).
 revenir_a <- function(actuel, e) {
   ancien <- e$projet
   ancien$chemin_enregistrement <- actuel$chemin_enregistrement  # un enregistrement fait depuis reste valable
@@ -221,7 +235,14 @@ revenir_a <- function(actuel, e) {
     }
   }
   if (is.null(f) || !identical(actuel$figures, f$figures)) ancien$figures <- actuel$figures  # (les figures non plus)
-  ancien$models <- c(ancien$models, numeros_venus(ancien, modeles_venus(ancien, actuel, e), actuel$id))
+  venus <- modeles_venus(ancien, actuel, e)
+  nom <- function(d) premier_texte(d$name)
+  numero <- function(d) suppressWarnings(as.numeric(premier_texte(d$number, NA)))
+  noms_venus <- vapply(venus, nom, "")
+  remplacee <- function(d) nom(d) %in% noms_venus ||
+    (nom(d) %in% as.character(unlist(e$changees)) && !nom(d) %in% vapply(actuel$models %||% list(), nom, "") && isTRUE(numero(d) %in% vapply(venus, numero, 0)))
+  ancien$models <- Filter(Negate(remplacee), ancien$models %||% list())
+  ancien$models <- c(ancien$models, numeros_venus(ancien, venus, actuel$id))
   # (le numéro d'une variable qu'Annuler retire ne reviendra pas à une autre : variables.R)
   ancien <- numero_variable_garde(ancien, dernier_numero_variable(actuel))
   ancien$modifie <- TRUE
@@ -231,14 +252,21 @@ revenir_a <- function(actuel, e) {
 
 # Les définitions des modèles du projet `actuel` ajoutées depuis l'état `ancien` d'une entrée `e`
 # d'une des piles (un modèle ajusté depuis, qui n'est pas passé par Annuler ; pas ceux que le changement
-# lui-même a ajoutés, e$modeles), rapportées aux données d'`ancien` : leurs observations qu'elles n'ont
-# pas en partent (etapes.R : definition_suivie), leurs catégories prennent leurs numéros par leur nom
-# (atelier.R : aligner_categories). Un modèle qui lit une variable, ou une catégorie, qu'`ancien` n'a
-# pas (fait sur ce que le retour défait : une variable calculée, les variables BACI, des catégories
-# fusionnées) part avec elle, comme le modèle mixte BACI avec ses variables ; Rétablir le rend.
+# lui-même a ajoutés, e$modeles) ou changées depuis (e$changees : un modèle modifié et ajusté de nouveau,
+# sa note, les réglages d'un calcul gardés avec lui : definitions_changees), rapportées aux données
+# d'`ancien` : leurs observations qu'elles n'ont pas en partent (etapes.R : definition_suivie), leurs
+# catégories prennent leurs numéros par leur nom (atelier.R : aligner_categories), leurs termes, leur
+# condition et leurs réglages les noms qu'`ancien` donne aux variables (suivre_noms_variables). Un modèle
+# ajouté qui lit une variable, ou une catégorie, qu'`ancien` n'a pas (fait sur ce que le retour défait : une
+# variable calculée, les variables BACI, des catégories fusionnées) part avec elle, comme le modèle mixte
+# BACI avec ses variables ; un modèle changé reprend alors sa définition d'avant ; Rétablir les rend.
 modeles_venus <- function(ancien, actuel, e) {
   noms <- vapply(ancien$models %||% list(), function(d) premier_texte(d$name), "")
-  venus <- Filter(function(d) !premier_texte(d$name) %in% c(noms, as.character(unlist(e$modeles))), actuel$models %||% list())
+  changees <- as.character(unlist(e$changees))
+  venus <- Filter(function(d) {
+    n <- premier_texte(d$name)
+    !n %in% as.character(unlist(e$modeles)) && (!n %in% noms || n %in% changees)
+  }, actuel$models %||% list())
   if (!length(venus)) return(list())
   obs <- numeros_observations(ancien)
   gardes <- lapply(venus, function(d) {
@@ -248,7 +276,24 @@ modeles_venus <- function(ancien, actuel, e) {
     vues <- as.numeric(unlist(a[c("observations", "cochees", "test", "exclues")]))
     definition_suivie(a, ancien, numeric(0), setdiff(vues, obs), prend = FALSE)
   })
-  Filter(Negate(is.null), gardes)
+  suivre_noms_variables(ancien, actuel, Filter(Negate(is.null), gardes))
+}
+
+# Les définitions `defs` (des modèles du projet `actuel`) rapportées aux noms des variables du projet
+# `ancien` : une variable qu'il nomme autrement (un nom changé qu'Annuler rend, ou que Rétablir refait), leurs
+# termes, leur condition et les réglages qui la nomment la suivent (atelier.R : suivre_renommage).
+suivre_noms_variables <- function(ancien, actuel, defs) {
+  if (!length(defs)) return(defs)
+  noms <- function(p) stats::setNames(vapply(p$variables, function(v) as.character(v$ids[1]), ""), vapply(p$variables, function(v) nom_numero(v$uid), ""))
+  na <- noms(ancien)
+  nb <- noms(actuel)
+  communes <- intersect(intersect(names(na), names(nb)), colnames(ancien$donnees))
+  autres <- communes[na[communes] != nb[communes]]
+  if (!length(autres)) return(defs)
+  p <- ancien
+  p$models <- defs
+  for (u in autres) p <- suivre_renommage(p, as.numeric(u), nb[[u]], na[[u]])
+  p$models
 }
 
 # Les définitions `venus` (modeles_venus) avec chacune un numéro qu'aucun modèle de `ancien` n'a : un modèle
@@ -316,10 +361,16 @@ suivre_conditions_seance <- function(avant, p) {
 # KoboToolbox ou d'ODK Central (kobo.R ; une archive .zip n'est ouverte que comme tel) renvoie
 # l'aperçu de son import (`kobo`), que l'interface propose, sauf pour l'ouvrir tel quel (`brut`) ;
 # `collecte` : l'import est demandé (Fichier › Importer depuis KoboToolbox ou ODK), un autre
-# fichier est refusé ; `kobo` : les réglages de l'import, qui le font (le moteur relancé).
+# fichier est refusé ; `kobo` : les réglages de l'import, qui le font (le moteur relancé). Un paquet de
+# reproductibilité (un .zip qu'ecrire_paquet a écrit : un projet et MANIFEST.sha256, paquet.R :
+# racine_paquet_zip) n'est pas ouvert ici : la réponse le dit (`paquet_ouvrir`), et l'interface le
+# relance (paquet_ouvrir_demande).
 ouvrir_fichier <- function(chemin, nom = basename(chemin), table = NULL, brut = FALSE, collecte = FALSE, kobo = NULL) {
   ext <- extension(nom)
   if (!is.null(kobo)) return(ouvrir_collecte(chemin, nom, kobo))
+  if (ext == "zip" && !brut && !collecte && is.null(table) && !is.null(tryCatch(racine_paquet_zip(chemin, manifeste = TRUE), error = function(e) NULL))) {
+    return(list(paquet_ouvrir = list(chemin = chemin, nom = nom)))
+  }
   if (!brut && is.null(table) && (collecte || (ext %in% EXTENSIONS_COLLECTE && (ext == "zip" || !is.null(detecter_collecte(chemin)))))) {
     return(list(kobo = apercu_collecte(chemin), chemin = chemin, nom = nom))
   }
@@ -514,6 +565,8 @@ resume_projet <- function(p) {
        coordonnees = coordonnees_projet(p),
        documents = lapply(p$documents %||% list(), function(d) list(id = d$id, titre = d$titre %||% "", langue = d$langue %||% "fr")),
        figures = lapply(p$figures %||% list(), function(f) list(id = f$id, titre = f$titre %||% "")),
+       paquet = paquet_pour_interface(p$paquet),  # (les réponses du dernier paquet de reproductibilité : paquet.R)
+       depuis_paquet = p$depuis_paquet,  # (un paquet rouvert : son titre, son DOI, son archive, son manifeste ; paquet_ouvrir_demande)
        kobo = p$import_collecte,  # (les réglages d'un import de KoboToolbox ou d'ODK, pour le refaire : kobo.R)
        a_source = !is.null(p$source_donnees),  # (un fichier d'où viennent ses données, que la demande etapes décrit : etapes.R)
        lecture_seule = p$lecture_seule,  # (une ancienne version ouverte en lecture seule : sa source, son oid, sa date ; ouvrir)
@@ -753,10 +806,10 @@ ajuster_et_garder <- function(p, d, m = NULL, refait = FALSE) {
     ancien <- Find(meme, p$models)
     p$models <- c(Filter(Negate(meme), p$models), list(d))
     # (recalculer un modèle enregistré ne change pas le projet ; un modèle ajouté ou changé, si, et Rétablir
-    # ne le défera pas : definitions_changees)
+    # ne le défera pas, ni Annuler un changement d'avant : definitions_changees)
     if (!identical(ancien, d)) {
       p$modifie <- TRUE
-      if (!refait || is.null(ancien)) definitions_changees(p$id)
+      if (!refait || is.null(ancien)) definitions_changees(p$id, c(d$name, ancien$name))
     }
     etat$projets[[p$id]] <- p
   }
@@ -1110,6 +1163,90 @@ script_demande <- function(q) {
                                        file.path(racine, "moteur")), options))
 }
 
+# Fichier › Exporter un paquet de reproductibilité (paquet.R) : les modèles q$modeles (le dernier
+# ajustement de chaque modèle du projet, dans l'ordre de leurs numéros ; l'interface ajuste d'abord
+# ceux qui ne le sont pas encore, et nomme dans q$non_ajustes ceux qui n'ont pas pu l'être, avec
+# pourquoi), ses documents q$documents (du JSON, en texte : ce que documents.js en fait), les
+# réponses du dialogue q$meta, gardées dans le projet pour l'export suivant, la disposition de
+# l'interface q$session (comme Enregistrer). Écrit en q$chemin ; sans lui, dans un dossier de la
+# session (le navigateur le télécharge ; main.js le dépose de là sur Zenodo). q$doi : celui que Zenodo
+# a réservé pour le brouillon où il va (zenodo.js), que le paquet donne (paquet.R : doi_paquet) ; q$qr :
+# avec lui, le code QR en SVG du lien qui ouvre le paquet dans Nuée pour navigateur (interface/qr.js).
+paquet_demande <- function(q) {
+  p <- projet(q$projet)
+  meta <- metadonnees_paquet(q$meta)
+  doi <- doi_paquet(q$doi)
+  modeles <- lapply(as.character(unlist(q$modeles)), function(id) {
+    e <- modele(id)
+    if (!identical(e$projet, p$id)) stop(traduire("Les modèles doivent venir du même projet.", "The models must come from the same project."))
+    # (une catégorie qu'il a vue a changé de nom ou disparu : à ajuster de nouveau, il n'est pas refait)
+    perime <- tryCatch({ modele(id, TRUE); NULL }, error = function(err) conditionMessage(err))
+    # (une autre analyse, son export sur le projet tel qu'elle l'a vu, ses catégories dans l'ordre
+    # d'alors, avec la définition de son ajustement, comme script_demande ; les modèles de la séance
+    # sur les données d'aujourd'hui, leur définition rapportée à leurs catégories : modele)
+    vu <- etat$modeles[[id]]
+    if (est_autre_analyse(e$definition) && length(vu$ordres)) {
+      return(list(id = id, definition = vu$definition, modele = e$modele, erreur = perime, projet = projet_tel_ajuste(p, vu$ordres)))
+    }
+    list(id = id, definition = e$definition, modele = e$modele, erreur = perime)
+  })
+  na <- q$non_ajustes
+  if (is.data.frame(na)) na <- lapply(seq_len(nrow(na)), function(i) as.list(na[i, , drop = FALSE]))
+  for (x in na %||% list()) {
+    d <- Find(function(d) identical(as.character(d$name), as.character(x$nom)), p$models) %||% list(name = as.character(x$nom), type = "")
+    modeles[[length(modeles) + 1]] <- list(id = NULL, definition = d, modele = NULL, erreur = as.character(x$erreur %||% "?"))
+  }
+  documents <- jsonlite::fromJSON(as.character(q$documents %||% "[]"), simplifyVector = FALSE)
+  if (!identical(metadonnees_gardees(p$paquet), meta)) {
+    p$paquet <- meta
+    p$modifie <- TRUE
+    etat$projets[[p$id]] <- p
+  }
+  chemin <- q$chemin %||% chemin_temporaire(paste0(trimws(gsub("[^[:alnum:]_ ()-]", "_", substr(meta$titre, 1, 60))), ".zip"))
+  r <- ecrire_paquet(p, modeles, chemin, meta, documents, if (identical(q$langue, "en")) "en" else "fr", as.character(q$version %||% ""), q$session, doi, q$qr)
+  c(r, list(projet = resume_projet(p)))
+}
+
+# Fichier › Ouvrir un paquet de reproductibilité… (interface/relancer.js ; Fichier › Ouvrir sur un tel .zip
+# demande d'abord ouvrir, qui répond `paquet_ouvrir`) : l'archive q$chemin décompressée dans un dossier de
+# la séance, elle-même jamais touchée (paquet.R : deballer_paquet), ses fichiers vérifiés par son manifeste,
+# puis son projet ouvert comme un projet nouveau, sans fichier (Enregistrer demande où l'écrire : rien
+# ne s'écrit dans le paquet), au nom du paquet. Il garde d'où il vient (p$depuis_paquet : son titre, son
+# DOI, son archive, le verdict du manifeste), et la source de ses données est le CSV du paquet décompressé,
+# par son chemin (Édition › Mettre à jour les données le relit). Rend le projet, ce que le paquet a déposé
+# de ses résultats et qui les a calculés (`depose` : paquet.R, json_resultats_paquet ; l'interface ajuste
+# de nouveau chaque modèle et compare, comparer_resultats), et ce qui calcule ici (`ici` : q$version, celle
+# de Nuée, R et sa plateforme ; `paquets_differents` : les paquets déposés installés ici dans une autre
+# version). q$nom : le nom de l'archive à dire, quand son chemin n'en est pas un (le navigateur).
+paquet_ouvrir_demande <- function(q) {
+  chemin <- premier_texte(q$chemin)
+  if (!nzchar(chemin) || !file.exists(chemin)) stop(traduire("Fichier introuvable : ", "File not found: "), chemin, call. = FALSE)
+  o <- deballer_paquet(chemin, file.path(tempdir(), nouvel_id("paquet")))
+  r <- ouvrir_fichier(o$nuee)
+  p <- projet(r$id)
+  p$nom <- paste0(o$nom, ".nuee")
+  p$chemin <- NULL
+  p$fichier_lu <- NULL  # (pas de fichier : rien à fusionner)
+  if (!is.null(p$source_donnees)) {
+    trouve <- fichier_retrouve(p$source_donnees, o$racine)
+    if (!is.null(trouve)) p$source_donnees$chemin <- trouve
+  }
+  titre <- metadonnees_gardees(p$paquet)$titre %||% o$nom
+  p$depuis_paquet <- list(titre = titre, doi = o$doi, fichier = premier_texte(q$nom, basename(chemin)), manifeste = o$manifeste)
+  etat$projets[[p$id]] <- p
+  ranger_copies(p$id)
+  d <- o$resultats
+  paquets <- d$paquets %||% list()
+  differents <- Filter(Negate(is.null), lapply(names(paquets), function(x) {
+    v <- if (nzchar(system.file(package = x))) version_paquet(x) else NA_character_
+    if (!is.na(v) && !identical(v, premier_texte(paquets[[x]]))) list(paquet = x, depose = premier_texte(paquets[[x]]), ici = v)
+  }))
+  c(list(projet = resume_projet(p)), p$depuis_paquet[c("titre", "doi", "fichier", "manifeste")],
+    list(dossier = o$racine, depose = d,
+         ici = list(nuee = premier_texte(q$version, Sys.getenv("NUEE_VERSION")), R = paste(R.version$major, R.version$minor, sep = "."), plateforme = R.version$platform),
+         paquets_differents = differents, note = r$note))
+}
+
 # Les identifiants secondaires des observations (« site », « ANNEE »...), sans les
 # identifiants internes des fichiers .usp ($ClassID...) ni les colonnes vides.
 identifiants_secondaires <- function(p) {
@@ -1352,9 +1489,10 @@ etapes_demande <- function(q) {
 
 # Un projet mis à jour (etapes.R : mise_a_jour) qui prend la place de `actuel`, un seul Ctrl+Z. Les
 # modèles de la séance suivent leurs définitions comme après un changement des catégories (leurs
-# conditions ; leurs catégories, par leurs noms : modele, aligner_categories).
-remplacer_par_mise_a_jour <- function(actuel, r, etiquette) {
-  memoriser(actuel, etiquette)
+# conditions ; leurs catégories, par leurs noms : modele, aligner_categories). `fusion`, `references` :
+# les documents dont les références ont suivi un nom rendu (retirer_etape_demande), pour memoriser.
+remplacer_par_mise_a_jour <- function(actuel, r, etiquette, fusion = NULL, references = NULL) {
+  memoriser(actuel, etiquette, fusion = fusion, references = references)
   # (l'entrée dit qu'elle remplace les données : l'annuler ou la rétablir ajuste à nouveau les modèles,
   # dans quelque fenêtre que ce soit : annuler_demande, reajuster)
   etat$annulations[[actuel$id]][[1]]$remplace <- TRUE
@@ -1407,10 +1545,36 @@ retirer_etape_demande <- function(q) {
         basename(premier_texte(f$chemin))))
     }
   }
-  r <- mise_a_jour(actuel, table = q$table, etapes = etapes[-n], selon_rejeu = reglages_etapes(etapes))
+  restantes <- etapes[-n]
+  selon <- reglages_etapes(etapes)
+  # (un nom changé retiré : les étapes d'après nomment de nouveau la variable par son nom d'avant, et la
+  # variable le reprend, gardant son numéro, les modèles qui la lisent et leurs conditions la suivant :
+  # etapes.R, renommer_dans_etapes, aligner_projet)
+  e <- etapes[[n]]
+  if (identical(premier_texte(e$demande), "renommer_variable")) {
+    qe <- tryCatch(jsonlite::fromJSON(premier_texte(e$parametres, "{}"), simplifyVector = TRUE), error = function(err) list())
+    ancien <- premier_texte(qe$variable)
+    nouveau <- premier_texte(qe$nom)
+    if (nzchar(ancien) && nzchar(nouveau)) {
+      suivantes <- renommer_dans_etapes(etapes, n, nouveau, ancien)
+      if (isTRUE(attr(suivantes, "garde"))) selon$renommees <- stats::setNames(nouveau, ancien)
+      restantes <- suivantes[-n]
+    }
+  }
+  r <- mise_a_jour(actuel, table = q$table, etapes = restantes, selon_rejeu = selon)
   if (!is.null(r$choisir)) return(r)
   if (isTRUE(q$apercu)) return(c(r$rapport, list(apercu = TRUE)))
-  remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n))
+  # (les références des documents aux termes que le nom rendu renomme le suivent, et Annuler les remet,
+  # même dans un document écrit depuis : comme renommer_variable_demande)
+  carte <- list()
+  for (x in r$renommees) for (m in names(x$termes)) carte[[m]] <- c(carte[[m]], x$termes[[m]])
+  docs <- suivre_references(r$projet$documents, vapply(r$projet$models, function(d) premier_texte(d$name), ""), carte)
+  changes <- attr(docs, "changes")
+  if (length(changes)) r$projet$documents <- lapply(seq_along(docs), function(k) docs[[k]])
+  reponse <- remplacer_par_mise_a_jour(actuel, r, sprintf(traduire("retrait de l'étape %d", "removal of step %d"), n),
+                                       fusion = if (length(changes)) list(fichier_lu = r$projet$fichier_lu, documents = r$projet$documents, figures = r$projet$figures),
+                                       references = if (length(changes)) carte_inverse(carte))
+  c(reponse, list(documents = I(changes)))
 }
 
 # ---------------------------------------------------------------- la fusion de deux versions (fusion.R)
@@ -1601,7 +1765,10 @@ DEMANDES <- list(
   # les noms des projets aux changements non enregistrés (main.js, avant de fermer)
   # (et leurs identifiants : les copies de secours de l'interface, toutes les deux minutes, sans lire tout l'état)
   projets_modifies = function(q) {
-    m <- Filter(function(p) isTRUE(p$modifie), etat$projets)
+    # (et ceux qu'un calcul en cours ou une demande qui attend son tour va changer : cette lecture
+    # répond aussitôt, eux attendent le calculateur, arriere_plan.R)
+    a_changer <- projets_a_changer()
+    m <- Filter(function(p) isTRUE(p$modifie) || p$id %in% a_changer, etat$projets)
     list(noms = I(unname(vapply(m, function(p) p$nom, ""))), ids = I(unname(vapply(m, function(p) p$id, ""))))
   },
   fermer_projet = function(q) {
@@ -1640,7 +1807,7 @@ DEMANDES <- list(
       if (identical(p$models[[i]]$name, e$definition$name) && !identical(p$models[[i]]$note %||% "", note)) {
         p$models[[i]]$note <- note
         p$modifie <- TRUE
-        definitions_changees(p$id)
+        definitions_changees(p$id, e$definition$name)
       }
     }
     etat$projets[[p$id]] <- p
@@ -1807,8 +1974,9 @@ DEMANDES <- list(
   # q$secours : une copie de secours (q$chemin), rouverte comme le projet qu'elle garde : son nom,
   # son fichier (q$origine : celui où il s'enregistre, ou d'où il vient ; aucun pour un tableau
   # collé ou des spectres importés jamais enregistrés), l'état de ce fichier quand il l'avait lu
-  # (q$lu), des changements à enregistrer. Jamais la copie elle-même comme fichier du projet :
-  # elle est effacée quand Nuée se ferme.
+  # (q$lu), des changements à enregistrer (q$modifie = FALSE : aucun, la copie d'un projet du
+  # navigateur qui n'en avait pas). Jamais la copie elle-même comme fichier du projet : elle est
+  # effacée quand Nuée se ferme.
   # q$lecture_seule : une ancienne version d'un projet (interface/versions.js), lue d'un fichier
   # temporaire et ouverte sous le nom q$nom (« vergers — version du 12 nov. 2026, 14:32 ») ; sa
   # source (le fichier du projet), son oid et sa date, que l'interface montre et dont elle se sert
@@ -1825,7 +1993,7 @@ DEMANDES <- list(
       p$nom <- q$nom %||% basename(q$origine %||% p$nom)
       p$chemin <- q$origine
       p$fichier_lu <- fichier_lu_repris(q$lu, q$origine)
-      p$modifie <- TRUE
+      p$modifie <- !isFALSE(q$modifie)
     }
     if (!is.null(q$lecture_seule)) {
       p$nom <- as.character(q$nom %||% p$nom)[1]
@@ -1881,13 +2049,9 @@ DEMANDES <- list(
   predire = predire_demande,
   hca = hca_demande,
   permutations = function(q) {
-    e <- modele(q$modele, TRUE)
-    if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
-    if (!isTRUE((q$y %||% 1) %in% seq_len(ncol(e$modele$Y)))) {
-      stop(sprintf(traduire("Le modèle n'a pas de Y numéro %s : il en a %d.", "The model has no Y number %s: it has %d."), paste(q$y, collapse = " "), ncol(e$modele$Y)), call. = FALSE)
-    }
-    r <- permutations(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
-    c(list(modele = q$modele), r)
+    w <- TRAVAUX$permutations
+    t <- w$taches(q)
+    w$reponse(q, t, permutations_morceau(t, seq_len(t$n)))
   },
   valeurs = valeurs_demande,
   exporter = exporter_demande,
@@ -1916,6 +2080,8 @@ DEMANDES <- list(
   scores_en_variables = scores_demande,
   classe_selection = classe_demande,
   script_r = script_demande,
+  paquet = paquet_demande,
+  paquet_ouvrir = paquet_ouvrir_demande,
   methodes = methodes_demande,
   # Les conditions d'une régression vérifiées et dites en mots (verifications_modele.R), dans la
   # langue de la demande, calculées une fois par langue et gardées avec le modèle.
@@ -2390,6 +2556,8 @@ DEMANDES <- list(
     })))
   },
   journal = function(q) list(entrees = journal_depuis(as.numeric(q$depuis %||% 0)), dernier = etat$n_journal),
+  # (où en est le calcul en arrière-plan : arriere_plan.R)
+  progression = function(q) arriere_plan_progression(),
   console = function(q) evaluer_console(q$code, q$modele, q$projet),
   completer = function(q) completer_console(as.character(q$texte %||% ""), as.integer(q$curseur %||% nchar(q$texte %||% "")), q$modele, q$projet),
   version = function(q) list(R = R.version.string, plateforme = R.version$platform, systeme = utils::osVersion %||% "",
@@ -2416,12 +2584,13 @@ fini <- function(x) {
 
 # Une demande faite (la fonction `f` de DEMANDES, sur ses paramètres `q`), qu'Arrêter peut interrompre
 # (arret.R) : list(reponse) ; NULL quand elle a été arrêtée, la séance remise alors telle qu'elle était
-# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part.
+# avant elle (ses projets, ses modèles, ses piles d'annulation…), son journal mis à part. (Dans le
+# navigateur, Arrêter interrompt R : navigateur.R, calcul_arretable.)
 faire_demande <- function(f, q) {
   garde <- function() setdiff(ls(etat, all.names = TRUE), c("journal", "n_journal"))
   avant <- mget(garde(), envir = etat)
   arretee <- FALSE
-  r <- withRestarts(f(q), arreter_calcul = function() arretee <<- TRUE)
+  r <- withRestarts(calcul_arretable(f(q)), arreter_calcul = function() arretee <<- TRUE)
   if (!arretee) return(list(reponse = r))
   rm(list = setdiff(garde(), names(avant)), envir = etat)
   for (n in names(avant)) assign(n, avant[[n]], envir = etat)
@@ -2434,6 +2603,105 @@ repondre <- function(statut, contenu) {
                                                      na = "null", null = "null", digits = NA, force = TRUE))))
 }
 
+# Une demande qui échoue : sa réponse, son message et ce qui le précise (un fichier changé depuis sa
+# lecture : 409, avec sa date ; dans le navigateur, un paquet qui y manque : navigateur.R).
+repondre_erreur <- function(nom, e) {
+  e <- erreur_navigateur(e)
+  tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
+  if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
+  # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
+  if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
+  # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
+  if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
+  if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
+  # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
+  if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
+  if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
+  # (une archive qui n'est pas un paquet de reproductibilité : paquet.R, deballer_paquet)
+  if (inherits(e, "pas_un_paquet")) return(repondre(400L, list(erreur = conditionMessage(e), pas_un_paquet = TRUE)))
+  repondre(400L, list(erreur = conditionMessage(e)))
+}
+
+# Une demande de l'interface, `corps` son JSON (brut) : la réponse (statut, en-têtes, corps JSON).
+# Le serveur HTTP ci-dessous et le moteur dans le navigateur (webR : app/interface/moteur_webr.js)
+# passent tous deux par là. `code` : le secret qui accompagne une approbation de code R (l'en-tête
+# X-Nuee-Code), que seule l'application connaît. (Dans le navigateur, Arrêter ne l'interrompt que dans
+# son calcul : navigateur.R, hors_interruptions.)
+traiter_demande <- function(nom, corps = raw(0), langue = "fr", code = NULL) {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")  # langue des messages (langue.R)
+  hors_interruptions(tryCatch({
+    f <- DEMANDES[[nom]]
+    if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
+    # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
+    if (nom == "code_approuve" && nzchar(SECRET_CODE) && !identical(code, SECRET_CODE)) {
+      return(repondre(403L, list(erreur = traduire("Seule l'application approuve du code R (Exécuter, dans la barre au-dessus du projet).",
+                                                   "Only the application approves R code (Run it, in the bar above the project)."))))
+    }
+    q <- lire_demande(nom, corps)
+    fait <- faire_demande(f, q)
+    if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
+      tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
+      return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
+    }
+    r <- fait$reponse
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
+    repondre(200L, r)
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+lire_demande <- function(nom, corps) {
+  q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
+  if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
+    stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
+                  "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
+  }
+  q
+}
+
+# Les demandes qui peuvent se partager entre plusieurs R (le navigateur : moteur/R/travaux.R) :
+# leurs tâches (dont n, leur nombre), la fonction qui en fait un morceau, leur réponse. Une
+# demande faite en un seul R (DEMANDES) passe par les mêmes fonctions.
+TRAVAUX <- list(
+  permutations = list(
+    taches = function(q) {
+      e <- modele(q$modele, TRUE)
+      if (!identical(e$modele$type, "PLS")) stop(traduire("Le test de permutation ne concerne que les modèles PLS", "The permutation test only applies to PLS models"))
+      if (!isTRUE((q$y %||% 1) %in% seq_len(ncol(e$modele$Y)))) {
+        stop(sprintf(traduire("Le modèle n'a pas de Y numéro %s : il en a %d.", "The model has no Y number %s: it has %d."), paste(q$y, collapse = " "), ncol(e$modele$Y)), call. = FALSE)
+      }
+      permutations_taches(projet(e$projet), e$modele, e$definition, y = q$y %||% 1, n = max(1, min(q$n %||% 20, 999)))
+    },
+    morceau = "permutations_morceau",
+    reponse = function(q, t, lignes) c(list(modele = q$modele), permutations_fin(t, lignes))
+  )
+)
+# (le R de l'interface) les tâches d'une demande, dans un fichier pour les autres R : { fichier, n }
+travail_preparer <- function(nom, corps = raw(0), langue = "fr") {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  hors_interruptions(tryCatch({
+    w <- TRAVAUX[[nom]]
+    t <- w$taches(lire_demande(nom, corps))
+    fichier <- tempfile("travail", fileext = ".rds")
+    saveRDS(list(morceau = w$morceau, taches = t), fichier, compress = FALSE)
+    repondre(200L, list(fichier = fichier, n = t$n))
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+# (le R de l'interface) les morceaux faits (`sorties`, dans l'ordre), la réponse de la demande
+travail_finir <- function(nom, corps, langue, fichier, sorties) {
+  options(nuee.langue = if (identical(langue, "en")) "en" else "fr")
+  hors_interruptions(tryCatch({
+    q <- lire_demande(nom, corps)
+    r <- TRAVAUX[[nom]]$reponse(q, readRDS(fichier)$taches, do.call(rbind, lapply(sorties, readRDS)))
+    tryCatch(journaliser(nom, q, r), error = function(e) NULL)
+    repondre(200L, r)
+  }, error = function(e) repondre_erreur(nom, e)))
+}
+
+# Les calculs en arrière-plan : les demandes longues faites par un second R (1.2).
+source(file.path(racine, "moteur", "arriere_plan.R"), encoding = "UTF-8")
+
+# Le serveur HTTP. La version navigateur (webR : app/interface/moteur_webr.js) charge ce fichier
+# jusqu'ici, comme les vérifications du moteur le chargent sans écouter (moteur/tests/verifier_etapes.R) :
+# l'interface y appelle traiter_demande() elle-même.
 appli <- list(
   call = function(req) {
     chemin <- req$PATH_INFO
@@ -2448,8 +2716,17 @@ appli <- list(
     }
     nom <- sub("^/api/", "", chemin)
     corps <- req$rook.input$read()
+    # (un Arrêter venu pendant un calcul en arrière-plan, pris avant que la ligne suivante n'efface son fichier)
+    arriere_plan_arret()
     # (un Arrêter d'avant cette demande, venu quand plus rien ne calculait, ne l'arrête pas : arret.R)
     if (nzchar(getOption("nuee.arret", ""))) unlink(getOption("nuee.arret"))
+    if (!nom %in% c("fichier", "televerser", "deposer")) {
+      # (un calcul, que le calculateur fait, ou une demande qui attend la fin d'un calcul sur son
+      # projet : leur réponse viendra plus tard ; arriere_plan.R)
+      plus_tard <- arriere_plan_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE)
+      if (!is.null(plus_tard)) return(plus_tard)
+      return(traiter_demande(nom, corps, req$HTTP_X_LANGUE, req$HTTP_X_NUEE_CODE))
+    }
     tryCatch({
       if (nom == "fichier") {  # téléchargement d'un fichier écrit par le serveur (navigateur)
         f <- normalizePath(utils::URLdecode(sub(".*chemin=([^&]*).*", "\\1", req$QUERY_STRING)), winslash = "/")
@@ -2470,48 +2747,20 @@ appli <- list(
         tryCatch(journaliser("ouvrir", list(chemin = dest), r), error = function(e) NULL)
         return(repondre(200L, r))
       }
-      f <- DEMANDES[[nom]]
-      if (is.null(f)) stop(traduire("Demande inconnue : ", "Unknown request: "), nom)
-      # (les approbations de code R ne viennent que de l'application, quand elle a lancé le moteur)
-      if (nom == "code_approuve" && nzchar(SECRET_CODE) && !identical(req$HTTP_X_NUEE_CODE, SECRET_CODE)) {
-        return(repondre(403L, list(erreur = traduire("Seule l'application approuve du code R (Exécuter, dans la barre au-dessus du projet).",
-                                                     "Only the application approves R code (Run it, in the bar above the project)."))))
-      }
-      q <- if (length(corps)) jsonlite::fromJSON(rawToChar(corps), simplifyVector = TRUE) else list()
-      if (nom %in% SANS_REGRESSION && any(vapply(as.character(c(q$modele, unlist(q$modeles))), function(id) sans_composantes(modele(id)$definition), TRUE))) {
-        stop(traduire("Ce n'est pas pour ce modèle : une régression ou une autre analyse n'a pas les composantes et les scores d'une ACP ou d'une PLS.",
-                      "This isn't for this model: a regression or another analysis doesn't have the components and scores of a PCA or a PLS."))
-      }
-      fait <- faire_demande(f, q)
-      if (is.null(fait)) {  # (Arrêter : arret.R ; rien n'a changé)
-        tryCatch(noter("erreur", sprintf("(%s) %s", nom, traduire("calcul arrêté", "computation stopped"))), error = function(x) NULL)
-        return(repondre(400L, list(erreur = traduire("Calcul arrêté.", "Computation stopped."), arrete = TRUE)))
-      }
-      r <- fait$reponse
-      tryCatch(journaliser(nom, q, r), error = function(e) NULL)  # l'appel au moteur, pour la console R
-      repondre(200L, r)
-    }, error = function(e) {
-      tryCatch(noter("erreur", sprintf("(%s) %s", nom, conditionMessage(e))), error = function(x) NULL)
-      if (inherits(e, "conflit_fichier")) return(repondre(409L, c(list(erreur = conditionMessage(e), conflit = TRUE, date = e$date), if (isTRUE(e$fusion)) list(fusion = TRUE))))
-      # (une étape à retirer d'une source changée depuis sa lecture : retirer_etape_demande)
-      if (inherits(e, "source_modifiee")) return(repondre(400L, list(erreur = conditionMessage(e), source_modifiee = TRUE)))
-      # (un modèle de code R : un code pas approuvé ici, avec son empreinte ; un code qui s'arrête, à sa ligne : code.R)
-      if (inherits(e, "code_non_approuve")) return(repondre(400L, list(erreur = conditionMessage(e), code_non_approuve = TRUE, empreinte = e$empreinte)))
-      if (inherits(e, "erreur_code")) return(repondre(400L, list(erreur = conditionMessage(e), ligne = e$ligne)))
-      # (un greffon pas approuvé ici, interdit, ou à qui il manque des paquets : greffons.R)
-      if (inherits(e, "refus_greffon")) return(repondre(400L, c(list(erreur = conditionMessage(e)), e$details)))
-      if (inherits(e, "calcul_arrete")) return(repondre(400L, list(erreur = conditionMessage(e), arrete = TRUE)))
-      repondre(400L, list(erreur = conditionMessage(e)))
-    })
+    }, error = function(e) repondre_erreur(nom, e))
   },
   # (l'interface relue à chaque chargement : no-cache, et 304 quand rien n'a changé. Sans
   # Cache-Control, Chromium la tenait pour fraîche un dixième de son âge, et une nouvelle version
-  # montrait celle d'avant : app/main.js, demarrer)
-  staticPaths = list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
-                     "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  # montrait celle d'avant : app/main.js, demarrer). Sans httpuv, aucune : le R de la version
+  # navigateur, où les vérifications du moteur appellent appli$call elles aussi.
+  staticPaths = if (requireNamespace("httpuv", quietly = TRUE)) {
+    list("/" = httpuv::staticPath(interface, indexhtml = TRUE, headers = list("Cache-Control" = "no-cache")),
+         "/api" = httpuv::excludeStaticPath())  # les demandes vont à call()
+  }
 )
 
 serveur <- httpuv::startServer("127.0.0.1", port, appli)
+arriere_plan_lancer()
 cat("PRET", port, "\n")
 if (!jeton_donne) cat(sprintf("Interface : http://127.0.0.1:%d/api/connexion?jeton=%s\n", port, JETON))
 flush(stdout())

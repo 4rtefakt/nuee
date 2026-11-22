@@ -9,9 +9,10 @@
 // etapes_texte.js.
 import { t, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, MOTEUR_WEBR, moteurWebR } from './api.js';
 import { resumerProjet, afficherChangements, sectionsRapport } from './changements.js';
 import { valeursCitees } from './documents.js';
+import { coucheVersions } from './versions.js';
 import { liste, noms, dateLisible, tailleLisible, nomFichier, etatSource, ICONES_ETAPES, genreEtape, lireRapport, modelesAReajuster, resumeApres,
   valeursChangees, descriptionVersion, dateDescription } from './etapes_texte.js';
 
@@ -164,10 +165,12 @@ async function dialogueEtapes(app, pid) {
 
 // ------------------------------------------------------------ the preview of a change of the data
 
-// Whether the project keeps versions (versions.js): saved to a file whose versions are on.
+// Whether the project keeps versions (versions.js, the desktop's or the browser version's): saved to
+// a file whose versions are on.
 async function versionsActives(p) {
-  if (!bureau || !bureau.versions || !p.chemin_enregistrement) return false;
-  try { return (await bureau.versions.etat(p.chemin_enregistrement)).actif === true; } catch { return false; }
+  const v = coucheVersions();
+  if (!v || !p.chemin_enregistrement) return false;
+  try { return (await v.etat(p.chemin_enregistrement)).actif === true; } catch { return false; }
 }
 
 // "Save a version first" (versions.js), ticked, when the project keeps versions: its zone, and
@@ -383,8 +386,9 @@ const LIBELLES = {
 // The progress of an update, in a dialog: what is being done, a bar, and Stop: the model being
 // fitted stopped too (moteur/R/arret.R, the stop of the status bar, which this Stop follows), and no
 // more models fitted again (before the data change, no update at all). Closing the dialog (Esc, ×;
-// not a click beside it) fits no more models either, the one being fitted finishing.
-function progression(titre) {
+// not a click beside it) fits no more models either, the one being fitted finishing. (Also a package's
+// rerun: relancer.js.)
+export function progression(titre) {
   const etape = el('p', { class: 'etape-maj' });
   const barre = el('progress', { class: 'barre-maj' });
   const detail = el('p', { class: 'note' });
@@ -401,6 +405,7 @@ function progression(titre) {
     bouton.disabled = true;
     bouton.textContent = t('etapes_arret_demande');
     if (moteur && bureau && bureau.arreterCalcul) bureau.arreterCalcul().catch(() => {});
+    else if (moteur && MOTEUR_WEBR) moteurWebR().then((m) => m.arreter()).catch(() => {});  // (R in the page interrupted)
   }
   return {
     arrete: () => arret,
@@ -420,7 +425,7 @@ function progression(titre) {
 // one on request (marquer) and the project keeps versions.
 async function marquerVersion(app, pid, chemin, description) {
   if (!(await app.enregistrer(pid, false, { versionAuto: false }))) throw new Error(t('etapes_p_non_enregistre'));
-  const v = bureau && bureau.versions;
+  const v = coucheVersions();
   if (!v || typeof v.marquer !== 'function' || (await v.etat(chemin)).actif !== true) return;
   await v.marquer(chemin, description);
 }
@@ -467,6 +472,8 @@ async function executer(app, pid, { demande, parametres, textes, quand, version,
     const n = app.projet(pid).observations.uid.length;
     const r = await app.changerDonnees(demande, pid, parametres);
     change = true;
+    // (a removed step that had renamed a variable: the documents whose references followed its name back)
+    if (liste(r.documents).length) app.relireDocuments(pid, liste(r.documents));
     verifierSource(app, pid);
     const modeles = modelesAReajuster(r.projet, r);
     const refaits = await reajusterTout(app, pid, pr, modeles);

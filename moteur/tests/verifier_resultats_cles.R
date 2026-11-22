@@ -520,6 +520,12 @@ attendus <- list(FOREST = c("R2_oob", "Q2", "RMSEcv", "importance.h_gel"), FORES
                  BOOST = c("arbres", "D2", "D2_vc", "R2", "Q2", "RMSEE", "influence.h_gel"), BOOST_presence = c("arbres", "D2", "AUC", "AUC_vc", "bien_classes", "influence.h_gel"),
                  TREE = c("feuilles", "R2", "Q2", "RMSEE", "premiere_coupure", "importance.h_gel"), TREE_classes = c("feuilles", "bien_classes_ajuste", "bien_classes", "premiere_coupure"),
                  LDA = c("bien_classes_ajuste", "bien_classes", "bien_classes.haute", "axe.LD1"), KMEANS = c("k", "R2", "silhouette"))
+# (sans ranger, comme le R de la version navigateur : les forêts laissées de côté, le reste vérifié)
+avec_ranger <- requireNamespace("ranger", quietly = TRUE)
+if (!avec_ranger) {
+  cat("  (ranger absent : les forêts aléatoires laissées de côté)\n")
+  modeles <- modeles[!startsWith(names(modeles), "FOREST")]
+}
 for (nom in names(modeles)) {
   d <- modeles[[nom]](pfA)
   m <- ajuster(pfA, d)
@@ -532,11 +538,13 @@ for (nom in names(modeles)) {
 CTr <- comparer_resultats(resume(pfA, modeles$TREE(pfA)), resume(pfB, modeles$TREE(pfB)), "fr")
 verifier(sprintf("arbre réajusté : sa première coupure passe du gel aux haies (%s)", phrase(CTr, "premiere_coupure")),
          drapeau(CTr, "premiere_coupure", "categorie") && contient(phrase(CTr, "premiere_coupure"), "La variable de la première coupure passe de « h_gel » à « haie »."))
-CF <- comparer_resultats(resume(pfA, modeles$FOREST(pfA)), resume(pfB, modeles$FOREST(pfB)), "fr")
-verifier(sprintf("forêt réajustée : la variable la plus importante change (%s) ; l'importance de chacune change, sans phrase (pas de drapeau), avec son importance",
-                 phrase(CF, "variable_principale")),
-         drapeau(CF, "variable_principale", "categorie") && identical(phrase(CF, "variable_principale"), "La variable la plus importante (permutation) passe de « h_gel » à « haie ».") &&
-           comparee(CF, "importance.h_gel")$change && is.null(comparee(CF, "importance.h_gel")$phrase) && comparee(CF, "importance.haie")$importance > 0)
+if (avec_ranger) {
+  CF <- comparer_resultats(resume(pfA, modeles$FOREST(pfA)), resume(pfB, modeles$FOREST(pfB)), "fr")
+  verifier(sprintf("forêt réajustée : la variable la plus importante change (%s) ; l'importance de chacune change, sans phrase (pas de drapeau), avec son importance",
+                   phrase(CF, "variable_principale")),
+           drapeau(CF, "variable_principale", "categorie") && identical(phrase(CF, "variable_principale"), "La variable la plus importante (permutation) passe de « h_gel » à « haie ».") &&
+             comparee(CF, "importance.h_gel")$change && is.null(comparee(CF, "importance.h_gel")$phrase) && comparee(CF, "importance.haie")$importance > 0)
+}
 CB <- comparer_resultats(resume(pfA, modeles$BOOST(pfA)), resume(pfB, modeles$BOOST(pfB)), "fr")
 verifier("arbres boostés réajustés : la variable la plus influente change", drapeau(CB, "variable_principale", "categorie"))
 dtt <- definir_modele(pfA, "TREE", x = numeros(pfA, xe), y = numeros(pfA, "densite"), echelle = "none", observations = 1:140, test = 141:160)

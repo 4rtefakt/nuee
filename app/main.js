@@ -12,6 +12,7 @@ const { demanderZotero } = require('./zotero');
 const { creerVersions, magasinJetons } = require('./versions');
 const { creerComptes } = require('./comptes');
 const rInstalles = require('./r-installes');
+const { creerZenodo, IDS: IDS_ZENODO } = require('./zenodo');
 
 // Packaged: R, the engine and the .usp converter sit in resources/. In development they
 // are found in the repository and the per-user R installation.
@@ -82,6 +83,7 @@ let langue = 'en';  // the interface's (English until it says), for the dialogs 
 // are deleted when the application closes normally.
 const dossierSecours = () => path.join(app.getPath('userData'), 'secours');
 const indexSecours = () => path.join(dossierSecours(), 'index.json');
+let versionSecours = 0;  // each write of the index makes one more (secours-index)
 // The engine running now, by a name of its own: this launch's (its time) and how many engines it
 // started (one more each time one is ready). A recovery copy carries the one it was made with: a
 // restart reopens only the copies of the engine that stopped, whichever main window made them, and a
@@ -319,6 +321,9 @@ function demarrerR(port, r, repli = false, delai = 0) {
     // packages that come with Nuée are found first (environnementR). Another R keeps its .Renviron.
     const optionsR = app.isPackaged ? ['--no-init-file'] : [];
     Object.assign(env, environnementR(r));
+    // (the engine starts its second R, for the computations it does in the background, with the same
+    // options: moteur/arriere_plan.R)
+    env.NUEE_R_OPTIONS = optionsR.join(' ');
     let pret = false;
     let depasse = false;
     serveur = spawn(r.rscript, [...optionsR, path.join(racine, 'moteur', 'serveur.R'), String(port), interfaceDir], { env, windowsHide: true });
@@ -764,6 +769,22 @@ const comptes = creerComptes({
   ouvrirNavigateur: (url) => shell.openExternal(url),
   langue: () => langue,
 });
+// Deposit on Zenodo, for a reproducibility package (zenodo.js, interface/paquet.js): the token of
+// zenodo.org and of sandbox.zenodo.org, its test server, signing in with Zenodo or pasted, kept in
+// the same store, under their names; the draft created with its DOI reserved, then the package,
+// which the engine wrote with that DOI, deposited in it only from R's folder of this run; the
+// draft's page opened in the browser, never published. NUEE_ZENODO: another address answering like
+// Zenodo, for the checks (a stand-in: every host goes there, its application's client id is
+// "nuee-essai", and no draft's page opens).
+const zenodo = creerZenodo({
+  jetons,
+  fetch: (url, init) => reseau.fetch(url, init),
+  base: (hote) => process.env.NUEE_ZENODO || `https://${hote}`,
+  dossier: () => temporaireR,
+  ouvrir: (page) => { if (!process.env.NUEE_ZENODO) shell.openExternal(page); },
+  ouvrirNavigateur: (adresse) => shell.openExternal(adresse),
+  idClient: (hote) => (process.env.NUEE_ZENODO ? 'nuee-essai' : IDS_ZENODO[hote]),
+});
 
 function ipc() {
   const parent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -844,6 +865,18 @@ function ipc() {
   // Zotero on this computer, for a document's citations (zotero.js: its local API and Better
   // BibTeX's picker, read only). The picker waits for the user's choice: up to 15 minutes.
   recevoir('zotero', (_, chemin, delai) => demanderZotero(chemin, { delai: Math.min(Number(delai) || 8000, 15 * 60000) }));
+  // Zenodo, for a reproducibility package (zenodo.js: creerZenodo): whether a token is kept for a
+  // host (never the token), signing in with Zenodo, keeping the one pasted, forgetting it, a draft
+  // with its DOI reserved, then the package deposited in it; each answers { erreur } rather than
+  // throwing. A sign-in waited for by a window that closes meanwhile ends with it.
+  for (const [nom, f] of Object.entries(zenodo)) {
+    recevoir(`zenodo-${nom}`, async (e, ...args) => {
+      if (nom !== 'attendreConnexion') return f(...args);
+      const fin = () => { zenodo.annulerConnexion(args[0]).catch(() => {}); };
+      e.sender.once('destroyed', fin);
+      try { return await f(...args); } finally { if (!e.sender.isDestroyed()) e.sender.removeListener('destroyed', fin); }
+    });
+  }
   // (options.R: the bin folder of an R that has knitr and rmarkdown, for the R chunks of a
   // reproducible .qmd: the engine's, as QUARTO_R, unless the computer sets its own; on macOS
   // with its R folder as RHOME, without which the Rscript of Nuée.app starts another R: demarrerR)
@@ -911,14 +944,24 @@ function ipc() {
   // recovery copies: their folder, and the index of what they hold (files not in it are deleted)
   // (once Nuée is closing, nothing is written there any more: a copy or an index arriving after
   // the folder was deleted would bring it back, offering at the next start what was saved)
+  // Several main windows change the index: each reads it with its version (secours-etat), changes it,
+  // and writes it back with that version; a write made on a version another window has written over
+  // since is refused (false), and that window reads it again (interface/app.js: changerSecours).
+  // Otherwise the later write would put back an index without the other window's change, and the
+  // copies that change had marked waiting, left out, would be deleted. (A write without a version is
+  // taken as it is.)
   recevoir('secours-dossier', () => { if (!quitter) fs.mkdirSync(dossierSecours(), { recursive: true }); return dossierSecours(); });
   recevoir('secours-liste', () => { try { return JSON.parse(fs.readFileSync(indexSecours(), 'utf8')); } catch { return []; } });
-  recevoir('secours-index', (_, entrees) => {
-    if (quitter) return;
+  recevoir('secours-etat', () => ({ entrees: copiesEnAttente(), version: versionSecours }));
+  recevoir('secours-index', (_, entrees, version) => {
+    if (quitter) return true;  // (nothing is written there any more: done)
+    if (version !== undefined && version !== null && version !== versionSecours) return false;
     fs.mkdirSync(dossierSecours(), { recursive: true });
     const gardes = new Set(entrees.map((e) => path.basename(e.fichier)));
     for (const f of fs.readdirSync(dossierSecours())) if (f !== 'index.json' && !gardes.has(f)) fs.rmSync(path.join(dossierSecours(), f), { force: true });
     fs.writeFileSync(indexSecours(), JSON.stringify(entrees, null, 1));
+    versionSecours += 1;
+    return true;
   });
   recevoir('redemarrer-moteur', async () => {
     try { await redemarrerR(); return null; } catch (e) { return e.message; }

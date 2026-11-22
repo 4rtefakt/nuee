@@ -1,5 +1,7 @@
 // A zip archive with its files stored as they are (no compression), enough for a .docx: the
-// model report (rapport.js) and the documents (rendu_document.js) write theirs with it.
+// model report (rapport.js) and the documents (rendu_document.js) write theirs with it. And a
+// zip archive read (lireZip): a reproducibility package's, which the link reads in the page before
+// R starts (relancer.js: lirePaquetZip; lecture.js).
 const TABLE_CRC = Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -44,4 +46,44 @@ export function zip(fichiers, maintenant = new Date()) {
   let k = 0;
   for (const x of tout) { sortie.set(x, k); k += x.length; }
   return sortie;
+}
+
+// An archive's files, from its central directory (found from its end, after which a comment may
+// follow): `fichiers`, their names, and `lire(nom)`, a file's bytes, stored as they are or deflated
+// (as R's zip package writes them: moteur/R/paquet.R), inflated by the browser
+// (DecompressionStream). null when it can't be read here: not a zip archive, or one beyond what this
+// reads (ZIP64, past 4 GB or 65,535 files; another compression; encrypted files).
+export function lireZip(octets) {
+  const v = new DataView(octets.buffer, octets.byteOffset, octets.byteLength);
+  let fin = -1;
+  for (let i = octets.length - 22; i >= Math.max(0, octets.length - 22 - 0xffff); i -= 1) {
+    if (v.getUint32(i, true) === 0x06054b50) { fin = i; break; }
+  }
+  if (fin < 0) return null;
+  const n = v.getUint16(fin + 10, true);
+  let p = v.getUint32(fin + 16, true);
+  if (n === 0xffff || p === 0xffffffff) return null;
+  const entrees = new Map();
+  const texte = new TextDecoder('utf-8');
+  for (let k = 0; k < n; k += 1) {
+    if (p + 46 > octets.length || v.getUint32(p, true) !== 0x02014b50) return null;
+    const drapeaux = v.getUint16(p + 8, true);
+    const e = { methode: v.getUint16(p + 10, true), compresse: v.getUint32(p + 20, true), taille: v.getUint32(p + 24, true), decalage: v.getUint32(p + 42, true) };
+    const ln = v.getUint16(p + 28, true);
+    if ((drapeaux & 1) || ![0, 8].includes(e.methode) || [e.compresse, e.taille, e.decalage].includes(0xffffffff)) return null;
+    entrees.set(texte.decode(octets.subarray(p + 46, p + 46 + ln)), e);
+    p += 46 + ln + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+  }
+  return {
+    fichiers: [...entrees.keys()].filter((x) => !x.endsWith('/')),
+    async lire(nom) {
+      const e = entrees.get(nom);
+      if (!e || e.decalage + 30 > octets.length || v.getUint32(e.decalage, true) !== 0x04034b50) return null;
+      const debut = e.decalage + 30 + v.getUint16(e.decalage + 26, true) + v.getUint16(e.decalage + 28, true);
+      const brut = octets.subarray(debut, debut + e.compresse);
+      if (e.methode === 0) return brut;
+      const flux = new Blob([brut]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(flux).arrayBuffer());
+    },
+  };
 }

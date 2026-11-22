@@ -332,9 +332,11 @@ erreur_code <- function(ev) {
   message <- if (is.na(ev$ligne)) sprintf(traduire("Le code R s'est arrêté : %s", "The R code stopped: %s"), ev$erreur)
              else sprintf(traduire("Le code R s'est arrêté à la ligne %d : %s", "The R code stopped at line %d: %s"), ev$ligne, ev$erreur)
   if (length(ev$paquet) && nzchar(ev$paquet)) {
-    message <- paste(message, sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le pour ce R (install.packages(\"%s\"), dans R ou dans la console R de Nuée), puis ajustez de nouveau.",
-                                               "The package %s isn't installed for the R Nuée uses (R %s): install it for that R (install.packages(\"%s\"), in R or in Nuée's R console), then fit again."),
-                                      ev$paquet, version, ev$paquet))
+    # (dans le navigateur, un paquet que le dépôt de webR n'a pas : navigateur.R)
+    message <- paste(message, if (dans_navigateur()) paquets_absents_navigateur(ev$paquet)
+                              else sprintf(traduire("Le paquet %s n'est pas installé pour le R que Nuée utilise (R %s) : installez-le pour ce R (install.packages(\"%s\"), dans R ou dans la console R de Nuée), puis ajustez de nouveau.",
+                                                    "The package %s isn't installed for the R Nuée uses (R %s): install it for that R (install.packages(\"%s\"), in R or in Nuée's R console), then fit again."),
+                                           ev$paquet, version, ev$paquet))
   }
   refus_code("erreur_code", message, ligne = if (is.na(ev$ligne)) NULL else ev$ligne)
 }
@@ -444,9 +446,17 @@ ddl_residus_code <- function(fit) {
 # matrices (glmmTMB : cond, zi, disp ; leurs termes préfixés de leur partie) dont chacune a une colonne
 # d'erreurs-types (coefficients_matrice), sinon coef(fit) avec les erreurs-types de vcov(fit) et
 # l'intervalle de la loi normale ; des coefficients en tableau, une ligne par catégorie de la réponse
-# (multinom), dans l'ordre de vcov(), « catégorie:terme ». NULL quand l'objet n'en a pas.
+# (multinom), dans l'ordre de vcov(), « catégorie:terme ». Un gam de mgcv (bam compris), dont
+# coef(summary()) n'est rien et dont coef() a aussi les coefficients des bases de ses courbes
+# (s(x).1, s(x).2…) : ceux de sa partie paramétrique, summary(fit)$p.table, comme summary() les montre
+# (ses courbes, leurs edf et leurs tests, sont dans le résumé). NULL quand l'objet n'en a pas.
 coefficients_code <- function(fit) {
   if (is.null(fit)) return(NULL)
+  if (inherits(fit, "gam")) {
+    pt <- essai_code(summary(fit)$p.table)
+    t <- if (is.matrix(pt) && is.numeric(pt) && nrow(pt) > 0) coefficients_matrice(pt, "", fit, FALSE)
+    if (!is.null(t)) return(structure(t, source = "p_table"))  # (l'export vers R refait le même appel)
+  }
   cs <- essai_code(stats::coef(summary(fit)))
   if (is.data.frame(cs) && length(cs) && all(vapply(cs, is.numeric, TRUE))) cs <- as.matrix(cs)
   matrice <- function(x) is.matrix(x) && is.numeric(x) && nrow(x) > 0
@@ -636,7 +646,8 @@ ajuster_code <- function(projet, d) {
   code <- texte_code(d$options$code %||% "")
   exiger_code_permis(code, d$name)
   donnees <- donnees_code(projet, d)
-  ev <- evaluer_code(code, donnees)
+  # (dans le navigateur, les paquets qu'il demande installés d'abord : navigateur.R)
+  ev <- evaluer_navigateur(function() evaluer_code(code, donnees), paquets_nommes(tryCatch(parse(text = code, keep.source = FALSE), error = function(e) NULL)))
   if (!is.null(ev$erreur)) stop(erreur_code(ev))
   m <- modele_valeur_code(projet, d, ev, donnees)
   m[c("code", "empreinte")] <- list(code, empreinte_code(code))

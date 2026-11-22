@@ -96,6 +96,22 @@ contextBridge.exposeInMainWorld('bureau', {
   quarto: (chemin, format, options) => ipcRenderer.invoke('quarto', chemin, format, options || {}),
   // Zotero on this computer, read only (zotero.js)
   zotero: (chemin, delai) => ipcRenderer.invoke('zotero', chemin, delai),
+  // Zenodo, for a reproducibility package (paquet.js, zenodo.js), given a host (zenodo.org,
+  // sandbox.zenodo.org): whether a token is kept (the main process never gives it back), signing in
+  // with Zenodo (its page opened in the browser: { adresse }; then its answer waited for, or the
+  // sign-in cancelled), keeping a token pasted, forgetting it; a draft created with its DOI reserved
+  // ({ id, doi, page }), then the package (a .zip the engine wrote in its session folder, with that
+  // DOI) deposited in it, never published; each answers { erreur } when it can't
+  zenodo: {
+    etat: (hote) => ipcRenderer.invoke('zenodo-etat', hote),
+    connexion: (hote, langue) => ipcRenderer.invoke('zenodo-connexion', hote, langue),
+    attendreConnexion: (hote) => ipcRenderer.invoke('zenodo-attendreConnexion', hote),
+    annulerConnexion: (hote) => ipcRenderer.invoke('zenodo-annulerConnexion', hote),
+    jeton: (hote, jeton) => ipcRenderer.invoke('zenodo-jeton', hote, jeton),
+    oublier: (hote) => ipcRenderer.invoke('zenodo-oublier', hote),
+    brouillon: (hote) => ipcRenderer.invoke('zenodo-brouillon', hote),
+    deposer: (hote, id, chemin, meta) => ipcRenderer.invoke('zenodo-deposer', hote, id, chemin, meta),
+  },
   // closing with "Save and close": the window saves its projects, then answers
   // before closing (main.js: viderFenetres): what the page still holds goes to the engine first
   surVider: (f) => ipcRenderer.on('vider', async () => {
@@ -109,7 +125,9 @@ contextBridge.exposeInMainWorld('bureau', {
   }),
   secoursDossier: () => ipcRenderer.invoke('secours-dossier'),
   secoursListe: () => ipcRenderer.invoke('secours-liste'),
-  secoursIndex: (entrees) => ipcRenderer.invoke('secours-index', entrees),
+  // (the index with its version, then written back with it: false when another window wrote it since)
+  secoursEtat: () => ipcRenderer.invoke('secours-etat'),
+  secoursIndex: (entrees, version) => ipcRenderer.invoke('secours-index', entrees, version),
   // the R engine running now, by a name of its own (a recovery copy carries it), and what every window
   // still holds sent to it (before a restart's copies)
   idMoteur: () => ipcRenderer.invoke('id-moteur'),

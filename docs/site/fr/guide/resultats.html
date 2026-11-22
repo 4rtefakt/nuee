@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Résultats, documents et R · Nuée</title>
-<meta name="description" content="Texte des méthodes, rapport, documents avec citations, exports vers d’autres logiciels, export vers R, console R.">
+<meta name="description" content="Texte des méthodes, rapport, documents avec citations, exports vers d’autres logiciels, export vers R, paquet de reproductibilité, console R.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../../assets/nuee.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/site.css">
@@ -66,6 +66,7 @@
 <li><a href="#documents">Documents</a></li>
 <li><a href="#exporter-vers-d-autres-logiciels">Exporter vers d'autres logiciels</a></li>
 <li><a href="#exporter-vers-r">Exporter vers R</a></li>
+<li><a href="#paquet-de-reproductibilite">Paquet de reproductibilité</a></li>
 <li><a href="#console-r">Console R</a></li>
 <li><a href="#le-code">Le code</a></li>
 </ul>
@@ -145,6 +146,11 @@ la CV-ANOVA et les variables les plus importantes)</pre>
 <p>Avant d'écrire, l'application recalcule les modèles du script et vérifie qu'ils donnent les mêmes résultats ; sinon elle le signale.</p>
 <p><strong>Le script est à vous :</strong> vous pouvez l'utiliser, le modifier et le partager sous les conditions de votre choix, y compris les parties du moteur de Nuée qu'il recopie (une exception à la licence GPL de Nuée, LICENSE-EXCEPTION.md). Ses commentaires du début le disent, et comment citer Nuée si vous publiez des résultats obtenus avec lui.</p>
 </section>
+<section id="paquet-de-reproductibilite">
+<h2>Paquet de reproductibilité</h2>
+<p><strong>Fichier › Exporter un paquet de reproductibilité… :</strong> une archive .zip que quiconque a R, ou Nuée, peut relancer : le projet, ses données en CSV avec leur dictionnaire, un seul script R qui refait chaque modèle, les documents en fichiers Quarto reproductibles et en pages HTML (leurs nombres, graphiques et tableaux remplis : elles s'ouvrent dans tout navigateur, sur un téléphone aussi), les résultats clés de chaque modèle tels que Nuée les a calculés (resultats/resultats_cles.json, avec les versions de Nuée, de R et des paquets R), un README, la licence des données et son texte, CITATION.cff, codemeta.json et l'empreinte SHA-256 de chaque fichier (MANIFEST.sha256). Fichier › Déposer sur Zenodo… (application de bureau) crée sur Zenodo un brouillon qui réserve son DOI, écrit le paquet avec ce DOI et l'y dépose ; Nuée ne publie jamais : vous vérifiez le brouillon sur Zenodo et le publiez là. Se connecter avec Zenodo ouvre la page de Zenodo dans votre navigateur, où vous autorisez Nuée à déposer, jamais à publier ; la connexion dure 60 jours (un jeton d'accès personnel avec le droit deposit:write peut être collé à la place). Son dernier dialogue donne le lien qui ouvre le paquet dans Nuée, dans un navigateur, <a href="https://nuee.io/app/?doi=&amp;lt;DOI&amp;gt">https://nuee.io/app/?doi=&lt;DOI&gt</a>;, et son code QR (Copier le lien, Enregistrer le code QR… en SVG ou en PNG, pour une affiche ou une diapositive) ; le paquet a les deux. Montré d'abord, dans le dialogue, est le document que les lecteurs du lien voient d'abord : le premier document du projet, un autre, ou aucun (le lien ouvre alors tout le projet et le relance aussitôt) ; le README dit de le lire d'abord.</p>
+<p>Fichier › Ouvrir un paquet de reproductibilité… (ou Fichier › Ouvrir sur son .zip, ou le .zip déposé sur la fenêtre) vérifie chaque fichier par le manifeste du paquet et nomme ceux qui manquent, ont changé ou ont été ajoutés ; ouvre son projet comme un nouveau projet (Enregistrer demande où : rien ne s'écrit dans le paquet) ; ajuste de nouveau chaque modèle et compare ses résultats clés à ceux déposés, dans le panneau Ce qui a changé : « 4 modèles relancés : 4 redonnent les résultats déposés (3 à l'identique, 1 à 6 chiffres significatifs près), 0 diffère », et la Nuée et le R qui ont fait le dépôt et ceux qui l'ont relancé. Un modèle est identique quand chaque valeur est à 1e-10 près de celle déposée ; à 6 chiffres significatifs près à 1e-6 près, comme le laissent le calcul d'un autre ordinateur ou un optimiseur arrêté un rien plus loin (son plus grand écart est donné ; près de zéro, et pour une valeur p, l'écart est absolu) ; au-delà, il diffère, avec les phrases de Ce qui a changé. Un modèle qui ne peut pas être ajusté ici (une forêt aléatoire dans la version pour navigateur, du code R qui attend Exécuter) est dit tel quel, sans compter comme une différence. Le lien du paquet l'ouvre dans un navigateur, sans rien installer : Nuée va chercher le paquet sur Zenodo (le DOI d'une version, ou un DOI de concept, qui donne sa dernière version), puis montre aussitôt son document principal, tel que ses auteurs l'ont écrit, ses nombres, graphiques et tableaux remplis, sans attendre R, sur un téléphone comme sur un ordinateur (un menu donne ses autres documents). Ouvrir tout le projet ouvre le projet avec ce document devant, vivant ; Relancer les modèles l'ouvre et le relance comme ci-dessus. Un paquet sans document principal est ouvert et relancé aussitôt ; un paquet de plus de 500 Mo est pour l'application de bureau.</p>
+</section>
 <section id="console-r">
 <h2>Console R</h2>
 <p><strong>Affichage › Console R (Ctrl+J) :</strong> un panneau sous les onglets, avec</p>
@@ -195,6 +201,6 @@ modele.R, prediction.R, classification.R (HCA), nouveau.R (tableaux, autoajustem
 <nav class="suite" aria-label="Pages voisines"><a rel="prev" href="ecrire-un-greffon.html">← Écrire un greffon</a><a rel="next" href="versions.html">Versions et travail à plusieurs →</a></nav>
 </main>
 </div>
-<footer class="pied"><p>Nuée 1.1.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
+<footer class="pied"><p>Nuée 1.2.0 · logiciel libre (GPL-3.0) · <a href="https://github.com/4rtefakt/nuee">code source</a> · <a href="https://github.com/4rtefakt/nuee/issues">signaler un problème</a></p></footer>
 </body>
 </html>

@@ -404,11 +404,15 @@ export function focusables(racine) {
 // for one; in a dialog that opened this one, its button). clicDehors: false, a click beside it
 // leaves it open (a progress whose closing stops the work); focus: 'corps', the keyboard starts on
 // its text, not on its main button (code to approve: a second Enter mustn't run what wasn't read).
+// cacher() sets the dialog aside, its work going on (New model's fit in the background), the window
+// live again; montrer() brings it back as it was, its fields and its error. Closed while aside, it
+// leaves the keyboard where it is now.
 let nDialogues = 0;
 export function dialogue({ titre, contenu, boutons = [], large = false, surFermeture = null, clicDehors = true, focus = null }) {
   const avant = document.activeElement;
   const fond = el('div', { class: 'fond-dialogue' });
   let ferme = false;
+  let aCote = false;
   const fermer = () => {
     if (ferme) return;
     ferme = true;
@@ -416,8 +420,23 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
     majInert();  // (now: what had the keyboard can have it again)
     document.removeEventListener('keydown', touche, true);
     const dessus = [...document.querySelectorAll('.fond-dialogue')].pop();
-    if (avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) rendreFocus(avant);
+    if (!aCote && avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) rendreFocus(avant);
     if (surFermeture) surFermeture();
+  };
+  const cacher = () => {
+    if (ferme || aCote) return;
+    aCote = true;
+    fond.remove();
+    majInert();
+    const dessus = [...document.querySelectorAll('.fond-dialogue')].pop();
+    if (avant && avant !== document.body && avant.isConnected && (!dessus || dessus.contains(avant))) rendreFocus(avant);
+  };
+  const montrer = () => {
+    if (ferme || !aCote) return;
+    aCote = false;
+    document.body.append(fond);
+    const f = focusables(boite.querySelector('.corps-dialogue')).find((x) => x.matches('input, select, textarea')) || pied.querySelector('button.principal');
+    if (f) f.focus();
   };
   // Esc closes the dialog on top only (another may be open under it; a menu over it, or a table
   // cell being edited, takes its own Escape)
@@ -456,5 +475,5 @@ export function dialogue({ titre, contenu, boutons = [], large = false, surFerme
   const premier = focus === 'corps' ? corps : champs.find((x) => x.matches('input, select, textarea'))
     || pied.querySelector('button.principal') || pied.querySelector('button') || boite.querySelector('.tete-dialogue button');
   if (premier) premier.focus();
-  return { fermer, boite };
+  return { fermer, boite, cacher, montrer };
 }

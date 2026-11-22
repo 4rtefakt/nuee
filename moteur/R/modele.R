@@ -111,6 +111,7 @@ ajuster_matrices <- function(X, Y, A, arret = NULL, vc = NULL, etat = FALSE, ver
               ssxv = matrix(colSums(E^2), K, 1), ssyv = if (pls) matrix(colSums(F^2), ncol(F), 1))
   avant <- NULL
   for (a in seq_len(A)) {
+    verifier_arret(a, A, "composantes")
     # plus de variation à décrire (nipals.R) : l'ajustement automatique (arret) s'arrête là ;
     # sinon l'erreur dit combien de composantes le modèle peut avoir
     comp <- tryCatch(if (pls) composante_pls(E, X$M, F, Y$M, depart, version) else composante_acp(E, X$M, depart, version),

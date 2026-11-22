@@ -76,9 +76,11 @@ async function principal() {
   // the documents' references and their rendering (Word, Quarto), without the page; Which analysis?'s rules;
   // the figures' layout and their PNG and TIFF files; the plots' labels spread apart; the interface's
   // numbers in each language; the words and numbers of Versions and What changed; an update of the data
-  // read for its dialogs; Help; the desktop app's main process (main.js) without a window
+  // read for its dialogs; Help; the desktop app's main process (main.js) without a window; a
+  // reproducibility package deposited on a stand-in for Zenodo, and the tokens kept per host; the QR
+  // code of a package's link, decoded back
   for (const f of ['essai_references.mjs', 'essai_documents.mjs', 'essai_bibliographie.mjs', 'essai_zotero.js', 'essai_choix.mjs', 'essai_figures.mjs', 'essai_etiquettes.mjs', 'essai_nombres.mjs',
-    'essai_versions_texte.mjs', 'essai_etapes.mjs', 'essai_aide.mjs', 'essai_principal.js']) {
+    'essai_versions_texte.mjs', 'essai_etapes.mjs', 'essai_aide.mjs', 'essai_principal.js', 'essai_zenodo.js', 'essai_qr.mjs']) {
     await etape(f, () => execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, f)], { stdio: 'pipe' }));
   }
 
@@ -1977,6 +1979,73 @@ async function principal() {
       verifier(!differents.length && /id="fig-scores"/.test(page) && /id="tbl-coef"/.test(page) && /id="fig-permanova"/.test(page),
         `rendu par Quarto : ${differents.join(', ') || 'les nombres de Nuée'}`);
       console.log(`          (rendu par Quarto : ${valeurs.length} nombres, ${resolus.slice(0, 3).map((x) => x.texte).join(' ; ')}…)`);
+    });
+    await etape('paquet de reproductibilité : le projet d’exemple, ses données, un script, ses empreintes (moteur/R/paquet.R)', async () => {
+      // (the files of a .zip, read here: its central directory, Deflate by zlib)
+      const lireZip = (o) => {
+        const b = Buffer.from(o);
+        let fin = b.length - 22;
+        while (fin >= 0 && b.readUInt32LE(fin) !== 0x06054b50) fin -= 1;
+        const fichiers = new Map();
+        for (let i = 0, p = b.readUInt32LE(fin + 16); i < b.readUInt16LE(fin + 10); i += 1) {
+          const lnom = b.readUInt16LE(p + 28);
+          const nom = b.toString('utf8', p + 46, p + 46 + lnom);
+          const local = b.readUInt32LE(p + 42);
+          const debut = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28);
+          const donnees = b.subarray(debut, debut + b.readUInt32LE(p + 20));
+          if (!nom.endsWith('/')) fichiers.set(nom, b.readUInt16LE(p + 10) === 8 ? require('zlib').inflateRawSync(donnees) : Buffer.from(donnees));
+          p += 46 + lnom + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
+        }
+        return fichiers;
+      };
+      const e = await api('exemple', {}, 'en');
+      const ids = [];
+      for (const d of e.modeles) ids.push((await api('ajuster', { projet: e.id, numero: d.numero }, 'en')).id);
+      const meta = { titre: 'Apples', description: 'Made-up data.', auteurs: [{ prenom: 'Alice', nom: 'Exemple', orcid: '0000-0002-1825-0097' }], mots_cles: ['apples'], licence: 'CC-BY-4.0' };
+      const chemin = path.join(dossier, 'Apples package.zip');
+      const r = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', chemin, version: 'essai', langue: 'en' }, 'en');
+      const fichiers = [].concat(r.fichiers);
+      verifier(['orchards.nuee', 'data/orchards.csv', 'data/orchards - dictionary.csv', 'analysis.R', 'README.md', 'LICENSE', 'CITATION.cff', 'codemeta.json', 'MANIFEST.sha256']
+        .every((f) => fichiers.includes(f)) && fs.existsSync(chemin) && [].concat(r.modeles).map((m) => m.objet).join() === 'M1,M2,M3,M4' && !r.ecarts.length,
+      `${fichiers.join(', ')} ; ${JSON.stringify(r.modeles)}`);
+      verifier(r.projet.paquet && r.projet.paquet.titre === 'Apples' && r.projet.modifie && [].concat(r.projet.paquet.mots_cles).join() === 'apples',
+        'les réponses gardées dans le projet');
+      const zip = lireZip(fs.readFileSync(chemin));
+      const manifeste = zip.get('Apples package/MANIFEST.sha256').toString('utf8').trim().split('\n');
+      const faux = manifeste.filter((l) => { const [h, f] = [l.slice(0, 64), l.slice(66)]; return !zip.has(`Apples package/${f}`) || require('crypto').createHash('sha256').update(zip.get(`Apples package/${f}`)).digest('hex') !== h; });
+      verifier(manifeste.length === zip.size - 1 && !faux.length, `le manifeste et les SHA-256 de Node : ${faux.join(' | ') || `${manifeste.length} fichiers`}`);
+      // unzipped and opened as Nuée 1.1 opens it: format 3, its data from its own CSV; Update the data reads it, nothing changed
+      const decompresse = path.join(dossier, 'paquet décompressé');
+      for (const [f, o] of zip) {
+        fs.mkdirSync(path.dirname(path.join(decompresse, f)), { recursive: true });
+        fs.writeFileSync(path.join(decompresse, f), o);
+      }
+      const ouvert = await api('ouvrir', { chemin: path.join(decompresse, 'Apples package', 'orchards.nuee') }, 'en');
+      const et = await api('etapes', { projet: ouvert.id }, 'en');
+      const maj = await api('mettre_a_jour', { projet: ouvert.id, apercu: true }, 'en');
+      verifier(ouvert.a_source === true && JSON.parse(zip.get('Apples package/orchards.nuee').toString('utf8')).nuee.format === 3 && et.source.existe && et.source.modifie === false
+        && et.source.relatif === 'data/orchards.csv' && !et.etapes.length && et.conformes === true && maj.apercu && maj.observations.cellules === 0
+        && !maj.observations.ajoutees && !maj.observations.retirees
+        // (native: GitHub's Windows machines give a temporary folder under C:\Users\RUNNER~1, a short name R writes out in full)
+        && fs.realpathSync.native(maj.fichier.chemin) === fs.realpathSync.native(path.join(decompresse, 'Apples package', 'data', 'orchards.csv')),
+      `le projet du paquet ouvert : ${JSON.stringify({ et, maj: maj.fichier, apercu: maj.apercu, observations: maj.observations })}`);
+      await api('fermer_projet', { projet: ouvert.id });
+      // (in a browser: written in the engine's session folder, then downloaded)
+      const t = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en');
+      const telecharge = await brute(`/api/fichier?chemin=${encodeURIComponent(t.chemin)}`, { Cookie: cookie });
+      verifier(telecharge.statut === 200 && /Apples\.zip$/.test(t.chemin), `téléchargé : HTTP ${telecharge.statut} ${t.chemin}`);
+      // (for Zenodo: in the session folder too, with the DOI Zenodo reserved for its draft, which the package gives)
+      const z = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', doi: '10.5072/zenodo.4242', version: 'essai', langue: 'en' }, 'en');
+      const zz = lireZip(fs.readFileSync(z.chemin));
+      const readme = zz.get('Apples/README.md').toString('utf8');
+      verifier(readme.includes('https://nuee.io/app/?doi=10.5072/zenodo.4242') && readme.includes('[10.5072/zenodo.4242](https://doi.org/10.5072/zenodo.4242)')
+        && zz.get('Apples/CITATION.cff').toString('utf8').includes('\ndoi: "10.5072/zenodo.4242"\n')
+        && JSON.parse(zz.get('Apples/codemeta.json').toString('utf8')).identifier === 'https://doi.org/10.5072/zenodo.4242', 'le DOI réservé dans le README, CITATION.cff et codemeta.json');
+      const refus = await api('paquet', { projet: e.id, meta: { ...meta, titre: ' ' }, modeles: ids, documents: '[]', version: 'essai', langue: 'en' }, 'en').catch((x) => x);
+      verifier(refus instanceof Error && /no title/.test(refus.message), `refusé sans titre : ${refus.message}`);
+      const sansDoi = await api('paquet', { projet: e.id, meta, modeles: ids, documents: '[]', doi: 'zenodo.4242', version: 'essai', langue: 'en' }, 'en').catch((x) => x);
+      verifier(sansDoi instanceof Error && /isn't a DOI/.test(sansDoi.message), `refusé, un DOI qui n'en est pas un : ${sansDoi.message}`);
+      await api('fermer_projet', { projet: e.id });
     });
     await etape('arbres de décision, LDA et k-moyennes (moteur/R/arbres.R, discrimination.R, kmoyennes.R)', async () => {
       // 12 sites suivis 6 ans : une densité qui baisse au-delà de 12 jours de gel, des X manquants, une classe

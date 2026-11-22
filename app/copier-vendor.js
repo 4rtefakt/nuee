@@ -41,16 +41,51 @@ const editeur = require('esbuild').buildSync({
   metafile: true,
   outfile: path.join(dest, 'editeur.min.js'),
 });
-const paquets = new Set(Object.keys(editeur.metafile.inputs)
-  .map((f) => (/node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean).map((n) => n.replace(/\\/g, '/')));
-const licences = [...paquets].sort().map((n) => {
-  const dossier = path.join(__dirname, 'node_modules', n);
-  const info = JSON.parse(fs.readFileSync(path.join(dossier, 'package.json'), 'utf8'));
-  const f = fs.readdirSync(dossier).find((x) => /^licen[cs]e/i.test(x));
-  return `${n} ${info.version} (${info.license})${f ? `\n\n${fs.readFileSync(path.join(dossier, f), 'utf8').trim()}` : ''}`;
+// (the licence of each package a bundle holds, written at its end: each file's own package, one in
+// another package's node_modules included, once)
+function ajouterLicences(fichier, metafile) {
+  const dossiers = new Set(Object.keys(metafile.inputs)
+    .map((f) => (/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/.exec(f) || [])[1]).filter(Boolean).map((d) => path.resolve(d)));
+  const licences = [...new Set([...dossiers].map((dossier) => {
+    const n = /node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)$/.exec(dossier)[1].replace(/\\/g, '/');
+    const info = JSON.parse(fs.readFileSync(path.join(dossier, 'package.json'), 'utf8'));
+    const f = fs.readdirSync(dossier).find((x) => /^licen[cs]e/i.test(x));
+    return `${n} ${info.version} (${info.license})${f ? `\n\n${fs.readFileSync(path.join(dossier, f), 'utf8').trim()}` : ''}`;
+  }))].sort();
+  fs.appendFileSync(fichier, `\n/*! Packages in this file, and their licences:\n\n${licences.join('\n\n----\n\n').replace(/\*\//g, '* /')}\n*/\n`);
+}
+ajouterLicences(path.join(dest, 'editeur.min.js'), editeur.metafile);
+
+// QR codes (interface/qr.js: the link of a reproducibility package, its deposit's dialog and its
+// SVG file): lean-qr (MIT licence) as an ES module, imported when first needed.
+const qr = require('esbuild').buildSync({
+  stdin: { contents: "export { generate, correction } from 'lean-qr';\nexport { toSvgSource } from 'lean-qr/extras/svg';", resolveDir: __dirname, loader: 'js' },
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  target: 'es2020',
+  legalComments: 'eof',
+  metafile: true,
+  outfile: path.join(dest, 'qr.js'),
 });
-fs.appendFileSync(path.join(dest, 'editeur.min.js'),
-  `\n/*! Packages in this file, and their licences:\n\n${licences.join('\n\n----\n\n').replace(/\*\//g, '* /')}\n*/\n`);
+ajouterLicences(path.join(dest, 'qr.js'), qr.metafile);
+
+// History in the browser version (interface/versions_navigateur.js): isomorphic-git (MIT) for the
+// page, as an ES module imported at its first use, with the Buffer its code expects as a global
+// (the buffer package, MIT, which isomorphic-git brings along) and the SHA-1 of sha.js (MIT, its
+// own too) for versions.js's createHash. The main process's own is construire.js's.
+const git = require('esbuild').buildSync({
+  stdin: { contents: "export * as git from 'isomorphic-git';\nexport { Buffer } from 'buffer/';\nexport { default as Sha1 } from 'sha.js/sha1.js';", resolveDir: __dirname, loader: 'js' },
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2020',
+  legalComments: 'eof',
+  metafile: true,
+  outfile: path.join(dest, 'git.js'),
+});
+ajouterLicences(path.join(dest, 'git.js'), git.metafile);
 
 const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkles circle-plus circle-minus
   table-2 chart-scatter chart-bar chart-column chart-line network target columns-2 external-link x sun moon
@@ -60,9 +95,9 @@ const ICONES = `folder-open save file-down file-plus plus square-pen wand-sparkl
   rotate-ccw x-circle file-code tag file-input chart-column-big axis-3d file-text palette pencil history calculator crosshair square-terminal apple clipboard-paste file-output chart-spline download
   quote flask-conical shapes audio-waveform refresh-ccw-dot stethoscope search trending-up book-open map radar layers signpost smartphone
   layout-grid arrow-up arrow-down lock diff bookmark cloud cloud-upload cloud-download link circle-check circle-alert user-round
-  log-in log-out user-plus key-round circle-user-round monitor puzzle`.split(/\s+/);
-// (Redo; a column treated as numbers; Stop, in the status bar)
-ICONES.push('redo-2', 'hash', 'circle-stop');
+  log-in log-out user-plus key-round circle-user-round monitor puzzle package`.split(/\s+/);
+// (Redo; a column treated as numbers; Stop, in the status bar; a reproducibility package opened again)
+ICONES.push('redo-2', 'hash', 'circle-stop', 'package-open');
 const icones = {};
 for (const n of ICONES) {
   const svg = fs.readFileSync(path.join(__dirname, 'node_modules', 'lucide-static', 'icons', n + '.svg'), 'utf8');

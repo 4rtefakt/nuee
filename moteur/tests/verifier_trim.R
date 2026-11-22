@@ -590,5 +590,20 @@ if (requireNamespace("knitr", quietly = TRUE)) {
 } else cat("  (knitr absent : le rapport n'est pas compilé)\n")
 unlink(dossier, recursive = TRUE)
 
+# ---------------------------------------------------------------- un nom de l'utilisateur
+
+# Une fonction de l'utilisateur au nom d'une fonction d'analyse (un definir_trim de son script, après
+# avoir chargé le moteur) n'est pas prise pour celle du moteur (analyses.R : fonction_analyse ;
+# charger.R), et ne l'est toujours pas quand le moteur est relu ; les siennes le restent.
+definir_trim <- function(projet, comptage, site, annee) stop("pas la définition du moteur")
+m_nom <- tryCatch(trim_de(ps, 3, FALSE, FALSE), error = function(e) conditionMessage(e))
+source("moteur/charger.R", encoding = "UTF-8")
+m_relu <- tryCatch(trim_de(ps, 3, FALSE, FALSE), error = function(e) conditionMessage(e))
+verifier("un definir_trim de l'utilisateur n'est pas la définition de TRIM, moteur relu ou non (le modèle 3 s'ajuste, les mêmes indices)",
+         is.list(m_nom) && is.list(m_relu) && proche(m_nom$indices$impute, mml$indices$impute) && proche(m_relu$indices$impute, mml$indices$impute) &&
+           is.null(fonction_analyse("definir_", "TRIM")) && identical(fonction_analyse("definir_", "CODE"), definir_code) &&
+           identical(fonction_analyse("ajuster_", "TRIM"), ajuster_trim) && exists("definir_trim", envir = globalenv(), inherits = FALSE))
+rm(definir_trim)
+
 cat(if (echecs) sprintf("%d vérification(s) en échec\n", echecs) else "Tout est bon\n")
 quit(status = if (echecs) 1 else 0)

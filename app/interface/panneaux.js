@@ -2811,9 +2811,10 @@ function rendreCoefficientsRegression(conteneur, ctx, m, loc) {
   const quoiExp = t(m.lien === 'logit' ? 'rapport_cotes' : 'effet_multiplicatif');
   const caseExp = multiplicatif ? outils(el('label', { class: 'champ', title: t(m.lien === 'logit' ? 'coefficients_exp_aide_logit' : 'coefficients_exp_aide_log') },
     el('input', { type: 'checkbox', checked: enExp, onchange: (ev) => { loc.exp = ev.target.checked; ctx.rafraichir(); } }), t('coefficients_exp', { quoi: quoiExp }))) : null;
-  conteneur.replaceChildren(caseExp, el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
+  // (without a log or logit link, no box: replaceChildren would write null as the text "null")
+  conteneur.replaceChildren(...[caseExp, el('p', { class: 'note' }, [t('coefficients_regression_note', { y: m.noms_y[0] }),
     m.lien && m.lien !== 'identity' ? t(m.famille === 'poisson_zi' ? 'coefficients_lien_zip' : multiplicatif ? `coefficients_lien_${m.lien}` : 'coefficients_lien', { lien: m.lien }) : '',
-    ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table);
+    ...notesTermesRetires(m)].filter(Boolean).join(' ')), graphe, table].filter(Boolean));
   const idx = termes.map((_, i) => i).filter((i) => termes[i] !== '(Intercept)');
   const v = (x) => (enExp ? Math.exp(x) : x);
   // (a GAM made only of curves: no coefficient to plot; its curves are in Effects)

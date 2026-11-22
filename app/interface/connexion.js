@@ -9,11 +9,15 @@
 //   registered asks once for the application ID its administrator gives.
 // - Invite a colleague: their user name; GitHub sends them an invitation, GitLab makes them a member
 //   of the project as Developer.
+// The browser version signs in in the page (comptes_navigateur.js), to github.com and gitlab.com
+// through nuee.io's relay, the token kept in this browser: said in the dialog; a self-hosted GitLab
+// and this computer's git sign-in are the desktop application's, said where they are offered.
 import { t, ajouterTextes, langueActuelle } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { bureau } from './api.js';
+import { bureau, MOTEUR_WEBR } from './api.js';
+import { comptesNavigateur } from './comptes_navigateur.js';
 
-const comptes = () => (bureau && bureau.comptes) || null;
+const comptes = () => (MOTEUR_WEBR ? comptesNavigateur : (bureau && bureau.comptes) || null);
 const nomService = (hote) => (hote === 'github.com' ? 'GitHub' : hote === 'gitlab.com' ? 'GitLab' : hote);
 // An element's content replaced, what is absent left out (the DOM would write "null")
 const remplir = (parent, ...enfants) => parent.replaceChildren(...enfants.flat().filter((x) => x !== null && x !== undefined && x !== false));
@@ -49,7 +53,9 @@ export function ouvrirConnexion(app, { hote = null } = {}) {
     const zone = el('div', { class: 'etape-connexion' });
     const message = el('p', { class: 'message-compte', 'aria-live': 'polite' });
     const autres = el('div', { class: 'autres-connexions' });
-    const d = dialogue({ titre: t('connexion_titre'), contenu: el('div', { class: 'dialogue-compte' }, zone, message, autres),
+    // (the browser version: where the token is kept, and what nuee.io's relay sees)
+    const d = dialogue({ titre: t('connexion_titre'), contenu: el('div', { class: 'dialogue-compte' }, zone, message, autres,
+      MOTEUR_WEBR ? el('p', { class: 'note relais-connexion' }, t('connexion_relais')) : null),
       boutons: [{ libelle: t('annuler'), action: () => true }],
       surFermeture: () => {
         numero += 1;
@@ -76,7 +82,8 @@ export function ouvrirConnexion(app, { hote = null } = {}) {
       const github = el('button', { onclick: () => serveurChoisi('github.com') }, 'GitHub');
       etape(el('p', {}, t('connexion_choix')),
         el('div', { class: 'services-connexion' }, github, el('button', { onclick: () => serveurChoisi('gitlab.com') }, 'GitLab')),
-        el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))));
+        MOTEUR_WEBR ? el('p', { class: 'note autre-gitlab' }, t('bureau_requis', { quoi: t('connexion_autre_gitlab') }))
+          : el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))));
       github.focus();
     }
 
@@ -161,7 +168,7 @@ export function ouvrirConnexion(app, { hote = null } = {}) {
       autres.replaceChildren();
       remplir(zone, el('p', { class: 'ok-compte' }, icone('circle-check'), t('connexion_reussie', { service })), carteCompte(h, compte),
         compte.limite ? el('p', { class: 'note' }, t('connexion_limitee', { service })) : null,
-        compte.session ? el('p', { class: 'note' }, t('connexion_session')) : null);
+        compte.session ? el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'connexion_session_navigateur' : 'connexion_session')) : null);
       pied([{ libelle: t('connexion_terminer'), principal: true, action: () => true }]);
       d.boite.querySelector('.pied-dialogue .principal').focus();
       app.statut(compte.login ? t('connexion_faite', { service, login: `@${compte.login}` }) : t('connexion_reussie', { service }));
@@ -173,6 +180,7 @@ export function ouvrirConnexion(app, { hote = null } = {}) {
       jeton.replaceChildren();
       remplir(autres, el('h3', {}, t('connexion_autres')),
         s.git ? el('div', { class: 'ligne' }, el('button', { onclick: parGit }, icone('monitor'), t('connexion_git')), el('span', { class: 'note' }, t('connexion_git_aide'))) : null,
+        MOTEUR_WEBR ? el('p', { class: 'note' }, t('bureau_requis', { quoi: t('connexion_git') })) : null,
         el('div', {}, el('a', { href: '#', onclick: (ev) => { ev.preventDefault(); basculerJeton(); } }, icone('key-round'), t('connexion_jeton_lien'))), jeton);
     }
 
@@ -210,7 +218,7 @@ export function ouvrirConnexion(app, { hote = null } = {}) {
         el('p', {}, t('connexion_jeton_texte', { service }), ' ', el('a', { href: pageJeton(h), target: '_blank', rel: 'noopener' }, icone('external-link'),
           t('connexion_jeton_creer', { service })), ' ', t(h === 'github.com' ? 'connexion_jeton_droits_github' : 'connexion_jeton_droits_gitlab')),
         el('div', { class: 'ligne' }, el('label', {}, t('connexion_jeton')), champ, el('button', { onclick: verifier }, t('connexion_jeton_bouton'))),
-        el('p', { class: 'note' }, t('connexion_jeton_garde')));
+        el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'connexion_jeton_garde_navigateur' : 'connexion_jeton_garde')));
       champ.focus();
     }
 
@@ -295,6 +303,9 @@ ajouterTextes({
   connexion_jeton_creer: 'En créer un sur {service}', connexion_jeton_droits_github: '(portée « repo »)', connexion_jeton_droits_gitlab: '(portées api, read_user et write_repository)',
   connexion_jeton: 'Jeton', connexion_jeton_bouton: 'Vérifier et garder', connexion_jeton_verification: 'Vérification du jeton…',
   connexion_jeton_garde: 'Gardé dans le trousseau de l’ordinateur, il n’est plus jamais montré.',
+  connexion_jeton_garde_navigateur: 'Gardé dans ce navigateur, il n’est plus jamais montré ; se déconnecter l’efface.',
+  connexion_session_navigateur: 'Ce navigateur ne peut pas garder la connexion : vous vous reconnecterez à votre prochaine visite.',
+  connexion_relais: 'Dans la version navigateur, le jeton reste dans ce navigateur, et se déconnecter l’efface. La connexion et les projets partagés passent par le relais de nuee.io, qui les voit passer et n’en garde rien.',
   invitation_titre: 'Inviter un collègue',
   invitation_texte_github: 'GitHub envoie à votre collègue une invitation à {depot}. Une fois l’invitation acceptée, votre collègue peut envoyer et recevoir les versions du projet.',
   invitation_texte_gitlab: 'Votre collègue devient membre de {depot} sur {service} (rôle Developer), et peut alors envoyer et recevoir les versions du projet.',
@@ -335,6 +346,9 @@ ajouterTextes({
   connexion_jeton_creer: 'Make one on {service}', connexion_jeton_droits_github: '(scope “repo”)', connexion_jeton_droits_gitlab: '(scopes api, read_user and write_repository)',
   connexion_jeton: 'Token', connexion_jeton_bouton: 'Check and keep', connexion_jeton_verification: 'Checking the token…',
   connexion_jeton_garde: 'Kept in the computer’s keychain, it is never shown again.',
+  connexion_jeton_garde_navigateur: 'Kept in this browser, it is never shown again; signing out removes it.',
+  connexion_session_navigateur: 'This browser can’t keep the sign-in: you will sign in again at your next visit.',
+  connexion_relais: 'In the browser version, the token stays in this browser, and signing out removes it. The sign-in and the projects you share pass through nuee.io’s relay, which sees them pass and keeps nothing.',
   invitation_titre: 'Invite a colleague',
   invitation_texte_github: 'GitHub sends your colleague an invitation to {depot}. Once they accept it, they can send and receive the project’s versions.',
   invitation_texte_gitlab: 'Your colleague becomes a member of {depot} on {service} (as a Developer), and can then send and receive the project’s versions.',

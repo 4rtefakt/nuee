@@ -86,7 +86,7 @@ projet_depuis_tableau <- function(df, nom = "tableau", secondaires = TRUE, toute
     if (is.numeric(x)) {
       donnees[, k] <- x
     } else {
-      cats <- if (is.factor(x)) levels(if (toutes_modalites) x else droplevels(x)) else sort(unique(stats::na.omit(as.character(x))))
+      cats <- if (is.factor(x)) levels(if (toutes_modalites) x else droplevels(x)) else trier_textes(unique(stats::na.omit(as.character(x))))
       v$categories <- cats
       donnees[, k] <- match(as.character(x), cats)
     }
@@ -712,6 +712,7 @@ enregistrer_projet <- function(projet, chemin, version = "", dossier = dirname(c
   p$donnees <- p$noms_obs <- p$noms_var <- NULL
   p$id <- p$chemin <- p$chemin_enregistrement <- p$modifie <- p$table <- p$fichier_lu <- p$note <- p$import_collecte <- NULL  # état de la session
   p$lecture_seule <- p$cache <- NULL  # (une ancienne version ouverte, un projet caché : serveur.R, ouvrir)
+  p$depuis_paquet <- NULL  # (le paquet de reproductibilité d'où il a été ouvert : serveur.R, paquet_ouvrir)
   p$nuee <- list(format = FORMAT_PROJET, version = as.character(version), R = paste(R.version$major, R.version$minor, sep = "."),
                  paquets = as.list(vapply(PAQUETS_CALCUL, version_paquet, "")))
   # (un nom seulement : l'auteur des versions, { nom, email }, n'y laisse pas son courriel)

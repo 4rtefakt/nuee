@@ -23,7 +23,9 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--texte); background: var(--fond); overflow: hidden; }
-body.occupe, body.occupe * { cursor: progress !important; }
+/* (a computation under way: said by the status bar, whose dot pulses; the rest of the window stays
+   usable, the engine answering it meanwhile, moteur/arriere_plan.R) */
+body.occupe #statut .moteur { cursor: progress; }
 button { font: inherit; color: var(--texte); background: var(--fond-panneau); border: 1px solid var(--bord); border-radius: 4px;
   padding: 3px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 button:hover:not(:disabled) { border-color: var(--accent); }
@@ -47,7 +49,8 @@ button.principal:focus-visible { outline-offset: 2px; }
 .espace { flex: 1; }
 
 /* ---------------------------------------------------------------- frame */
-#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); }  /* (as wide as the window, whatever a
+   line in it would take: a long status message, a phone's screen) */
 #entete { min-width: 0; }  /* (the menu bar and the toolbar: the window's banner landmark) */
 #menus { display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
@@ -132,6 +135,27 @@ body.seul #seul { display: flex; flex-direction: column; height: 100%; backgroun
 .infos { color: var(--texte-doux); font-size: 12px; }
 .note { color: var(--texte-doux); font-size: 11.5px; margin: 4px 0; }
 .attente { margin: 20px; }
+/* A view waiting for the engine: its skeleton, a sheen going over it (shown after a moment, so that
+   what comes at once doesn't flicker), then where the computation is, with a bar (progression.js) */
+.infos.attente { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 180px;
+  margin: 10px; padding: 16px; border-radius: 6px; text-align: center;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--texte) 4%, transparent) 30%, color-mix(in srgb, var(--texte) 9%, transparent) 50%,
+    color-mix(in srgb, var(--texte) 4%, transparent) 70%) 0 0 / 300% 100%;
+  animation: apparaitre .2s ease .3s both, reflet 1.6s ease-in-out infinite; }
+@keyframes reflet { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes apparaitre { from { opacity: 0; } to { opacity: 1; } }
+/* A bar: what is done, or, for a computation that doesn't count its rounds, a piece going across */
+.progres-statut { display: inline-flex; min-width: 0; }
+.progres { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.progres-barre { position: relative; width: 120px; height: 6px; border-radius: 3px; overflow: hidden; flex: none;
+  background: color-mix(in srgb, var(--texte) 14%, transparent); }
+.progres-fait { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 3px; background: var(--accent); transition: width .45s ease; }
+.progres.indetermine .progres-fait { width: 35%; transition: none; animation: va-et-vient 1.3s ease-in-out infinite; }
+@keyframes va-et-vient { from { left: -35%; } to { left: 100%; } }
+.progres-texte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.infos.attente .progres { flex-direction: column; max-width: 100%; }
+.infos.attente .progres-barre { width: min(320px, 70vw); }
+.infos.attente .progres-texte { white-space: normal; }
 .graphe { flex: 1; min-height: 200px; }
 /* (a plot's ring outside it: Plotly's layers would cover one drawn inside; its tool buttons shown while
    the keyboard is on it, their ring the accent's, which Plotly draws black whatever the theme) */
@@ -460,6 +484,33 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .dialogue-quarto .titre-choix { font-weight: 600; }
 .dialogue-quarto .choix-quarto .note { margin: 1px 0 0; }
 .dialogue-quarto .avertissement { color: var(--attention); }
+/* File › Export a reproducibility package…, Deposit on Zenodo… (paquet.js) */
+.dialogue-paquet > p { margin: 2px 0 6px; }
+.dialogue-paquet .grille-champs { grid-template-columns: max-content minmax(0, 660px); align-items: start; }
+.dialogue-paquet .grille-champs > label { padding-top: 4px; }
+.dialogue-paquet .paquet-titre, .dialogue-paquet .paquet-mots, .dialogue-paquet textarea { width: 100%; box-sizing: border-box; }
+.dialogue-paquet textarea { resize: vertical; font: inherit; }
+.paquet-auteurs th { text-align: left; font-weight: normal; color: var(--texte-doux); padding: 0 4px 2px 0; }
+.paquet-auteurs td { padding: 0 4px 3px 0; }
+.paquet-auteurs input { width: 13em; }
+.paquet-auteurs input.paquet-orcid { width: 12em; font-family: Consolas, "Cascadia Mono", monospace; }
+.paquet-licences { display: flex; flex-direction: column; gap: 5px; }
+.paquet-licences .choix-paquet { display: flex; align-items: flex-start; gap: 8px; color: var(--texte); }
+.paquet-licences .choix-paquet input { margin-top: 3px; flex: none; }
+.paquet-licences .choix-paquet > span { display: flex; flex-direction: column; }
+.paquet-licences .titre-choix { font-weight: 600; }
+.paquet-licences .note { margin: 1px 0 0; }
+.dialogue-zenodo { display: flex; flex-direction: column; gap: 6px; max-width: 38em; }
+.dialogue-zenodo p { margin: 0 0 2px; }
+.dialogue-zenodo .zenodo-champ { width: 26em; font-family: Consolas, "Cascadia Mono", monospace; }
+.dialogue-zenodo details { margin: 4px 0; }
+.dialogue-zenodo a { color: var(--accent); }
+/* The deposited package's link and its QR code (paquet.js: sectionLien), black on white in either theme */
+.lien-paquet { display: flex; gap: 14px; align-items: flex-start; margin: 8px 0; max-width: 46em; }
+.lien-paquet .qr-lien { flex: none; image-rendering: pixelated; background: #fff; border: 1px solid var(--grille); border-radius: 4px; }
+.lien-paquet p { margin: 0 0 6px; }
+.lien-paquet .lien-zenodo { user-select: all; word-break: break-all; }
+.lien-paquet .ligne { display: flex; gap: 6px; flex-wrap: wrap; }
 /* Citations in documents: in the text, in the preview, and the dialogs to find them */
 .editeur-document .cm-cite { color: var(--ok); }
 .editeur-document .cm-cite-erreur { color: var(--erreur); text-decoration: underline wavy var(--erreur); text-underline-offset: 3px; }
@@ -764,6 +815,14 @@ li[aria-selected] .cm-completionDetail { color: inherit; opacity: .85; }
 .badge.drapeau-change.nouveau { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .badge.drapeau-change.disparu, .badge.drapeau-change.retourne { background: var(--grille); color: var(--texte-doux); }
 .seul-cote p { margin: 3px 0; }
+/* A reproducibility package rerun (changements.js: sectionPaquet): how many give the deposited
+   results, what the manifest found, who made it; a model not fitted again here isn't an error */
+.modele-change.paquet-relance { border-left: 3px solid var(--accent); }
+.paquet-relance p { margin: 3px 0; }
+.paquet-relance .bilan-relance { font-weight: 600; color: var(--ok); }
+.paquet-relance .attention, .paquet-relance .bilan-relance.attention { color: var(--attention); }
+.modele-change.non_relance, .modele-change.sans_depot { border-style: dashed; }
+.modele-change.six-chiffres { border-left: 3px solid color-mix(in srgb, var(--ok) 55%, transparent); }
 
 /* Signing in to GitHub or GitLab, inviting a colleague (connexion.js): the code big and copyable, the
    wait for the approval, the account's card, the other ways to sign in */
@@ -947,3 +1006,48 @@ pre.code-r .ligne-code::before { counter-increment: ligne-code; content: counter
   color: var(--erreur); border-color: var(--erreur); background: var(--fond-panneau); box-shadow: var(--ombre); }
 #arret-calcul button:disabled { opacity: .8; color: var(--texte-doux); border-color: var(--bord); }
 #arret-calcul .icone { width: 14px; height: 14px; }
+
+/* ---------------------------------------------------------------- a phone's screen
+   (etroit.js: one group of views at a time, the explorer one of them, its button before the menus;
+   the toolbar hidden, its commands in the menus and its views in the explorer; larger rows to tap) */
+#bouton-explorateur { display: none; }
+body.etroit #entete { display: flex; align-items: stretch; }
+body.etroit #bouton-explorateur { display: inline-flex; flex: none; padding: 4px 10px; border-radius: 0; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
+body.etroit #bouton-explorateur .icone { width: 18px; height: 18px; color: var(--accent); }
+body.etroit #menus { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+body.etroit #menus .logo { display: none; }
+body.etroit .menu-haut { padding: 6px 9px; }
+body.etroit #barre-outils { display: none; }
+body.etroit .actions-groupe { display: none; }
+body.etroit .noeud { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+body.etroit .noeud .fleche { width: 20px; }
+body.etroit .grille-champs { grid-template-columns: minmax(0, 1fr); }
+body.etroit #statut { gap: 8px; padding: 2px 8px; min-width: 0; overflow: hidden; }
+/* a document on a phone: its preview, as wide as the screen; the split button switches to its text
+   (documents.js: sans-apercu) */
+body.etroit .corps-document { grid-template-columns: minmax(0, 1fr); }
+body.etroit .corps-document:not(.sans-apercu) .editeur-document { display: none; }
+
+/* ---------------------------------------------------------------- the reader's page of a package's link
+   (lecture.js: its title, authors and DOI, the document to read, Open the whole project and Rerun
+   the models; then the document as its authors wrote it, as wide as the screen) */
+.lecture { position: fixed; inset: 0; z-index: 800; display: flex; flex-direction: column; background: var(--fond); }
+.lecture .logo { width: 26px; height: 26px; flex: none; }
+.debut-lecture { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; text-align: center; }
+.debut-lecture .logo { width: 44px; height: 44px; }
+.attente-lecture { margin: 0; color: var(--texte-doux); }
+.tete-lecture { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 14px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
+.titre-lecture { flex: 1 1 18em; min-width: 0; }
+.titre-lecture h1 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auteurs-lecture { margin: 2px 0 0; font-size: 12px; color: var(--texte-doux); overflow-wrap: anywhere; }
+.auteurs-lecture a { color: var(--accent); }
+.actions-lecture { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actions-lecture button { padding: 6px 12px; }
+.choix-lecture { max-width: 100%; padding: 5px 6px; }
+.document-lecture { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+@media (max-width: 700px) {
+  .tete-lecture { padding: 8px 10px; }
+  .titre-lecture h1 { white-space: normal; font-size: 15px; }
+  .actions-lecture { width: 100%; }
+  .actions-lecture button { flex: 1 1 auto; justify-content: center; }
+}

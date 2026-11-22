@@ -12,12 +12,13 @@
 // A scenario (parcours/<number>_<name>.js) exports executer(n, verifier, contexte); `n`, which
 // demarrer() returns, drives the window:
 //   n.menu('m_fichier', 'ouvrir')        a menu item, by the keys of its labels (i18n.js)
-//   n.cliquer(expression)                a click at the middle of an element (an expression in the page)
+//   n.cliquer(expression)                a click at the middle of an element (an expression in the page), once it is still
 //   n.ecrire(expression, texte)          a field's text replaced, typed
 //   n.choisir(expression, valeur)        an option of a <select> chosen
 //   n.bouton('ajuster')                  a button of the dialog in front, by its label's key
 //   n.attendre(expression)               until the expression is true in the page (60 s at most)
 //   n.fichierAOuvrir(chemin)             the answer of the next Open dialog (n.fichierAEnregistrer: Save)
+//   n.variablePrincipal(nom, valeur)     a variable of the main process's environment (NUEE_ZENODO)
 //   n.nouveauModele({ type, y, sans })   Model › New model filled in, then fitted
 //   n.api('etat')                        a request to the engine, as the interface makes it
 //   n.fenetre('vue=scores')              a view's own window, by a piece of its address
@@ -32,6 +33,8 @@ const zlib = require('zlib');
 const windows = process.platform === 'win32';
 const attente = (ms) => new Promise((r) => setTimeout(r, ms));  // (between two looks at a condition only)
 const ATTENTE = Number(process.env.NUEE_ATTENTE || 60000);    // the longest wait for one condition, in ms
+// an element to click is still when it stays in the same place this long (ms), measured twice
+const IMMOBILE = 60;
 // a DevTools command the program doesn't answer within this time fails, naming it, instead of
 // holding the run until the CI machine gives up (a start on GitHub's arm64 Mac once waited 85 min)
 const REPONSE_MAX = Math.max(3 * ATTENTE, 180000);
@@ -477,9 +480,14 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         }
       },
       adresse: () => f.evaluer('location.href'),
+      // (at the middle of the element, once it is still: the same place twice, IMMOBILE ms apart)
       async cliquer(expression, clics = 1) {
-        const { x, y } = await f.attendre(`(() => { const e = ${expression}; if (!e || !e.getClientRects().length) return null; e.scrollIntoView({ block: 'nearest' });
-          const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+        const { x, y } = await f.attendre(`(async () => { const e = ${expression}; if (!e || !e.getClientRects().length) return null; e.scrollIntoView({ block: 'nearest' });
+          const r = e.getBoundingClientRect();
+          await new Promise((ok) => setTimeout(ok, ${IMMOBILE}));
+          const s = e.getBoundingClientRect();
+          if (!e.isConnected || s.left !== r.left || s.top !== r.top || s.width !== r.width || s.height !== r.height) return null;
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
         await s.envoyer('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         for (let k = 1; k <= clics; k += 1) {
           await s.envoyer('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: k });
@@ -548,26 +556,37 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
     t: (cle, valeurs) => n.evaluer(`__n.t(${JSON.stringify(cle)}${valeurs ? `, ${JSON.stringify(valeurs)}` : ''})`),
 
     // ---- the mouse and the keyboard
-    // the middle of the element `expression` gives, once it is shown and nothing covers it
-    // (an item of a menu: once the menu is in its place. On GitHub's Windows and macOS machines a
-    // menu that opens is laid out at the window's top left corner, 0, 0 (where ui.js's placer()
-    // first puts it), for some tens of milliseconds before it is under its title: an item measured
-    // then was pressed where the menu bar, or the item above, was once the menu had moved.)
+    // the middle of the element `expression` gives, once it is shown, nothing covers it, and it has
+    // stopped moving: the same place twice, IMMOBILE ms apart (a status line that comes, "Session
+    // restored", moves the layout under it) (an item of a menu: once the menu is in its place. On
+    // GitHub's Windows and macOS machines a menu that opens is laid out at the window's top left
+    // corner, 0, 0 (where ui.js's placer() first puts it), for some tens of milliseconds before it is
+    // under its title: an item measured then was pressed where the menu bar, or the item above, was
+    // once the menu had moved.)
     async centre(expression, ms = ATTENTE) {
-      return n.attendre(`(() => { const e = ${expression}; if (!e || !__n.visible(e)) return null;
+      return n.attendre(`(async () => { const e = ${expression}; if (!e || !__n.visible(e)) return null;
         const m = e.closest && e.closest('.menu');
         if (m) { const q = m.getBoundingClientRect(); if (q.left < 1 && q.top < 1) return null; }
         e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return null;
+        await new Promise((ok) => setTimeout(ok, ${IMMOBILE}));
+        const s = e.getBoundingClientRect();
+        if (!e.isConnected || s.left !== r.left || s.top !== r.top || s.width !== r.width || s.height !== r.height) return null;
         const x = r.left + r.width / 2, y = r.top + r.height / 2;
         const sous = document.elementFromPoint(x, y);
         return sous && (sous === e || e.contains(sous) || sous.contains(e)) ? { x, y } : null; })()`, ms);
     },
-    // A click at the middle of the element `expression` gives: the pointer brought over it, and
-    // pressed once the page says it is over that very element (its own record of the pointer,
-    // ESPION); an element that moved meanwhile is measured again, and a press the page got on
-    // another element stops the run there, saying on what (rather than a wait for what it
-    // didn't do).
+    // whether the element `expression` gives still has its middle at x, y, nothing covering it there
+    encore: (expression, x, y) => n.evaluer(`(() => { const e = ${expression}; if (!e || !e.isConnected) return false;
+      const r = e.getBoundingClientRect();
+      if (Math.abs(r.left + r.width / 2 - ${x}) > 0.5 || Math.abs(r.top + r.height / 2 - ${y}) > 0.5) return false;
+      const sous = document.elementFromPoint(${x}, ${y});
+      return !!sous && (sous === e || e.contains(sous) || sous.contains(e)); })()`),
+    // A click at the middle of the element `expression` gives, once it has stopped moving (centre):
+    // the pointer brought over it, and pressed once the page says it is over that very element (its
+    // own record of the pointer, ESPION) and the element is still there (encore); an element that
+    // moved meanwhile is measured again, and a press the page got on another element stops the run
+    // there, saying on what (rather than a wait for what it didn't do).
     async cliquer(expression, clics = 1, ms = ATTENTE) {
       const lu = `(() => { const s = window.__essai.souris; const e = ${expression}; if (!s) return null;
         const c = s.cible; const d = c && c.closest ? c.closest('[class], [id]') || c : c;
@@ -588,6 +607,11 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
         if (!vu || !vu.dessus) {
           console.log(`    (the pointer at ${Math.round(c.x)}, ${Math.round(c.y)} was over ${vu ? vu.sur : 'nothing the page saw'}, not over ${expression.replace(/\s+/g, ' ').slice(0, 90)}: measured again)`);
           await attente(150);
+          continue;
+        }
+        // (the layout moved since it was measured: the press would land on what came there)
+        if (!(await n.encore(expression, x, y))) {
+          console.log(`    (${expression.replace(/\s+/g, ' ').slice(0, 90)} moved from ${Math.round(x)}, ${Math.round(y)} under the pointer: measured again)`);
           continue;
         }
         for (let k = 1; k <= clics; k += 1) {
@@ -724,8 +748,9 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
       for (const v of sans) await n.choisir(role(v), '');
       const avant = (await n.etat()).modeles.map((m) => m.id);
       await n.bouton('ajuster');
+      // (a fit that takes more than a moment goes on with the dialog set aside: dialogues.js)
       await n.attendre('!__n.dialogue()', 180000);
-      const id = await n.attendre(`__n.api('etat').then((e) => { const m = [].concat(e.modeles).find((x) => !${JSON.stringify(avant)}.includes(x.id)); return m ? m.id : null; })`);
+      const id = await n.attendre(`__n.api('etat').then((e) => { const m = [].concat(e.modeles).find((x) => !${JSON.stringify(avant)}.includes(x.id)); return m ? m.id : null; })`, 180000);
       const m = await n.api('modele', { modele: id });
       await n.attendre(n.ligneModele(m.nom, true));
       return m;
@@ -751,6 +776,10 @@ async function piloter({ page, principal, evaluerPrincipal, erreurs, proc, vivan
     fichierAEnregistrer: (chemin) => evaluerPrincipal(`(__essai.enregistrer.push(${JSON.stringify(chemin)}), true)`),
     reponseMessage: (i) => evaluerPrincipal(`(__essai.messages.push(${Number(i)}), true)`),
     principal: () => evaluerPrincipal('JSON.parse(JSON.stringify(__essai))'),
+    // a variable of the main process's environment, for what follows (an address standing in for a
+    // service: NUEE_ZENODO, tests/parcours/15_paquet.js); undefined takes it away
+    variablePrincipal: (nom, valeur) => evaluerPrincipal(valeur === undefined ? `(delete process.env[${JSON.stringify(nom)}], true)`
+      : `(process.env[${JSON.stringify(nom)}] = ${JSON.stringify(String(valeur))}, true)`),
     // every dialog asked for was answered as the scenario planned
     async dialoguesRepondus() {
       const e = await n.principal();

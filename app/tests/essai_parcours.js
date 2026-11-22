@@ -103,6 +103,19 @@ const secondes = (debut) => Math.round((Date.now() - debut) / 100) / 10;
         verifier('erreur', false, e.message);
       }
       await relever();
+      // (no part of a view left out written as the text "null" or "undefined": replaceChildren and
+      // append write what isn't a node as text; the console, code and table cells may hold the word)
+      const vides = n.vivant() ? await n.evaluer(`(() => {
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        const r = [];
+        for (let x = w.nextNode(); x; x = w.nextNode()) {
+          const t = x.textContent.trim();
+          const p = x.parentElement;
+          if ((t === 'null' || t === 'undefined') && p && !p.closest('td, .cm-editor, .console, textarea, pre, code')) r.push(t + ' : ' + (p.closest('.dv-content-container, .fond-dialogue, nav, header') || p).textContent.trim().slice(0, 80));
+        }
+        return r;
+      })()`).catch(() => []) : [];
+      verifier('sansNullAffiche', vides.length === 0, vides);
       verifier('sansRefusDuMoteur', bilan.refus.length === 0, bilan.refus);
       verifier('sansViolationCSP', bilan.violations.length === 0, bilan.violations);
       verifier('dialoguesRepondus', bilan.dialogues.length === 0, bilan.dialogues);

@@ -20,6 +20,9 @@
 // - the organisation's policies: R code off when they say so and when they couldn't be read, then
 //   given so to the engine at start-up, read before it starts; NUEE_GREFFONS_ORGANISATION not taken
 //   by an installed copy on Windows; Help › Diagnostic information says whether they were read.
+// - Zenodo's tokens kept in the store of the versions and the sign-ins (jetons.json), never given back;
+// - the recovery copies' index changed by two windows at once: a write made on an index read before
+//   the other's is refused, and nothing the other kept is forgotten or deleted.
 //   node tests/essai_principal.js [main.js]
 // (a main.js given: that one checked instead, another version's, the app's modules still these)
 const childProcess = require('child_process');
@@ -364,6 +367,57 @@ async function derniereSeance(dossier) {
   }
 }
 
+// Zenodo's tokens (zenodo.js: creerZenodo) in the store of the versions and the sign-ins: the one
+// main.js makes for jetons.json and gives versions.js and comptes.js, under the host's name; neither
+// the refresh tokens' store nor a third one, and never given back to the window
+async function jetonsZenodo(dossier) {
+  console.log('Zenodo : ses jetons dans le magasin des versions et des connexions');
+  const magasins = [];
+  const recus = {};
+  const magasinJetons = ({ fichier }) => {
+    const m = { fichier: fichier(), jetons: new Map() };
+    Object.assign(m, { present: async (h) => m.jetons.has(h), lire: async (h) => m.jetons.get(h) || null, seulementSession: async () => false,
+      connus: async () => [...m.jetons.values()], ecrire: async (h, j) => { if (j) m.jetons.set(h, j); else m.jetons.delete(h); } });
+    magasins.push(m);
+    return m;
+  };
+  const m = chargerMain(dossier, {
+    './versions': { ...versionsFactices, magasinJetons, creerVersions: (o) => { recus.versions = o.jetons; return versionsFactices.creerVersions(); } },
+    './comptes': { creerComptes: (o) => { recus.comptes = o.jetons; return comptesFactices.creerComptes(); } },
+  });
+  const demander = demandeur(m);
+  const JETON = `zenodo-essai-${Date.now()}-0123456789`;
+  const garde = await demander('zenodo-jeton', 'zenodo.org', JETON);
+  const etat = await demander('zenodo-etat', 'zenodo.org');
+  const principal = magasins.find((x) => path.basename(x.fichier) === 'jetons.json');
+  verifier(magasins.length === 2 && !!principal && recus.versions === principal && recus.comptes === principal && principal.jetons.get('zenodo.org') === JETON
+    && magasins.every((x) => x === principal || !x.jetons.size) && egal(etat, { jeton: true, persistant: true, connexion: true }) && !JSON.stringify([garde, etat]).includes(JETON),
+  'le jeton de zenodo.org dans jetons.json, le magasin des versions et des connexions ; jamais rendu à la fenêtre', { fichiers: magasins.map((x) => x.fichier), garde, etat });
+  await demander('zenodo-oublier', 'zenodo.org');
+  verifier(!principal.jetons.size && egal(await demander('zenodo-etat', 'sandbox.zenodo.org'), { jeton: false, persistant: true, connexion: true }), 'oublié de ce magasin', [...principal.jetons.keys()]);
+  // Signing in with Zenodo, NUEE_ZENODO given (a stand-in: its application nuee-essai): its page
+  // opened in the browser (shell.openExternal); the window closed while it waits ends the sign-in,
+  // Nuée no longer listening for Zenodo's answer
+  const ouvertes = [];
+  m.electron.shell.openExternal = (u) => { ouvertes.push(u); };
+  process.env.NUEE_ZENODO = 'http://127.0.0.1:9';
+  try {
+    const debut = await demander('zenodo-connexion', 'zenodo.org', 'en');
+    const fenetre = Object.assign(new EventEmitter(), { isDestroyed: () => false, send() {} });
+    const attente = m.E.gestionnaires.get('zenodo-attendreConnexion')({ senderFrame: { url: ADRESSE }, sender: fenetre }, 'zenodo.org');
+    fenetre.isDestroyed = () => true;
+    fenetre.emit('destroyed');
+    const fin = await attente;
+    const retour = debut.adresse ? new URL(new URL(debut.adresse).searchParams.get('redirect_uri')) : null;
+    const ecoute = retour ? await new Promise((ok) => { const c = require('net').connect(Number(retour.port), '127.0.0.1', () => { c.destroy(); ok(true); }); c.on('error', () => ok(false)); }) : true;
+    verifier(!!debut.adresse && debut.adresse.startsWith('http://127.0.0.1:9/oauth/authorize?') && new URL(debut.adresse).searchParams.get('client_id') === 'nuee-essai'
+      && ouvertes.join() === debut.adresse && egal(fin, { ok: false, raison: 'annulee' }) && !ecoute,
+    'se connecter avec Zenodo : sa page ouverte dans le navigateur ; la fenêtre fermée pendant l’attente y met fin', { debut, ouvertes, fin, ecoute });
+  } finally {
+    delete process.env.NUEE_ZENODO;
+  }
+}
+
 // The organisation's policies as main.js reads them (r-installes.js: lirePolitiques): R code off when
 // they say so, and when they couldn't be read; NUEE_GREFFONS_ORGANISATION not taken by an installed
 // copy on Windows; Help › Diagnostic information says whether they were read
@@ -474,6 +528,31 @@ async function fermerUneFois(dossier) {
   moteur.close();
 }
 
+// The recovery copies' index changed by two main windows at once (interface/app.js: changerSecours):
+// each reads it with its version, changes it and writes it back. The second write, made on what was read
+// before the first, is refused: the copy the first marked waiting is neither forgotten nor deleted;
+// read again, the second window's write is taken.
+async function indexDeSecours(dossier) {
+  console.log('Copies de secours : l’index changé par deux fenêtres à la fois');
+  const demander = demandeur(chargerMain(dossier));
+  const copies = await demander('secours-dossier');
+  const copie = (nom) => { const f = path.join(copies, nom); fs.writeFileSync(f, '{}'); return f; };
+  const a = copie('fenetre1-P1.json');
+  const b = copie('fenetre1-P2.json');
+  verifier(await demander('secours-index', [{ fichier: a, projet: 'P1' }, { fichier: b, projet: 'P2' }]) === true, 'un index écrit sans version : pris tel quel');
+  const lu1 = await demander('secours-etat');
+  const lu2 = await demander('secours-etat');
+  const ecrit1 = await demander('secours-index', lu1.entrees.map((e) => (e.fichier === a ? { ...e, attente: true } : e)), lu1.version);
+  // (the other window's index, read before: without the first copy, which its write would delete)
+  const ecrit2 = await demander('secours-index', lu2.entrees.filter((e) => e.fichier !== a), lu2.version);
+  const relu = await demander('secours-etat');
+  verifier(ecrit1 === true && ecrit2 === false && fs.existsSync(a) && relu.entrees.some((e) => e.fichier === a && e.attente) && relu.version === lu1.version + 1,
+    'la seconde écriture, faite sur l’index lu avant la première, refusée : la copie que la première a marquée en attente reste, et son fichier', { ecrit1, ecrit2, relu });
+  const ecrit3 = await demander('secours-index', relu.entrees.filter((e) => e.fichier !== b), relu.version);
+  verifier(ecrit3 === true && fs.existsSync(a) && !fs.existsSync(b) && egal((await demander('secours-etat')).entrees.map((e) => e.fichier), [a]),
+    'relu, puis écrit de nouveau : pris, seule la copie qu’il retire part');
+}
+
 async function principal() {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'nuee-principal-'));
   try {
@@ -487,6 +566,8 @@ async function principal() {
     await derniereSeance(dossier);
     await fermerUneFois(dossier);
     await lesPolitiques(dossier);
+    await jetonsZenodo(dossier);
+    await indexDeSecours(dossier);
   } catch (e) {
     verifier(false, 'erreur', e.stack || e.message);
   } finally {

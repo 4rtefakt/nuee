@@ -270,18 +270,24 @@ function htmlReference(tok, r, libelles) {
   }
 }
 
+// (a table in a box of its own, which scrolls sideways when the table is wider than the screen, a
+// phone's: pageHTML)
 function htmlBloc(b) {
   if (b.texte !== undefined) return `<p class="note">${echapper(b.texte)}</p>`;
-  return `<table><thead><tr>${b.entetes.map((h) => `<th>${echapper(h)}</th>`).join('')}</tr></thead><tbody>${
-    b.lignes.map((l) => `<tr>${l.map((v, k) => `<td${k ? ' class="num"' : ''}>${echapper(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<div class="tableau-defile"><table><thead><tr>${b.entetes.map((h) => `<th>${echapper(h)}</th>`).join('')}</tr></thead><tbody>${
+    b.lignes.map((l) => `<tr>${l.map((v, k) => `<td${k ? ' class="num"' : ''}>${echapper(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
-// A whole HTML page (PDF, or an .html file that holds its images), `corps` from versHTML.
+// A whole HTML page (PDF, or an .html file that holds its images, which a reproducibility package
+// holds for each document: paquet.js), `corps` from versHTML. As wide as the screen it opens on, a
+// phone's too: its figures within it, a wide table scrolling on its own.
 export function pageHTML(corps, titre, langue) {
-  return `<!doctype html><html lang="${langue}"><head><meta charset="utf-8"><title>${echapper(titre)}</title><style>
+  return `<!doctype html><html lang="${langue}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${echapper(titre)}</title><style>
 @page { size: A4; margin: 20mm 18mm; }
 body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.45; color: #1a1a1a; max-width: 46em; margin: 2em auto; padding: 0 1em; }
 @media print { body { margin: 0; max-width: none; padding: 0; } }
+@media screen { .tableau-defile { overflow-x: auto; } img { height: auto; } }
+@media screen and (max-width: 600px) { body { margin: 1em auto; font-size: 12pt; } }
 h1, h2, h3, h4 { line-height: 1.2; break-after: avoid; } h1 { font-size: 16pt; } h2 { font-size: 13.5pt; } h3 { font-size: 12pt; } h4 { font-size: 11pt; }
 .titre-document { font-size: 20pt; margin-bottom: 4pt; } .sous-titre-document { font-size: 13pt; color: #444; margin-top: 0; } .auteur-document { color: #555; }
 table { border-collapse: collapse; font-size: 9.5pt; margin: 6pt 0; } th, td { border: 1px solid #bbb; padding: 2pt 6pt; text-align: left; }

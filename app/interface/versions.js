@@ -22,9 +22,15 @@
 //     fusionner and fusionner_finir), else Keep mine or Take theirs; Compare first;
 //   - a project on a shared folder changed on disk by someone else (request fichier_change), or
 //     met by Save (app.js): their changes merged into the open project, with the same choices.
+// The browser version keeps the versions in the browser's storage, through the same functions in the
+// page (versions_navigateur.js), and shares with GitHub and GitLab through nuee.io's relay
+// (comptes_navigateur.js): a self-hosted GitLab, another server and choosing a folder are the
+// desktop application's there, said so.
 import { t, langueActuelle, deuxPoints } from './i18n.js';
 import { el, icone, dialogue } from './ui.js';
-import { demander, bureau } from './api.js';
+import { demander, bureau, MOTEUR_WEBR } from './api.js';
+import { versionsNavigateur } from './versions_navigateur.js';
+import { comptesNavigateur } from './comptes_navigateur.js';
 import { VUES } from './panneaux.js';
 import { dateLongue, dateVersion, heureVersion, grouperParJour, tailleLisible, titreVersion, nomDeChemin, memeFichier, nomHote, hoteAdresse, liensConnexion,
   placeDansDepot, etatPartage, phraseRecu, autreAuteur, titreDeVersion, descriptionVersion, nombreVersions, demandeAbsente, sansExtension,
@@ -33,8 +39,10 @@ import { resumerProjet, afficherChangements, installerChangements } from './chan
 import { ouvrirConnexion, ouvrirInvitation, carteCompte } from './connexion.js';
 import { VERSION } from './nouveautes.js';
 
-// The main process's functions; none in a browser
-const couche = () => (bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
+// The main process's functions; in the browser version, the page's; none in another browser
+const couche = () => (MOTEUR_WEBR ? versionsNavigateur
+  : bureau && bureau.versions && typeof bureau.versions.etat === 'function' && typeof bureau.versions.ouvert === 'function' ? bureau.versions : null);
+export const coucheVersions = couche;
 // (a view moved to its own window: no hooks, no background, no dialogs)
 const VUE_SEULE = new URLSearchParams(location.search).get('vue');
 
@@ -97,7 +105,8 @@ export function installerVersions(app) {
   if (!c || VUE_SEULE) return;
   if (typeof c.surVersions === 'function') c.surVersions((e) => { evenement(app, e).catch(() => {}); });
   // a shared folder: every 30 seconds, whether an open project's file was changed by someone else
-  setInterval(() => surveillerDossiers(app).catch(() => {}), 30000);
+  // (none in the browser version: only its tab writes there)
+  if (!MOTEUR_WEBR) setInterval(() => surveillerDossiers(app).catch(() => {}), 30000);
 }
 
 // ------------------------------------------------------------ the hooks
@@ -290,7 +299,8 @@ function indicateur(app) {
     const e = m && m.etat;
     if (e) {
       const etat = etatPartage(e, vus.get(chemin));
-      const titre = [!e.actif ? t('versions_indicateur_desactive') : e.versions ? t(e.versions === 1 ? 'versions_indicateur_local_une' : 'versions_indicateur_local', { n: e.versions })
+      const ici = MOTEUR_WEBR ? ['versions_indicateur_navigateur_une', 'versions_indicateur_navigateur'] : ['versions_indicateur_local_une', 'versions_indicateur_local'];
+      const titre = [!e.actif ? t('versions_indicateur_desactive') : e.versions ? t(ici[e.versions === 1 ? 0 : 1], { n: e.versions })
         : t('versions_indicateur_aucune'), etat ? etat.titre : ''].filter(Boolean).join(' · ');
       elements.push(el('button', { class: `icone-seule indicateur-versions${etat ? ` ${etat.cle}` : ''}`, title: titre, 'aria-label': titre,
         onclick: () => (etat && etat.cle === 'conflit' ? resoudreConflit(app, pid) : app.versions(pid)) },
@@ -338,7 +348,7 @@ async function rendreHistorique(app, conteneur, params) {
   if (p.lecture_seule) { montrer(...panneauLecture(app, p)); return; }
   const chemin = fichierProjet(p);
   if (!chemin) {
-    montrer(el('p', {}, t(p.chemin_enregistrement ? 'versions_pas_nuee' : 'versions_jamais_enregistre')),
+    montrer(el('p', {}, t(p.chemin_enregistrement ? 'versions_pas_nuee' : MOTEUR_WEBR ? 'versions_jamais_enregistre_navigateur' : 'versions_jamais_enregistre')),
       el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: async () => { if (await app.enregistrer(p.id, !!p.chemin_enregistrement)) redessinerHistorique(p.id); } },
         icone('save'), t(p.chemin_enregistrement ? 'enregistrer_sous_bouton' : 'versions_enregistrer_projet'))));
     return;
@@ -368,8 +378,11 @@ async function rendreHistorique(app, conteneur, params) {
       el('button', { onclick: () => apresAction(app, p.id) }, icone('refresh-cw'), t('versions_actualiser')),
       el('button', { onclick: () => dialogueReglages(app, p.id) }, icone('sliders-horizontal'), t('versions_reglages')),
       el('label', { class: 'champ interrupteur-versions' }, el('input', { type: 'checkbox', checked: !!e.actif, onchange: (ev) => activer(app, p.id, ev.target.checked) }), t('versions_garder_projet'))),
-    el('p', { class: 'note tete-versions', title: e.dossier || '' }, icone('lock'),
-      !e.actif ? t('versions_desactivees') : e.versions ? t('versions_tete', { taille: tailleLisible(e.taille) }) : t('versions_tete_vide')),
+    // (in the browser version, where they are: this browser only, kept for good or as long as it may)
+    el('p', { class: 'note tete-versions', title: MOTEUR_WEBR ? '' : e.dossier || '' }, icone('lock'),
+      !e.actif ? t('versions_desactivees') : e.versions ? t(MOTEUR_WEBR ? 'versions_tete_navigateur' : 'versions_tete', { taille: tailleLisible(e.taille) })
+        : t(MOTEUR_WEBR ? 'versions_tete_vide_navigateur' : 'versions_tete_vide'),
+      MOTEUR_WEBR && e.persistant === false ? ` ${t('versions_navigateur_non_persistant')}` : ''),
     sectionPartage(app, p, e),
     el('div', { class: 'liste-versions' }, liste.length ? grouperParJour(liste).map((g) => el('section', { class: 'jour-versions' },
       el('h4', {}, g.titre), g.versions.map((v) => ligneVersion(app, p, v, v.oid === actuelle, partage))))
@@ -413,7 +426,7 @@ function ligneVersion(app, p, v, actuelle, partage) {
 function sectionPartage(app, p, e) {
   const chemin = fichierProjet(p);
   if (!e.partage) {
-    return el('div', { class: 'partage-versions' }, el('button', { disabled: !e.actif, onclick: () => dialoguePartage(app, p.id) }, icone('cloud-upload'), t('versions_partager')),
+    return el('div', { class: 'partage-versions' }, el('button', { disabled: !e.actif, onclick: () => app.partagerProjet(p.id) }, icone('cloud-upload'), t('versions_partager')),
       el('span', { class: 'note' }, t('versions_partager_texte')));
   }
   const x = e.partage;
@@ -521,7 +534,7 @@ async function dialogueReglages(app, pid) {
   };
   const d = dialogue({ titre: t('versions_reglages_titre'),
     contenu: el('div', { class: 'dialogue-version' },
-      el('label', { class: 'champ' }, auto, el('b', {}, t('versions_reglage_auto'))), el('p', { class: 'note' }, t('versions_reglage_auto_aide')),
+      el('label', { class: 'champ' }, auto, el('b', {}, t('versions_reglage_auto'))), el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_reglage_auto_aide_navigateur' : 'versions_reglage_auto_aide')),
       el('h4', {}, t('versions_auteur_titre')), el('p', { class: 'note' }, t('versions_auteur_texte')),
       el('div', { class: 'grille-champs' }, a.lignes), erreur),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('appliquer'), principal: true, action: () => { valider(); return false; } }] });
@@ -732,8 +745,9 @@ async function refuserEnregistrement(app, pid) {
 
 // ------------------------------------------------------------ GitHub and GitLab
 
-// Signing in to GitHub and GitLab (app/comptes.js, through preload.js); none in a browser
-const comptes = () => (bureau && bureau.comptes && typeof bureau.comptes.compte === 'function' ? bureau.comptes : null);
+// Signing in to GitHub and GitLab (app/comptes.js, through preload.js; in the browser version, in
+// the page: comptes_navigateur.js); none in another browser
+const comptes = () => (MOTEUR_WEBR ? comptesNavigateur : bureau && bureau.comptes && typeof bureau.comptes.compte === 'function' ? bureau.comptes : null);
 
 // Who is signed in on each server, asked again after five minutes (a minute after a failure): each
 // drawing of History would otherwise ask the server. host → { k | erreur, quand } or { promesse }
@@ -885,7 +899,9 @@ async function dialoguePartage(app, pid, { existant = false } = {}) {
     const formulaire = formulaireExistant({ ouvert, url });
     etape(el('p', {}, t('versions_partager_compte')),
       el('div', { class: 'services-connexion' }, github, el('button', { onclick: () => serveurChoisi('gitlab.com') }, 'GitLab')),
-      el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))),
+      // (the browser version: nuee.io's relay reaches github.com and gitlab.com alone)
+      MOTEUR_WEBR ? el('p', { class: 'note autre-gitlab' }, t('bureau_requis', { quoi: t('connexion_autre_gitlab') }))
+        : el('div', { class: 'ligne autre-gitlab' }, el('label', {}, t('connexion_autre_gitlab')), serveurAutre, el('button', { onclick: continuer }, t('connexion_continuer'))),
       formulaire);
     pied([{ libelle: t('annuler'), action: () => true }]);
     if (!a) (ouvert ? formulaire.querySelector('input') : github).focus();
@@ -987,10 +1003,10 @@ async function dialoguePartage(app, pid, { existant = false } = {}) {
     });
     adresse.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') partager(); });
     return el('details', { class: 'depot-existant', open: ouvert }, el('summary', {}, t('versions_depot_existant')),
-      el('p', { class: 'note' }, t('versions_depot_existant_texte')),
+      el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_depot_existant_texte_navigateur' : 'versions_depot_existant_texte')),
       el('div', { class: 'grille-champs' },
         el('label', {}, t('versions_adresse')), adresse,
-        el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide')))),
+        el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_jeton_aide_navigateur' : 'versions_jeton_aide')))),
       liens,
       el('div', { class: 'ligne' }, el('button', { class: 'principal', onclick: partager }, icone('cloud-upload'), t('versions_partager_bouton'))));
   }
@@ -1383,15 +1399,16 @@ async function surveiller(app) {
 // ------------------------------------------------------------ Open from GitHub or GitLab
 
 // A colleague's project: the repository's address (signed in to its server, or a token, if it is
-// private), its projects, the folder to put the one chosen in; then it opens, shared with that
-// repository
+// private), its projects, the folder to put the one chosen in (in the browser version, a place of its
+// own in the browser's storage: versions_navigateur.js); then it opens, shared with that repository
 function dialogueDistant(app) {
   const c = couche();
   if (!c) { app.statut(t('versions_navigateur'), true); return; }
   const adresse = el('input', { type: 'url', placeholder: t('versions_adresse_exemple'), style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_adresse') });
   const jeton = el('input', { type: 'password', style: 'width:100%', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('versions_jeton') });
   const ligneConnexion = el('div', { class: 'ligne connexion-distant', hidden: true });
-  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')), el('div', {}, jeton, el('p', { class: 'note' }, t('versions_jeton_aide'))));
+  const ligneJeton = el('div', { class: 'grille-champs', hidden: true }, el('label', {}, t('versions_jeton')),
+    el('div', {}, jeton, el('p', { class: 'note' }, t(MOTEUR_WEBR ? 'versions_jeton_aide_navigateur' : 'versions_jeton_aide'))));
   const dossier = el('input', { style: 'width:100%', spellcheck: 'false', 'aria-label': t('versions_distant_dossier') });
   const projets = el('div', { class: 'projets-distants' });
   // (its projects, once found)
@@ -1435,11 +1452,11 @@ function dialogueDistant(app) {
   };
   const ouvrir = async () => {
     if (!choisi) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_projet'); return; }
-    if (!dossier.value.trim()) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_dossier'); return; }
+    if (!MOTEUR_WEBR && !dossier.value.trim()) { message.className = 'message-connexion erreur'; message.textContent = t('versions_distant_pas_dossier'); return; }
     message.className = 'message-connexion doux';
     message.textContent = t('versions_verification');
     try {
-      const r = await c.ouvrirDistant(adresse.value, choisi, dossier.value.trim());
+      const r = await c.ouvrirDistant(adresse.value, choisi, MOTEUR_WEBR ? '' : dossier.value.trim());
       d.fermer();
       await app.ouvrirChemin(r.chemin);
       app.statut(t('versions_distant_ouvert', { nom: nomDeChemin(r.chemin), hote: nomHote(hoteAdresse(adresse.value)) || hoteAdresse(adresse.value) }));
@@ -1447,12 +1464,12 @@ function dialogueDistant(app) {
   };
   adresse.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') chercher(); });
   const d = dialogue({ titre: t('versions_distant_titre'),
-    contenu: el('div', { class: 'dialogue-connexion dialogue-distant' }, el('p', {}, t('versions_distant_texte')),
+    contenu: el('div', { class: 'dialogue-connexion dialogue-distant' }, el('p', {}, t(MOTEUR_WEBR ? 'versions_distant_texte_navigateur' : 'versions_distant_texte')),
       el('div', { class: 'grille-champs' }, el('label', {}, t('versions_adresse')), el('div', { class: 'ligne' }, adresse,
         el('button', { onclick: chercher }, icone('search'), t('versions_distant_chercher')))),
       ligneConnexion, ligneJeton, ligneProjets,
-      el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
-          el('button', { disabled: !bureau.choisirDossier, onclick: async () => { const x = await bureau.choisirDossier(); if (x) dossier.value = x; } }, icone('folder-open'), t('versions_distant_choisir_dossier')))),
+      MOTEUR_WEBR ? null : el('div', { class: 'grille-champs' }, el('label', {}, t('versions_distant_dossier')), el('div', { class: 'ligne' }, dossier,
+        el('button', { disabled: !bureau.choisirDossier, onclick: async () => { const x = await bureau.choisirDossier(); if (x) dossier.value = x; } }, icone('folder-open'), t('versions_distant_choisir_dossier')))),
       message),
     boutons: [{ libelle: t('annuler'), action: () => true }, { libelle: t('versions_distant_ouvrir'), principal: true, action: () => { ouvrir(); return false; } }] });
 }

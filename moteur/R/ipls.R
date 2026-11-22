@@ -62,8 +62,10 @@ pls_par_intervalles <- function(projet, d, n = 20, A = d$A) {
   meilleur <- function(r) if (all(is.na(r))) NA else which.min(r)
   coupes <- split(spectre, cut(seq_along(spectre), n, labels = FALSE))
   noms <- vapply(d$x, function(t) as.character(t$name), "")
+  fait <- 0
   intervalles <- lapply(coupes, function(k) {
-    verifier_arret()
+    fait <<- fait + 1
+    verifier_arret(fait, length(coupes), "intervalles")
     r <- zone(c(k, autres))
     list(termes = I(noms[k]), variables = I(vapply(d$x[k], function(t) as.numeric(t$variables[1]), 0)), rmsecv = I(r), A = meilleur(r))
   })

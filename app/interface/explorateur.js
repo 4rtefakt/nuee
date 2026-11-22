@@ -3,6 +3,8 @@
 import { t } from './i18n.js';
 import { el, fmt, icone, menuContextuel } from './ui.js';
 import { ICONES_VUES } from './commandes.js';
+import { MOTEUR_WEBR } from './api.js';
+import { etroit } from './etroit.js';
 
 const VUES_MODELE = ['resume', 'scores', 'loadings', 'profils', 'biplot', 'splot', 'scores3d', 'dmodx', 't2', 'contributions', 'vip', 'coefficients', 'obspred', 'permutations',
   'cvanova', 'classification', 'coomans', 'dendrogramme', 'liste_obs', 'liste_vars', 'predictions'];
@@ -49,8 +51,10 @@ export function rendreExplorateur(conteneur, app) {
     const ligne = el('div', {
       class: `noeud n${niveau} ${classe}` + (actif === cle ? ' actif' : ''), title: titre || '', tabindex: -1,
       role: 'treeitem', 'aria-level': niveau, 'aria-selected': String(actif === cle), 'aria-expanded': enfants ? String(ouvert) : null, 'data-cle': cle,
-      onclick: (e) => { e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); },
-      ondblclick: (e) => { e.stopPropagation(); if (double) double(); else if (enfants) basculer(); },
+      // (on a phone, etroit.js, one tap does what a double click does elsewhere: a folder opens or
+      // closes, a view opens in the explorer's place; a double tap's dblclick then does nothing more)
+      onclick: (e) => { e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); if (etroit()) { if (enfants) basculer(); else if (double) double(); } },
+      ondblclick: (e) => { e.stopPropagation(); if (etroit()) return; if (double) double(); else if (enfants) basculer(); },
       oncontextmenu: (e) => { e.preventDefault(); e.stopPropagation(); app.choisirNoeud(cle); if (clic) clic(); if (menu) menuContextuel(e.clientX, e.clientY, menu()); },
       onkeydown: (e) => { if (e.key === 'Enter') { if (double) double(); else if (enfants) basculer(); } else if (e.key === ' ') { e.preventDefault(); app.choisirNoeud(cle); if (clic) clic(); } },
     },
@@ -163,7 +167,7 @@ export function rendreExplorateur(conteneur, app) {
         { libelle: t('enregistrer'), icone: 'save', action: () => app.enregistrer(p.id, false) },
         { libelle: t('enregistrer_sous'), action: () => app.enregistrer(p.id, true) },
         { libelle: t('versions'), icone: 'history', action: () => app.versions(p.id) },
-        { libelle: t('versions_partager'), icone: 'cloud-upload', actif: !!app.bureau, action: () => app.partagerProjet(p.id) },
+        { libelle: t('versions_partager'), icone: 'cloud-upload', actif: !!app.bureau || MOTEUR_WEBR, action: () => app.partagerProjet(p.id) },
         { libelle: t('exporter_donnees'), icone: 'file-output', action: () => app.exporterDonnees(p.id) },
         '-',
         { libelle: t('fermer_projet'), icone: 'x', action: () => app.fermerProjet(p.id) },
@@ -245,6 +249,27 @@ export function rendreExplorateur(conteneur, app) {
     if (montre && (r.top < cadre.top || r.bottom > cadre.bottom)) conteneur.scrollTop += r.top - cadre.top;
   }
   racine.querySelectorAll('.badge.alerte').forEach((b) => { b.setAttribute('aria-hidden', 'true'); b.after(el('span', { class: 'lecteur-seul' }, ` (${t('modifie')})`)); });
+}
+
+// The node chosen (a click, Space, a right-click), marked in the tree as it is drawn: the tree isn't
+// drawn again, so the element clicked stays in the page. A double click's dblclick goes to the
+// element of its second click; drawn again by the first click's choice, that element was a new one,
+// which the click's choice took out of the page again, and a browser may send nothing to an element
+// no longer in the page: the double click opened nothing. False when that node isn't drawn (the
+// caller draws the tree).
+export function marquerNoeud(conteneur, cle) {
+  const racine = conteneur && conteneur.querySelector('.arbre');
+  const lignes = racine ? [...racine.querySelectorAll('[role="treeitem"]')] : [];
+  const choisi = lignes.find((l) => l.dataset.cle === cle);
+  if (!choisi) return false;
+  for (const l of lignes) {
+    const oui = l === choisi;
+    l.classList.toggle('actif', oui);
+    l.setAttribute('aria-selected', String(oui));
+    l.tabIndex = oui ? 0 : -1;
+  }
+  conteneur._actifMontre = cle;  // (in view: it was just chosen there)
+  return true;
 }
 
 // The tree from the keyboard (as the WAI-ARIA tree view): up and down from node to node, right

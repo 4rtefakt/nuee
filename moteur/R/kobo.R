@@ -936,7 +936,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
                      colonnes = list(list(segments = s, valeurs = reponses, texte = TRUE))))
         next
       }
-      codes <- c(liste$noms, sort(setdiff(vus, liste$noms)))
+      codes <- c(liste$noms, trier_textes(setdiff(vus, liste$noms)))
       ligne <- rep.int(seq_along(jetons), lengths(jetons))
       jeton <- unlist(jetons, use.names = FALSE)
       colonnes <- lapply(codes, function(code) {
@@ -977,7 +977,7 @@ kobo_preparer <- function(export, nom, form, langue, garder, cles) {
         if (!any(manque)) break
         j[manque] <- match(v[manque], liste$libelles[, L])
       }
-      inconnus <- sort(unique(v[is.na(j) & !is.na(v)]))
+      inconnus <- trier_textes(unique(v[is.na(j) & !is.na(v)]))
       col$valeurs <- factor(ifelse(is.na(j), v, libelles[j]), levels = unique(c(libelles, inconnus)))
       genre <- "choix_unique"
     } else if (type %in% c("date", "datetime", "time", "start", "end", "today") || (is.na(type) && is.character(x) && isTRUE(attr(kobo_dates(unique(x)), "valide")))) {
