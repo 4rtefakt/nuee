@@ -248,6 +248,27 @@ export function rendreExplorateur(conteneur, app) {
   racine.querySelectorAll('.badge.alerte').forEach((b) => { b.setAttribute('aria-hidden', 'true'); b.after(el('span', { class: 'lecteur-seul' }, ` (${t('modifie')})`)); });
 }
 
+// The node chosen (a click, Space, a right-click), marked in the tree as it is drawn: the tree isn't
+// drawn again, so the element clicked stays in the page. A double click's dblclick goes to the
+// element of its second click; drawn again by the first click's choice, that element was a new one,
+// which the click's choice took out of the page again, and a browser may send nothing to an element
+// no longer in the page: the double click opened nothing. False when that node isn't drawn (the
+// caller draws the tree).
+export function marquerNoeud(conteneur, cle) {
+  const racine = conteneur && conteneur.querySelector('.arbre');
+  const lignes = racine ? [...racine.querySelectorAll('[role="treeitem"]')] : [];
+  const choisi = lignes.find((l) => l.dataset.cle === cle);
+  if (!choisi) return false;
+  for (const l of lignes) {
+    const oui = l === choisi;
+    l.classList.toggle('actif', oui);
+    l.setAttribute('aria-selected', String(oui));
+    l.tabIndex = oui ? 0 : -1;
+  }
+  conteneur._actifMontre = cle;  // (in view: it was just chosen there)
+  return true;
+}
+
 // The tree from the keyboard (as the WAI-ARIA tree view): up and down from node to node, right
 // to unfold a branch or go into it, left to fold it or go to its parent, Home and End, a letter
 // for the next node starting with it. Enter opens (as a double click), Space chooses (as a click),

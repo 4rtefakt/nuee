@@ -133,11 +133,16 @@ const modeleActif = (page) => page.evaluate(async () => {
   const m = id && app.modelesDe(app.projetActif()).find((x) => x.id === id);
   return m ? { id, type: m.type, nom: m.nom } : null;
 });
-const doubleClic = (page, texte) => page.evaluate((x) => {
-  const n = [...document.querySelectorAll('.arbre *')].find((e) => e.children.length === 0 && e.textContent.trim() === x);
-  if (!n) throw new Error(`not in the tree: ${x}`);
-  n.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-}, texte);
+// a node of the tree double-clicked as a mouse does it (two clicks, then dblclick: explorateur.js,
+// marquerNoeud), found by its words
+async function doubleClic(page, texte) {
+  const cle = await page.evaluate((x) => {
+    const n = [...document.querySelectorAll('.arbre *')].find((e) => e.children.length === 0 && e.textContent.trim() === x);
+    if (!n) throw new Error(`not in the tree: ${x}`);
+    return n.closest('[role="treeitem"]').dataset.cle;
+  }, texte);
+  await page.dblclick(`.arbre [role="treeitem"][data-cle="${cle}"] .libelle`);
+}
 // Waiting for an async condition of the page: Playwright's waitForFunction takes the Promise of an
 // async function as a truthy value at once, page.evaluate awaits it
 async function attendre(page, f, arg, ms = 60000) {
@@ -230,6 +235,25 @@ try {
   res.exemple = await commande(page, 'projet_exemple');
   await page.waitForFunction(() => document.querySelectorAll('.js-plotly-plot').length >= 2, null, { timeout: 120000 });
   verifier('projet d’exemple ouvert, ses graphiques', true, `${res.exemple} : ${await graphiques(page)} graphiques`);
+  // The explorer with the mouse: a click chooses a node and keeps its element in the page (the tree
+  // isn't drawn again), so that a double click's dblclick reaches the page and opens its view.
+  const clicArbre = await page.evaluate(() => {
+    window.__dblclicks = [];
+    document.addEventListener('dblclick', (e) => { const n = e.target.closest && e.target.closest('[role="treeitem"]'); if (n) window.__dblclicks.push(n.dataset.cle); });
+    window.__noeudClique = document.querySelector('.arbre [role="treeitem"][data-cle$="/statistiques"]');
+    return window.__noeudClique.dataset.cle;
+  });
+  await page.click(`.arbre [role="treeitem"][data-cle="${clicArbre}"] .libelle`);
+  const apresClic = await page.evaluate(() => ({ garde: window.__noeudClique.isConnected, choisi: window.__noeudClique.classList.contains('actif') && window.__noeudClique.getAttribute('aria-selected') === 'true',
+    autres: document.querySelectorAll('.arbre [role="treeitem"].actif').length }));
+  const statsAvant = await page.evaluate(() => [...document.querySelectorAll('.dv-tab')].filter((x) => /Variable statistics/.test(x.textContent)).length);
+  await page.dblclick(`.arbre [role="treeitem"][data-cle="${clicArbre}"] .libelle`);
+  const statsOuvertes = await page.waitForFunction((n) => [...document.querySelectorAll('.dv-tab')].filter((x) => /Variable statistics/.test(x.textContent)).length > n, statsAvant, { timeout: 30000 })
+    .then(() => true, () => false);
+  const dblclicks = await page.evaluate(() => window.__dblclicks);
+  verifier('l’explorateur à la souris : un clic choisit le nœud sans le redessiner, un double-clic ouvre sa vue (Statistiques des variables)',
+    apresClic.garde && apresClic.choisi && apresClic.autres === 1 && statsOuvertes && dblclicks.includes(clicArbre),
+    `${JSON.stringify(apresClic)} ; ouverte : ${statsOuvertes} ; dblclick reçu par la page : ${dblclicks.join(', ') || 'aucun'}`);
   const nAvant = await combien(page, 'ajuster');
   await doubleClic(page, 'M2');
   const pls = await attendreDemande(page, 'ajuster', nAvant);

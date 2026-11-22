@@ -8,7 +8,7 @@ import { secoursNavigateur, ONGLET } from './secours_navigateur.js';
 import { VUES, seulementCourbes } from './panneaux.js';
 import { el, icone, menuContextuel, ouvrirMenuSous, barreMenus, dialogue } from './ui.js';
 import { creerCommandes, menus, menuExemples, barreOutils, commandeVue, ICONES_VUES, combinaison, afficherRaccourci } from './commandes.js';
-import { rendreExplorateur } from './explorateur.js';
+import { rendreExplorateur, marquerNoeud } from './explorateur.js';
 import { dialogueModele, dialogueAide, dialogueFormat, dialogueVariable, dialogueColonnes, dialogueResume } from './dialogues.js';
 import { dialogueRaster } from './raster.js';
 import { dialogueRapport, partiesModele, imageVue } from './rapport.js';
@@ -193,7 +193,14 @@ const app = {
       const ex = dock && dock.getPanel('explorateur');
       if (ex && !ex.api.isActive) ex.api.setActive();
     }
-    app.rafraichirExplorateur();
+    // (the explorer marks it without being drawn again, so that a double click reaches its node:
+    // explorateur.js, marquerNoeud; the start page follows the project chosen)
+    const arbre = etat.panneaux.get('explorateur');
+    if (!arbre || !marquerNoeud(arbre.element, cle)) app.rafraichirExplorateur();
+    else {
+      const accueil = etat.panneaux.get('accueil');
+      if (accueil) rendrePanneau(accueil);
+    }
     majEtat();
   },
 
