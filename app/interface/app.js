@@ -2737,6 +2737,7 @@ function rattacher() {
   // (a model no longer in the session: nothing to bring back, the window just closes)
   const modele = params.get('modele');
   if (!modele || etat.modeles[modele]) diffuser('rattacher', { vers: params.get('de'), vue: VUE_SEULE, modele, projet: params.get('projet'), loc });
+  enFermeture = true;
   window.close();
 }
 
@@ -2866,6 +2867,10 @@ async function pourPrincipale(msg) {
 // (the requests between a view's window and its main one answered at once; the other messages one
 // at a time, in the order sent: a fit replaced is followed before 'modeles' forgets the old one)
 let suiteMessages = Promise.resolve();
+// (the window closing, Move back or its own close: what it still asked of the engine fails, as
+// "Failed to fetch", and isn't an error to report)
+let enFermeture = false;
+window.addEventListener('pagehide', () => { enFermeture = true; });
 canal.onmessage = ({ data: msg }) => {
   // (the hidden page of a document's language follows no window: its language stays its own)
   if (!msg || HORS_ECRAN) return;
@@ -2881,7 +2886,7 @@ canal.onmessage = ({ data: msg }) => {
     if (!VUE_SEULE && msg.vers === ID_FENETRE) pourPrincipale(msg);
     return;
   }
-  suiteMessages = suiteMessages.then(() => surMessage(msg)).catch((e) => console.error(e));
+  suiteMessages = suiteMessages.then(() => surMessage(msg)).catch((e) => { if (!enFermeture) console.error(e); });
 };
 
 async function surMessage(msg) {
