@@ -49,7 +49,8 @@ button.principal:focus-visible { outline-offset: 2px; }
 .espace { flex: 1; }
 
 /* ---------------------------------------------------------------- frame */
-#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+#appli { height: 100%; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); }  /* (as wide as the window, whatever a
+   line in it would take: a long status message, a phone's screen) */
 #entete { min-width: 0; }  /* (the menu bar and the toolbar: the window's banner landmark) */
 #menus { display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--fond-barre); border-bottom: 1px solid var(--bord); }
 #menus .logo { width: 18px; height: 18px; margin: 0 6px 0 4px; }
@@ -1021,7 +1022,11 @@ body.etroit .actions-groupe { display: none; }
 body.etroit .noeud { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
 body.etroit .noeud .fleche { width: 20px; }
 body.etroit .grille-champs { grid-template-columns: minmax(0, 1fr); }
-body.etroit #statut { gap: 8px; padding: 2px 8px; }
+body.etroit #statut { gap: 8px; padding: 2px 8px; min-width: 0; overflow: hidden; }
+/* a document on a phone: its preview, as wide as the screen; the split button switches to its text
+   (documents.js: sans-apercu) */
+body.etroit .corps-document { grid-template-columns: minmax(0, 1fr); }
+body.etroit .corps-document:not(.sans-apercu) .editeur-document { display: none; }
 
 /* ---------------------------------------------------------------- the reader's page of a package's link
    (lecture.js: its title, authors and DOI, the document to read, Open the whole project and Rerun
