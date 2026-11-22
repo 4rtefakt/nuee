@@ -177,16 +177,18 @@ async function nouveauModele(page, reglages) {
   return { d, erreur };
 }
 // the browser's recovery copies (secours_navigateur.js): the indexes, each with its entries
+// (an index that can't be read is 'illisible', the others still read: a tab closed during its
+// first write leaves its index empty, which the next tab takes for no copies; one removed while
+// the folder is read isn't there)
 const copies = (page) => page.evaluate(async () => {
-  const lire = async () => {
-    try {
-      const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuee-secours');
-      const r = {};
-      for await (const [nom, h] of d.entries()) if (nom.startsWith('index-')) r[nom] = JSON.parse(await (await h.getFile()).text());
-      return r;
-    } catch { return {}; }
-  };
-  return lire();
+  let d;
+  try { d = await (await navigator.storage.getDirectory()).getDirectoryHandle('nuee-secours'); } catch { return {}; }
+  const r = {};
+  for await (const [nom, h] of d.entries()) {
+    if (!nom.startsWith('index-')) continue;
+    try { r[nom] = JSON.parse(await (await h.getFile()).text()); } catch (e) { if (e.name !== 'NotFoundError') r[nom] = 'illisible'; }
+  }
+  return r;
 });
 const ongletDe = (page) => page.evaluate(() => import('./secours_navigateur.js').then((m) => m.ONGLET));
 
@@ -794,15 +796,19 @@ try {
     return v && !v.querySelector('.attente') ? { tete: (v.querySelector('.tete-versions') || {}).textContent || '', texte: v.textContent } : null;
   }, null, 60000);
   const montrerHistorique = async (p, pid) => { await p.evaluate((id) => import('./app.js').then(({ app }) => app.versions(id)), pid); return panneau(p); };
-  // a button of History (its words), on a version (by its rank, -1 the oldest) or at the top
+  // a button of History (its words), on a version (by its rank, -1 the oldest) or at the top; waited
+  // for 15 s (the panel is drawn again once the project's history is known: a button greyed at first)
   const boutonHistorique = (p, cle, rang = null) => p.evaluate(async ([c, k]) => {
     const { t } = await import('./i18n.js');
-    const v = [...document.querySelectorAll('.versions')].find((x) => x.offsetParent !== null);
-    const lignes = [...v.querySelectorAll('.liste-versions .version')];
-    const ou = k === null ? v : k < 0 ? lignes[lignes.length + k] : lignes[k];
-    const b = [...ou.querySelectorAll('button')].find((x) => x.textContent.trim() === t(c) && !x.disabled);
-    if (!b) throw new Error(`no ${c} in History`);
-    b.click();
+    for (let i = 0; ; i += 1) {
+      const v = [...document.querySelectorAll('.versions')].find((x) => x.offsetParent !== null);
+      const lignes = v ? [...v.querySelectorAll('.liste-versions .version')] : [];
+      const ou = !v ? null : k === null ? v : k < 0 ? lignes[lignes.length + k] : lignes[k];
+      const b = ou && [...ou.querySelectorAll('button')].find((x) => x.textContent.trim() === t(c) && !x.disabled);
+      if (b) { b.click(); return; }
+      if (i >= 75) throw new Error(`no ${c} in History`);
+      await new Promise((ok) => setTimeout(ok, 200));
+    }
   }, [cle, rang]);
   const lignesHistorique = (p, n) => attendre(p, (k) => [...document.querySelectorAll('.versions')].some((v) => v.offsetParent !== null && v.querySelectorAll('.liste-versions .version').length === k), n, 60000);
   const enregistrerPar = async (p, f) => {

@@ -248,8 +248,10 @@ for (essai in 1:200) {
     pareils <- pareils + (identical(as.character(a), as.character(b)) && (!sans_collision || identical(a, b)))
   }
 }
+# (au moins 200 cas comparés : base::interaction s'arrête sur plus de ces collisions avec un R plus
+# ancien, 554 cas restent avec R 4.6.2, 226 avec le R 4.3.3 d'Ubuntu)
 verifier(sprintf("interaction_observee : les valeurs de base::interaction(drop = TRUE), et ses niveaux dans son ordre quand deux combinaisons ne peuvent pas s'écrire pareil (%d cas sur %d)", pareils, compares),
-         compares >= 500 && pareils == compares)
+         compares >= 200 && pareils == compares)
 verifier("aucune observation cochée ne la remplit : le modèle est refusé, et le dit",
          grepl("Aucune des 120 observations cochées ne remplit la condition sucre > 100", refus(definir_modele(p, "PCA", x = x, A = 2, condition = "sucre > 100")), fixed = TRUE))
 verifier("en anglais aussi", {
