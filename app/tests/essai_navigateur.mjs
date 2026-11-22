@@ -33,7 +33,9 @@
 // one, miroir_webr.mjs: then nothing from another site until R is ready, and Kendall alone from
 // repo.r-wasm.org), and, under a path, /app redirected to /app/. Last, ?langue=fr: a new profile
 // in French, until a language is chosen. The time of each request goes to <folder>/demandes.json.
-//   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible]
+//   node tests/essai_navigateur.mjs [--site=<built site>] [--adresse=<url>] [--sortie=<folder>] [--visible] [--navigateur=firefox]
+// --navigateur=firefox: the same in Playwright's Firefox (cli.js install firefox), which, unlike
+// Chromium, sends nothing to an element a click took out of the page.
 // --adresse: the site as another server serves it, neither built nor served here (nuee.io's
 // browser version: `wrangler dev` in vitrine/, then --adresse=http://127.0.0.1:8787/app/).
 // Chromium comes from node_modules/.cache/ms-playwright (PLAYWRIGHT_BROWSERS_PATH):
@@ -52,7 +54,7 @@ const APP = path.join(ICI, '..');
 const require = createRequire(import.meta.url);
 const { servir } = require('../servir_navigateur.js');
 process.env.PLAYWRIGHT_BROWSERS_PATH ||= path.join(APP, 'node_modules', '.cache', 'ms-playwright');
-const { chromium } = await import('playwright-core');
+const { chromium, firefox } = await import('playwright-core');
 
 const options = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => {
   const [k, ...v] = a.slice(2).split('=');
@@ -84,10 +86,16 @@ const verifier = (nom, ok, valeur) => {
 const erreurs = [];
 // (zenodo.org never resolves in this browser: its API is a stand-in, Playwright's routes below, and a
 // request that would get past them, a redirect's, fails rather than reach Zenodo; nor do github.com,
-// gitlab.com, their APIs and the accounts' pictures: sharing's stand-ins, below too)
-const contexte = await chromium.launchPersistentContext(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 },
-  args: [`--host-resolver-rules=${['zenodo.org', '*.zenodo.org', 'github.com', '*.github.com', 'gitlab.com', '*.gitlab.com', '*.githubusercontent.com', 'gravatar.com', '*.gravatar.com']
-    .map((h) => `MAP ${h} ~NOTFOUND`).join(', ')}`] });
+// gitlab.com, their APIs and the accounts' pictures: sharing's stand-ins, below too. Chromium's
+// resolver rules; Firefox's local domains, 127.0.0.1, where nothing answers on their ports, take no
+// wildcard: their hosts named)
+const HOTES_COUPES = ['zenodo.org', '*.zenodo.org', 'github.com', '*.github.com', 'gitlab.com', '*.gitlab.com', '*.githubusercontent.com', 'gravatar.com', '*.gravatar.com'];
+const HOTES_COUPES_FIREFOX = ['zenodo.org', 'www.zenodo.org', 'sandbox.zenodo.org', 'github.com', 'api.github.com', 'codeload.github.com', 'gitlab.com', 'www.gitlab.com',
+  'avatars.githubusercontent.com', 'raw.githubusercontent.com', 'gravatar.com', 'www.gravatar.com', 'secure.gravatar.com'];
+const lancer = (dossier, reglages) => (options.navigateur === 'firefox'
+  ? firefox.launchPersistentContext(dossier, { ...reglages, firefoxUserPrefs: { 'network.dns.localDomains': HOTES_COUPES_FIREFOX.join(',') } })
+  : chromium.launchPersistentContext(dossier, { ...reglages, args: [`--host-resolver-rules=${HOTES_COUPES.map((h) => `MAP ${h} ~NOTFOUND`).join(', ')}`] }));
+const contexte = await lancer(profil, { headless: !options.visible, acceptDownloads: true, viewport: { width: 1440, height: 900 } });
 // every request of the pages and of their workers (webR's, which installs R's packages)
 const requetes = [];
 contexte.on('request', (r) => requetes.push(r.url()));
@@ -239,7 +247,8 @@ try {
   // isn't drawn again), so that a double click's dblclick reaches the page and opens its view.
   const clicArbre = await page.evaluate(() => {
     window.__dblclicks = [];
-    document.addEventListener('dblclick', (e) => { const n = e.target.closest && e.target.closest('[role="treeitem"]'); if (n) window.__dblclicks.push(n.dataset.cle); });
+    // (as it goes down to the node: the node's handler stops it there)
+    document.addEventListener('dblclick', (e) => { const n = e.target.closest && e.target.closest('[role="treeitem"]'); if (n) window.__dblclicks.push(n.dataset.cle); }, true);
     window.__noeudClique = document.querySelector('.arbre [role="treeitem"][data-cle$="/statistiques"]');
     return window.__noeudClique.dataset.cle;
   });
@@ -668,7 +677,7 @@ try {
   // ?langue=fr (nuee.io's French page links there): a new profile, no language kept yet, gets the
   // interface in French; a choice made since (View › Language) wins over the address at the next visit
   fs.rmSync(path.join(sortie, 'profil-fr'), { recursive: true, force: true });
-  const contexteFr = await chromium.launchPersistentContext(path.join(sortie, 'profil-fr'), { headless: !options.visible });
+  const contexteFr = await lancer(path.join(sortie, 'profil-fr'), { headless: !options.visible });
   try {
     const p = await contexteFr.newPage();
     p.on('dialog', (d) => d.accept());
